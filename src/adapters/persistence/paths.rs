@@ -18,6 +18,9 @@ SST_BACKGROUND_IMAGE_OPACITY=100
 
 # Radio de esquinas en píxeles. Al maximizar se usa 0.
 SST_CORNER_RADIUS=16
+
+# Separación entre la isla superior y la primera línea de contenido.
+SST_CONTENT_TOP_GAP=12
 "#;
 
 const DEFAULT_CONFIG: &str = r#"# Shell Shock Tool portable shell configuration
@@ -41,6 +44,7 @@ pub struct AppearanceConfig {
     pub background_image: String,
     pub background_image_opacity: u8,
     pub corner_radius: u16,
+    pub content_top_gap: u16,
 }
 
 impl Default for AppearanceConfig {
@@ -53,6 +57,7 @@ impl Default for AppearanceConfig {
             background_image: String::new(),
             background_image_opacity: 100,
             corner_radius: 16,
+            content_top_gap: 12,
         }
     }
 }
@@ -94,8 +99,14 @@ impl AppPaths {
             line.starts_with("SST_BACKDROP=") || line.starts_with("export SST_BACKDROP=")
         }) {
             text.push_str(APPEARANCE_BLOCK);
-            fs::write(path, text)?;
+        } else if !text.lines().any(|line| {
+            let line = line.trim_start();
+            line.starts_with("SST_CONTENT_TOP_GAP=")
+                || line.starts_with("export SST_CONTENT_TOP_GAP=")
+        }) {
+            text.push_str("\n# Separación entre la isla superior y la primera línea de contenido.\nSST_CONTENT_TOP_GAP=12\n");
         }
+        fs::write(path, text)?;
         Ok(())
     }
 
@@ -182,6 +193,11 @@ impl AppPaths {
             .and_then(|value| value.parse::<u16>().ok())
         {
             config.corner_radius = value.min(64);
+        }
+        if let Some(value) = assignment_value(&text, "SST_CONTENT_TOP_GAP")
+            .and_then(|value| value.parse::<u16>().ok())
+        {
+            config.content_top_gap = value.min(96);
         }
 
         if !matches!(config.backdrop.as_str(), "acrylic" | "blur" | "glass" | "solid") {
