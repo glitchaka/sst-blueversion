@@ -71,6 +71,9 @@ slint::slint! {
         background: transparent;
 
         in property <image> terminal-image;
+        in property <image> background-image;
+        in property <float> background-image-opacity: 0.0;
+        in property <length> window-corner-radius: 16px;
         in property <string> cpu-text: "CPU 0%";
         in property <string> ram-text: "RAM 0.0 GiB";
         in property <string> clock-text: "00:00";
@@ -88,18 +91,28 @@ slint::slint! {
             y: 0;
             width: 100%;
             height: 100%;
-            border-radius: root.maximized ? 0px : 16px;
+            border-radius: root.maximized ? 0px : root.window-corner-radius;
             clip: true;
             background: transparent;
 
             Image {
                 x: 0;
-            y: 0;
-            width: 100%;
-            height: 100%;
-            source: root.terminal-image;
-            image-fit: fill;
-        }
+                y: 0;
+                width: 100%;
+                height: 100%;
+                source: root.background-image;
+                image-fit: cover;
+                opacity: root.background-image-opacity;
+            }
+
+            Image {
+                x: 0;
+                y: 0;
+                width: 100%;
+                height: 100%;
+                source: root.terminal-image;
+                image-fit: fill;
+            }
 
         terminal-focus := FocusScope {
             x: 0;
@@ -346,6 +359,9 @@ struct TerminalAppearance {
     #[serde(default)]
     background_opacity: Option<u8>,
     background_color: String,
+    background_image: String,
+    background_image_opacity: u8,
+    corner_radius: u16,
 }
 
 impl Default for TerminalAppearance {
@@ -356,6 +372,9 @@ impl Default for TerminalAppearance {
             unfocused_opacity: 0,
             background_opacity: None,
             background_color: "#111629".to_owned(),
+            background_image: String::new(),
+            background_image_opacity: 100,
+            corner_radius: 16,
         }
     }
 }
@@ -380,6 +399,9 @@ fn load_terminal_appearance(paths: &AppPaths) -> Result<TerminalAppearance> {
     }
     config.appearance.focused_opacity = config.appearance.focused_opacity.min(100);
     config.appearance.unfocused_opacity = config.appearance.unfocused_opacity.min(100);
+    config.appearance.background_image_opacity =
+        config.appearance.background_image_opacity.min(100);
+    config.appearance.corner_radius = config.appearance.corner_radius.min(64);
     config.appearance.backdrop = config.appearance.backdrop.trim().to_ascii_lowercase();
 
     if !matches!(
@@ -407,6 +429,34 @@ fn parse_rgb(value: &str) -> Result<Rgb> {
         ((rgb >> 8) & 0xff) as u8,
         (rgb & 0xff) as u8,
     ))
+}
+
+fn load_background_image(paths: &AppPaths, appearance: &TerminalAppearance) -> Result<Option<Image>> {
+    let raw = appearance.background_image.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+
+    let configured = std::path::PathBuf::from(raw);
+    let path = if configured.is_absolute() {
+        configured
+    } else {
+        paths.root_dir().join(configured)
+    };
+
+    let image = Image::load_from_path(&path)
+        .with_context(|| format!("No se pudo cargar la imagen de fondo {}", path.display()))?;
+    Ok(Some(image))
+}
+
+fn background_image_opacity(appearance: &TerminalAppearance, focused: bool) -> f32 {
+    let window_opacity = if focused {
+        appearance.focused_opacity
+    } else {
+        appearance.unfocused_opacity
+    };
+    (f32::from(appearance.background_image_opacity) / 100.0)
+        * (f32::from(window_opacity) / 100.0)
 }
 
 struct Glyph {
@@ -1245,9 +1295,16 @@ pub fn run() -> Result<()> {
     let paths = AppPaths::detect();
     paths.ensure_layout()?;
     let appearance = load_terminal_appearance(&paths)?;
+    let background_image = load_background_image(&paths, &appearance)?;
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new_all()));
     let ui = SstBlueWindow::new()?;
+
+    if let Some(image) = background_image {
+        ui.set_background_image(image);
+    }
+    ui.set_background_image_opacity(background_image_opacity(&appearance, true));
+    ui.set_window_corner_radius((appearance.corner_radius as f32).into());
 
     {
         let model = model.clone();
@@ -1336,6 +1393,7 @@ pub fn run() -> Result<()> {
                 if *previous != focused {
                     *previous = focused;
                     model.borrow_mut().set_focused(focused);
+                    ui.set_background_image_opacity(background_image_opacity(&appearance, focused));
                     unsafe { apply_configured_backdrop(hwnd, &appearance, focused) };
                 }
             }
