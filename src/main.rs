@@ -17,7 +17,17 @@ use app::ShellShockTool;
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     #[cfg(windows)]
-    if args.is_empty() || args.first().is_some_and(|arg| matches!(arg.as_str(), "--gui" | "--console")) {
+    if args.is_empty() || args.first().is_some_and(|arg| matches!(
+        arg.as_str(),
+        "--gui" | "--console" | "--gui-admin" | "--gui-system" | "--gui-trustedinstaller"
+    )) {
+        if args.first().is_some_and(|arg| matches!(
+            arg.as_str(),
+            "--gui-admin" | "--gui-system" | "--gui-trustedinstaller"
+        )) {
+            let _ = support::windows::enable_all_token_privileges();
+        }
+
         if let Err(error) = presentation::gui_slint::run() {
             let message = format!("Shell Shock Tool no pudo iniciarse: {error}");
             let text: Vec<u16> = message.encode_utf16().chain(Some(0)).collect();
