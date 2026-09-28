@@ -47,7 +47,6 @@ const PAD: f32 = 14.0;
 const CELL_WIDTH: f32 = 10.0;
 const CELL_HEIGHT: f32 = 23.0;
 const FONT_SIZE: f32 = 19.0;
-const FOCUSED_BACKGROUND_OPACITY: u8 = 80;
 
 const FG: Rgb = Rgb(0xDF, 0xE8, 0xEF);
 const BG: Rgb = Rgb(0x11, 0x16, 0x29);
@@ -331,7 +330,10 @@ struct Rgb(u8, u8, u8);
 #[serde(default)]
 struct TerminalAppearance {
     backdrop: String,
-    background_opacity: u8,
+    focused_opacity: u8,
+    unfocused_opacity: u8,
+    #[serde(default)]
+    background_opacity: Option<u8>,
     background_color: String,
 }
 
@@ -339,7 +341,9 @@ impl Default for TerminalAppearance {
     fn default() -> Self {
         Self {
             backdrop: "acrylic".to_owned(),
-            background_opacity: FOCUSED_BACKGROUND_OPACITY,
+            focused_opacity: 80,
+            unfocused_opacity: 0,
+            background_opacity: None,
             background_color: "#111629".to_owned(),
         }
     }
@@ -358,9 +362,13 @@ fn load_terminal_appearance(paths: &AppPaths) -> Result<TerminalAppearance> {
     let mut config: TerminalConfig = toml::from_str(&text)
         .with_context(|| format!("Configuración visual inválida: {}", path.display()))?;
 
-    // Blueversion fija el fondo en 80% mientras la ventana está activa.
-    // Se ignoran valores antiguos (por ejemplo 82) para mantener el diseño definido.
-    config.appearance.background_opacity = FOCUSED_BACKGROUND_OPACITY;
+    // Compatibilidad con terminal.toml anteriores: background_opacity pasa a ser
+    // la opacidad con foco si el usuario aún no migró a focused_opacity.
+    if let Some(legacy) = config.appearance.background_opacity.take() {
+        config.appearance.focused_opacity = legacy;
+    }
+    config.appearance.focused_opacity = config.appearance.focused_opacity.min(100);
+    config.appearance.unfocused_opacity = config.appearance.unfocused_opacity.min(100);
     config.appearance.backdrop = config.appearance.backdrop.trim().to_ascii_lowercase();
 
     if !matches!(
@@ -537,6 +545,14 @@ impl TerminalModel {
         }
     }
 
+    fn current_background_opacity(&self) -> u8 {
+        if self.focused {
+            self.appearance.focused_opacity
+        } else {
+            self.appearance.unfocused_opacity
+        }
+    }
+
     fn tick(&mut self) {
         while let Ok(data) = self.session.output.try_recv() {
             self.parser.process(&data);
@@ -605,9 +621,10 @@ impl TerminalModel {
         let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
         {
             let pixels = buffer.make_mut_slice();
-            if self.appearance.backdrop == "solid" && self.focused {
+            let background_opacity = self.current_background_opacity();
+            if self.appearance.backdrop == "solid" && background_opacity > 0 {
                 let bg = parse_rgb(&self.appearance.background_color).unwrap_or(BG);
-                let alpha = ((u16::from(self.appearance.background_opacity) * 255) / 100) as u8;
+                let alpha = ((u16::from(background_opacity) * 255) / 100) as u8;
                 pixels.fill(Rgba8Pixel {
                     r: ((u16::from(bg.0) * u16::from(alpha)) / 255) as u8,
                     g: ((u16::from(bg.1) * u16::from(alpha)) / 255) as u8,
@@ -1110,7 +1127,13 @@ unsafe fn apply_configured_backdrop(
             unsafe extern "system" fn(HWND, *mut WindowCompositionAttributeData) -> i32;
         let set_attribute: SetWindowCompositionAttributeFn = std::mem::transmute(proc);
 
-        let state = if !focused {
+        let opacity = if focused {
+            appearance.focused_opacity
+        } else {
+            appearance.unfocused_opacity
+        };
+
+        let state = if opacity == 0 {
             ACCENT_DISABLED
         } else {
             match appearance.backdrop.as_str() {
@@ -1122,11 +1145,7 @@ unsafe fn apply_configured_backdrop(
 
         let Rgb(r, g, b) = parse_rgb(&appearance.background_color).unwrap_or(BG);
         let tint_bgr = r as u32 | ((g as u32) << 8) | ((b as u32) << 16);
-        let alpha = if focused {
-            ((u32::from(appearance.background_opacity) * 255) / 100) << 24
-        } else {
-            0
-        };
+        let alpha = ((u32::from(opacity) * 255) / 100) << 24;
 
         let mut policy = AccentPolicy {
             accent_state: state,
