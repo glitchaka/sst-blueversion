@@ -688,68 +688,170 @@ fn uname(args: &[String]) -> anyhow::Result<CommandOutput> {
 fn kill_process(args: &[String]) -> anyhow::Result<CommandOutput> {
     if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(CommandOutput::ok(
-            "sys kill — termina un proceso mediante la API Win32\n\
+            "sys kill — termina procesos mediante la API Win32\n\
              uso:\n\
-               sys kill PID          termina exactamente ese PID\n\
-               sys kill PID --tree   termina el PID y sus descendientes\n"
+               sys kill PID               termina exactamente ese PID\n\
+               sys kill PID --tree        termina el PID y sus descendientes\n\
+               sys kill NOMBRE            termina todos los procesos con ese nombre\n\
+               sys kill NOMBRE --tree     termina todos los procesos con ese nombre y sus descendientes\n\
+             ejemplos:\n\
+               sys kill 14508 --tree\n\
+               sys kill msedge.exe --tree\n"
         ));
     }
 
-    let Some(pid_text) = args.iter().find(|arg| !arg.starts_with('-')) else {
+    let Some(target) = args.iter().find(|arg| !arg.starts_with('-')) else {
         return Ok(CommandOutput::error(
-            "kill: uso: sys kill PID [--tree]",
+            "kill: uso: sys kill PID|NOMBRE [--tree]",
             2,
         ));
     };
 
-    let pid_value = pid_text
-        .parse::<u32>()
-        .map_err(|_| anyhow::anyhow!("kill: PID inválido: {pid_text}"))?;
-
+    let tree = args.iter().any(|arg| matches!(arg.as_str(), "--tree" | "-t"));
     let system = System::new_all();
-    let pid = Pid::from_u32(pid_value);
 
-    let Some(process) = system.process(pid) else {
+    if let Ok(pid_value) = target.parse::<u32>() {
+        let pid = Pid::from_u32(pid_value);
+
+        let Some(process) = system.process(pid) else {
+            return Ok(CommandOutput::error(
+                format!("kill: no existe el proceso {pid_value}"),
+                1,
+            ));
+        };
+
+        let process_name = process.name().to_string_lossy().into_owned();
+
+        if tree {
+            let mut descendants = process_descendants(&system, pid);
+            descendants.reverse();
+
+            for child in descendants {
+                match terminate_pid_native(child.as_u32()) {
+                    Ok(()) => {}
+                    Err(error) if process_is_gone(child.as_u32()) => {}
+                    Err(error) => {
+                        return Ok(CommandOutput::error(
+                            format!(
+                                "kill: no se pudo terminar el proceso hijo {} de {}: {error}",
+                                child.as_u32(),
+                                pid_value
+                            ),
+                            1,
+                        ));
+                    }
+                }
+            }
+        }
+
+        if let Err(error) = terminate_pid_native(pid_value) {
+            return Ok(CommandOutput::error(
+                format!("kill: no se pudo terminar {pid_value} ({process_name}): {error}"),
+                1,
+            ));
+        }
+
+        return Ok(CommandOutput::ok(format!(
+            "terminated: {} {}{}\n",
+            pid_value,
+            process_name,
+            if tree { " (process tree)" } else { "" }
+        )));
+    }
+
+    let wanted = target.trim_end_matches(".exe");
+    let roots = system
+        .processes()
+        .iter()
+        .filter_map(|(pid, process)| {
+            let name = process.name().to_string_lossy();
+            let normalized = name.trim_end_matches(".exe");
+            (name.eq_ignore_ascii_case(target) || normalized.eq_ignore_ascii_case(wanted))
+                .then_some(*pid)
+        })
+        .collect::<Vec<_>>();
+
+    if roots.is_empty() {
         return Ok(CommandOutput::error(
-            format!("kill: no existe el proceso {pid_value}"),
+            format!("kill: no hay procesos llamados {target}"),
             1,
         ));
-    };
+    }
 
-    let process_name = process.name().to_string_lossy().into_owned();
-    let tree = args.iter().any(|arg| matches!(arg.as_str(), "--tree" | "-t"));
-
-    if tree {
-        let mut descendants = process_descendants(&system, pid);
-        descendants.reverse();
-
-        for child in descendants {
-            if let Err(error) = terminate_pid_native(child.as_u32()) {
-                return Ok(CommandOutput::error(
-                    format!(
-                        "kill: no se pudo terminar el proceso hijo {} de {}: {error}",
-                        child.as_u32(),
-                        pid_value
-                    ),
-                    1,
-                ));
+    let mut targets = std::collections::HashSet::new();
+    for root in &roots {
+        targets.insert(*root);
+        if tree {
+            for child in process_descendants(&system, *root) {
+                targets.insert(child);
             }
         }
     }
 
-    if let Err(error) = terminate_pid_native(pid_value) {
+    // Kill descendants before roots. A process that disappears as a side effect
+    // of terminating another Edge/Chromium process is considered already done.
+    let mut ordered = targets.into_iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|pid| std::cmp::Reverse(process_depth(&system, *pid)));
+
+    let mut killed = 0usize;
+    let mut failures = Vec::new();
+    for pid in ordered {
+        match terminate_pid_native(pid.as_u32()) {
+            Ok(()) => killed += 1,
+            Err(_) if process_is_gone(pid.as_u32()) => {}
+            Err(error) => failures.push(format!("{}: {error}", pid.as_u32())),
+        }
+    }
+
+    if !failures.is_empty() {
         return Ok(CommandOutput::error(
-            format!("kill: no se pudo terminar {pid_value} ({process_name}): {error}"),
+            format!(
+                "kill: se terminaron {killed} procesos, pero fallaron {}: {}",
+                failures.len(),
+                failures.join("; ")
+            ),
             1,
         ));
     }
 
     Ok(CommandOutput::ok(format!(
-        "terminated: {} {}{}\n",
-        pid_value,
-        process_name,
-        if tree { " (process tree)" } else { "" }
+        "terminated: {killed} process(es) matching {}{}\n",
+        target,
+        if tree { " (including process trees)" } else { "" }
     )))
+}
+
+fn process_depth(system: &System, pid: Pid) -> usize {
+    let mut depth = 0usize;
+    let mut current = pid;
+    let mut seen = std::collections::HashSet::new();
+
+    while seen.insert(current) {
+        let Some(parent) = system.process(current).and_then(|process| process.parent()) else {
+            break;
+        };
+        depth += 1;
+        current = parent;
+    }
+
+    depth
+}
+
+#[cfg(windows)]
+fn process_is_gone(pid: u32) -> bool {
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return true;
+        }
+        CloseHandle(handle);
+        false
+    }
+}
+
+#[cfg(not(windows))]
+fn process_is_gone(_pid: u32) -> bool {
+    false
 }
 
 fn process_descendants(system: &System, root: Pid) -> Vec<Pid> {
