@@ -28,6 +28,7 @@ pub struct EmbeddedSession {
     pub output: mpsc::Receiver<Vec<u8>>,
     size: Arc<Mutex<(u16,u16)>>, raw: Arc<AtomicBool>, busy: Arc<AtomicBool>,
     interrupt: Arc<AtomicBool>, force_abort: Arc<AtomicBool>, exited: Arc<AtomicBool>,
+    config_reload_requested: Arc<AtomicBool>,
     line: Vec<char>, cursor: usize, selection_anchor: Option<usize>, history: Vec<String>, history_index: usize,
     pending: String, bindings: Arc<Mutex<HashMap<String, String>>>,
     secondary_prompt: Arc<Mutex<String>>,
@@ -70,6 +71,7 @@ impl EmbeddedSession {
         let interrupt = Arc::new(AtomicBool::new(false));
         let force_abort = Arc::new(AtomicBool::new(false));
         let exited = Arc::new(AtomicBool::new(false));
+        let config_reload_requested = Arc::new(AtomicBool::new(false));
         let bindings = Arc::new(Mutex::new(HashMap::new()));
         let secondary_prompt = Arc::new(Mutex::new("> ".to_owned()));
         let timeout = Arc::new(Mutex::new(None));
@@ -83,6 +85,7 @@ impl EmbeddedSession {
             force_abort.clone(),
         );
         let worker_busy = busy.clone(); let worker_exited = exited.clone();
+        let worker_config_reload_requested = config_reload_requested.clone();
         let worker_bindings = bindings.clone();
         let worker_secondary_prompt = secondary_prompt.clone();
         let worker_timeout = timeout.clone();
@@ -134,6 +137,12 @@ impl EmbeddedSession {
                                 Ok(result) => {
                                     io::write(result.stdout.as_bytes())?;
                                     io::write(result.stderr.as_bytes())?;
+                                    if result.status == 0 {
+                                        let normalized = command.split_whitespace().collect::<Vec<_>>().join(" ");
+                                        if normalized == "reload" || normalized == "config reload" {
+                                            worker_config_reload_requested.store(true, Ordering::SeqCst);
+                                        }
+                                    }
                                     if result.exit_requested { break; }
                                 }
                                 Err(error) => io::write(format!("sst: {error}\n").as_bytes())?,
@@ -182,13 +191,16 @@ impl EmbeddedSession {
         let history_index = history.len();
         Ok(Self { commands, keys, display, output, size, raw, busy, interrupt, force_abort, exited,
             line: Vec::new(), cursor: 0, selection_anchor: None, history, history_index, pending: String::new(), bindings,
-            secondary_prompt, timeout, last_activity })
+            secondary_prompt, timeout, last_activity, config_reload_requested })
     }
     pub fn resize(&self, cols: u16, rows: u16) {
         *self.size.lock().unwrap_or_else(|e| e.into_inner()) = (cols, rows);
         if self.raw.load(Ordering::SeqCst) { let _ = self.keys.send(Event::Resize(cols, rows)); }
     }
     pub fn exited(&self) -> bool { self.exited.load(Ordering::SeqCst) }
+    pub fn take_config_reload_request(&self) -> bool {
+        self.config_reload_requested.swap(false, Ordering::SeqCst)
+    }
     pub fn raw_mode(&self) -> bool { self.raw.load(Ordering::SeqCst) }
     pub fn send_raw_key(&self, key: KeyEvent) -> Result<()> {
         self.keys.send(Event::Key(key))?;
