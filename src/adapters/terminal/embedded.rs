@@ -28,7 +28,7 @@ pub struct EmbeddedSession {
     pub output: mpsc::Receiver<Vec<u8>>,
     size: Arc<Mutex<(u16,u16)>>, raw: Arc<AtomicBool>, busy: Arc<AtomicBool>,
     interrupt: Arc<AtomicBool>, force_abort: Arc<AtomicBool>, exited: Arc<AtomicBool>,
-    line: Vec<char>, cursor: usize, history: Vec<String>, history_index: usize,
+    line: Vec<char>, cursor: usize, selection_anchor: Option<usize>, history: Vec<String>, history_index: usize,
     pending: String, bindings: Arc<Mutex<HashMap<String, String>>>,
     secondary_prompt: Arc<Mutex<String>>,
     timeout: Arc<Mutex<Option<Duration>>>,
@@ -181,7 +181,7 @@ impl EmbeddedSession {
             .unwrap_or_default().lines().filter(|line| !line.starts_with('#')).map(str::to_owned).collect::<Vec<_>>();
         let history_index = history.len();
         Ok(Self { commands, keys, display, output, size, raw, busy, interrupt, force_abort, exited,
-            line: Vec::new(), cursor: 0, history, history_index, pending: String::new(), bindings,
+            line: Vec::new(), cursor: 0, selection_anchor: None, history, history_index, pending: String::new(), bindings,
             secondary_prompt, timeout, last_activity })
     }
     pub fn resize(&self, cols: u16, rows: u16) {
@@ -195,11 +195,22 @@ impl EmbeddedSession {
         Ok(())
     }
 
+    pub fn send_key_event(&mut self, key: KeyEvent) -> Result<()> {
+        if self.raw_mode() {
+            self.keys.send(Event::Key(key))?;
+            return Ok(());
+        }
+        self.handle_key_event(key)
+    }
+
     pub fn paste(&mut self, text: &str) -> Result<()> {
         if self.raw_mode() {
             self.keys.send(Event::Paste(text.replace("\r\n", "\n")))?;
             Ok(())
         } else {
+            if self.delete_selection() {
+                self.redraw();
+            }
             self.write(text.replace("\r\n", "\r").replace('\n', "\r").as_bytes())
         }
     }
@@ -224,19 +235,108 @@ impl EmbeddedSession {
         self.emit("\r\nbash: TMOUT: sesión terminada por inactividad\r\n");
         self.busy.store(true, Ordering::SeqCst);
         self.line.clear();
+        self.clear_selection();
         self.pending.clear();
         let _ = self.commands.send(WorkerRequest::Execute("exit".to_owned()));
         *self.last_activity.lock().unwrap_or_else(|error| error.into_inner()) = Instant::now();
     }
 
     fn emit(&self, text: &str) { let _ = self.display.send(text.as_bytes().to_vec()); }
+
+    fn selection_range(&self) -> Option<(usize, usize)> {
+        let anchor = self.selection_anchor?;
+        if anchor == self.cursor {
+            return None;
+        }
+        Some((anchor.min(self.cursor), anchor.max(self.cursor)))
+    }
+
+    fn clear_selection(&mut self) {
+        self.selection_anchor = None;
+    }
+
+    fn begin_selection(&mut self) {
+        if self.selection_anchor.is_none() {
+            self.selection_anchor = Some(self.cursor);
+        }
+    }
+
+    fn delete_selection(&mut self) -> bool {
+        let Some((start, end)) = self.selection_range() else {
+            self.clear_selection();
+            return false;
+        };
+        self.line.drain(start..end);
+        self.cursor = start;
+        self.clear_selection();
+        true
+    }
+
+    fn delete_previous_word(&mut self) {
+        if self.delete_selection() || self.cursor == 0 {
+            return;
+        }
+
+        let mut start = self.cursor;
+        while start > 0 && self.line[start - 1].is_whitespace() {
+            start -= 1;
+        }
+        while start > 0 && !self.line[start - 1].is_whitespace() {
+            start -= 1;
+        }
+
+        self.line.drain(start..self.cursor);
+        self.cursor = start;
+    }
+
+    fn move_word_left(&self, from: usize) -> usize {
+        let mut pos = from;
+        while pos > 0 && self.line[pos - 1].is_whitespace() {
+            pos -= 1;
+        }
+        while pos > 0 && !self.line[pos - 1].is_whitespace() {
+            pos -= 1;
+        }
+        pos
+    }
+
+    fn move_word_right(&self, from: usize) -> usize {
+        let mut pos = from;
+        while pos < self.line.len() && !self.line[pos].is_whitespace() {
+            pos += 1;
+        }
+        while pos < self.line.len() && self.line[pos].is_whitespace() {
+            pos += 1;
+        }
+        pos
+    }
+
     fn redraw(&self) {
         let prompt = if self.pending.is_empty() {
             "$ ".to_owned()
         } else {
             self.secondary_prompt.lock().unwrap_or_else(|error| error.into_inner()).clone()
         };
-        self.emit(&format!("\r\x1b[2K{prompt}{}", self.line.iter().collect::<String>()));
+
+        let mut rendered = String::new();
+        if let Some((start, end)) = self.selection_range() {
+            for (index, ch) in self.line.iter().enumerate() {
+                if index == start {
+                    rendered.push_str("\x1b[7m");
+                }
+                if index == end {
+                    rendered.push_str("\x1b[27m");
+                }
+                rendered.push(*ch);
+            }
+            if end == self.line.len() {
+                rendered.push_str("\x1b[27m");
+            }
+        } else {
+            rendered.extend(self.line.iter());
+        }
+
+        self.emit(&format!("\r\x1b[2K{prompt}{rendered}\x1b[0m"));
         let back = self.line.len() - self.cursor;
         if back > 0 { self.emit(&format!("\x1b[{back}D")); }
     }
@@ -259,16 +359,53 @@ impl EmbeddedSession {
                 ch => KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE),
             }).collect() };
         for event in events {
+            self.handle_key_event(event)?;
+        }
+        Ok(())
+    }
+
+    fn handle_key_event(&mut self, event: KeyEvent) -> Result<()> {
             *self.last_activity.lock().unwrap_or_else(|error| error.into_inner()) = Instant::now();
-            if self.raw.load(Ordering::SeqCst) { self.keys.send(Event::Key(event))?; continue; }
+            if self.raw.load(Ordering::SeqCst) {
+                self.keys.send(Event::Key(event))?;
+                return Ok(());
+            }
             if event.modifiers.contains(KeyModifiers::CONTROL) && event.code == KeyCode::Char('c') {
                 self.interrupt.store(true, Ordering::SeqCst);
-                self.line.clear(); self.cursor = 0; self.pending.clear();
+                self.line.clear(); self.cursor = 0; self.clear_selection(); self.pending.clear();
                 self.emit("^C\r\n");
                 if !self.busy.load(Ordering::SeqCst) { self.redraw(); }
                 continue;
             }
             if self.busy.load(Ordering::SeqCst) { continue; }
+
+            // Editing gestures expected from a desktop terminal. These are handled
+            // before readline bindings so modifier information from the GUI is not lost.
+            if event.modifiers.contains(KeyModifiers::CONTROL)
+                && event.code == KeyCode::Backspace
+            {
+                self.delete_previous_word();
+                self.redraw();
+                return Ok(());
+            }
+
+            if event.modifiers.contains(KeyModifiers::SHIFT)
+                && matches!(event.code, KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End)
+            {
+                self.begin_selection();
+                let ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+                self.cursor = match event.code {
+                    KeyCode::Left if ctrl => self.move_word_left(self.cursor),
+                    KeyCode::Right if ctrl => self.move_word_right(self.cursor),
+                    KeyCode::Left => self.cursor.saturating_sub(1),
+                    KeyCode::Right => (self.cursor + 1).min(self.line.len()),
+                    KeyCode::Home => 0,
+                    KeyCode::End => self.line.len(),
+                    _ => self.cursor,
+                };
+                self.redraw();
+                return Ok(());
+            }
 
             if let Some(sequence) = readline_sequence(&event) {
                 let action = self.bindings
@@ -291,6 +428,7 @@ impl EmbeddedSession {
                         {
                             self.line = line.chars().collect();
                             self.cursor = cursor.min(self.line.len());
+                            self.clear_selection();
                             if !stdout.is_empty() { self.emit(&stdout); }
                             if !stderr.is_empty() { self.emit(&stderr); }
                         }
@@ -350,6 +488,7 @@ impl EmbeddedSession {
                         }
                     };
                     if handled {
+                        self.clear_selection();
                         self.redraw();
                         continue;
                     }
@@ -360,7 +499,7 @@ impl EmbeddedSession {
                 KeyCode::Enter => {
                     self.emit("\r\n");
                     self.pending.push_str(&self.line.iter().collect::<String>());
-                    self.line.clear(); self.cursor = 0;
+                    self.line.clear(); self.cursor = 0; self.clear_selection();
                     if crate::presentation::shell::session::needs_continuation(&self.pending) {
                         self.pending.push('\n'); self.redraw(); continue;
                     }
@@ -407,29 +546,76 @@ impl EmbeddedSession {
                     ))?;
                 }
                 KeyCode::Char('l') if event.modifiers.contains(KeyModifiers::CONTROL) => self.emit("\x1b[2J\x1b[H"),
-                KeyCode::Char('u') if event.modifiers.contains(KeyModifiers::CONTROL) => { self.line.drain(..self.cursor); self.cursor = 0; }
-                KeyCode::Char('a') if event.modifiers.contains(KeyModifiers::CONTROL) => self.cursor = 0,
-                KeyCode::Char('e') if event.modifiers.contains(KeyModifiers::CONTROL) => self.cursor = self.line.len(),
-                KeyCode::Char(ch) if !event.modifiers.contains(KeyModifiers::CONTROL) => { self.line.insert(self.cursor, ch); self.cursor += 1; }
-                KeyCode::Backspace if self.cursor > 0 => { self.cursor -= 1; self.line.remove(self.cursor); }
-                KeyCode::Delete if self.cursor < self.line.len() => { self.line.remove(self.cursor); }
-                KeyCode::Left => self.cursor = self.cursor.saturating_sub(1),
-                KeyCode::Right => self.cursor = (self.cursor + 1).min(self.line.len()),
-                KeyCode::Home => self.cursor = 0, KeyCode::End => self.cursor = self.line.len(),
+                KeyCode::Char('u') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                    if !self.delete_selection() {
+                        self.line.drain(..self.cursor);
+                        self.cursor = 0;
+                    }
+                }
+                KeyCode::Char('a') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.clear_selection();
+                    self.cursor = 0;
+                }
+                KeyCode::Char('e') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.clear_selection();
+                    self.cursor = self.line.len();
+                }
+                KeyCode::Char(ch) if !event.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.delete_selection();
+                    self.line.insert(self.cursor, ch);
+                    self.cursor += 1;
+                }
+                KeyCode::Backspace => {
+                    if !self.delete_selection() && self.cursor > 0 {
+                        self.cursor -= 1;
+                        self.line.remove(self.cursor);
+                    }
+                }
+                KeyCode::Delete => {
+                    if !self.delete_selection() && self.cursor < self.line.len() {
+                        self.line.remove(self.cursor);
+                    }
+                }
+                KeyCode::Left => {
+                    if let Some((start, _)) = self.selection_range() {
+                        self.cursor = start;
+                        self.clear_selection();
+                    } else {
+                        self.cursor = self.cursor.saturating_sub(1);
+                    }
+                }
+                KeyCode::Right => {
+                    if let Some((_, end)) = self.selection_range() {
+                        self.cursor = end;
+                        self.clear_selection();
+                    } else {
+                        self.cursor = (self.cursor + 1).min(self.line.len());
+                    }
+                }
+                KeyCode::Home => { self.clear_selection(); self.cursor = 0; }
+                KeyCode::End => { self.clear_selection(); self.cursor = self.line.len(); }
                 KeyCode::Up if self.history_index > 0 => {
-                    self.history_index -= 1; self.line = self.history[self.history_index].chars().collect(); self.cursor = self.line.len();
+                    self.clear_selection();
+                    self.history_index -= 1;
+                    self.line = self.history[self.history_index].chars().collect();
+                    self.cursor = self.line.len();
                 }
                 KeyCode::Down => {
+                    self.clear_selection();
                     self.history_index = (self.history_index + 1).min(self.history.len());
-                    self.line = self.history.get(self.history_index).map(|s| s.chars().collect()).unwrap_or_default(); self.cursor = self.line.len();
+                    self.line = self.history.get(self.history_index).map(|s| s.chars().collect()).unwrap_or_default();
+                    self.cursor = self.line.len();
                 }
-                KeyCode::Tab => self.complete(),
+                KeyCode::Tab => {
+                    self.clear_selection();
+                    self.complete();
+                },
                 _ => {},
             }
             self.redraw();
-        }
-        Ok(())
+            Ok(())
     }
+
     fn complete(&mut self) {
         let line = self.line.iter().collect::<String>();
         let (reply_tx, reply_rx) = mpsc::channel();
@@ -461,6 +647,7 @@ impl EmbeddedSession {
             let chars = matches[0].chars().collect::<Vec<_>>();
             self.line.splice(begin..self.cursor, chars.iter().copied());
             self.cursor = begin + chars.len();
+            self.clear_selection();
         } else {
             self.emit(&format!("\r\n{}\r\n", matches.join("  ")));
         }
