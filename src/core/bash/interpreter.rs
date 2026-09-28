@@ -2667,6 +2667,22 @@ impl Interpreter {
             "times" => self.builtin_times(),
             "caller" => self.builtin_caller(args),
             "xargs" => self.execute_xargs(args, stdin)?,
+            "reload" => {
+                let path = self.env.get("SST_CONFIG");
+                if path.is_empty() {
+                    ExecutionResult::from_parts(
+                        String::new(),
+                        "reload: SST_CONFIG no definido\n".to_owned(),
+                        1,
+                    )
+                } else {
+                    let mut result = self.execute_text(&fs::read_to_string(path)?)?;
+                    if result.status == 0 {
+                        result.stdout.push_str("Configuración recargada.\n");
+                    }
+                    result
+                }
+            }
             "config" => {
                 match args.first().map(String::as_str).unwrap_or("path") {
                     "path" => ExecutionResult::from_parts(format!("{}\n", self.env.get("SST_CONFIG")), String::new(), 0),
@@ -2675,7 +2691,11 @@ impl Interpreter {
                         if path.is_empty() {
                             ExecutionResult::from_parts(String::new(), "config: SST_CONFIG no definido\n".to_owned(), 1)
                         } else {
-                            self.execute_text(&fs::read_to_string(path)?)?
+                            let mut result = self.execute_text(&fs::read_to_string(path)?)?;
+                            if result.status == 0 {
+                                result.stdout.push_str("Configuración recargada.\n");
+                            }
+                            result
                         }
                     }
                     "edit" => {
@@ -2703,7 +2723,7 @@ impl Interpreter {
                 | "wait" | "fg" | "bg" | "disown" | "command" | "builtin" | "type" | "hash" | "getopts"
                 | "exec" | "history" | "fc" | "bind" | "enable" | "complete" | "compgen" | "compopt" | "suspend"
                 | "dirs" | "pushd" | "popd" | "umask" | "ulimit" | "times" | "caller"
-                | "help" | "kill" | ":" | "true" | "false"
+                | "help" | "kill" | "config" | "reload" | ":" | "true" | "false"
         )
     }
 
