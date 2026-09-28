@@ -34,8 +34,8 @@ use windows_sys::Win32::{
             PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
         },
         Threading::{
-            GetCurrentProcess, GetProcessTimes, OpenProcess, OpenThread, ResumeThread,
-            SuspendThread, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+            GetCurrentProcess, GetExitCodeProcess, GetProcessTimes, OpenProcess, OpenThread,
+            ResumeThread, SuspendThread, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
             PROCESS_TERMINATE, THREAD_SUSPEND_RESUME,
         },
     },
@@ -1374,11 +1374,58 @@ impl ShellCommandHost for WindowsShellHost {
 
         #[cfg(windows)]
         unsafe {
-            let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
-            if handle.is_null() { return Ok(false); }
-            let terminated = TerminateProcess(handle, 128 + signal_number_windows(signal)) != 0;
+            // Elevated Windows processes often require SeDebugPrivilege even
+            // when the caller is already in the Administrators group.
+            let _ = crate::support::windows::enable_privilege("SeDebugPrivilege");
+
+            let handle = OpenProcess(
+                PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION,
+                0,
+                pid,
+            );
+            if handle.is_null() {
+                let error = GetLastError();
+                if error == 5 {
+                    anyhow::bail!(
+                        "kill: ({pid}) acceso denegado (Win32 5); usa sudo kill {pid}"
+                    );
+                }
+                return Ok(false);
+            }
+
+            if TerminateProcess(handle, 128 + signal_number_windows(signal)) == 0 {
+                let error = GetLastError();
+                CloseHandle(handle);
+                if error == 5 {
+                    anyhow::bail!(
+                        "kill: ({pid}) acceso denegado (Win32 5); usa sudo kill {pid}"
+                    );
+                }
+                anyhow::bail!(
+                    "kill: ({pid}) TerminateProcess falló con error Win32 {error}"
+                );
+            }
+
+            const STILL_ACTIVE: u32 = 259;
+            let mut stopped = false;
+            for _ in 0..40 {
+                let mut code = STILL_ACTIVE;
+                if GetExitCodeProcess(handle, &mut code) != 0 && code != STILL_ACTIVE {
+                    stopped = true;
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+
             CloseHandle(handle);
-            Ok(terminated)
+
+            if !stopped {
+                anyhow::bail!(
+                    "kill: ({pid}) Windows aceptó TerminateProcess pero el proceso sigue activo"
+                );
+            }
+
+            Ok(true)
         }
         #[cfg(not(windows))]
         {
