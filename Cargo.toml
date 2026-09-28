@@ -26,7 +26,7 @@ vt100 = "0.16"
 portable-pty = "0.9.0"
 regex = "1"
 toml = "0.5"
-slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-femtovg", "compat-1-18", "raw-window-handle-06"] }
+slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-femtovg", "compat-1-18", "raw-window-handle-06", "unstable-winit-030"] }
 fontdue = "0.9.4"
 arboard = "3.6.1"
 raw-window-handle = "0.6.2"
