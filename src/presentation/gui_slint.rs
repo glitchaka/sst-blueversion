@@ -631,7 +631,7 @@ impl TerminalModel {
         {
             let pixels = buffer.make_mut_slice();
             let background_opacity = self.current_background_opacity();
-            if self.appearance.backdrop == "solid" && background_opacity > 0 {
+            if background_opacity > 0 {
                 let bg = parse_rgb(&self.appearance.background_color).unwrap_or(BG);
                 let alpha = ((u16::from(background_opacity) * 255) / 100) as u8;
                 pixels.fill(Rgba8Pixel {
