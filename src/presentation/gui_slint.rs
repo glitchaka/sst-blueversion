@@ -27,7 +27,7 @@ use slint::{
 };
 use sysinfo::System;
 use windows_sys::Win32::{
-    Foundation::HWND,
+    Foundation::{HWND, RECT},
     Graphics::{
         Dwm::*,
         Gdi::{CreateRoundRectRgn, DeleteObject, SetWindowRgn},
@@ -35,7 +35,7 @@ use windows_sys::Win32::{
     System::LibraryLoader::{GetModuleHandleW, GetProcAddress},
     UI::{
         Controls::MARGINS,
-        WindowsAndMessaging::{GetForegroundWindow, IsZoomed},
+        WindowsAndMessaging::{GetForegroundWindow, GetWindowRect, IsZoomed},
     },
 };
 
@@ -1241,9 +1241,8 @@ fn slint_hwnd(ui: &SstBlueWindow) -> Option<HWND> {
 
 unsafe fn apply_native_window_region(
     hwnd: HWND,
-    width: u32,
-    height: u32,
     corner_radius: u16,
+    scale_factor: f32,
 ) {
     unsafe {
         if IsZoomed(hwnd) != 0 || corner_radius == 0 {
@@ -1251,19 +1250,32 @@ unsafe fn apply_native_window_region(
             return;
         }
 
-        let radius = i32::from(corner_radius);
-        let diameter = (radius * 2).max(1);
+        let mut rect = RECT::default();
+        if GetWindowRect(hwnd, &mut rect) == 0 {
+            return;
+        }
+
+        let width = (rect.right - rect.left).max(1);
+        let height = (rect.bottom - rect.top).max(1);
+        let radius = ((corner_radius as f32) * scale_factor.max(0.5))
+            .round()
+            .max(1.0) as i32;
+        let diameter = radius.saturating_mul(2);
+
         let region = CreateRoundRectRgn(
             0,
             0,
-            width.min(i32::MAX as u32) as i32 + 1,
-            height.min(i32::MAX as u32) as i32 + 1,
+            width + 1,
+            height + 1,
             diameter,
             diameter,
         );
 
-        if !region.is_null() && SetWindowRgn(hwnd, region, 1) == 0 {
-            DeleteObject(region);
+        if !region.is_null() {
+            // On success Windows owns the region handle. Only delete it on failure.
+            if SetWindowRgn(hwnd, region, 1) == 0 {
+                DeleteObject(region);
+            }
         }
     }
 }
@@ -1369,9 +1381,8 @@ pub fn run() -> Result<()> {
                     unsafe {
                         apply_native_window_region(
                             hwnd,
-                            size.width,
-                            size.height,
                             appearance.corner_radius,
+                            ui.window().scale_factor(),
                         );
                     }
                 }
@@ -1382,7 +1393,7 @@ pub fn run() -> Result<()> {
     let weak = ui.as_weak();
     let last_status = Rc::new(RefCell::new(Instant::now() - Duration::from_secs(2)));
     let last_focus = Rc::new(RefCell::new(true));
-    let last_region = Rc::new(RefCell::new((0u32, 0u32, false)));
+    let last_region = Rc::new(RefCell::new((0u32, 0u32, false, 0u16, 0u32)));
     let timer = Timer::default();
     {
         let model = model.clone();
@@ -1432,14 +1443,13 @@ pub fn run() -> Result<()> {
                                 apply_configured_backdrop(hwnd, &next, focused);
                                 apply_native_window_region(
                                     hwnd,
-                                    size.width,
-                                    size.height,
                                     next.corner_radius,
+                                    scale,
                                 );
                             }
                         }
 
-                        *last_region.borrow_mut() = (0, 0, false);
+                        *last_region.borrow_mut() = (0, 0, false, 0, 0);
                     }
                     Err(error) => {
                         eprintln!("No se pudo recargar la apariencia de SST: {error}");
@@ -1461,15 +1471,21 @@ pub fn run() -> Result<()> {
                 }
 
                 let mut region_state = last_region.borrow_mut();
-                let current_region = (size.width, size.height, maximized);
+                let scale_key = (scale * 1000.0).round() as u32;
+                let current_region = (
+                    size.width,
+                    size.height,
+                    maximized,
+                    appearance.corner_radius,
+                    scale_key,
+                );
                 if *region_state != current_region {
                     *region_state = current_region;
                     unsafe {
                         apply_native_window_region(
                             hwnd,
-                            size.width,
-                            size.height,
                             appearance.corner_radius,
+                            scale,
                         );
                     }
                 }
