@@ -30,12 +30,12 @@ use windows_sys::Win32::{
     Foundation::HWND,
     Graphics::{
         Dwm::*,
-        Gdi::{CreateRoundRectRgn, DeleteObject},
+        Gdi::{CreateRoundRectRgn, DeleteObject, SetWindowRgn},
     },
     System::LibraryLoader::{GetModuleHandleW, GetProcAddress},
     UI::{
         Controls::MARGINS,
-        WindowsAndMessaging::{GetForegroundWindow, IsZoomed, SetWindowRgn},
+        WindowsAndMessaging::{GetForegroundWindow, IsZoomed},
     },
 };
 
