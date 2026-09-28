@@ -1,6 +1,6 @@
 [package]
 name = "sst"
-version = "0.1.5"
+version = "0.1.6-blue.1"
 edition = "2024"
 description = "Portable Bash-compatible administration shell for Windows"
 
@@ -26,6 +26,10 @@ vt100 = "0.16"
 portable-pty = "0.9.0"
 regex = "1"
 toml = "0.5"
+slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-femtovg", "compat-1-18", "raw-window-handle-06"] }
+fontdue = "0.9.4"
+arboard = "3.6.1"
+raw-window-handle = "0.6.2"
 
 [profile.release]
 lto = "thin"

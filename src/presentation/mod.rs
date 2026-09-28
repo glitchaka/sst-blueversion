@@ -4,4 +4,6 @@ mod pty_protocol;
 pub mod editor_clipboard;
 #[cfg(windows)]
 pub mod gui;
+#[cfg(windows)]
+pub mod gui_slint;
 pub mod shell;
