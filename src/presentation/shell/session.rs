@@ -145,7 +145,12 @@ impl ShellSession {
 pub(crate) fn needs_continuation(input: &str) -> bool {
     let trimmed = input.trim_end();
 
-    if trimmed.ends_with('\\')
+    // En Windows, "cd carpeta\\" es una ruta con separador final, no una
+    // petición de continuar el comando en la línea siguiente.
+    let cd_with_windows_separator =
+        cfg!(windows) && trimmed.trim_start().starts_with("cd ") && trimmed.ends_with('\\');
+
+    if (trimmed.ends_with('\\') && !cd_with_windows_separator)
         || trimmed.ends_with('|')
         || trimmed.ends_with("&&")
         || trimmed.ends_with("||")
