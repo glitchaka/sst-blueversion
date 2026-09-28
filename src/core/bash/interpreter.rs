@@ -2086,7 +2086,27 @@ impl Interpreter {
                         1,
                     )
                 } else {
-                    let raw = args.first().map(String::as_str).unwrap_or("~");
+                    // SST keeps normal quoted Bash paths, but also accepts an
+                    // existing directory written naturally with spaces:
+                    //     cd Project 2021
+                    // This avoids silently discarding every argument after the first.
+                    let joined;
+                    let raw = if args.len() > 1 {
+                        joined = args.join(" ");
+                        let joined_target = self.resolve_path(&joined);
+                        if joined_target.is_dir() {
+                            joined.as_str()
+                        } else {
+                            return Ok(Some(ExecutionResult::from_parts(
+                                String::new(),
+                                "cd: demasiados argumentos\n".to_owned(),
+                                1,
+                            )));
+                        }
+                    } else {
+                        args.first().map(String::as_str).unwrap_or("~")
+                    };
+
                     let mut print_target = raw == "-";
                     let mut target = if raw == "-" {
                         self.env.oldpwd.clone().unwrap_or_else(|| self.env.cwd.clone())
