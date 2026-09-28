@@ -8,19 +8,16 @@ use super::BuiltinCommand;
 
 pub struct ConfigBuiltin {
     config_file: PathBuf,
-    terminal_config_file: PathBuf,
     editor: Arc<dyn TextEditor>,
 }
 
 impl ConfigBuiltin {
     pub fn new(
         config_file: PathBuf,
-        terminal_config_file: PathBuf,
         editor: Arc<dyn TextEditor>,
     ) -> Self {
         Self {
             config_file,
-            terminal_config_file,
             editor,
         }
     }
@@ -32,7 +29,7 @@ impl BuiltinCommand for ConfigBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "sst-config path|edit|terminal — configuración portable de SST"
+        "sst-config path|edit — configuración portable de SST"
     }
 
     fn execute(
@@ -48,26 +45,6 @@ impl BuiltinCommand for ConfigBuiltin {
                 let status = self.editor.edit(&args, context.cwd)?;
                 Ok(CommandOutput { status, stdout: String::new(), stderr: String::new() })
             }
-            "terminal" => match args.get(1).map(String::as_str).unwrap_or("path") {
-                "path" => Ok(CommandOutput::ok(format!(
-                    "{}\n",
-                    self.terminal_config_file.display()
-                ))),
-                "edit" => {
-                    let edit_args =
-                        vec![self.terminal_config_file.to_string_lossy().into_owned()];
-                    let status = self.editor.edit(&edit_args, context.cwd)?;
-                    Ok(CommandOutput {
-                        status,
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    })
-                }
-                other => Ok(CommandOutput::error(
-                    format!("sst-config terminal: subcomando desconocido: {other}"),
-                    2,
-                )),
-            },
             "reload" => Ok(CommandOutput::error(
                 "config reload debe ejecutarse mediante la función Bash 'config'",
                 2,
