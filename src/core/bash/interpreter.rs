@@ -6041,6 +6041,29 @@ impl Interpreter {
     }
 
     fn resolve_hashed_program(&mut self, name: &str) -> Result<Option<String>> {
+        // On Windows SST also follows the native shell convention of resolving
+        // an executable from the current directory by bare name. This is
+        // required for workflows such as:
+        //     setup.exe /configure Project_Pro_2021.xml
+        // while standing next to Office Deployment Tool's setup.exe.
+        if cfg!(windows) && !name.contains('/') && !name.contains('\\') {
+            let candidate = self.env.cwd.join(name);
+            let native_executable = candidate
+                .extension()
+                .and_then(|value| value.to_str())
+                .is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("exe") || ext.eq_ignore_ascii_case("com")
+                });
+
+            if candidate.is_file() && native_executable {
+                let path = candidate.to_string_lossy().into_owned();
+                if self.env.option_enabled("hashall") {
+                    self.env.hash_command(name.to_owned(), path.clone());
+                }
+                return Ok(Some(path));
+            }
+        }
+
         if let Some(path) = self.env.command_hash.get(name).cloned() {
             // Bash does not apply EXECIGNORE to commands already present in the
             // command hash table.
