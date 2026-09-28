@@ -23,7 +23,8 @@ use fontdue::{Font, FontSettings, Metrics};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde::Deserialize;
 use slint::{
-    ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode,
+    BackendSelector, ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer,
+    TimerMode,
 };
 use sysinfo::System;
 use windows_sys::Win32::{
@@ -1216,11 +1217,20 @@ fn apply_slint_window_effects(ui: &SstBlueWindow, appearance: &TerminalAppearanc
 }
 
 pub fn run() -> Result<()> {
-    // Blueversion is specifically the OpenGL/FemtoVG branch. Do not silently
-    // route it back through WGPU.
-    if std::env::var_os("SLINT_BACKEND").is_none() {
-        unsafe { std::env::set_var("SLINT_BACKEND", "winit-femtovg") };
-    }
+    // The terminal surface needs a genuinely transparent native window.
+    // Setting only `background: transparent` in Slint is not enough on every
+    // Windows/FemtoVG combination because the native Winit window may otherwise
+    // be created as opaque before the renderer starts.
+    BackendSelector::new()
+        .backend_name("winit".into())
+        .renderer_name("femtovg".into())
+        .with_winit_window_attributes_hook(|attributes| {
+            attributes
+                .with_transparent(true)
+                .with_decorations(false)
+        })
+        .select()
+        .map_err(|error| anyhow::anyhow!("No se pudo inicializar Winit/FemtoVG transparente: {error}"))?;
 
     let paths = AppPaths::detect();
     paths.ensure_layout()?;
