@@ -77,6 +77,7 @@ slint::slint! {
         in property <image> terminal-image;
         in property <image> background-image;
         in property <float> background-image-opacity: 0.0;
+        in property <string> background-image-fit-mode: "cover";
         in property <length> window-corner-radius: 16px;
         in property <string> cpu-text: "CPU 0%";
         in property <string> ram-text: "RAM 0.0 GiB";
@@ -105,7 +106,13 @@ slint::slint! {
                 width: 100%;
                 height: 100%;
                 source: root.background-image;
-                image-fit: cover;
+                image-fit: root.background-image-fit-mode == "contain"
+                    ? contain
+                    : root.background-image-fit-mode == "fill"
+                        ? fill
+                        : root.background-image-fit-mode == "preserve"
+                            ? preserve
+                            : cover;
                 opacity: root.background-image-opacity;
             }
 
@@ -1296,6 +1303,7 @@ pub fn run() -> Result<()> {
         ui.set_background_image(image);
     }
     ui.set_background_image_opacity(background_image_opacity(&appearance, true));
+    ui.set_background_image_fit_mode(appearance.background_image_fit.clone().into());
     ui.set_window_corner_radius((appearance.corner_radius as f32).into());
 
     {
@@ -1413,6 +1421,7 @@ pub fn run() -> Result<()> {
                         ui.set_background_image_opacity(
                             background_image_opacity(&next, focused)
                         );
+                        ui.set_background_image_fit_mode(next.background_image_fit.clone().into());
                         ui.set_window_corner_radius((next.corner_radius as f32).into());
 
                         model.borrow_mut().set_appearance(next.clone());
