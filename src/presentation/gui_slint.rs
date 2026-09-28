@@ -21,7 +21,6 @@ use crossterm::event::{
 };
 use fontdue::{Font, FontSettings, Metrics};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use serde::Deserialize;
 use slint::{
     BackendSelector, ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer,
     TimerMode,
@@ -38,7 +37,7 @@ use windows_sys::Win32::{
 };
 
 use crate::adapters::{
-    persistence::AppPaths,
+    persistence::{AppPaths, AppearanceConfig},
     terminal::embedded::EmbeddedSession,
 };
 
@@ -350,73 +349,7 @@ slint::slint! {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Rgb(u8, u8, u8);
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-struct TerminalAppearance {
-    backdrop: String,
-    focused_opacity: u8,
-    unfocused_opacity: u8,
-    #[serde(default)]
-    background_opacity: Option<u8>,
-    background_color: String,
-    background_image: String,
-    background_image_opacity: u8,
-    corner_radius: u16,
-}
-
-impl Default for TerminalAppearance {
-    fn default() -> Self {
-        Self {
-            backdrop: "acrylic".to_owned(),
-            focused_opacity: 80,
-            unfocused_opacity: 0,
-            background_opacity: None,
-            background_color: "#111629".to_owned(),
-            background_image: String::new(),
-            background_image_opacity: 100,
-            corner_radius: 16,
-        }
-    }
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct TerminalConfig {
-    #[serde(default)]
-    appearance: TerminalAppearance,
-}
-
-fn load_terminal_appearance(paths: &AppPaths) -> Result<TerminalAppearance> {
-    let path = paths.terminal_config_file();
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("No se pudo leer {}", path.display()))?;
-    let mut config: TerminalConfig = toml::from_str(&text)
-        .with_context(|| format!("Configuración visual inválida: {}", path.display()))?;
-
-    // Compatibilidad con terminal.toml anteriores: background_opacity pasa a ser
-    // la opacidad con foco si el usuario aún no migró a focused_opacity.
-    if let Some(legacy) = config.appearance.background_opacity.take() {
-        config.appearance.focused_opacity = legacy;
-    }
-    config.appearance.focused_opacity = config.appearance.focused_opacity.min(100);
-    config.appearance.unfocused_opacity = config.appearance.unfocused_opacity.min(100);
-    config.appearance.background_image_opacity =
-        config.appearance.background_image_opacity.min(100);
-    config.appearance.corner_radius = config.appearance.corner_radius.min(64);
-    config.appearance.backdrop = config.appearance.backdrop.trim().to_ascii_lowercase();
-
-    if !matches!(
-        config.appearance.backdrop.as_str(),
-        "acrylic" | "blur" | "glass" | "solid"
-    ) {
-        anyhow::bail!(
-            "terminal.toml: appearance.backdrop debe ser acrylic, blur, glass o solid"
-        );
-    }
-
-    parse_rgb(&config.appearance.background_color)
-        .with_context(|| "terminal.toml: appearance.background_color inválido")?;
-    Ok(config.appearance)
-}
+type TerminalAppearance = AppearanceConfig;
 
 fn parse_rgb(value: &str) -> Result<Rgb> {
     let hex = value.trim().trim_start_matches('#');
@@ -1294,7 +1227,7 @@ pub fn run() -> Result<()> {
 
     let paths = AppPaths::detect();
     paths.ensure_layout()?;
-    let appearance = load_terminal_appearance(&paths)?;
+    let appearance = paths.load_appearance()?;
     let background_image = load_background_image(&paths, &appearance)?;
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new_all()));
