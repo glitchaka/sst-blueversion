@@ -375,9 +375,9 @@ impl EmbeddedSession {
                 self.line.clear(); self.cursor = 0; self.clear_selection(); self.pending.clear();
                 self.emit("^C\r\n");
                 if !self.busy.load(Ordering::SeqCst) { self.redraw(); }
-                continue;
+                return Ok(());
             }
-            if self.busy.load(Ordering::SeqCst) { continue; }
+            if self.busy.load(Ordering::SeqCst) { return Ok(()); }
 
             // Editing gestures expected from a desktop terminal. These are handled
             // before readline bindings so modifier information from the GUI is not lost.
@@ -385,6 +385,20 @@ impl EmbeddedSession {
                 && event.code == KeyCode::Backspace
             {
                 self.delete_previous_word();
+                self.redraw();
+                return Ok(());
+            }
+
+            if event.modifiers.contains(KeyModifiers::CONTROL)
+                && !event.modifiers.contains(KeyModifiers::SHIFT)
+                && matches!(event.code, KeyCode::Left | KeyCode::Right)
+            {
+                self.clear_selection();
+                self.cursor = match event.code {
+                    KeyCode::Left => self.move_word_left(self.cursor),
+                    KeyCode::Right => self.move_word_right(self.cursor),
+                    _ => self.cursor,
+                };
                 self.redraw();
                 return Ok(());
             }
@@ -433,7 +447,7 @@ impl EmbeddedSession {
                             if !stderr.is_empty() { self.emit(&stderr); }
                         }
                         self.redraw();
-                        continue;
+                        return Ok(());
                     }
 
                     let handled = match action.as_str() {
@@ -490,7 +504,7 @@ impl EmbeddedSession {
                     if handled {
                         self.clear_selection();
                         self.redraw();
-                        continue;
+                        return Ok(());
                     }
                 }
             }
@@ -501,10 +515,10 @@ impl EmbeddedSession {
                     self.pending.push_str(&self.line.iter().collect::<String>());
                     self.line.clear(); self.cursor = 0; self.clear_selection();
                     if crate::presentation::shell::session::needs_continuation(&self.pending) {
-                        self.pending.push('\n'); self.redraw(); continue;
+                        self.pending.push('\n'); self.redraw(); return Ok(());
                     }
                     let command = std::mem::take(&mut self.pending);
-                    if command.trim().is_empty() { self.redraw(); continue; }
+                    if command.trim().is_empty() { self.redraw(); return Ok(()); }
 
                     let original_command = command.clone();
                     let (reply_tx, reply_rx) = mpsc::channel();
@@ -518,7 +532,7 @@ impl EmbeddedSession {
                         Ok(Err(error)) => {
                             self.emit(&format!("bash: {error}\r\n"));
                             self.redraw();
-                            continue;
+                            return Ok(());
                         }
                         Err(_) => (command, false),
                     };
@@ -532,12 +546,12 @@ impl EmbeddedSession {
                     if print_only {
                         self.emit(&format!("{command}\r\n"));
                         self.redraw();
-                        continue;
+                        return Ok(());
                     }
 
                     self.busy.store(true, Ordering::SeqCst);
                     self.commands.send(WorkerRequest::Execute(command))?;
-                    continue;
+                    return Ok(());
                 }
                 KeyCode::Char('d') if event.modifiers.contains(KeyModifiers::CONTROL) && self.line.is_empty() => {
                     self.busy.store(true, Ordering::SeqCst);
