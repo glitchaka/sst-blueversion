@@ -377,9 +377,15 @@ fn load_background_image(paths: &AppPaths, appearance: &TerminalAppearance) -> R
         paths.root_dir().join(configured)
     };
 
-    let image = Image::load_from_path(&path)
-        .with_context(|| format!("No se pudo cargar la imagen de fondo {}", path.display()))?;
-    Ok(Some(image))
+    let decoded = image::open(&path)
+        .with_context(|| format!("No se pudo cargar la imagen de fondo {}", path.display()))?
+        .into_rgba8();
+    let buffer = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+        decoded.as_raw(),
+        decoded.width(),
+        decoded.height(),
+    );
+    Ok(Some(Image::from_rgba8(buffer)))
 }
 
 fn background_image_opacity(appearance: &TerminalAppearance, focused: bool) -> f32 {
