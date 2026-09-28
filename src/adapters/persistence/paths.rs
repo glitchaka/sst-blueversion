@@ -16,6 +16,9 @@ SST_BACKGROUND_COLOR='#111629'
 SST_BACKGROUND_IMAGE=''
 SST_BACKGROUND_IMAGE_OPACITY=100
 
+# Ajuste de imagen: cover | contain | fill | preserve
+SST_BACKGROUND_IMAGE_FIT='cover'
+
 # Radio de esquinas en píxeles. Al maximizar se usa 0.
 SST_CORNER_RADIUS=16
 
@@ -43,6 +46,7 @@ pub struct AppearanceConfig {
     pub background_color: String,
     pub background_image: String,
     pub background_image_opacity: u8,
+    pub background_image_fit: String,
     pub corner_radius: u16,
     pub content_top_gap: u16,
 }
@@ -56,6 +60,7 @@ impl Default for AppearanceConfig {
             background_color: "#111629".to_owned(),
             background_image: String::new(),
             background_image_opacity: 100,
+            background_image_fit: "cover".to_owned(),
             corner_radius: 16,
             content_top_gap: 12,
         }
@@ -99,12 +104,21 @@ impl AppPaths {
             line.starts_with("SST_BACKDROP=") || line.starts_with("export SST_BACKDROP=")
         }) {
             text.push_str(APPEARANCE_BLOCK);
-        } else if !text.lines().any(|line| {
-            let line = line.trim_start();
-            line.starts_with("SST_CONTENT_TOP_GAP=")
-                || line.starts_with("export SST_CONTENT_TOP_GAP=")
-        }) {
-            text.push_str("\n# Separación entre la isla superior y la primera línea de contenido.\nSST_CONTENT_TOP_GAP=12\n");
+        } else {
+            if !text.lines().any(|line| {
+                let line = line.trim_start();
+                line.starts_with("SST_CONTENT_TOP_GAP=")
+                    || line.starts_with("export SST_CONTENT_TOP_GAP=")
+            }) {
+                text.push_str("\n# Separación entre la isla superior y la primera línea de contenido.\nSST_CONTENT_TOP_GAP=12\n");
+            }
+            if !text.lines().any(|line| {
+                let line = line.trim_start();
+                line.starts_with("SST_BACKGROUND_IMAGE_FIT=")
+                    || line.starts_with("export SST_BACKGROUND_IMAGE_FIT=")
+            }) {
+                text.push_str("\n# Ajuste de imagen: cover | contain | fill | preserve\nSST_BACKGROUND_IMAGE_FIT='cover'\n");
+            }
         }
         fs::write(path, text)?;
         Ok(())
@@ -189,6 +203,9 @@ impl AppPaths {
         {
             config.background_image_opacity = value.min(100);
         }
+        if let Some(value) = assignment_value(&text, "SST_BACKGROUND_IMAGE_FIT") {
+            config.background_image_fit = value.to_ascii_lowercase();
+        }
         if let Some(value) = assignment_value(&text, "SST_CORNER_RADIUS")
             .and_then(|value| value.parse::<u16>().ok())
         {
@@ -202,6 +219,14 @@ impl AppPaths {
 
         if !matches!(config.backdrop.as_str(), "acrylic" | "blur" | "glass" | "solid") {
             anyhow::bail!("sstrc: SST_BACKDROP debe ser acrylic, blur, glass o solid");
+        }
+        if !matches!(
+            config.background_image_fit.as_str(),
+            "cover" | "contain" | "fill" | "preserve"
+        ) {
+            anyhow::bail!(
+                "sstrc: SST_BACKGROUND_IMAGE_FIT debe ser cover, contain, fill o preserve"
+            );
         }
 
         Ok(config)
