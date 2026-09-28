@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     env,
     fmt::Write as _,
     process::Command,
@@ -90,18 +91,7 @@ impl SystemService {
             let mut system = System::new_all();
             system.refresh_all();
 
-            let mut rows: Vec<_> = system.processes().iter().collect();
-
-            if sort_cpu {
-                rows.sort_by(|a, b| {
-                    b.1.cpu_usage()
-                        .partial_cmp(&a.1.cpu_usage())
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-            } else {
-                rows.sort_by_key(|(_, process)| std::cmp::Reverse(process.memory()));
-            }
-
+            let rows = process_tree_rows(&system, sort_cpu);
             let (width, height) = terminal.size()?;
             let max_rows = height.saturating_sub(6) as usize;
             let mut screen = String::new();
@@ -116,15 +106,17 @@ impl SystemService {
             )?;
             writeln!(
                 screen,
-                "orden: {}   [c] CPU  [m] memoria  [q] salir",
+                "árbol de procesos · hermanos por {}   [c] CPU  [m] memoria  [q] salir",
                 if sort_cpu { "CPU" } else { "MEM" }
             )?;
             writeln!(screen)?;
-            writeln!(screen, "PID      CPU%     RAM MiB   PROCESS")?;
+            writeln!(screen, "PID      PPID     CPU%     RAM MiB   PROCESS")?;
 
-            for (pid, process) in rows.into_iter().take(max_rows) {
-                let mut name = process.name().to_string_lossy().into_owned();
-                let name_width = width.saturating_sub(32) as usize;
+            for (pid, tree_prefix) in rows.into_iter().take(max_rows) {
+                let Some(process) = system.process(pid) else { continue; };
+                let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
+                let mut name = format!("{tree_prefix}{}", process.name().to_string_lossy());
+                let name_width = width.saturating_sub(41) as usize;
 
                 if name.chars().count() > name_width && name_width > 3 {
                     name = name.chars().take(name_width - 3).collect();
@@ -133,8 +125,9 @@ impl SystemService {
 
                 writeln!(
                     screen,
-                    "{:<8} {:>6.1} {:>10.1}   {}",
+                    "{:<8} {:<8} {:>6.1} {:>10.1}   {}",
                     pid,
+                    ppid,
                     process.cpu_usage(),
                     process.memory() as f64 / 1024.0 / 1024.0,
                     name
@@ -582,26 +575,113 @@ fn processes() -> anyhow::Result<CommandOutput> {
     let mut system = System::new_all();
     system.refresh_all();
 
-    let mut rows: Vec<_> = system.processes().iter().collect();
-    rows.sort_by(|a, b| {
-        b.1.cpu_usage()
-            .partial_cmp(&a.1.cpu_usage())
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    let rows = process_tree_rows(&system, true);
+    let mut out = String::from("PID      PPID     CPU%     RAM MiB   PROCESS\n");
 
-    let mut out = String::from("PID      CPU%     RAM MiB   PROCESS\n");
-
-    for (pid, process) in rows.into_iter().take(80) {
+    for (pid, tree_prefix) in rows.into_iter().take(160) {
+        let Some(process) = system.process(pid) else { continue; };
+        let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
         out.push_str(&format!(
-            "{:<8} {:>6.1} {:>10.1}   {}\n",
+            "{:<8} {:<8} {:>6.1} {:>10.1}   {}{}\n",
             pid,
+            ppid,
             process.cpu_usage(),
             process.memory() as f64 / 1024.0 / 1024.0,
+            tree_prefix,
             process.name().to_string_lossy()
         ));
     }
 
     Ok(CommandOutput::ok(out))
+}
+
+fn process_tree_rows(system: &System, sort_cpu: bool) -> Vec<(Pid, String)> {
+    let existing = system.processes().keys().copied().collect::<HashSet<_>>();
+    let mut children = HashMap::<Pid, Vec<Pid>>::new();
+    let mut roots = Vec::new();
+
+    for (pid, process) in system.processes() {
+        match process.parent() {
+            Some(parent) if parent != *pid && existing.contains(&parent) => {
+                children.entry(parent).or_default().push(*pid);
+            }
+            _ => roots.push(*pid),
+        }
+    }
+
+    let sort_pids = |pids: &mut Vec<Pid>| {
+        pids.sort_by(|a, b| {
+            let Some(pa) = system.process(*a) else { return std::cmp::Ordering::Greater; };
+            let Some(pb) = system.process(*b) else { return std::cmp::Ordering::Less; };
+            if sort_cpu {
+                pb.cpu_usage()
+                    .partial_cmp(&pa.cpu_usage())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| a.as_u32().cmp(&b.as_u32()))
+            } else {
+                pb.memory()
+                    .cmp(&pa.memory())
+                    .then_with(|| a.as_u32().cmp(&b.as_u32()))
+            }
+        });
+    };
+
+    sort_pids(&mut roots);
+    for values in children.values_mut() {
+        sort_pids(values);
+    }
+
+    fn walk(
+        pid: Pid,
+        children: &HashMap<Pid, Vec<Pid>>,
+        output: &mut Vec<(Pid, String)>,
+        ancestor_last: &mut Vec<bool>,
+        connector: Option<bool>,
+        seen: &mut HashSet<Pid>,
+    ) {
+        if !seen.insert(pid) {
+            return;
+        }
+
+        let mut prefix = String::new();
+        if let Some(last) = connector {
+            for ancestor_is_last in ancestor_last.iter().take(ancestor_last.len().saturating_sub(1)) {
+                prefix.push_str(if *ancestor_is_last { "   " } else { "│  " });
+            }
+            prefix.push_str(if last { "└─ " } else { "├─ " });
+        }
+        output.push((pid, prefix));
+
+        let Some(kids) = children.get(&pid) else { return; };
+        for (index, child) in kids.iter().enumerate() {
+            let is_last = index + 1 == kids.len();
+            ancestor_last.push(is_last);
+            walk(*child, children, output, ancestor_last, Some(is_last), seen);
+            ancestor_last.pop();
+        }
+    }
+
+    let mut output = Vec::with_capacity(system.processes().len());
+    let mut seen = HashSet::new();
+    for root in roots {
+        walk(
+            root,
+            &children,
+            &mut output,
+            &mut Vec::new(),
+            None,
+            &mut seen,
+        );
+    }
+
+    // Defensive fallback for malformed/cyclic parent relations.
+    for pid in existing {
+        if !seen.contains(&pid) {
+            output.push((pid, "?! ".to_owned()));
+        }
+    }
+
+    output
 }
 
 fn disks() -> anyhow::Result<CommandOutput> {
@@ -759,17 +839,7 @@ fn kill_process(args: &[String]) -> anyhow::Result<CommandOutput> {
         )));
     }
 
-    let wanted = target.trim_end_matches(".exe");
-    let roots = system
-        .processes()
-        .iter()
-        .filter_map(|(pid, process)| {
-            let name = process.name().to_string_lossy();
-            let normalized = name.trim_end_matches(".exe");
-            (name.eq_ignore_ascii_case(target) || normalized.eq_ignore_ascii_case(wanted))
-                .then_some(*pid)
-        })
-        .collect::<Vec<_>>();
+    let roots = matching_process_pids(&system, target);
 
     if roots.is_empty() {
         return Ok(CommandOutput::error(
@@ -803,22 +873,75 @@ fn kill_process(args: &[String]) -> anyhow::Result<CommandOutput> {
         }
     }
 
-    if !failures.is_empty() {
-        return Ok(CommandOutput::error(
-            format!(
-                "kill: se terminaron {killed} procesos, pero fallaron {}: {}",
-                failures.len(),
-                failures.join("; ")
-            ),
-            1,
-        ));
+    // Chromium/Edge may create or respawn sibling processes while the first
+    // batch is being terminated. Re-scan a few times until the requested name
+    // is actually gone, or report exactly which PIDs survived.
+    for _ in 0..4 {
+        std::thread::sleep(Duration::from_millis(80));
+        let mut refreshed = System::new_all();
+        refreshed.refresh_all();
+        let remaining = matching_process_pids(&refreshed, target);
+
+        if remaining.is_empty() {
+            if !failures.is_empty() {
+                failures.clear();
+            }
+            return Ok(CommandOutput::ok(format!(
+                "terminated: {killed} process(es) matching {}{}\n",
+                target,
+                if tree { " (including process trees)" } else { "" }
+            )));
+        }
+
+        for pid in remaining {
+            match terminate_pid_native(pid.as_u32()) {
+                Ok(()) => killed += 1,
+                Err(_) if process_is_gone(pid.as_u32()) => {}
+                Err(error) => failures.push(format!("{}: {error}", pid.as_u32())),
+            }
+        }
     }
 
-    Ok(CommandOutput::ok(format!(
-        "terminated: {killed} process(es) matching {}{}\n",
-        target,
-        if tree { " (including process trees)" } else { "" }
-    )))
+    let mut refreshed = System::new_all();
+    refreshed.refresh_all();
+    let survivors = matching_process_pids(&refreshed, target);
+
+    if survivors.is_empty() {
+        Ok(CommandOutput::ok(format!(
+            "terminated: {killed} process(es) matching {}{}\n",
+            target,
+            if tree { " (including process trees)" } else { "" }
+        )))
+    } else {
+        Ok(CommandOutput::error(
+            format!(
+                "kill: aún siguen activos {} proceso(s) {}: {}{}",
+                survivors.len(),
+                target,
+                survivors.iter().map(|pid| pid.as_u32().to_string()).collect::<Vec<_>>().join(", "),
+                if failures.is_empty() {
+                    String::new()
+                } else {
+                    format!("; errores: {}", failures.join("; "))
+                }
+            ),
+            1,
+        ))
+    }
+}
+
+fn matching_process_pids(system: &System, target: &str) -> Vec<Pid> {
+    let wanted = target.trim_end_matches(".exe");
+    system
+        .processes()
+        .iter()
+        .filter_map(|(pid, process)| {
+            let name = process.name().to_string_lossy();
+            let normalized = name.trim_end_matches(".exe");
+            (name.eq_ignore_ascii_case(target) || normalized.eq_ignore_ascii_case(wanted))
+                .then_some(*pid)
+        })
+        .collect()
 }
 
 fn process_depth(system: &System, pid: Pid) -> usize {
