@@ -30,7 +30,10 @@ use windows_sys::Win32::{
     Foundation::HWND,
     Graphics::Dwm::*,
     System::LibraryLoader::{GetModuleHandleW, GetProcAddress},
-    UI::Controls::MARGINS,
+    UI::{
+        Controls::MARGINS,
+        WindowsAndMessaging::GetForegroundWindow,
+    },
 };
 
 use crate::adapters::{
@@ -44,6 +47,7 @@ const PAD: f32 = 14.0;
 const CELL_WIDTH: f32 = 10.0;
 const CELL_HEIGHT: f32 = 23.0;
 const FONT_SIZE: f32 = 19.0;
+const FOCUSED_BACKGROUND_OPACITY: u8 = 80;
 
 const FG: Rgb = Rgb(0xDF, 0xE8, 0xEF);
 const BG: Rgb = Rgb(0x11, 0x16, 0x29);
@@ -335,7 +339,7 @@ impl Default for TerminalAppearance {
     fn default() -> Self {
         Self {
             backdrop: "acrylic".to_owned(),
-            background_opacity: 82,
+            background_opacity: FOCUSED_BACKGROUND_OPACITY,
             background_color: "#111629".to_owned(),
         }
     }
@@ -354,7 +358,9 @@ fn load_terminal_appearance(paths: &AppPaths) -> Result<TerminalAppearance> {
     let mut config: TerminalConfig = toml::from_str(&text)
         .with_context(|| format!("Configuración visual inválida: {}", path.display()))?;
 
-    config.appearance.background_opacity = config.appearance.background_opacity.min(100);
+    // Blueversion fija el fondo en 80% mientras la ventana está activa.
+    // Se ignoran valores antiguos (por ejemplo 82) para mantener el diseño definido.
+    config.appearance.background_opacity = FOCUSED_BACKGROUND_OPACITY;
     config.appearance.backdrop = config.appearance.backdrop.trim().to_ascii_lowercase();
 
     if !matches!(
@@ -399,6 +405,7 @@ struct TerminalModel {
     cursor_on: bool,
     blink: Instant,
     dirty: bool,
+    focused: bool,
     appearance: TerminalAppearance,
     width: u32,
     height: u32,
@@ -420,6 +427,7 @@ impl TerminalModel {
             cursor_on: true,
             blink: Instant::now(),
             dirty: true,
+            focused: true,
             appearance,
             width: 0,
             height: 0,
@@ -522,6 +530,13 @@ impl TerminalModel {
         self.dirty = true;
     }
 
+    fn set_focused(&mut self, focused: bool) {
+        if self.focused != focused {
+            self.focused = focused;
+            self.dirty = true;
+        }
+    }
+
     fn tick(&mut self) {
         while let Ok(data) = self.session.output.try_recv() {
             self.parser.process(&data);
@@ -590,13 +605,14 @@ impl TerminalModel {
         let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
         {
             let pixels = buffer.make_mut_slice();
-            if self.appearance.backdrop == "solid" {
+            if self.appearance.backdrop == "solid" && self.focused {
                 let bg = parse_rgb(&self.appearance.background_color).unwrap_or(BG);
+                let alpha = ((u16::from(FOCUSED_BACKGROUND_OPACITY) * 255) / 100) as u8;
                 pixels.fill(Rgba8Pixel {
-                    r: bg.0,
-                    g: bg.1,
-                    b: bg.2,
-                    a: 255,
+                    r: ((u16::from(bg.0) * u16::from(alpha)) / 255) as u8,
+                    g: ((u16::from(bg.1) * u16::from(alpha)) / 255) as u8,
+                    b: ((u16::from(bg.2) * u16::from(alpha)) / 255) as u8,
+                    a: alpha,
                 });
             } else {
                 pixels.fill(Rgba8Pixel {
@@ -1058,7 +1074,7 @@ unsafe fn apply_window_effects(hwnd: HWND, appearance: &TerminalAppearance) {
             size_of::<i32>() as u32,
         );
 
-        apply_configured_backdrop(hwnd, appearance);
+        apply_configured_backdrop(hwnd, appearance, true);
 
         if appearance.backdrop != "solid" {
             // Glass covers the complete client area. There is no titlebar strip;
@@ -1074,7 +1090,11 @@ unsafe fn apply_window_effects(hwnd: HWND, appearance: &TerminalAppearance) {
     }
 }
 
-unsafe fn apply_configured_backdrop(hwnd: HWND, appearance: &TerminalAppearance) {
+unsafe fn apply_configured_backdrop(
+    hwnd: HWND,
+    appearance: &TerminalAppearance,
+    focused: bool,
+) {
     unsafe {
         let user32_name: Vec<u16> = "user32.dll".encode_utf16().chain(Some(0)).collect();
         let user32 = GetModuleHandleW(user32_name.as_ptr());
@@ -1090,15 +1110,23 @@ unsafe fn apply_configured_backdrop(hwnd: HWND, appearance: &TerminalAppearance)
             unsafe extern "system" fn(HWND, *mut WindowCompositionAttributeData) -> i32;
         let set_attribute: SetWindowCompositionAttributeFn = std::mem::transmute(proc);
 
-        let state = match appearance.backdrop.as_str() {
-            "acrylic" => ACCENT_ENABLE_ACRYLIC_BLUR_BEHIND,
-            "blur" | "glass" => ACCENT_ENABLE_BLUR_BEHIND,
-            _ => ACCENT_DISABLED,
+        let state = if !focused {
+            ACCENT_DISABLED
+        } else {
+            match appearance.backdrop.as_str() {
+                "acrylic" => ACCENT_ENABLE_ACRYLIC_BLUR_BEHIND,
+                "blur" | "glass" => ACCENT_ENABLE_BLUR_BEHIND,
+                _ => ACCENT_DISABLED,
+            }
         };
 
         let Rgb(r, g, b) = parse_rgb(&appearance.background_color).unwrap_or(BG);
         let tint_bgr = r as u32 | ((g as u32) << 8) | ((b as u32) << 16);
-        let alpha = ((u32::from(appearance.background_opacity) * 255) / 100) << 24;
+        let alpha = if focused {
+            ((u32::from(FOCUSED_BACKGROUND_OPACITY) * 255) / 100) << 24
+        } else {
+            0
+        };
 
         let mut policy = AccentPolicy {
             accent_state: state,
@@ -1115,17 +1143,19 @@ unsafe fn apply_configured_backdrop(hwnd: HWND, appearance: &TerminalAppearance)
     }
 }
 
-fn apply_slint_window_effects(ui: &SstBlueWindow, appearance: &TerminalAppearance) {
+fn slint_hwnd(ui: &SstBlueWindow) -> Option<HWND> {
     let handle = ui.window().window_handle();
-    let Ok(window_handle) = handle.window_handle() else {
-        return;
-    };
+    let window_handle = handle.window_handle().ok()?;
     let RawWindowHandle::Win32(win32) = window_handle.as_raw() else {
-        return;
+        return None;
     };
+    Some(win32.hwnd.get() as HWND)
+}
 
-    let hwnd = win32.hwnd.get() as HWND;
-    unsafe { apply_window_effects(hwnd, appearance) };
+fn apply_slint_window_effects(ui: &SstBlueWindow, appearance: &TerminalAppearance) {
+    if let Some(hwnd) = slint_hwnd(ui) {
+        unsafe { apply_window_effects(hwnd, appearance) };
+    }
 }
 
 pub fn run() -> Result<()> {
@@ -1206,11 +1236,14 @@ pub fn run() -> Result<()> {
 
     let weak = ui.as_weak();
     let last_status = Rc::new(RefCell::new(Instant::now() - Duration::from_secs(2)));
+    let last_focus = Rc::new(RefCell::new(true));
     let timer = Timer::default();
     {
         let model = model.clone();
         let metrics = metrics.clone();
         let last_status = last_status.clone();
+        let last_focus = last_focus.clone();
+        let appearance = appearance.clone();
 
         timer.start(TimerMode::Repeated, Duration::from_millis(16), move || {
             let Some(ui) = weak.upgrade() else {
@@ -1219,6 +1252,17 @@ pub fn run() -> Result<()> {
 
             let size = ui.window().size();
             let scale = ui.window().scale_factor();
+
+            if let Some(hwnd) = slint_hwnd(&ui) {
+                let focused = unsafe { GetForegroundWindow() == hwnd };
+                let mut previous = last_focus.borrow_mut();
+                if *previous != focused {
+                    *previous = focused;
+                    model.borrow_mut().set_focused(focused);
+                    unsafe { apply_configured_backdrop(hwnd, &appearance, focused) };
+                }
+            }
+
             {
                 let mut model = model.borrow_mut();
                 model.resize(size.width, size.height, scale);
