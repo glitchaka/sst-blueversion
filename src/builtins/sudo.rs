@@ -60,15 +60,20 @@ impl BuiltinCommand for SudoBuiltin {
         args: &[String],
         context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
-        if args.is_empty() || args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
             return Ok(CommandOutput::ok(
-                "sudo — elevación nativa de Shell Shock Tool\n\n\
+                "sudo — elevación nativa activa de Shell Shock Tool\n\n\
                  uso:\n\
+                   sudo                      eleva la sesión SST de forma persistente\n\
                    sudo --status             muestra integridad y privilegios del token\n\
                    sudo COMANDO [...]        ejecuta un comando SST como Administrador\n\
                    sudo --system COMANDO    ejecuta un comando SST como LOCAL SYSTEM\n\
-                   runas COMANDO [...]       alias de sudo; no invoca runas.exe\n",
+                   runas [...]               alias de sudo; no invoca runas.exe\n",
             ));
+        }
+
+        if args.is_empty() {
+            return activate_shell(context.cwd);
         }
 
         if args.first().is_some_and(|arg| arg == "--status") {
@@ -124,6 +129,57 @@ impl BuiltinCommand for SudoBuiltin {
     }
 }
 
+fn activate_shell(cwd: &Path) -> Result<CommandOutput> {
+    let status = current_token_status()?;
+
+    if status.elevated {
+        let enabled = crate::support::windows::enable_all_token_privileges()?;
+        return Ok(CommandOutput::ok(format!(
+            "sudo: sesión ya elevada ({}) · {enabled} privilegio(s) Se* activo(s)\n",
+            status.integrity
+        )));
+    }
+
+    launch_elevated_shell(cwd)?;
+    crate::support::windows::request_shell_handoff();
+
+    Ok(CommandOutput::ok(
+        "sudo: elevando sesión SST mediante UAC...\n"
+    ))
+}
+
+fn launch_elevated_shell(cwd: &Path) -> Result<()> {
+    let exe = env::current_exe()?;
+    let verb = wide("runas");
+    let exe_w = wide(exe.as_os_str());
+    let params_w = wide("--gui");
+    let cwd_w = wide(cwd.as_os_str());
+
+    let mut info: SHELLEXECUTEINFOW = unsafe { zeroed() };
+    info.cbSize = size_of::<SHELLEXECUTEINFOW>() as u32;
+    info.fMask = SEE_MASK_NOCLOSEPROCESS;
+    info.lpVerb = verb.as_ptr();
+    info.lpFile = exe_w.as_ptr();
+    info.lpParameters = params_w.as_ptr();
+    info.lpDirectory = cwd_w.as_ptr();
+    info.nShow = windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    if unsafe { ShellExecuteExW(&mut info) } == 0 {
+        let error = unsafe { GetLastError() };
+        if error == 1223 {
+            anyhow::bail!("sudo: elevación cancelada por el usuario");
+        }
+        anyhow::bail!(
+            "sudo: no se pudo elevar la sesión (ShellExecuteExW, Win32 {error})"
+        );
+    }
+
+    if !info.hProcess.is_null() {
+        unsafe { CloseHandle(info.hProcess); }
+    }
+    Ok(())
+}
+
 fn execute_with_elevation(command: &str, cwd: &Path) -> Result<CommandOutput> {
     if current_token_status()?.elevated {
         enable_standard_privileges();
@@ -135,17 +191,7 @@ fn execute_with_elevation(command: &str, cwd: &Path) -> Result<CommandOutput> {
 }
 
 fn enable_standard_privileges() {
-    for privilege in [
-        "SeDebugPrivilege",
-        "SeBackupPrivilege",
-        "SeRestorePrivilege",
-        "SeTakeOwnershipPrivilege",
-        "SeSecurityPrivilege",
-        "SeLoadDriverPrivilege",
-        "SeImpersonatePrivilege",
-    ] {
-        let _ = crate::support::windows::enable_privilege(privilege);
-    }
+    let _ = crate::support::windows::enable_all_token_privileges();
 }
 
 fn execute_as_current_token(command: &str, cwd: &Path) -> Result<CommandOutput> {
