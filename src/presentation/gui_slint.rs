@@ -386,7 +386,9 @@ fn load_background_image(paths: &AppPaths, appearance: &TerminalAppearance) -> R
     let path = if configured.is_absolute() {
         configured
     } else {
-        paths.root_dir().join(configured)
+        // Las rutas escritas en config/sstrc se resuelven respecto de la
+        // carpeta que contiene ese archivo de configuración.
+        paths.config_dir().join(configured)
     };
 
     let decoded = image::open(&path)
