@@ -83,8 +83,17 @@ slint::slint! {
         callback pointer-scroll(float);
         callback close-window();
 
-        Image {
+        surface := Rectangle {
             x: 0;
+            y: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: root.maximized ? 0px : 16px;
+            clip: true;
+            background: transparent;
+
+            Image {
+                x: 0;
             y: 0;
             width: 100%;
             height: 100%;
@@ -320,6 +329,7 @@ slint::slint! {
                     }
                 }
             }
+        }
         }
     }
 }
