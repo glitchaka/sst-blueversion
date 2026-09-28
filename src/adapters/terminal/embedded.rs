@@ -142,6 +142,9 @@ impl EmbeddedSession {
                                         if normalized == "reload" || normalized == "config reload" {
                                             worker_config_reload_requested.store(true, Ordering::SeqCst);
                                         }
+                                        if crate::support::windows::take_shell_handoff_request() {
+                                            break;
+                                        }
                                     }
                                     if result.exit_requested { break; }
                                 }
