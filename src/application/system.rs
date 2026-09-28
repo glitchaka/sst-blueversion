@@ -491,14 +491,14 @@ const FETCH_MASCOT_FULL: &str = r#"
   /  SST        o o o\
  |                  |
  |     >        <   |
- |        \\__/      |
+ |        \__/      |
   '----------------'
 "#;
 
 const FETCH_MASCOT_SMALL: &str = r#"
  .---------.
 |  >    <  |
-|    \\_/   |
+|    \_/   |
  '---------'
 "#;
 
