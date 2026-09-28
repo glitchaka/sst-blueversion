@@ -11,16 +11,19 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use sysinfo::System;
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError},
     Security::{
         GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation,
         LookupPrivilegeNameW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED,
-        TOKEN_ELEVATION, TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
-        TokenElevation, TokenIntegrityLevel, TokenPrivileges,
+        TOKEN_ASSIGN_PRIMARY, TOKEN_DUPLICATE, TOKEN_ELEVATION, TOKEN_MANDATORY_LABEL,
+        TOKEN_QUERY, TokenElevation, TokenIntegrityLevel, TokenPrivileges,
     },
     System::Threading::{
-        GetCurrentProcess, GetExitCodeProcess, OpenProcessToken, WaitForSingleObject,
+        CreateProcessWithTokenW, GetCurrentProcess, GetExitCodeProcess, OpenProcess,
+        OpenProcessToken, WaitForSingleObject, CREATE_NO_WINDOW, PROCESS_INFORMATION,
+        PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
     },
     UI::{
         Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NO_CONSOLE, SHELLEXECUTEINFOW},
@@ -61,14 +64,59 @@ impl BuiltinCommand for SudoBuiltin {
             return Ok(CommandOutput::ok(
                 "sudo — elevación nativa de Shell Shock Tool\n\n\
                  uso:\n\
-                   sudo --status        muestra nivel de integridad y privilegios del token\n\
-                   sudo COMANDO [...]   ejecuta un comando SST elevado\n\
-                   runas COMANDO [...]  alias de sudo; no invoca runas.exe\n",
+                   sudo --status             muestra integridad y privilegios del token\n\
+                   sudo COMANDO [...]        ejecuta un comando SST como Administrador\n\
+                   sudo --system COMANDO    ejecuta un comando SST como LOCAL SYSTEM\n\
+                   runas COMANDO [...]       alias de sudo; no invoca runas.exe\n",
             ));
         }
 
         if args.first().is_some_and(|arg| arg == "--status") {
             return token_status_output();
+        }
+
+        if args.first().is_some_and(|arg| arg == "--admin-internal") {
+            let Some(command) = args.get(1) else {
+                return Ok(CommandOutput::error("sudo: falta comando interno", 2));
+            };
+            enable_standard_privileges();
+            return execute_as_current_token(command, context.cwd);
+        }
+
+        if args.first().is_some_and(|arg| arg == "--system-internal") {
+            let Some(command) = args.get(1) else {
+                return Ok(CommandOutput::error("sudo: falta comando SYSTEM interno", 2));
+            };
+            enable_standard_privileges();
+            return execute_as_system(command, context.cwd);
+        }
+
+        if args.first().is_some_and(|arg| arg == "--system") {
+            if args.len() < 2 {
+                return Ok(CommandOutput::error("sudo --system: falta COMANDO", 2));
+            }
+
+            let command = args[1..]
+                .iter()
+                .map(|arg| shell_quote(arg))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            let status = current_token_status()?;
+            if status.integrity == "System" {
+                enable_standard_privileges();
+                return execute_as_current_token(&command, context.cwd);
+            }
+            if status.elevated {
+                enable_standard_privileges();
+                return execute_as_system(&command, context.cwd);
+            }
+
+            let internal = format!(
+                "sudo --system-internal {}",
+                shell_quote(&command)
+            );
+            return run_via_uac(&internal, context.cwd);
         }
 
         let command = args.iter().map(|arg| shell_quote(arg)).collect::<Vec<_>>().join(" ");
@@ -78,21 +126,182 @@ impl BuiltinCommand for SudoBuiltin {
 
 fn execute_with_elevation(command: &str, cwd: &Path) -> Result<CommandOutput> {
     if current_token_status()?.elevated {
-        let output = Command::new(env::current_exe()?)
-            .arg("-c")
-            .arg(command)
-            .current_dir(cwd)
-            .output()
-            .with_context(|| format!("sudo: no se pudo ejecutar: {command}"))?;
-
-        return Ok(CommandOutput {
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            status: output.status.code().unwrap_or(1),
-        });
+        enable_standard_privileges();
+        return execute_as_current_token(command, cwd);
     }
 
-    run_via_uac(command, cwd)
+    let internal = format!("sudo --admin-internal {}", shell_quote(command));
+    run_via_uac(&internal, cwd)
+}
+
+fn enable_standard_privileges() {
+    for privilege in [
+        "SeDebugPrivilege",
+        "SeBackupPrivilege",
+        "SeRestorePrivilege",
+        "SeTakeOwnershipPrivilege",
+        "SeSecurityPrivilege",
+        "SeLoadDriverPrivilege",
+        "SeImpersonatePrivilege",
+    ] {
+        let _ = crate::support::windows::enable_privilege(privilege);
+    }
+}
+
+fn execute_as_current_token(command: &str, cwd: &Path) -> Result<CommandOutput> {
+    let output = Command::new(env::current_exe()?)
+        .arg("-c")
+        .arg(command)
+        .current_dir(cwd)
+        .output()
+        .with_context(|| format!("sudo: no se pudo ejecutar: {command}"))?;
+
+    Ok(CommandOutput {
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        status: output.status.code().unwrap_or(1),
+    })
+}
+
+fn execute_as_system(command: &str, cwd: &Path) -> Result<CommandOutput> {
+    enable_standard_privileges();
+
+    let mut system = System::new_all();
+    system.refresh_all();
+
+    let system_pid = ["services.exe", "winlogon.exe"]
+        .into_iter()
+        .find_map(|wanted| {
+            system.processes().iter().find_map(|(pid, process)| {
+                process
+                    .name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(wanted)
+                    .then_some(pid.as_u32())
+            })
+        })
+        .context("sudo --system: no se encontró un proceso LOCAL SYSTEM")?;
+
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, system_pid);
+        if process.is_null() {
+            anyhow::bail!(
+                "sudo --system: OpenProcess({system_pid}) falló con error Win32 {}",
+                GetLastError()
+            );
+        }
+
+        let mut token = null_mut();
+        let token_ok = OpenProcessToken(
+            process,
+            TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY,
+            &mut token,
+        );
+        CloseHandle(process);
+
+        if token_ok == 0 {
+            anyhow::bail!(
+                "sudo --system: OpenProcessToken falló con error Win32 {}",
+                GetLastError()
+            );
+        }
+
+        let result = run_with_system_token(token, command, cwd);
+        CloseHandle(token);
+        result
+    }
+}
+
+unsafe fn run_with_system_token(
+    token: *mut core::ffi::c_void,
+    command: &str,
+    cwd: &Path,
+) -> Result<CommandOutput> {
+    let tag = format!(
+        "system-{}-{}",
+        std::process::id(),
+        REQUEST_ID.fetch_add(1, Ordering::Relaxed)
+    );
+    let base = env::temp_dir();
+    let stdout_path = base.join(format!("sst-sudo-{tag}.out"));
+    let stderr_path = base.join(format!("sst-sudo-{tag}.err"));
+
+    let wrapped = format!(
+        "{{ {command}; }} > {} 2> {}",
+        shell_quote(&stdout_path.to_string_lossy()),
+        shell_quote(&stderr_path.to_string_lossy())
+    );
+
+    let exe = env::current_exe()?;
+    let exe_w = wide(exe.as_os_str());
+    let cwd_w = wide(cwd.as_os_str());
+    let command_line = format!(
+        "{} -c {}",
+        windows_quote(&exe.to_string_lossy()),
+        windows_quote(&wrapped)
+    );
+    let mut command_line_w = wide(command_line);
+
+    let mut startup: STARTUPINFOW = zeroed();
+    startup.cb = size_of::<STARTUPINFOW>() as u32;
+    let mut process_info: PROCESS_INFORMATION = zeroed();
+
+    let launched = CreateProcessWithTokenW(
+        token,
+        0,
+        exe_w.as_ptr(),
+        command_line_w.as_mut_ptr(),
+        CREATE_NO_WINDOW,
+        null(),
+        cwd_w.as_ptr(),
+        &startup,
+        &mut process_info,
+    );
+
+    if launched == 0 {
+        let error = GetLastError();
+        let _ = fs::remove_file(&stdout_path);
+        let _ = fs::remove_file(&stderr_path);
+        anyhow::bail!(
+            "sudo --system: CreateProcessWithTokenW falló con error Win32 {error}"
+        );
+    }
+
+    if !process_info.hThread.is_null() {
+        CloseHandle(process_info.hThread);
+    }
+
+    let wait = WaitForSingleObject(process_info.hProcess, INFINITE_WAIT);
+    if wait != WAIT_OBJECT_0_VALUE {
+        CloseHandle(process_info.hProcess);
+        let _ = fs::remove_file(&stdout_path);
+        let _ = fs::remove_file(&stderr_path);
+        anyhow::bail!(
+            "sudo --system: error esperando el proceso SYSTEM ({wait})"
+        );
+    }
+
+    let mut status = 1u32;
+    let got_status = GetExitCodeProcess(process_info.hProcess, &mut status);
+    CloseHandle(process_info.hProcess);
+
+    let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
+    let stderr = fs::read_to_string(&stderr_path).unwrap_or_default();
+    let _ = fs::remove_file(&stdout_path);
+    let _ = fs::remove_file(&stderr_path);
+
+    if got_status == 0 {
+        anyhow::bail!(
+            "sudo --system: GetExitCodeProcess falló con error Win32 {}",
+            GetLastError()
+        );
+    }
+
+    Ok(CommandOutput {
+        stdout,
+        stderr,
+        status: status as i32,
+    })
 }
 
 fn run_via_uac(command: &str, cwd: &Path) -> Result<CommandOutput> {
