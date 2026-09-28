@@ -607,7 +607,7 @@ impl TerminalModel {
             let pixels = buffer.make_mut_slice();
             if self.appearance.backdrop == "solid" && self.focused {
                 let bg = parse_rgb(&self.appearance.background_color).unwrap_or(BG);
-                let alpha = ((u16::from(FOCUSED_BACKGROUND_OPACITY) * 255) / 100) as u8;
+                let alpha = ((u16::from(self.appearance.background_opacity) * 255) / 100) as u8;
                 pixels.fill(Rgba8Pixel {
                     r: ((u16::from(bg.0) * u16::from(alpha)) / 255) as u8,
                     g: ((u16::from(bg.1) * u16::from(alpha)) / 255) as u8,
@@ -1123,7 +1123,7 @@ unsafe fn apply_configured_backdrop(
         let Rgb(r, g, b) = parse_rgb(&appearance.background_color).unwrap_or(BG);
         let tint_bgr = r as u32 | ((g as u32) << 8) | ((b as u32) << 16);
         let alpha = if focused {
-            ((u32::from(FOCUSED_BACKGROUND_OPACITY) * 255) / 100) << 24
+            ((u32::from(appearance.background_opacity) * 255) / 100) << 24
         } else {
             0
         };
