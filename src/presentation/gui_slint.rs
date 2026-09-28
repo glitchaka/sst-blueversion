@@ -28,11 +28,14 @@ use slint::{
 use sysinfo::System;
 use windows_sys::Win32::{
     Foundation::HWND,
-    Graphics::Dwm::*,
+    Graphics::{
+        Dwm::*,
+        Gdi::{CreateRoundRectRgn, DeleteObject},
+    },
     System::LibraryLoader::{GetModuleHandleW, GetProcAddress},
     UI::{
         Controls::MARGINS,
-        WindowsAndMessaging::GetForegroundWindow,
+        WindowsAndMessaging::{GetForegroundWindow, IsZoomed, SetWindowRgn},
     },
 };
 
@@ -44,6 +47,8 @@ use crate::adapters::{
 const INITIAL_COLS: u16 = 112;
 const INITIAL_ROWS: u16 = 31;
 const PAD: f32 = 14.0;
+const ISLAND_TOP: f32 = 6.0;
+const ISLAND_HEIGHT: f32 = 34.0;
 const CELL_WIDTH: f32 = 10.0;
 const CELL_HEIGHT: f32 = 23.0;
 const FONT_SIZE: f32 = 19.0;
@@ -511,10 +516,19 @@ impl TerminalModel {
         lines.join("\r\n")
     }
 
-    fn geometry(&self) -> (f32, f32, f32) {
+    fn geometry(&self) -> (f32, f32, f32, f32) {
         let scale = self.scale.max(0.5);
+        let left_pad = (PAD * scale).round();
+        let top_pad = ((ISLAND_TOP
+            + ISLAND_HEIGHT
+            + self.appearance.content_top_gap as f32)
+            * scale)
+            .round()
+            .max(left_pad);
+
         (
-            (PAD * scale).round(),
+            left_pad,
+            top_pad,
             (CELL_WIDTH * scale).round().max(1.0),
             (CELL_HEIGHT * scale).round().max(1.0),
         )
@@ -532,10 +546,10 @@ impl TerminalModel {
         self.width = width.max(1);
         self.height = height.max(1);
         self.scale = scale;
-        let (pad, cell_width, cell_height) = self.geometry();
-        let cols = (((self.width as f32 - pad * 2.0) / cell_width).floor() as i32)
+        let (left_pad, top_pad, cell_width, cell_height) = self.geometry();
+        let cols = (((self.width as f32 - left_pad * 2.0) / cell_width).floor() as i32)
             .clamp(2, 500) as u16;
-        let rows = (((self.height as f32 - pad * 2.0) / cell_height).floor() as i32)
+        let rows = (((self.height as f32 - top_pad - left_pad) / cell_height).floor() as i32)
             .clamp(2, 200) as u16;
 
         if self.parser.screen().size() != (rows, cols) {
@@ -580,11 +594,11 @@ impl TerminalModel {
     fn cell_at_logical(&self, x: f32, y: f32) -> usize {
         let physical_x = x * self.scale;
         let physical_y = y * self.scale;
-        let (pad, cell_width, cell_height) = self.geometry();
+        let (left_pad, top_pad, cell_width, cell_height) = self.geometry();
         let (rows, cols) = self.parser.screen().size();
-        let col = (((physical_x - pad).max(0.0) / cell_width).floor() as i32)
+        let col = (((physical_x - left_pad).max(0.0) / cell_width).floor() as i32)
             .clamp(0, cols as i32 - 1);
-        let row = (((physical_y - pad).max(0.0) / cell_height).floor() as i32)
+        let row = (((physical_y - top_pad).max(0.0) / cell_height).floor() as i32)
             .clamp(0, rows as i32 - 1);
         (row * cols as i32 + col) as usize
     }
@@ -655,7 +669,7 @@ impl TerminalModel {
             let selection = self.selection;
             let cursor_on =
                 self.cursor_on && screen.scrollback() == 0 && !screen.hide_cursor();
-            let (pad, cell_width, cell_height) = self.geometry();
+            let (left_pad, top_pad, cell_width, cell_height) = self.geometry();
             let font_px = (FONT_SIZE * self.scale).round().max(8.0);
             let font_key = font_px.round() as u16;
 
@@ -692,8 +706,8 @@ impl TerminalModel {
                         paint_background = true;
                     }
 
-                    let x = (pad + col as f32 * cell_width).round() as i32;
-                    let y = (pad + row as f32 * cell_height).round() as i32;
+                    let x = (left_pad + col as f32 * cell_width).round() as i32;
+                    let y = (top_pad + row as f32 * cell_height).round() as i32;
                     let wide = if cell.is_wide() { 2.0 } else { 1.0 };
                     let w = (cell_width * wide).ceil() as i32;
                     let h = cell_height.ceil() as i32;
@@ -1209,6 +1223,35 @@ fn slint_hwnd(ui: &SstBlueWindow) -> Option<HWND> {
     Some(win32.hwnd.get() as HWND)
 }
 
+unsafe fn apply_native_window_region(
+    hwnd: HWND,
+    width: u32,
+    height: u32,
+    corner_radius: u16,
+) {
+    unsafe {
+        if IsZoomed(hwnd) != 0 || corner_radius == 0 {
+            SetWindowRgn(hwnd, std::ptr::null_mut(), 1);
+            return;
+        }
+
+        let radius = i32::from(corner_radius);
+        let diameter = (radius * 2).max(1);
+        let region = CreateRoundRectRgn(
+            0,
+            0,
+            width.min(i32::MAX as u32) as i32 + 1,
+            height.min(i32::MAX as u32) as i32 + 1,
+            diameter,
+            diameter,
+        );
+
+        if !region.is_null() && SetWindowRgn(hwnd, region, 1) == 0 {
+            DeleteObject(region);
+        }
+    }
+}
+
 fn apply_slint_window_effects(ui: &SstBlueWindow, appearance: &TerminalAppearance) {
     if let Some(hwnd) = slint_hwnd(ui) {
         unsafe { apply_window_effects(hwnd, appearance) };
@@ -1303,6 +1346,17 @@ pub fn run() -> Result<()> {
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(ui) = weak.upgrade() {
                 apply_slint_window_effects(&ui, &appearance);
+                if let Some(hwnd) = slint_hwnd(&ui) {
+                    let size = ui.window().size();
+                    unsafe {
+                        apply_native_window_region(
+                            hwnd,
+                            size.width,
+                            size.height,
+                            appearance.corner_radius,
+                        );
+                    }
+                }
             }
         });
     }
@@ -1310,12 +1364,14 @@ pub fn run() -> Result<()> {
     let weak = ui.as_weak();
     let last_status = Rc::new(RefCell::new(Instant::now() - Duration::from_secs(2)));
     let last_focus = Rc::new(RefCell::new(true));
+    let last_region = Rc::new(RefCell::new((0u32, 0u32, false)));
     let timer = Timer::default();
     {
         let model = model.clone();
         let metrics = metrics.clone();
         let last_status = last_status.clone();
         let last_focus = last_focus.clone();
+        let last_region = last_region.clone();
         let appearance = appearance.clone();
 
         timer.start(TimerMode::Repeated, Duration::from_millis(16), move || {
@@ -1328,12 +1384,28 @@ pub fn run() -> Result<()> {
 
             if let Some(hwnd) = slint_hwnd(&ui) {
                 let focused = unsafe { GetForegroundWindow() == hwnd };
+                let maximized = unsafe { IsZoomed(hwnd) != 0 };
+
                 let mut previous = last_focus.borrow_mut();
                 if *previous != focused {
                     *previous = focused;
                     model.borrow_mut().set_focused(focused);
                     ui.set_background_image_opacity(background_image_opacity(&appearance, focused));
                     unsafe { apply_configured_backdrop(hwnd, &appearance, focused) };
+                }
+
+                let mut region_state = last_region.borrow_mut();
+                let current_region = (size.width, size.height, maximized);
+                if *region_state != current_region {
+                    *region_state = current_region;
+                    unsafe {
+                        apply_native_window_region(
+                            hwnd,
+                            size.width,
+                            size.height,
+                            appearance.corner_radius,
+                        );
+                    }
                 }
             }
 
