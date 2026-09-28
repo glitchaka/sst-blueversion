@@ -1,0 +1,15 @@
+# Shell Shock Tool native terminal appearance
+# Archivo editable por el usuario.
+
+[appearance]
+# acrylic = blur fuerte con tinte; blur = blur simple; glass = DWM clásico; solid = color plano.
+backdrop = "acrylic"
+
+# Opacidad del fondo con la ventana activa (0-100).
+focused_opacity = 80
+
+# Opacidad del fondo cuando SST pierde el foco (0-100).
+unfocused_opacity = 0
+
+# Color del tinte de fondo.
+background_color = "#111629"
