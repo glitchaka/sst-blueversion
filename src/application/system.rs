@@ -1001,8 +1001,6 @@ fn process_descendants(system: &System, root: Pid) -> Vec<Pid> {
 fn terminate_pid_native(pid: u32) -> anyhow::Result<()> {
     const STILL_ACTIVE_CODE: u32 = 259;
 
-    let _ = crate::support::windows::enable_privilege("SeDebugPrivilege");
-
     unsafe {
         let handle = OpenProcess(
             PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION,
