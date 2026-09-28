@@ -448,6 +448,15 @@ impl TerminalModel {
         })
     }
 
+    fn set_appearance(&mut self, appearance: TerminalAppearance) {
+        self.appearance = appearance;
+        // Force a geometry recalculation because content_top_gap can change.
+        self.width = 0;
+        self.height = 0;
+        self.glyphs.clear();
+        self.dirty = true;
+    }
+
     fn input(&mut self, bytes: &[u8]) {
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
@@ -1278,6 +1287,7 @@ pub fn run() -> Result<()> {
     paths.ensure_layout()?;
     let appearance = paths.load_appearance()?;
     let background_image = load_background_image(&paths, &appearance)?;
+    let appearance_state = Rc::new(RefCell::new(appearance.clone()));
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new_all()));
     let ui = SstBlueWindow::new()?;
@@ -1372,7 +1382,8 @@ pub fn run() -> Result<()> {
         let last_status = last_status.clone();
         let last_focus = last_focus.clone();
         let last_region = last_region.clone();
-        let appearance = appearance.clone();
+        let appearance_state = appearance_state.clone();
+        let paths = paths.clone();
 
         timer.start(TimerMode::Repeated, Duration::from_millis(16), move || {
             let Some(ui) = weak.upgrade() else {
@@ -1382,9 +1393,55 @@ pub fn run() -> Result<()> {
             let size = ui.window().size();
             let scale = ui.window().scale_factor();
 
+            let reload_requested = {
+                let model = model.borrow();
+                model.session.take_config_reload_request()
+            };
+
+            if reload_requested {
+                match paths.load_appearance()
+                    .and_then(|next| {
+                        let image = load_background_image(&paths, &next)?;
+                        Ok((next, image))
+                    })
+                {
+                    Ok((next, image)) => {
+                        let focused = slint_hwnd(&ui)
+                            .is_some_and(|hwnd| unsafe { GetForegroundWindow() == hwnd });
+
+                        ui.set_background_image(image.unwrap_or_default());
+                        ui.set_background_image_opacity(
+                            background_image_opacity(&next, focused)
+                        );
+                        ui.set_window_corner_radius((next.corner_radius as f32).into());
+
+                        model.borrow_mut().set_appearance(next.clone());
+                        *appearance_state.borrow_mut() = next.clone();
+
+                        if let Some(hwnd) = slint_hwnd(&ui) {
+                            unsafe {
+                                apply_configured_backdrop(hwnd, &next, focused);
+                                apply_native_window_region(
+                                    hwnd,
+                                    size.width,
+                                    size.height,
+                                    next.corner_radius,
+                                );
+                            }
+                        }
+
+                        *last_region.borrow_mut() = (0, 0, false);
+                    }
+                    Err(error) => {
+                        eprintln!("No se pudo recargar la apariencia de SST: {error}");
+                    }
+                }
+            }
+
             if let Some(hwnd) = slint_hwnd(&ui) {
                 let focused = unsafe { GetForegroundWindow() == hwnd };
                 let maximized = unsafe { IsZoomed(hwnd) != 0 };
+                let appearance = appearance_state.borrow().clone();
 
                 let mut previous = last_focus.borrow_mut();
                 if *previous != focused {
