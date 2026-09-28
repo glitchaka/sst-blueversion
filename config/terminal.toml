@@ -13,3 +13,14 @@ unfocused_opacity = 0
 
 # Color del tinte de fondo.
 background_color = "#111629"
+
+# Imagen de fondo. Vacío = desactivada.
+# Puede ser una ruta absoluta o relativa a la carpeta de sst.exe.
+background_image = ""
+
+# Opacidad propia de la imagen (0-100).
+# También se combina con focused_opacity/unfocused_opacity.
+background_image_opacity = 100
+
+# Radio de esquinas de la ventana en píxeles.
+corner_radius = 16
