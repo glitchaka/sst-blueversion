@@ -9,8 +9,8 @@ const DEFAULT_TERMINAL_CONFIG: &str = r##"# Shell Shock Tool native terminal app
 # acrylic = blur fuerte con tinte; blur = blur simple; glass = DWM clásico.
 backdrop = "acrylic"
 
-# 0 = totalmente transparente, 100 = tinte completamente opaco.
-background_opacity = 82
+# SST usa 80% mientras tiene foco y 0% cuando la ventana pierde el foco.
+background_opacity = 80
 
 # Color del tinte de fondo.
 background_color = "#111629"
