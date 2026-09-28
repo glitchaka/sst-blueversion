@@ -1,34 +1,24 @@
 use std::{env, fs, path::PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
-const DEFAULT_TERMINAL_CONFIG: &str = r##"# Shell Shock Tool native terminal appearance
-# Se aplica al iniciar una nueva ventana de SST.
+const APPEARANCE_BLOCK: &str = r#"
 
-[appearance]
-# acrylic = blur fuerte con tinte; blur = blur simple; glass = DWM clásico; solid = color plano.
-backdrop = "acrylic"
-
-# Opacidad del fondo cuando SST es la ventana activa (0-100).
-focused_opacity = 80
-
-# Opacidad del fondo cuando SST pierde el foco (0-100).
-# 0 deja visibles solamente el texto y la isla sobre el escritorio/ventana de fondo.
-unfocused_opacity = 0
-
-# Color del tinte de fondo.
-background_color = "#111629"
+# Apariencia de la terminal SST.
+# backdrop: acrylic | blur | glass | solid
+SST_BACKDROP='acrylic'
+SST_FOCUSED_OPACITY=80
+SST_UNFOCUSED_OPACITY=0
+SST_BACKGROUND_COLOR='#111629'
 
 # Imagen de fondo. Vacío = desactivada.
-# Puede ser una ruta absoluta o relativa a la carpeta de sst.exe.
-background_image = ""
+# Ruta absoluta o relativa a la carpeta de sst.exe.
+SST_BACKGROUND_IMAGE=''
+SST_BACKGROUND_IMAGE_OPACITY=100
 
-# Opacidad propia de la imagen (0-100). Además respeta focused/unfocused_opacity.
-background_image_opacity = 100
-
-# Radio de las esquinas de la ventana en píxeles. Al maximizar se usa 0.
-corner_radius = 16
-"##;
+# Radio de esquinas en píxeles. Al maximizar se usa 0.
+SST_CORNER_RADIUS=16
+"#;
 
 const DEFAULT_CONFIG: &str = r#"# Shell Shock Tool portable shell configuration
 # Bash-compatible syntax.
@@ -41,6 +31,31 @@ alias cls='clear'
 # export SST_SITE='laboratorio'
 # alias scanlab='net scan 192.168.1.0/24'
 "#;
+
+#[derive(Debug, Clone)]
+pub struct AppearanceConfig {
+    pub backdrop: String,
+    pub focused_opacity: u8,
+    pub unfocused_opacity: u8,
+    pub background_color: String,
+    pub background_image: String,
+    pub background_image_opacity: u8,
+    pub corner_radius: u16,
+}
+
+impl Default for AppearanceConfig {
+    fn default() -> Self {
+        Self {
+            backdrop: "acrylic".to_owned(),
+            focused_opacity: 80,
+            unfocused_opacity: 0,
+            background_color: "#111629".to_owned(),
+            background_image: String::new(),
+            background_image_opacity: 100,
+            corner_radius: 16,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct AppPaths {
@@ -62,25 +77,181 @@ impl AppPaths {
 
         let config = self.config_file();
         if !config.exists() {
-            fs::write(config, DEFAULT_CONFIG)?;
+            fs::write(&config, format!("{DEFAULT_CONFIG}{APPEARANCE_BLOCK}"))?;
+        } else {
+            self.ensure_appearance_block()?;
         }
 
-        let terminal = self.terminal_config_file();
-        if !terminal.exists() {
-            fs::write(terminal, DEFAULT_TERMINAL_CONFIG)?;
-        }
-
+        self.migrate_legacy_terminal_toml()?;
         Ok(())
+    }
+
+    fn ensure_appearance_block(&self) -> Result<()> {
+        let path = self.config_file();
+        let mut text = fs::read_to_string(&path)?;
+        if !text.lines().any(|line| {
+            let line = line.trim_start();
+            line.starts_with("SST_BACKDROP=") || line.starts_with("export SST_BACKDROP=")
+        }) {
+            text.push_str(APPEARANCE_BLOCK);
+            fs::write(path, text)?;
+        }
+        Ok(())
+    }
+
+    fn migrate_legacy_terminal_toml(&self) -> Result<()> {
+        let legacy = self.config_dir().join("terminal.toml");
+        if !legacy.exists() {
+            return Ok(());
+        }
+
+        let config_path = self.config_file();
+        let mut config = fs::read_to_string(&config_path)?;
+        let legacy_text = fs::read_to_string(&legacy).unwrap_or_default();
+
+        // If the unified sstrc still has only defaults, carry across the user's
+        // previous terminal.toml values before removing the obsolete file.
+        if let Ok(value) = legacy_text.parse::<toml::Value>() {
+            if let Some(appearance) = value.get("appearance").and_then(toml::Value::as_table) {
+                let mut replace = |key: &str, value: String| {
+                    set_assignment(&mut config, key, &value);
+                };
+
+                if let Some(value) = appearance.get("backdrop").and_then(toml::Value::as_str) {
+                    replace("SST_BACKDROP", value.to_owned());
+                }
+                if let Some(value) = appearance.get("focused_opacity")
+                    .or_else(|| appearance.get("background_opacity"))
+                    .and_then(toml::Value::as_integer)
+                {
+                    replace("SST_FOCUSED_OPACITY", value.clamp(0, 100).to_string());
+                }
+                if let Some(value) = appearance.get("unfocused_opacity").and_then(toml::Value::as_integer) {
+                    replace("SST_UNFOCUSED_OPACITY", value.clamp(0, 100).to_string());
+                }
+                if let Some(value) = appearance.get("background_color").and_then(toml::Value::as_str) {
+                    replace("SST_BACKGROUND_COLOR", value.to_owned());
+                }
+                if let Some(value) = appearance.get("background_image").and_then(toml::Value::as_str) {
+                    replace("SST_BACKGROUND_IMAGE", value.to_owned());
+                }
+                if let Some(value) = appearance.get("background_image_opacity").and_then(toml::Value::as_integer) {
+                    replace("SST_BACKGROUND_IMAGE_OPACITY", value.clamp(0, 100).to_string());
+                }
+                if let Some(value) = appearance.get("corner_radius").and_then(toml::Value::as_integer) {
+                    replace("SST_CORNER_RADIUS", value.clamp(0, 64).to_string());
+                }
+            }
+        }
+
+        fs::write(config_path, config)?;
+        fs::remove_file(legacy)?;
+        Ok(())
+    }
+
+    pub fn load_appearance(&self) -> Result<AppearanceConfig> {
+        let text = fs::read_to_string(self.config_file())
+            .with_context(|| format!("No se pudo leer {}", self.config_file().display()))?;
+        let mut config = AppearanceConfig::default();
+
+        if let Some(value) = assignment_value(&text, "SST_BACKDROP") {
+            config.backdrop = value.to_ascii_lowercase();
+        }
+        if let Some(value) = assignment_value(&text, "SST_FOCUSED_OPACITY")
+            .and_then(|value| value.parse::<u8>().ok())
+        {
+            config.focused_opacity = value.min(100);
+        }
+        if let Some(value) = assignment_value(&text, "SST_UNFOCUSED_OPACITY")
+            .and_then(|value| value.parse::<u8>().ok())
+        {
+            config.unfocused_opacity = value.min(100);
+        }
+        if let Some(value) = assignment_value(&text, "SST_BACKGROUND_COLOR") {
+            config.background_color = value;
+        }
+        if let Some(value) = assignment_value(&text, "SST_BACKGROUND_IMAGE") {
+            config.background_image = value;
+        }
+        if let Some(value) = assignment_value(&text, "SST_BACKGROUND_IMAGE_OPACITY")
+            .and_then(|value| value.parse::<u8>().ok())
+        {
+            config.background_image_opacity = value.min(100);
+        }
+        if let Some(value) = assignment_value(&text, "SST_CORNER_RADIUS")
+            .and_then(|value| value.parse::<u16>().ok())
+        {
+            config.corner_radius = value.min(64);
+        }
+
+        if !matches!(config.backdrop.as_str(), "acrylic" | "blur" | "glass" | "solid") {
+            anyhow::bail!("sstrc: SST_BACKDROP debe ser acrylic, blur, glass o solid");
+        }
+
+        Ok(config)
     }
 
     pub fn root_dir(&self) -> PathBuf { self.root.clone() }
     pub fn data_dir(&self) -> PathBuf { self.root.join("data") }
     pub fn config_dir(&self) -> PathBuf { self.root.join("config") }
     pub fn config_file(&self) -> PathBuf { self.config_dir().join("sstrc") }
-    pub fn terminal_config_file(&self) -> PathBuf { self.config_dir().join("terminal.toml") }
     pub fn devices_file(&self) -> PathBuf { self.data_dir().join("devices.json") }
     pub fn presence_file(&self) -> PathBuf { self.data_dir().join("network_presence.json") }
     pub fn providers_file(&self) -> PathBuf { self.data_dir().join("network_providers.json") }
     pub fn switches_file(&self) -> PathBuf { self.data_dir().join("switches.json") }
     pub fn history_file(&self) -> PathBuf { self.data_dir().join("history") }
+}
+
+fn assignment_value(text: &str, key: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        let mut line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return None;
+        }
+        if let Some(rest) = line.strip_prefix("export ") {
+            line = rest.trim_start();
+        }
+        let (name, value) = line.split_once('=')?;
+        if name.trim() != key {
+            return None;
+        }
+        Some(unquote(value.trim()))
+    })
+}
+
+fn unquote(value: &str) -> String {
+    if value.len() >= 2 {
+        let bytes = value.as_bytes();
+        if (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
+            || (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
+        {
+            return value[1..value.len() - 1].to_owned();
+        }
+    }
+    value.to_owned()
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn set_assignment(text: &mut String, key: &str, value: &str) {
+    let replacement = format!("{key}={}", shell_quote(value));
+    let mut replaced = false;
+    let mut lines = text.lines().map(str::to_owned).collect::<Vec<_>>();
+
+    for line in &mut lines {
+        let trimmed = line.trim_start();
+        let candidate = trimmed.strip_prefix("export ").unwrap_or(trimmed);
+        if candidate.split_once('=').is_some_and(|(name, _)| name.trim() == key) {
+            *line = replacement.clone();
+            replaced = true;
+            break;
+        }
+    }
+
+    if !replaced {
+        lines.push(replacement);
+    }
+    *text = format!("{}\n", lines.join("\n"));
 }
