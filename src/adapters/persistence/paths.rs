@@ -18,6 +18,16 @@ unfocused_opacity = 0
 
 # Color del tinte de fondo.
 background_color = "#111629"
+
+# Imagen de fondo. Vacío = desactivada.
+# Puede ser una ruta absoluta o relativa a la carpeta de sst.exe.
+background_image = ""
+
+# Opacidad propia de la imagen (0-100). Además respeta focused/unfocused_opacity.
+background_image_opacity = 100
+
+# Radio de las esquinas de la ventana en píxeles. Al maximizar se usa 0.
+corner_radius = 16
 "##;
 
 const DEFAULT_CONFIG: &str = r#"# Shell Shock Tool portable shell configuration
@@ -63,6 +73,7 @@ impl AppPaths {
         Ok(())
     }
 
+    pub fn root_dir(&self) -> PathBuf { self.root.clone() }
     pub fn data_dir(&self) -> PathBuf { self.root.join("data") }
     pub fn config_dir(&self) -> PathBuf { self.root.join("config") }
     pub fn config_file(&self) -> PathBuf { self.config_dir().join("sstrc") }
