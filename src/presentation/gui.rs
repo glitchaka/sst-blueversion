@@ -9,7 +9,6 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use chrono::Local;
-use serde::Deserialize;
 use sysinfo::System;
 use crossterm::event::{KeyCode as CtKeyCode, KeyEvent as CtKeyEvent, KeyModifiers as CtKeyModifiers};
 use windows_sys::Win32::{
@@ -20,7 +19,7 @@ use windows_sys::Win32::{
 };
 
 use crate::adapters::{
-    persistence::AppPaths,
+    persistence::{AppPaths, AppearanceConfig},
     terminal::embedded::EmbeddedSession,
 };
 
@@ -48,29 +47,7 @@ const TITLE_CONTROL: u32 = 0xBD9FFF; // #FF9FBD
 const TITLE_CLOSE: u32 = 0x382DFF;   // #FF2D38
 const TITLE_HOVER_BG: u32 = 0x211B18;
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-struct TerminalAppearance {
-    backdrop: String,
-    background_opacity: u8,
-    background_color: String,
-}
-
-impl Default for TerminalAppearance {
-    fn default() -> Self {
-        Self {
-            backdrop: "acrylic".to_owned(),
-            background_opacity: 82,
-            background_color: "#111629".to_owned(),
-        }
-    }
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct TerminalConfig {
-    #[serde(default)]
-    appearance: TerminalAppearance,
-}
+type TerminalAppearance = AppearanceConfig;
 
 #[repr(C)]
 struct AccentPolicy {
@@ -125,31 +102,6 @@ fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(Some(0)).collect()
 }
 
-fn load_terminal_appearance(paths: &AppPaths) -> Result<TerminalAppearance> {
-    let path = paths.terminal_config_file();
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("No se pudo leer {}", path.display()))?;
-    let mut config: TerminalConfig = toml::from_str(&text)
-        .with_context(|| format!("Configuración visual inválida: {}", path.display()))?;
-
-    config.appearance.background_opacity = config.appearance.background_opacity.min(100);
-    config.appearance.backdrop = config.appearance.backdrop.trim().to_ascii_lowercase();
-
-    if !matches!(
-        config.appearance.backdrop.as_str(),
-        "acrylic" | "blur" | "glass" | "solid"
-    ) {
-        anyhow::bail!(
-            "terminal.toml: appearance.backdrop debe ser acrylic, blur, glass o solid"
-        );
-    }
-
-    parse_hex_color(&config.appearance.background_color)
-        .with_context(|| "terminal.toml: appearance.background_color inválido")?;
-
-    Ok(config.appearance)
-}
-
 fn parse_hex_color(value: &str) -> Result<u32> {
     let hex = value.trim().trim_start_matches('#');
     if hex.len() != 6 {
@@ -166,7 +118,7 @@ fn parse_hex_color(value: &str) -> Result<u32> {
 pub fn run() -> Result<()> {
     let paths = AppPaths::detect();
     paths.ensure_layout()?;
-    let appearance = load_terminal_appearance(&paths)?;
+    let appearance = paths.load_appearance()?;
 
     unsafe {
         SetProcessDPIAware();
@@ -377,7 +329,7 @@ unsafe fn apply_configured_backdrop(hwnd: HWND, appearance: &TerminalAppearance)
             _ => ACCENT_DISABLED,
         };
 
-        let alpha = ((u32::from(appearance.background_opacity) * 255) / 100) << 24;
+        let alpha = ((u32::from(appearance.focused_opacity) * 255) / 100) << 24;
         let tint = parse_hex_color(&appearance.background_color).unwrap_or(BG);
         let mut policy = AccentPolicy {
             accent_state: state,
