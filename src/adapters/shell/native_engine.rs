@@ -1374,10 +1374,6 @@ impl ShellCommandHost for WindowsShellHost {
 
         #[cfg(windows)]
         unsafe {
-            // Elevated Windows processes often require SeDebugPrivilege even
-            // when the caller is already in the Administrators group.
-            let _ = crate::support::windows::enable_privilege("SeDebugPrivilege");
-
             let handle = OpenProcess(
                 PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION,
                 0,
