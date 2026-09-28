@@ -452,6 +452,15 @@ impl TerminalModel {
         let _ = self.session.write(bytes);
     }
 
+    fn key_event(&mut self, code: CtKeyCode, modifiers: CtKeyModifiers) {
+        self.parser.screen_mut().set_scrollback(0);
+        self.selection = None;
+        self.cursor_on = true;
+        self.blink = Instant::now();
+        self.dirty = true;
+        let _ = self.session.send_key_event(CtKeyEvent::new(code, modifiers));
+    }
+
     fn paste(&mut self, text: &str) {
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
@@ -955,6 +964,35 @@ fn handle_key(
             model.paste(&value);
         }
         return;
+    }
+
+    if !model.session.raw_mode() {
+        let mut modifiers = CtKeyModifiers::NONE;
+        if ctrl { modifiers |= CtKeyModifiers::CONTROL; }
+        if alt { modifiers |= CtKeyModifiers::ALT; }
+        if shift { modifiers |= CtKeyModifiers::SHIFT; }
+
+        if ctrl && key_is(text, Key::Backspace) {
+            model.key_event(CtKeyCode::Backspace, modifiers);
+            return;
+        }
+
+        let navigation = if key_is(text, Key::LeftArrow) {
+            Some(CtKeyCode::Left)
+        } else if key_is(text, Key::RightArrow) {
+            Some(CtKeyCode::Right)
+        } else if key_is(text, Key::Home) {
+            Some(CtKeyCode::Home)
+        } else if key_is(text, Key::End) {
+            Some(CtKeyCode::End)
+        } else {
+            None
+        };
+
+        if navigation.is_some() && (shift || ctrl) {
+            model.key_event(navigation.unwrap(), modifiers);
+            return;
+        }
     }
 
     if model.session.raw_mode() {
