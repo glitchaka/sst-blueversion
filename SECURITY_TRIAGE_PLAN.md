@@ -736,6 +736,65 @@ ARRANQUE
 
 La primera fase debe tener un presupuesto de tiempo pequeño y predecible. No debe calcular hashes de todos los ejecutables, verificar todas las firmas ni recorrer todo el Registro antes de entregar la shell.
 
+## Presupuesto de rendimiento
+
+El preload no debe convertirse en parte pesada del arranque.
+
+Objetivo:
+
+```text
+latencia añadida objetivo:   < 250 ms
+latencia añadida aceptable:  < 500 ms
+techo duro de bloqueo:        750 ms
+```
+
+Si una lectura no termina dentro del presupuesto, SST debe **deferirla al enriquecimiento en segundo plano** y entregar igualmente la shell.
+
+El prompt no debe esperar a:
+
+- hashing masivo;
+- validación Authenticode de todos los procesos;
+- resolución DNS;
+- consultas WMI lentas;
+- Event Log profundo;
+- enumeración completa de DLLs;
+- lectura extensa del Registro;
+- análisis de handles;
+- consultas remotas;
+- geolocalización de IP;
+- escaneo recursivo del filesystem.
+
+El arranque debe privilegiar APIs nativas baratas y snapshots ya disponibles en memoria.
+
+El preload debe ser **cancelable y degradable**:
+
+```text
+FAST PATH disponible
+    -> captura mínima
+    -> entrega prompt
+
+fuente lenta / bloqueada
+    -> timeout
+    -> marca dato como pending/unavailable
+    -> continúa en background
+```
+
+Nunca debe existir una operación individual capaz de bloquear indefinidamente el arranque.
+
+## Caché y trabajo incremental
+
+Para reducir costo:
+
+- reutilizar el baseline local de la ejecución anterior;
+- cachear hashes por `path + size + mtime`;
+- cachear resultados Authenticode mientras el archivo no cambie;
+- no volver a consultar metadatos estáticos de ejecutables conocidos;
+- enriquecer primero procesos nuevos, raros o con señales previas;
+- relegar procesos conocidos y estables al final de la cola;
+- limitar concurrencia para no disparar CPU, disco o antivirus del host.
+
+El enriquecimiento en background debe usar prioridad baja y ceder recursos ante actividad interactiva de SST.
+
 ## FAST PRELOAD
 
 Debe capturar, como mínimo:
