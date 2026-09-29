@@ -25,7 +25,7 @@ use windows_sys::Win32::{
     },
     System::Threading::{
         CreateProcessWithTokenW, GetCurrentProcess, GetExitCodeProcess, OpenProcess,
-        OpenProcessToken, ProcessIdToSessionId, WaitForSingleObject, CREATE_NO_WINDOW,
+        OpenProcessToken, WaitForSingleObject, CREATE_NO_WINDOW,
         PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
     },
     UI::{
@@ -284,8 +284,12 @@ fn launch_elevated_shell(cwd: &Path) -> Result<()> {
 }
 
 fn process_session_id(pid: u32) -> Option<u32> {
-    let mut session = 0u32;
-    (unsafe { ProcessIdToSessionId(pid, &mut session) } != 0).then_some(session)
+    let mut system = System::new_all();
+    system.refresh_all();
+    system
+        .process(sysinfo::Pid::from_u32(pid))
+        .and_then(|process| process.session_id())
+        .map(|session| session.as_u32())
 }
 
 fn open_process_token_for_launch(pid: u32) -> Result<*mut core::ffi::c_void> {
