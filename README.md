@@ -132,6 +132,21 @@ sys drivers --devices
 - `--pnp`: enumera paquetes de drivers PnP.
 - `--devices`: enumera dispositivos PnP conectados.
 
+### Impresoras
+
+```bash
+sys printers
+sys printers --default
+sys printer
+sys printer "NOMBRE"
+sys printer "NOMBRE" --ip
+```
+
+Consulta las impresoras instaladas mediante la API nativa del spooler de Windows.
+Muestra la impresora predeterminada, servidor de impresión, recurso compartido,
+puerto, driver, ubicación e IP cuando el puerto TCP/IP contiene una dirección o
+un hostname resoluble. No depende de PowerShell.
+
 ### Windows Event Log
 
 ```bash
