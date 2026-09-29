@@ -185,10 +185,11 @@ impl AppPaths {
                 ("SST_TERMINAL_PADDING_X", "8", "# Padding horizontal de la terminal."),
                 ("SST_TERMINAL_PADDING_Y", "6", "# Padding vertical de la terminal."),
             ] {
+                let direct = format!("{key}=");
+                let exported = format!("export {key}=");
                 if !text.lines().any(|line| {
                     let line = line.trim_start();
-                    line.starts_with(&format!("{key}="))
-                        || line.starts_with(&format!("export {key}="))
+                    line.starts_with(direct.as_str()) || line.starts_with(exported.as_str())
                 }) {
                     text.push_str(&format!("\n{comment}\n{key}={value}\n"));
                 }
