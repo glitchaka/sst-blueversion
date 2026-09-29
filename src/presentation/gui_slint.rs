@@ -26,15 +26,12 @@ use slint::{
 };
 use sysinfo::System;
 use windows_sys::Win32::{
-    Foundation::{HWND, RECT},
-    Graphics::{
-        Dwm::*,
-        Gdi::{CreateRoundRectRgn, DeleteObject, SetWindowRgn},
-    },
+    Foundation::HWND,
+    Graphics::Dwm::*,
     System::LibraryLoader::{GetModuleHandleW, GetProcAddress},
     UI::{
         Controls::MARGINS,
-        WindowsAndMessaging::{GetForegroundWindow, GetWindowRect, IsZoomed},
+        WindowsAndMessaging::GetForegroundWindow,
     },
 };
 
@@ -73,7 +70,6 @@ slint::slint! {
         in property <image> background-image;
         in property <float> background-image-opacity: 0.0;
         in property <string> background-image-fit-mode: "cover";
-        in property <length> window-corner-radius: 16px;
         in property <string> cpu-text: "CPU 0%";
         in property <string> ram-text: "RAM 0.0 GiB";
         in property <string> clock-text: "00:00";
@@ -91,8 +87,6 @@ slint::slint! {
             y: 0;
             width: 100%;
             height: 100%;
-            border-radius: root.maximized ? 0px : root.window-corner-radius;
-            clip: true;
             background: transparent;
 
             Image {
@@ -1150,14 +1144,7 @@ unsafe fn apply_window_effects(hwnd: HWND, appearance: &TerminalAppearance) {
             size_of::<i32>() as u32,
         );
 
-        let corners: i32 = 2;
-        let _ = DwmSetWindowAttribute(
-            hwnd,
-            33,
-            (&corners as *const i32).cast(),
-            size_of::<i32>() as u32,
-        );
-
+        apply_native_corner_preference(hwnd, appearance);
         apply_configured_backdrop(hwnd, appearance, true);
 
         if appearance.backdrop != "solid" {
@@ -1238,44 +1225,21 @@ fn slint_hwnd(ui: &SstBlueWindow) -> Option<HWND> {
     Some(win32.hwnd.get() as HWND)
 }
 
-unsafe fn apply_native_window_region(
+unsafe fn apply_native_corner_preference(
     hwnd: HWND,
-    corner_radius: u16,
-    scale_factor: f32,
+    appearance: &TerminalAppearance,
 ) {
     unsafe {
-        if IsZoomed(hwnd) != 0 || corner_radius == 0 {
-            SetWindowRgn(hwnd, std::ptr::null_mut(), 1);
-            return;
-        }
-
-        let mut rect = RECT::default();
-        if GetWindowRect(hwnd, &mut rect) == 0 {
-            return;
-        }
-
-        let width = (rect.right - rect.left).max(1);
-        let height = (rect.bottom - rect.top).max(1);
-        let radius = ((corner_radius as f32) * scale_factor.max(0.5))
-            .round()
-            .max(1.0) as i32;
-        let diameter = radius.saturating_mul(2);
-
-        let region = CreateRoundRectRgn(
-            0,
-            0,
-            width + 1,
-            height + 1,
-            diameter,
-            diameter,
+        // DWMWA_WINDOW_CORNER_PREFERENCE = 33.
+        // 1 = DWMWCP_DONOTROUND, 2 = DWMWCP_ROUND.
+        // Windows owns the actual window shape, maximize/restore behavior and shadow.
+        let preference: i32 = if appearance.corner_radius == 0 { 1 } else { 2 };
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            33,
+            (&preference as *const i32).cast(),
+            size_of::<i32>() as u32,
         );
-
-        if !region.is_null() {
-            // On success Windows owns the region handle. Only delete it on failure.
-            if SetWindowRgn(hwnd, region, 1) == 0 {
-                DeleteObject(region);
-            }
-        }
     }
 }
 
@@ -1315,7 +1279,6 @@ pub fn run() -> Result<()> {
     }
     ui.set_background_image_opacity(background_image_opacity(&appearance, true));
     ui.set_background_image_fit_mode(appearance.background_image_fit.clone().into());
-    ui.set_window_corner_radius((appearance.corner_radius as f32).into());
 
     {
         let model = model.clone();
@@ -1375,15 +1338,6 @@ pub fn run() -> Result<()> {
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(ui) = weak.upgrade() {
                 apply_slint_window_effects(&ui, &appearance);
-                if let Some(hwnd) = slint_hwnd(&ui) {
-                    unsafe {
-                        apply_native_window_region(
-                            hwnd,
-                            appearance.corner_radius,
-                            ui.window().scale_factor(),
-                        );
-                    }
-                }
             }
         });
     }
@@ -1391,14 +1345,12 @@ pub fn run() -> Result<()> {
     let weak = ui.as_weak();
     let last_status = Rc::new(RefCell::new(Instant::now() - Duration::from_secs(2)));
     let last_focus = Rc::new(RefCell::new(true));
-    let last_region = Rc::new(RefCell::new((0u32, 0u32, false, false, 0u16, 0u32)));
     let timer = Timer::default();
     {
         let model = model.clone();
         let metrics = metrics.clone();
         let last_status = last_status.clone();
         let last_focus = last_focus.clone();
-        let last_region = last_region.clone();
         let appearance_state = appearance_state.clone();
         let paths = paths.clone();
 
@@ -1431,23 +1383,16 @@ pub fn run() -> Result<()> {
                             background_image_opacity(&next, focused)
                         );
                         ui.set_background_image_fit_mode(next.background_image_fit.clone().into());
-                        ui.set_window_corner_radius((next.corner_radius as f32).into());
 
                         model.borrow_mut().set_appearance(next.clone());
                         *appearance_state.borrow_mut() = next.clone();
 
                         if let Some(hwnd) = slint_hwnd(&ui) {
                             unsafe {
+                                apply_native_corner_preference(hwnd, &next);
                                 apply_configured_backdrop(hwnd, &next, focused);
-                                apply_native_window_region(
-                                    hwnd,
-                                    next.corner_radius,
-                                    scale,
-                                );
                             }
                         }
-
-                        *last_region.borrow_mut() = (0, 0, false, false, 0, 0);
                     }
                     Err(error) => {
                         eprintln!("No se pudo recargar la apariencia de SST: {error}");
@@ -1457,7 +1402,6 @@ pub fn run() -> Result<()> {
 
             if let Some(hwnd) = slint_hwnd(&ui) {
                 let focused = unsafe { GetForegroundWindow() == hwnd };
-                let maximized = unsafe { IsZoomed(hwnd) != 0 };
                 let appearance = appearance_state.borrow().clone();
 
                 let mut previous = last_focus.borrow_mut();
@@ -1465,27 +1409,9 @@ pub fn run() -> Result<()> {
                     *previous = focused;
                     model.borrow_mut().set_focused(focused);
                     ui.set_background_image_opacity(background_image_opacity(&appearance, focused));
-                    unsafe { apply_configured_backdrop(hwnd, &appearance, focused) };
-                }
-
-                let mut region_state = last_region.borrow_mut();
-                let scale_key = (scale * 1000.0).round() as u32;
-                let current_region = (
-                    size.width,
-                    size.height,
-                    maximized,
-                    focused,
-                    appearance.corner_radius,
-                    scale_key,
-                );
-                if *region_state != current_region {
-                    *region_state = current_region;
                     unsafe {
-                        apply_native_window_region(
-                            hwnd,
-                            appearance.corner_radius,
-                            scale,
-                        );
+                        apply_native_corner_preference(hwnd, &appearance);
+                        apply_configured_backdrop(hwnd, &appearance, focused);
                     }
                 }
             }
