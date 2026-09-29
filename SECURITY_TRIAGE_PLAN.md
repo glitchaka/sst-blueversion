@@ -528,7 +528,465 @@ seen: 18492 times
 
 ---
 
-# 12. UNKNOWN no es SUSPICIOUS
+# 12. Base histórica local y memoria de comportamiento
+
+SST necesita una **base de datos local persistente** para no empezar de cero en cada ejecución y para poder comparar el comportamiento actual con lo observado anteriormente.
+
+La base recomendada es **SQLite**, almacenada localmente, sin dependencia de servidores externos.
+
+Ruta sugerida:
+
+```text
+data/security.db
+```
+
+La base no debe guardar una conclusión simplista como:
+
+```text
+safe = true
+```
+
+Debe guardar evidencia histórica suficiente para responder:
+
+```text
+¿Ya vi este binario?
+¿Con este mismo hash?
+¿En esta misma ruta?
+¿Firmado por el mismo publisher?
+¿Normalmente lo lanza este mismo padre?
+¿Suele abrir estas conexiones?
+¿Suele crear estos hijos?
+¿Cambió algo importante desde la última vez?
+¿Un proceso parecido tuvo comportamiento anómalo anteriormente?
+```
+
+## Identidad de ejecutable
+
+Cada ejecutable debe identificarse por una combinación de:
+
+- SHA-256;
+- ruta exacta;
+- nombre;
+- tamaño;
+- fecha de modificación;
+- firma Authenticode;
+- publisher;
+- versión de archivo;
+- product name cuando exista.
+
+El hash debe ser la identidad fuerte del contenido.
+
+La ruta, nombre y publisher son contexto, no identidad suficiente por sí solos.
+
+## Perfil de comportamiento
+
+Para cada ejecutable observado, SST debe mantener un perfil histórico con:
+
+- first_seen;
+- last_seen;
+- execution_count;
+- usuarios habituales;
+- sesiones habituales;
+- padres habituales;
+- hijos habituales;
+- rutas habituales;
+- command lines habituales o patrones normalizados;
+- destinos de red habituales;
+- puertos habituales;
+- servicios asociados;
+- tareas programadas asociadas;
+- entradas de persistencia asociadas;
+- DLLs habituales;
+- integrity levels observados;
+- firmas observadas;
+- cambios de hash;
+- decisiones manuales del operador;
+- señales detectadas en ejecuciones anteriores.
+
+## Estados históricos
+
+No debe existir un estado absoluto de "seguro".
+
+Estados sugeridos:
+
+```text
+NEW
+KNOWN_STABLE
+WATCH
+SUSPICIOUS_HISTORY
+BLOCKED
+```
+
+### NEW
+
+Nunca visto antes o identidad materialmente distinta.
+
+### KNOWN_STABLE
+
+Observado repetidamente sin señales relevantes y con comportamiento estable.
+
+Esto sólo permite **priorizarlo más abajo**, nunca ignorarlo completamente.
+
+### WATCH
+
+El operador o el motor decidió que merece seguimiento adicional.
+
+### SUSPICIOUS_HISTORY
+
+El ejecutable o un patrón muy similar mostró anteriormente señales relevantes.
+
+### BLOCKED
+
+Hash o identidad explícitamente bloqueada por el operador.
+
+## Confianza con caducidad
+
+`KNOWN_STABLE` no debe ser permanente.
+
+La confianza histórica debe degradarse cuando:
+
+- cambia el SHA-256;
+- cambia la firma;
+- cambia el publisher;
+- cambia la ruta;
+- cambia el proceso padre;
+- aparecen hijos nuevos;
+- cambia el command line;
+- aparecen conexiones nuevas;
+- aparece persistencia nueva;
+- aumenta el nivel de privilegios;
+- pasa demasiado tiempo desde la última observación.
+
+Un proceso conocido puede volver automáticamente a:
+
+```text
+REVIEW_REQUIRED
+```
+
+si su comportamiento actual se aparta suficientemente del baseline.
+
+## Revisión de procesos previamente considerados normales
+
+Ejemplo:
+
+```text
+KNOWN_STABLE
+helper.exe
+hash: AAAAA...
+usual parent: app.exe
+usual network: none
+```
+
+Más adelante aparece:
+
+```text
+helper.exe
+hash: AAAAA...
+parent: powershell.exe
+network: 185.x.x.x:443
+persistence: HKCU Run
+```
+
+SST debe advertir:
+
+```text
+ATTENTION
+
+helper.exe is historically known,
+but current behavior differs from its normal profile.
+
+Changed:
+  parent: app.exe -> powershell.exe
+  network: none -> outbound TCP
+  persistence: none -> HKCU Run
+```
+
+El hecho de que el hash sea conocido **no elimina la alerta**.
+
+## Similitud entre procesos
+
+La base debe permitir detectar procesos distintos con comportamiento parecido.
+
+Ejemplo:
+
+```text
+previous:
+  abc123.exe
+  parent: powershell.exe
+  path: AppData
+  unsigned
+  outbound TCP
+  Run-key persistence
+
+current:
+  updater02.exe
+  parent: powershell.exe
+  path: AppData
+  unsigned
+  outbound TCP
+  Run-key persistence
+```
+
+Aunque el nombre y hash sean diferentes, SST debe poder decir:
+
+```text
+ATTENTION
+
+Current process resembles a previously suspicious behavior pattern.
+```
+
+La comparación debe basarse en características, no sólo nombres.
+
+## Huellas de comportamiento
+
+SST puede generar una huella normalizada por ejecución, por ejemplo:
+
+```text
+parent_class
+execution_path_class
+signature_state
+publisher
+integrity
+commandline_features
+child_process_classes
+network_destination_classes
+persistence_types
+loaded_module_classes
+```
+
+Estas huellas permiten comparar comportamientos sin convertir el sistema en una caja negra.
+
+La interfaz siempre debe mostrar **qué rasgos coincidieron**.
+
+## Aprendizaje conservador
+
+La base histórica no debe "aprender confianza" demasiado rápido.
+
+Un proceso no debe convertirse en `KNOWN_STABLE` sólo porque apareció una vez sin alertas.
+
+Requisitos sugeridos:
+
+- varias ejecuciones separadas en el tiempo;
+- mismo hash;
+- misma firma;
+- mismo publisher;
+- comportamiento consistente;
+- ausencia de señales relevantes;
+- sin cambios de persistencia inesperados.
+
+El objetivo es evitar que malware recién llegado sea legitimado simplemente por haber sobrevivido una primera observación.
+
+## Historial de decisiones del operador
+
+Cuando el operador inspeccione algo, SST puede guardar:
+
+```text
+operator_action:
+  reviewed
+  trusted
+  watch
+  blocked
+  false_positive
+  quarantined
+```
+
+Pero una decisión humana tampoco debe borrar el historial técnico.
+
+Ejemplo:
+
+```text
+operator: false_positive
+technical history: preserved
+```
+
+Si el comportamiento cambia después, SST debe volver a advertir.
+
+## Esquema lógico sugerido
+
+Tablas mínimas:
+
+```text
+executables
+process_instances
+process_relationships
+behavior_profiles
+behavior_fingerprints
+network_observations
+persistence_observations
+module_observations
+signature_cache
+hash_cache
+alerts
+operator_decisions
+preload_sessions
+event_timeline
+```
+
+### executables
+
+Identidad relativamente estable del archivo.
+
+Campos principales:
+
+```text
+id
+sha256
+path
+name
+size
+mtime
+signature_state
+publisher
+file_version
+first_seen
+last_seen
+```
+
+### process_instances
+
+Cada ejecución concreta:
+
+```text
+id
+executable_id
+pid
+ppid
+user_sid
+session_id
+integrity
+command_line
+started_at
+ended_at
+preload_session_id
+```
+
+### behavior_profiles
+
+Perfil agregado histórico:
+
+```text
+executable_id
+execution_count
+stability_state
+last_reviewed
+usual_parent
+usual_integrity
+usual_paths
+usual_network_pattern
+usual_children
+```
+
+### behavior_fingerprints
+
+Huellas comparables entre ejecuciones:
+
+```text
+process_instance_id
+fingerprint_version
+features_json
+```
+
+Debe existir `fingerprint_version` para poder cambiar el algoritmo sin invalidar silenciosamente datos antiguos.
+
+### operator_decisions
+
+```text
+timestamp
+process_instance_id
+executable_id
+decision
+reason
+operator
+```
+
+## Índices
+
+Para mantener el preload rápido, la base debe indexar como mínimo:
+
+- SHA-256;
+- path;
+- publisher;
+- executable_id;
+- first_seen;
+- last_seen;
+- parent executable;
+- remote endpoint;
+- alert level.
+
+Las consultas del preload deben ser simples y acotadas.
+
+## Escrituras asíncronas
+
+El preload no debe bloquearse esperando escrituras a SQLite.
+
+Flujo:
+
+```text
+FAST PRELOAD
+   -> resultados en memoria
+   -> prompt disponible
+   -> writer thread / queue
+      -> SQLite
+```
+
+La escritura histórica debe realizarse en background mediante una cola.
+
+## WAL
+
+SQLite debe usar **WAL mode** para permitir lectura y escritura concurrentes con menor contención.
+
+La shell debe poder consultar la base mientras el recolector escribe eventos.
+
+## Retención
+
+La base no debe crecer indefinidamente.
+
+Política sugerida:
+
+- conservar perfiles agregados a largo plazo;
+- conservar alertas y decisiones del operador a largo plazo;
+- conservar eventos detallados recientes durante una ventana configurable;
+- compactar instancias antiguas a estadísticas;
+- conservar hashes relevantes;
+- conservar información asociada a incidentes explícitamente guardados.
+
+La retención debe ser configurable.
+
+## Privacidad
+
+La base es local.
+
+No debe sincronizarse ni enviarse automáticamente.
+
+Puede contener información sensible como:
+
+- nombres de usuario;
+- command lines;
+- rutas;
+- IPs;
+- procesos;
+- historial de ejecución.
+
+Debe almacenarse con permisos restringidos al usuario/administradores apropiados.
+
+## Corrupción o pérdida de base
+
+SST debe poder arrancar aunque `security.db` esté corrupta, bloqueada o ausente.
+
+En ese caso:
+
+```text
+security history unavailable
+running stateless preload
+```
+
+y continuar en modo temporal.
+
+La base histórica nunca debe convertirse en un requisito para abrir la shell.
+
+---
+
+# 13. UNKNOWN no es SUSPICIOUS
 
 SST debe distinguir explícitamente:
 
@@ -546,7 +1004,7 @@ Un binario recién instalado puede ser desconocido sólo porque SST nunca lo hab
 
 ---
 
-# 13. Hashes
+# 14. Hashes
 
 Todo ejecutable inspeccionado debe tener SHA-256.
 
@@ -567,7 +1025,7 @@ FIRST SEEN TODAY
 
 ---
 
-# 14. Firma Authenticode
+# 15. Firma Authenticode
 
 Mostrar al menos:
 
@@ -587,7 +1045,7 @@ Una firma válida reduce incertidumbre, pero **no anula otras señales**.
 
 ---
 
-# 15. DLLs cargadas
+# 16. DLLs cargadas
 
 Comando:
 
@@ -607,7 +1065,7 @@ Especialmente útil para detectar DLL sideloading.
 
 ---
 
-# 16. Red
+# 17. Red
 
 Comandos sugeridos:
 
@@ -638,7 +1096,7 @@ País, ASN y organización pueden mostrarse como **contexto**, nunca como veredi
 
 ---
 
-# 17. Persistencia
+# 18. Persistencia
 
 Comando:
 
@@ -663,7 +1121,7 @@ Debe revisar al menos:
 
 ---
 
-# 18. Ejecutables recientes
+# 19. Ejecutables recientes
 
 Comando:
 
@@ -680,7 +1138,7 @@ TIME        SIGNED PATH
 
 ---
 
-# 19. Línea temporal
+# 20. Línea temporal
 
 Comando:
 
@@ -703,7 +1161,7 @@ Ejemplo:
 
 ---
 
-# 20. Preload de seguridad al arrancar SST
+# 21. Preload de seguridad al arrancar SST
 
 SST debe ejecutar un **preload ligero y no intrusivo** cada vez que arranca.
 
@@ -992,7 +1450,7 @@ y esperar una decisión explícita del operador.
 
 ---
 
-# 21. Monitoreo en tiempo real
+# 22. Monitoreo en tiempo real
 
 SST debe poder mantener un sensor ligero de eventos:
 
@@ -1010,7 +1468,7 @@ Esto permite conservar el PPID real incluso si el proceso padre desaparece despu
 
 ---
 
-# 22. Husmear de forma progresiva
+# 23. Husmear de forma progresiva
 
 El análisis debe ser escalonado.
 
@@ -1061,7 +1519,7 @@ Sólo bajo demanda:
 
 ---
 
-# 23. Respuesta manual
+# 24. Respuesta manual
 
 El flujo recomendado debe ser:
 
@@ -1079,7 +1537,7 @@ SST no debe ejecutar automáticamente esta secuencia.
 
 ---
 
-# 24. Suspend / Resume
+# 25. Suspend / Resume
 
 Antes de matar, debe existir:
 
@@ -1092,7 +1550,7 @@ Suspender permite detener actividad potencialmente peligrosa sin perder el proce
 
 ---
 
-# 25. Dump / evidencia
+# 26. Dump / evidencia
 
 Comando:
 
@@ -1115,7 +1573,7 @@ evidence\
 
 ---
 
-# 26. Terminación
+# 27. Terminación
 
 Comandos:
 
@@ -1131,7 +1589,7 @@ Nunca debe asumir éxito sólo porque `TerminateProcess` devolvió éxito.
 
 ---
 
-# 27. Procesos que reaparecen
+# 28. Procesos que reaparecen
 
 Si un proceso reaparece, SST debe buscar:
 
@@ -1161,7 +1619,7 @@ No debe matar infinitamente a ciegas.
 
 ---
 
-# 28. Quarantine
+# 29. Quarantine
 
 Comando:
 
@@ -1186,7 +1644,7 @@ SHA256.bin.quarantined
 
 ---
 
-# 29. Procesos críticos y PPL
+# 30. Procesos críticos y PPL
 
 SST debe distinguir claramente:
 
@@ -1208,7 +1666,7 @@ SST no debe intentar burlar PPL.
 
 ---
 
-# 30. Broker LocalSystem
+# 31. Broker LocalSystem
 
 Servicio sugerido:
 
@@ -1243,7 +1701,7 @@ PERSISTENCE_DISABLE
 
 ---
 
-# 31. Seguridad del broker
+# 32. Seguridad del broker
 
 IPC sugerido:
 
@@ -1270,7 +1728,7 @@ RUN "cualquier comando como SYSTEM"
 
 ---
 
-# 32. Snapshot de incidente
+# 33. Snapshot de incidente
 
 Comando:
 
@@ -1303,7 +1761,7 @@ evidence\HOST_DATE\
 
 ---
 
-# 33. Compare
+# 34. Compare
 
 Comando:
 
@@ -1322,7 +1780,7 @@ Debe mostrar:
 
 ---
 
-# 34. Watch mode
+# 35. Watch mode
 
 Comando:
 
@@ -1341,7 +1799,7 @@ TIME      EVENT       PID     PROCESS
 
 ---
 
-# 35. PowerShell history
+# 36. PowerShell history
 
 Cuando exista, SST puede inspeccionar:
 
@@ -1353,7 +1811,7 @@ También debe correlacionar Script Block Logging si está habilitado.
 
 ---
 
-# 36. Portapapeles
+# 37. Portapapeles
 
 Puede existir una función bajo demanda:
 
@@ -1373,7 +1831,7 @@ No debe vigilar ni bloquear permanentemente el clipboard salvo que exista una po
 
 ---
 
-# 37. Allowlist
+# 38. Allowlist
 
 No confiar sólo por nombre.
 
@@ -1395,7 +1853,7 @@ Una firma válida no debe cancelar automáticamente otras señales.
 
 ---
 
-# 38. Denylist local
+# 39. Denylist local
 
 Comando conceptual:
 
@@ -1411,7 +1869,7 @@ KNOWN BLOCKED HASH
 
 ---
 
-# 39. Threat intelligence externa
+# 40. Threat intelligence externa
 
 Debe ser opcional y desactivada por defecto.
 
@@ -1428,7 +1886,7 @@ Un lookup externo debe ser siempre explícito.
 
 ---
 
-# 40. Auditoría interna
+# 41. Auditoría interna
 
 Toda acción destructiva debe registrarse.
 
@@ -1453,7 +1911,7 @@ data/audit/
 
 ---
 
-# 41. Evidencia verificable
+# 42. Evidencia verificable
 
 Snapshots y evidencia deben incluir:
 
@@ -1466,7 +1924,7 @@ para detectar alteraciones posteriores.
 
 ---
 
-# 42. Interfaz visual
+# 43. Interfaz visual
 
 Modos sugeridos:
 
@@ -1511,7 +1969,7 @@ No llenar la interfaz de rojo. El propósito es priorizar atención, no generar 
 
 ---
 
-# 43. Triage rápido
+# 44. Triage rápido
 
 Comando:
 
@@ -1554,7 +2012,7 @@ Luego:
 
 ---
 
-# 44. Regla central de UX
+# 45. Regla central de UX
 
 SST debe decir:
 
@@ -1568,7 +2026,7 @@ La herramienta debe ayudar al operador a acotar el peligro sin sustituir su crit
 
 ---
 
-# 45. Primera fase de implementación
+# 46. Primera fase de implementación
 
 La primera versión funcional debe cubrir:
 
