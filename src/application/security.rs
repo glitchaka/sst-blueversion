@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::Command,
     sync::{Arc, Mutex, OnceLock},
@@ -10,13 +9,12 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use sysinfo::{Pid, System};
 
-use crate::{
-    adapters::persistence::AppPaths,
-    core::CommandOutput,
-};
+use crate::{adapters::persistence::AppPaths, core::CommandOutput};
+
+use crate::core::triage::{Evidence, Family, Strength, correlate};
 
 static SECURITY_SERVICE: OnceLock<Arc<SecurityTriageService>> = OnceLock::new();
 
@@ -26,24 +24,7 @@ pub fn shared_security_service(paths: AppPaths) -> Arc<SecurityTriageService> {
         .clone()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum AttentionLevel {
-    Performance,
-    Attention,
-    Suspicious,
-    Alert,
-}
-
-impl AttentionLevel {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Performance => "PERFORMANCE",
-            Self::Attention => "ATTENTION",
-            Self::Suspicious => "SUSPICIOUS",
-            Self::Alert => "ALERT",
-        }
-    }
-}
+pub use crate::core::triage::Classification as AttentionLevel;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreloadCase {
@@ -162,15 +143,17 @@ impl SecurityTriageService {
             progress("[~] inteligencia local    sin fuentes habilitadas\r\n");
         }
 
-        let findings = analyze_security(&snapshots, &system);
+        let findings = self.analyze_security(&snapshots);
         let performance = analyze_performance(&snapshots);
 
         let case = if findings.iter().any(|f| f.level == AttentionLevel::Alert) {
             PreloadCase::Alarm
-        } else if findings
-            .iter()
-            .any(|f| matches!(f.level, AttentionLevel::Attention | AttentionLevel::Suspicious))
-        {
+        } else if findings.iter().any(|f| {
+            matches!(
+                f.level,
+                AttentionLevel::Attention | AttentionLevel::Suspicious
+            )
+        }) {
             PreloadCase::Review
         } else {
             PreloadCase::Normal
@@ -213,7 +196,10 @@ impl SecurityTriageService {
                 if !report.performance.is_empty() {
                     out.push_str("\r\nCarga relevante:\r\n");
                     for item in report.performance.iter().take(4) {
-                        out.push_str(&format!("  {:<24}", format!("{} [{}]", item.name, item.pid)));
+                        out.push_str(&format!(
+                            "  {:<24}",
+                            format!("{} [{}]", item.name, item.pid)
+                        ));
                         out.push_str(&item.reasons.join(" · "));
                         out.push_str("\r\n");
                     }
@@ -270,7 +256,9 @@ impl SecurityTriageService {
             None => self.run_startup_preload(|_| {}),
         };
 
-        let mut out = String::from("SST TRIAGE\n------------------------------------------------------------\n");
+        let mut out = String::from(
+            "SST TRIAGE\n------------------------------------------------------------\n",
+        );
         out.push_str(&format!(
             "Processes        {}\nKnown            {}\nNew              {}\nPending          {}\nFindings         {}\n\n",
             report.process_count,
@@ -293,27 +281,40 @@ impl SecurityTriageService {
         let pid = parse_pid("sys why", args)?;
         let system = refreshed_system();
         let Some(process) = system.process(Pid::from_u32(pid)) else {
-            return Ok(CommandOutput::error(format!("sys why: PID {pid} no existe"), 1));
+            return Ok(CommandOutput::error(
+                format!("sys why: PID {pid} no existe"),
+                1,
+            ));
         };
 
         let known = self.known_executables().unwrap_or_default();
         let snapshots = collect_processes(&system, &known);
-        let findings = analyze_security(&snapshots, &system);
-        let finding = findings.into_iter().find(|f| f.pid == pid);
+        let findings = self.analyze_security(&snapshots);
+        let finding = findings
+            .into_iter()
+            .chain(analyze_performance(
+                &snapshots
+                    .iter()
+                    .filter(|p| p.pid == pid)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            ))
+            .find(|f| f.pid == pid);
 
-        let mut out = format!("Why SST noticed PID {pid}\n------------------------------------------------------------\n");
+        let mut out = format!(
+            "Why SST noticed PID {pid}\n------------------------------------------------------------\n"
+        );
         if let Some(finding) = finding {
+            out.push_str(&format!("{}\n", finding.level.label()));
             for (index, reason) in finding.reasons.iter().enumerate() {
                 out.push_str(&format!("{}. {}\n", index + 1, reason));
             }
         } else {
-            out.push_str("No hay una señal de seguridad fuerte asociada al proceso en este momento.\n");
-            out.push_str(&format!(
-                "Process: {}\n",
-                process.name().to_string_lossy()
-            ));
+            out.push_str("NORMAL: sin señales relevantes con la información disponible; no significa seguro.\n");
+            out.push_str(&format!("Process: {}\n", process.name().to_string_lossy()));
         }
 
+        out.push_str("Incomplete information: signature / SHA-256, connections, persistence and external reputation PENDING.\n");
         Ok(CommandOutput::ok(out))
     }
 
@@ -322,7 +323,10 @@ impl SecurityTriageService {
         let deep = args.iter().any(|arg| arg == "--deep");
         let system = refreshed_system();
         let Some(process) = system.process(Pid::from_u32(pid)) else {
-            return Ok(CommandOutput::error(format!("sys inspect: PID {pid} no existe"), 1));
+            return Ok(CommandOutput::error(
+                format!("sys inspect: PID {pid} no existe"),
+                1,
+            ));
         };
 
         let parent = process.parent().map(|p| p.as_u32()).unwrap_or(0);
@@ -344,13 +348,19 @@ impl SecurityTriageService {
             process.start_time(),
             process.cpu_usage(),
             process.memory() as f64 / 1024.0 / 1024.0,
-            if command.is_empty() { "<unavailable>" } else { &command },
+            if command.is_empty() {
+                "<unavailable>"
+            } else {
+                &command
+            },
             disk.read_bytes,
             disk.written_bytes,
         );
 
         if deep {
-            out.push_str("\nDeep view\n------------------------------------------------------------\n");
+            out.push_str(
+                "\nDeep view\n------------------------------------------------------------\n",
+            );
             out.push_str("Lineage:\n");
             let mut children = system
                 .processes()
@@ -379,7 +389,10 @@ impl SecurityTriageService {
         let pid = parse_pid("sys diff", args)?;
         let system = refreshed_system();
         let Some(process) = system.process(Pid::from_u32(pid)) else {
-            return Ok(CommandOutput::error(format!("sys diff: PID {pid} no existe"), 1));
+            return Ok(CommandOutput::error(
+                format!("sys diff: PID {pid} no existe"),
+                1,
+            ));
         };
 
         let path = process
@@ -392,52 +405,55 @@ impl SecurityTriageService {
             ));
         }
 
-        let conn = self.open_db()?;
-        let mut stmt = conn.prepare(
-            "SELECT parent_pid, command_line, observed_at
-             FROM process_observations
-             WHERE exe = ?1 COLLATE NOCASE
-             ORDER BY observed_at DESC
-             LIMIT 1",
-        )?;
-        let previous = stmt.query_row(params![path], |row| {
-            Ok((
-                row.get::<_, u32>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-            ))
-        });
+        let profiles = self.historical_parents(&[(pid, process.start_time())])?;
+        let mut out = String::from(
+            "Historical differences\n------------------------------------------------------------\n",
+        );
+        match profiles.get(&path.to_ascii_lowercase()) {
+            Some(parents) => {
+                let parent = process
+                    .parent()
+                    .and_then(|pid| system.process(pid))
+                    .filter(|p| p.start_time() <= process.start_time())
+                    .and_then(|p| p.exe());
+                if let Some(parent) = parent {
+                    let current = parent.display().to_string().to_ascii_lowercase();
+                    if !parents.contains(&current) {
+                        let mut expected = parents.iter().cloned().collect::<Vec<_>>();
+                        expected.sort();
+                        out.push_str(&format!(
+                            "parent executable: {} -> {}\n",
+                            expected.join(", "),
+                            current
+                        ));
+                    } else {
+                        out.push_str("No parent identity difference.\n");
+                    }
+                } else {
+                    out.push_str("Parent identity UNKNOWN; comparison unavailable.\n");
+                }
+            }
+            None => out.push_str("No historical parent profile available for this executable.\n"),
+        }
 
-        let current_parent = process.parent().map(|p| p.as_u32()).unwrap_or(0);
-        let current_cmd = process
+        let conn = self.open_db()?;
+        let previous_command = conn.query_row(
+            "SELECT command_line FROM process_observations WHERE exe = ?1 COLLATE NOCASE
+             AND command_line <> '' AND NOT (pid = ?2 AND start_time = ?3) ORDER BY observed_at DESC, id DESC LIMIT 1",
+            params![path, pid, process.start_time()],
+            |row| row.get::<_, String>(0),
+        );
+        let current_command = process
             .cmd()
             .iter()
             .map(|part| part.to_string_lossy())
             .collect::<Vec<_>>()
             .join(" ");
-
-        let mut out = String::from(
-            "Historical profile                Current\n------------------------------------------------------------\n",
-        );
-        match previous {
-            Ok((parent, command, observed_at)) => {
-                out.push_str(&format!(
-                    "parent: {:<24} parent: {}{}\n",
-                    parent,
-                    current_parent,
-                    if parent != current_parent { "  !" } else { "" }
-                ));
-                out.push_str(&format!(
-                    "command: {:<23} command: {}{}\n",
-                    shorten(&command, 23),
-                    shorten(&current_cmd, 46),
-                    if command != current_cmd { "  !" } else { "" }
-                ));
-                out.push_str(&format!("previous observation: {observed_at}\n"));
+        match previous_command {
+            Ok(previous) if !current_command.is_empty() && previous != current_command => {
+                out.push_str(&format!("command: {} -> {}\n", previous, current_command));
             }
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
-                out.push_str("No existe una observación histórica anterior para este ejecutable.\n");
-            }
+            Ok(_) | Err(rusqlite::Error::QueryReturnedNoRows) => {}
             Err(error) => return Err(error.into()),
         }
 
@@ -448,7 +464,7 @@ impl SecurityTriageService {
         let system = refreshed_system();
         let known = self.known_executables().unwrap_or_default();
         let snapshots = collect_processes(&system, &known);
-        let findings = analyze_security(&snapshots, &system);
+        let findings = self.analyze_security(&snapshots);
         if findings.is_empty() {
             return Ok(CommandOutput::ok(
                 "No hay procesos que superen las reglas actuales de atención.\n",
@@ -472,7 +488,9 @@ impl SecurityTriageService {
             r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce",
         ] {
             out.push_str(&format!("\n[{key}]\n"));
-            out.push_str(&capture("reg.exe", &["query", key]).unwrap_or_else(|error| format!("{error}\n")));
+            out.push_str(
+                &capture("reg.exe", &["query", key]).unwrap_or_else(|error| format!("{error}\n")),
+            );
         }
 
         for folder in startup_folders() {
@@ -504,11 +522,8 @@ impl SecurityTriageService {
     }
 
     pub fn services_impact(&self) -> Result<CommandOutput> {
-        let raw = capture(
-            "sc.exe",
-            &["queryex", "type=", "service", "state=", "all"],
-        )
-        .context("sys services --impact: no se pudo consultar SCM")?;
+        let raw = capture("sc.exe", &["queryex", "type=", "service", "state=", "all"])
+            .context("sys services --impact: no se pudo consultar SCM")?;
 
         let mut services = Vec::<(String, u32)>::new();
         let mut current_name = None::<String>;
@@ -610,7 +625,11 @@ impl SecurityTriageService {
             out.push_str(&format!(
                 "{:<20} {:<9} {:<18} ttl={}h  {}\n",
                 source.id,
-                if source.enabled { "ENABLED" } else { "DISABLED" },
+                if source.enabled {
+                    "ENABLED"
+                } else {
+                    "DISABLED"
+                },
                 source.adapter,
                 source.ttl_hours,
                 auth,
@@ -621,7 +640,10 @@ impl SecurityTriageService {
 
     fn intel_sources(&self) -> Result<CommandOutput> {
         let sources = self.load_sources()?;
-        let mut out = format!("source registry: {}\n\n", self.paths.security_sources_file().display());
+        let mut out = format!(
+            "source registry: {}\n\n",
+            self.paths.security_sources_file().display()
+        );
         for source in sources {
             out.push_str(&format!(
                 "[{}]\n  enabled={}\n  adapter={}\n  endpoint={}\n  priority={}\n\n",
@@ -666,15 +688,89 @@ impl SecurityTriageService {
         Ok(CommandOutput::ok(out))
     }
 
+    fn analyze_security(&self, snapshots: &[ProcessSnapshot]) -> Vec<Finding> {
+        let instances = snapshots
+            .iter()
+            .map(|p| (p.pid, p.start_time))
+            .collect::<Vec<_>>();
+        let history = self.historical_parents(&instances).unwrap_or_default();
+        let findings = analyze_security(snapshots, &history);
+        // Best effort: unavailable history never prevents local analysis.
+        let paths = self.paths.clone();
+        let observed = snapshots.to_vec();
+        let classified = findings.clone();
+        thread::spawn(move || {
+            let _ = SecurityTriageService::new(paths).record_assessments(&observed, &classified);
+        });
+        findings
+    }
+
+    fn historical_parents(
+        &self,
+        current: &[(u32, u64)],
+    ) -> Result<HashMap<String, HashSet<String>>> {
+        let conn = self.open_db()?;
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT lower(child.exe), lower(parent.exe), child.pid, child.start_time
+             FROM process_observations child JOIN process_observations parent
+             ON child.session_id = parent.session_id AND child.parent_pid = parent.pid
+             AND parent.start_time <= child.start_time
+             WHERE child.exe <> '' AND parent.exe <> ''",
+        )?;
+        let mut profiles: HashMap<String, HashSet<String>> = HashMap::new();
+        for row in stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, u32>(2)?,
+                row.get::<_, u64>(3)?,
+            ))
+        })? {
+            let (exe, parent, pid, start_time) = row?;
+            if current.contains(&(pid, start_time)) {
+                continue;
+            }
+            profiles.entry(exe).or_default().insert(parent);
+        }
+        Ok(profiles)
+    }
+
+    fn record_assessments(
+        &self,
+        snapshots: &[ProcessSnapshot],
+        findings: &[Finding],
+    ) -> Result<()> {
+        let mut conn = self.open_db()?;
+        let tx = conn.transaction()?;
+        for process in snapshots {
+            let finding = findings.iter().find(|f| f.pid == process.pid);
+            let resources = analyze_performance(std::slice::from_ref(process));
+            let finding = finding.or_else(|| resources.first());
+            let level = finding.map(|f| f.level.label()).unwrap_or("NORMAL");
+            let reasons =
+                serde_json::to_string(&finding.map(|f| f.reasons.clone()).unwrap_or_default())?;
+            tx.execute(
+                "INSERT INTO correlation_history(pid, start_time, exe, observed_at, classification, reasons)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE NOT EXISTS (
+                    SELECT 1 FROM correlation_history WHERE id = (
+                        SELECT max(id) FROM correlation_history WHERE pid = ?1 AND start_time = ?2 AND exe = ?3
+                    ) AND classification = ?5 AND reasons = ?6
+                 )",
+                params![process.pid, process.start_time, process.exe, unix_now(), level, reasons],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     fn open_db(&self) -> Result<Connection> {
         open_security_db(&self.paths)
     }
 
     fn known_executables(&self) -> Result<HashSet<String>> {
         let conn = self.open_db()?;
-        let mut stmt = conn.prepare(
-            "SELECT DISTINCT exe FROM process_observations WHERE exe <> ''",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT DISTINCT exe FROM process_observations WHERE exe <> ''")?;
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
         let mut known = HashSet::new();
         for row in rows {
@@ -722,8 +818,7 @@ fn collect_processes(system: &System, known_exes: &HashSet<String>) -> Vec<Proce
                     .map(|part| part.to_string_lossy())
                     .collect::<Vec<_>>()
                     .join(" "),
-                new_to_history: !exe.is_empty()
-                    && !known_exes.contains(&exe.to_ascii_lowercase()),
+                new_to_history: !exe.is_empty() && !known_exes.contains(&exe.to_ascii_lowercase()),
                 exe,
                 cpu: process.cpu_usage(),
                 memory_mib: process.memory() as f64 / 1024.0 / 1024.0,
@@ -734,7 +829,10 @@ fn collect_processes(system: &System, known_exes: &HashSet<String>) -> Vec<Proce
         .collect()
 }
 
-fn analyze_security(snapshots: &[ProcessSnapshot], _system: &System) -> Vec<Finding> {
+fn analyze_security(
+    snapshots: &[ProcessSnapshot],
+    history: &HashMap<String, HashSet<String>>,
+) -> Vec<Finding> {
     let names = snapshots
         .iter()
         .map(|process| (process.pid, process.name.to_ascii_lowercase()))
@@ -745,7 +843,12 @@ fn analyze_security(snapshots: &[ProcessSnapshot], _system: &System) -> Vec<Find
         let name = process.name.to_ascii_lowercase();
         let cmd = process.command_line.to_ascii_lowercase();
         let path = process.exe.to_ascii_lowercase();
-        let parent = names.get(&process.ppid).map(String::as_str).unwrap_or("");
+        let parent = snapshots
+            .iter()
+            .find(|p| p.pid == process.ppid && p.start_time <= process.start_time)
+            .and_then(|p| names.get(&p.pid))
+            .map(String::as_str)
+            .unwrap_or("");
 
         let powershell = matches!(name.as_str(), "powershell.exe" | "pwsh.exe");
         let encoded = cmd.contains("-encodedcommand")
@@ -760,37 +863,56 @@ fn analyze_security(snapshots: &[ProcessSnapshot], _system: &System) -> Vec<Find
 
         let script_parent = matches!(
             parent,
-            "powershell.exe"
-                | "pwsh.exe"
-                | "cmd.exe"
-                | "mshta.exe"
-                | "wscript.exe"
-                | "cscript.exe"
+            "powershell.exe" | "pwsh.exe" | "cmd.exe" | "mshta.exe" | "wscript.exe" | "cscript.exe"
         );
         let user_writable = path.contains("\\appdata\\")
             || path.contains("\\temp\\")
             || path.contains("\\downloads\\");
 
-        let mut reasons = Vec::new();
+        let mut evidence = Vec::new();
         if suspicious_ps {
-            reasons.push("PowerShell con patrón de ejecución que merece revisión".to_owned());
+            evidence.push(Evidence::known(
+                Family::Execution,
+                Strength::Anomaly,
+                "PowerShell: execution pattern requires review",
+            ));
         }
-        if process.new_to_history && user_writable && script_parent {
-            reasons.push("ejecutable nuevo en ruta de usuario lanzado por intérprete".to_owned());
+        if user_writable {
+            evidence.push(Evidence::known(
+                Family::Identity,
+                Strength::Weak,
+                "executable in user-writable path",
+            ));
         }
-        if process.new_to_history && script_parent {
-            reasons.push("primera observación con parent de scripting".to_owned());
+        if script_parent {
+            evidence.push(Evidence::known(
+                Family::Lineage,
+                Strength::Weak,
+                "launched by command interpreter",
+            ));
         }
-
-        if reasons.is_empty() {
+        if let Some(parents) = history.get(&path) {
+            if let Some(current_parent) = snapshots
+                .iter()
+                .find(|p| p.pid == process.ppid && p.start_time <= process.start_time)
+            {
+                if !current_parent.exe.is_empty()
+                    && !parents.contains(&current_parent.exe.to_ascii_lowercase())
+                {
+                    evidence.push(Evidence::known(
+                        Family::Lineage,
+                        Strength::Anomaly,
+                        "parent executable differs from historical profile",
+                    ));
+                }
+            }
+        }
+        let result = correlate(&evidence);
+        let level = result.classification;
+        if level < AttentionLevel::Attention {
             continue;
         }
-
-        let level = if suspicious_ps && process.new_to_history && user_writable {
-            AttentionLevel::Suspicious
-        } else {
-            AttentionLevel::Attention
-        };
+        let reasons = result.reasons;
         findings.push(Finding {
             pid: process.pid,
             name: process.name.clone(),
@@ -829,7 +951,12 @@ fn analyze_performance(snapshots: &[ProcessSnapshot]) -> Vec<Finding> {
         })
         .collect::<Vec<_>>();
 
-    rows.sort_by(|a, b| b.reasons.len().cmp(&a.reasons.len()).then_with(|| a.pid.cmp(&b.pid)));
+    rows.sort_by(|a, b| {
+        b.reasons
+            .len()
+            .cmp(&a.reasons.len())
+            .then_with(|| a.pid.cmp(&b.pid))
+    });
     rows.truncate(6);
     rows
 }
@@ -876,6 +1003,7 @@ fn parse_pid(command: &str, args: &[String]) -> Result<u32> {
 fn open_security_db(paths: &AppPaths) -> Result<Connection> {
     fs::create_dir_all(paths.data_dir())?;
     let conn = Connection::open(paths.security_db_file())?;
+    conn.busy_timeout(std::time::Duration::from_secs(2))?;
     conn.execute_batch(
         "PRAGMA journal_mode=WAL;
          PRAGMA synchronous=NORMAL;
@@ -914,6 +1042,16 @@ fn open_security_db(paths: &AppPaths) -> Result<Connection> {
          CREATE INDEX IF NOT EXISTS idx_process_observations_observed
              ON process_observations(observed_at);
 
+         CREATE TABLE IF NOT EXISTS correlation_history (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             pid INTEGER NOT NULL,
+             start_time INTEGER NOT NULL,
+             exe TEXT NOT NULL,
+             observed_at INTEGER NOT NULL,
+             classification TEXT NOT NULL,
+             reasons TEXT NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_correlation_instance ON correlation_history(pid, start_time, exe, id);
          CREATE TABLE IF NOT EXISTS intel_cache (
              indicator TEXT NOT NULL,
              source_id TEXT NOT NULL,
@@ -926,7 +1064,11 @@ fn open_security_db(paths: &AppPaths) -> Result<Connection> {
     Ok(conn)
 }
 
-fn persist_snapshot(paths: &AppPaths, snapshots: &[ProcessSnapshot], report: &PreloadReport) -> Result<()> {
+fn persist_snapshot(
+    paths: &AppPaths,
+    snapshots: &[ProcessSnapshot],
+    report: &PreloadReport,
+) -> Result<()> {
     let mut conn = open_security_db(paths)?;
     let observed_at = unix_now();
     let case_name = match report.case {
@@ -985,8 +1127,8 @@ fn unix_now() -> i64 {
 }
 
 fn parse_sources(path: &Path) -> Result<Vec<SecuritySource>> {
-    let text = fs::read_to_string(path)
-        .with_context(|| format!("no se pudo leer {}", path.display()))?;
+    let text =
+        fs::read_to_string(path).with_context(|| format!("no se pudo leer {}", path.display()))?;
     let mut result = Vec::new();
     let mut current: Option<SecuritySource> = None;
 
@@ -1017,8 +1159,12 @@ fn parse_sources(path: &Path) -> Result<Vec<SecuritySource>> {
             continue;
         }
 
-        let Some(source) = current.as_mut() else { continue; };
-        let Some((key, value)) = line.split_once('=') else { continue; };
+        let Some(source) = current.as_mut() else {
+            continue;
+        };
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
         let key = key.trim();
         let value = value.trim().trim_matches('"').trim_matches('\'');
 
@@ -1052,15 +1198,11 @@ fn capture(program: &str, args: &[&str]) -> Result<String> {
 fn startup_folders() -> Vec<PathBuf> {
     let mut folders = Vec::new();
     if let Some(appdata) = env::var_os("APPDATA") {
-        folders.push(
-            PathBuf::from(appdata)
-                .join(r"Microsoft\Windows\Start Menu\Programs\Startup"),
-        );
+        folders.push(PathBuf::from(appdata).join(r"Microsoft\Windows\Start Menu\Programs\Startup"));
     }
     if let Some(programdata) = env::var_os("PROGRAMDATA") {
         folders.push(
-            PathBuf::from(programdata)
-                .join(r"Microsoft\Windows\Start Menu\Programs\StartUp"),
+            PathBuf::from(programdata).join(r"Microsoft\Windows\Start Menu\Programs\StartUp"),
         );
     }
     folders
@@ -1073,9 +1215,16 @@ fn local_indicator_match(paths: &AppPaths, indicator: &str) -> Result<bool> {
         paths.intel_dir().join("domains.txt"),
         paths.intel_dir().join("ips.txt"),
     ] {
-        let Ok(text) = fs::read_to_string(path) else { continue; };
+        let Ok(text) = fs::read_to_string(path) else {
+            continue;
+        };
         if text.lines().any(|line| {
-            let value = line.split('#').next().unwrap_or("").trim().to_ascii_lowercase();
+            let value = line
+                .split('#')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_ascii_lowercase();
             !value.is_empty() && value == normalized
         }) {
             return Ok(true);
@@ -1094,4 +1243,72 @@ fn shorten(value: &str, width: usize) -> String {
     let mut out = value.chars().take(width - 3).collect::<String>();
     out.push_str("...");
     out
+}
+
+#[cfg(test)]
+mod correlation_tests {
+    use super::*;
+    fn process(pid: u32, ppid: u32, name: &str, exe: &str, command: &str) -> ProcessSnapshot {
+        ProcessSnapshot {
+            pid,
+            ppid,
+            start_time: 100,
+            name: name.into(),
+            exe: exe.into(),
+            command_line: command.into(),
+            cpu: 0.0,
+            memory_mib: 0.0,
+            disk_read_bytes: 0,
+            disk_written_bytes: 0,
+            new_to_history: true,
+        }
+    }
+    #[test]
+    fn path_or_interpreter_alone_is_not_suspicious() {
+        let rows = [
+            process(1, 0, "pwsh.exe", r"C:\Windows\pwsh.exe", "pwsh.exe"),
+            process(
+                2,
+                0,
+                "helper.exe",
+                r"C:\Users\a\AppData\helper.exe",
+                "helper",
+            ),
+        ];
+        assert!(analyze_security(&rows, &HashMap::new()).is_empty());
+    }
+    #[test]
+    fn known_executable_is_not_immune_to_current_execution() {
+        let mut child = process(
+            2,
+            1,
+            "pwsh.exe",
+            r"C:\Users\a\AppData\pwsh.exe",
+            "pwsh.exe -enc abc",
+        );
+        child.new_to_history = false;
+        let rows = [
+            process(1, 0, "cmd.exe", r"C:\Windows\cmd.exe", "cmd"),
+            child,
+        ];
+        assert_eq!(
+            analyze_security(&rows, &HashMap::new())[0].level,
+            AttentionLevel::Suspicious
+        );
+    }
+    #[test]
+    fn parent_identity_change_matters_not_parent_pid() {
+        let rows = [
+            process(7, 0, "app.exe", "app.exe", "app"),
+            process(8, 7, "helper.exe", "helper.exe", "helper"),
+        ];
+        let mut history = HashMap::new();
+        history.insert("helper.exe".into(), HashSet::from(["app.exe".into()]));
+        assert!(analyze_security(&rows, &history).is_empty());
+        history.insert("helper.exe".into(), HashSet::from(["other.exe".into()]));
+        assert_eq!(
+            analyze_security(&rows, &history)[0].level,
+            AttentionLevel::Attention
+        );
+    }
 }
