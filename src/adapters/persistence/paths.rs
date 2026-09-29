@@ -24,6 +24,13 @@ SST_CORNER_RADIUS=16
 
 # Separación entre la isla superior y la primera línea de contenido.
 SST_CONTENT_TOP_GAP=12
+
+# Densidad de la terminal.
+SST_FONT_SIZE=14
+SST_CELL_WIDTH=8
+SST_CELL_HEIGHT=18
+SST_TERMINAL_PADDING_X=8
+SST_TERMINAL_PADDING_Y=6
 "#;
 
 const DEFAULT_CONFIG: &str = r#"# Shell Shock Tool portable shell configuration
@@ -84,6 +91,11 @@ pub struct AppearanceConfig {
     pub background_image_fit: String,
     pub corner_radius: u16,
     pub content_top_gap: u16,
+    pub font_size: u16,
+    pub cell_width: u16,
+    pub cell_height: u16,
+    pub terminal_padding_x: u16,
+    pub terminal_padding_y: u16,
 }
 
 impl Default for AppearanceConfig {
@@ -98,6 +110,11 @@ impl Default for AppearanceConfig {
             background_image_fit: "cover".to_owned(),
             corner_radius: 16,
             content_top_gap: 12,
+            font_size: 14,
+            cell_width: 8,
+            cell_height: 18,
+            terminal_padding_x: 8,
+            terminal_padding_y: 6,
         }
     }
 }
@@ -159,6 +176,22 @@ impl AppPaths {
                     || line.starts_with("export SST_BACKGROUND_IMAGE_FIT=")
             }) {
                 text.push_str("\n# Ajuste de imagen: cover | contain | fill | preserve\nSST_BACKGROUND_IMAGE_FIT='cover'\n");
+            }
+
+            for (key, value, comment) in [
+                ("SST_FONT_SIZE", "14", "# Tamaño de fuente de la terminal."),
+                ("SST_CELL_WIDTH", "8", "# Ancho de celda de la terminal."),
+                ("SST_CELL_HEIGHT", "18", "# Alto de celda de la terminal."),
+                ("SST_TERMINAL_PADDING_X", "8", "# Padding horizontal de la terminal."),
+                ("SST_TERMINAL_PADDING_Y", "6", "# Padding vertical de la terminal."),
+            ] {
+                if !text.lines().any(|line| {
+                    let line = line.trim_start();
+                    line.starts_with(&format!("{key}="))
+                        || line.starts_with(&format!("export {key}="))
+                }) {
+                    text.push_str(&format!("\n{comment}\n{key}={value}\n"));
+                }
             }
         }
         fs::write(path, text)?;
@@ -256,6 +289,31 @@ impl AppPaths {
             .and_then(|value| value.parse::<u16>().ok())
         {
             config.content_top_gap = value.min(96);
+        }
+        if let Some(value) = assignment_value(&text, "SST_FONT_SIZE")
+            .and_then(|value| value.parse::<u16>().ok())
+        {
+            config.font_size = value.clamp(8, 32);
+        }
+        if let Some(value) = assignment_value(&text, "SST_CELL_WIDTH")
+            .and_then(|value| value.parse::<u16>().ok())
+        {
+            config.cell_width = value.clamp(5, 32);
+        }
+        if let Some(value) = assignment_value(&text, "SST_CELL_HEIGHT")
+            .and_then(|value| value.parse::<u16>().ok())
+        {
+            config.cell_height = value.clamp(10, 48);
+        }
+        if let Some(value) = assignment_value(&text, "SST_TERMINAL_PADDING_X")
+            .and_then(|value| value.parse::<u16>().ok())
+        {
+            config.terminal_padding_x = value.min(64);
+        }
+        if let Some(value) = assignment_value(&text, "SST_TERMINAL_PADDING_Y")
+            .and_then(|value| value.parse::<u16>().ok())
+        {
+            config.terminal_padding_y = value.min(64);
         }
 
         if !matches!(config.backdrop.as_str(), "acrylic" | "blur" | "glass" | "solid") {
