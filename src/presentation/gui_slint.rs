@@ -1144,8 +1144,8 @@ unsafe fn apply_window_effects(hwnd: HWND, appearance: &TerminalAppearance) {
             size_of::<i32>() as u32,
         );
 
-        apply_native_corner_preference(hwnd, appearance);
         apply_configured_backdrop(hwnd, appearance, true);
+        apply_native_corner_preference(hwnd, appearance);
 
         if appearance.backdrop != "solid" {
             // Glass covers the complete client area. There is no titlebar strip;
@@ -1344,7 +1344,8 @@ pub fn run() -> Result<()> {
 
     let weak = ui.as_weak();
     let last_status = Rc::new(RefCell::new(Instant::now() - Duration::from_secs(2)));
-    let last_focus = Rc::new(RefCell::new(true));
+    // None forces native DWM state to be applied once after the window is fully shown.
+    let last_focus = Rc::new(RefCell::new(None::<bool>));
     let timer = Timer::default();
     {
         let model = model.clone();
@@ -1389,8 +1390,8 @@ pub fn run() -> Result<()> {
 
                         if let Some(hwnd) = slint_hwnd(&ui) {
                             unsafe {
-                                apply_native_corner_preference(hwnd, &next);
                                 apply_configured_backdrop(hwnd, &next, focused);
+                                apply_native_corner_preference(hwnd, &next);
                             }
                         }
                     }
@@ -1405,13 +1406,13 @@ pub fn run() -> Result<()> {
                 let appearance = appearance_state.borrow().clone();
 
                 let mut previous = last_focus.borrow_mut();
-                if *previous != focused {
-                    *previous = focused;
+                if previous.as_ref().copied() != Some(focused) {
+                    *previous = Some(focused);
                     model.borrow_mut().set_focused(focused);
                     ui.set_background_image_opacity(background_image_opacity(&appearance, focused));
                     unsafe {
-                        apply_native_corner_preference(hwnd, &appearance);
                         apply_configured_backdrop(hwnd, &appearance, focused);
+                        apply_native_corner_preference(hwnd, &appearance);
                     }
                 }
             }
