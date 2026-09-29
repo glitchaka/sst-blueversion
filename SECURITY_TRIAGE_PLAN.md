@@ -124,7 +124,7 @@ Esto permite que SST sea útil incluso cuando la causa termina siendo completame
 
 Al ejecutar SST, la terminal debe abrirse inmediatamente y mostrar el avance del preload de forma breve y legible mientras revisa el estado inicial del equipo.
 
-No se debe usar un porcentaje artificial de progreso. Cada etapa puede tardar tiempos distintos y algunas pueden diferirse al background. En su lugar, SST debe mostrar **qué está revisando y en qué estado quedó**.
+No se debe usar un porcentaje artificial de progreso. Cada etapa puede tardar tiempos distintos y algunas pueden diferirse al background. SST debe mostrar **qué está revisando y en qué estado quedó**.
 
 Estados visuales sugeridos:
 
@@ -141,112 +141,248 @@ Ejemplo durante el arranque:
 ```text
 SST preload
 
-[✓] procesos            173 encontrados
-[✓] árbol PID/PPID      construido
-[✓] CPU / RAM / I/O     revisado
-[✓] conexiones          42 activas
-[✓] historial local     168 conocidos · 5 nuevos
-[~] firmas / hashes     3 diferidos
-[✓] persistencia rápida 7 entradas revisadas
-[✓] inteligencia local  caché disponible
+[✓] procesos              173 encontrados
+[✓] árbol PID/PPID        construido
+[✓] CPU / RAM / I/O       revisado
+[✓] conexiones            42 activas
+[✓] inicio automático     18 entradas
+[✓] servicios             96 activos
+[✓] historial local       168 conocidos · 5 nuevos
+[~] firmas / hashes       3 diferidos
+[✓] inteligencia local    caché disponible
 ```
 
-Las líneas deben actualizarse sin inundar el scroll de la terminal. El objetivo es que el operador vea qué está ocurriendo, no un log verboso.
+Las líneas deben actualizarse sin inundar el scroll de la terminal.
 
 Cuando termina la fase rápida, SST debe mostrar exactamente:
 
-> **«Hola, ¿te gustaría destruir algo de maldad hoy?»**
+> **«Hola. ¿Te gustaría destruir algún mal hoy?»**
 
-La frase es deliberadamente una referencia a Nightblood y funciona como saludo de SST después del preload.
+Después del saludo, SST debe clasificar el resultado del preload en **sólo tres casos de uso**. No se intentará cubrir infinitos escenarios en el arranque.
 
-### Arranque sin anomalías relevantes
+---
 
-Si no hay nada que merezca atención, SST no debe llenar la pantalla con detalles innecesarios ni declarar que el sistema está "seguro".
+### Caso 1 — Todo parece normal
 
-Debe mostrar sólo el resumen de lo revisado:
+No hay señales de seguridad relevantes.
 
-```text
-«Hola, ¿te gustaría destruir algo de maldad hoy?»
+SST debe mostrar:
 
-Preload completado. No encontré nada particularmente llamativo.
-
-Revisado:
-  procesos             173
-  conexiones activas    42
-  procesos nuevos        5
-  persistencias          7
-  elementos pendientes   3
-
-3 elementos quedaron en revisión diferida.
-```
-
-Después aparece el prompt normal de SST.
-
-Los elementos `PENDING/YELLOW` no deben mostrarse como sospechosos sólo porque su análisis siga pendiente.
-
-### Arranque con elementos que merecen atención
-
-Si el preload encuentra anomalías, después del saludo debe mostrar **sólo los procesos relevantes**, no toda la lista de procesos del sistema.
+1. un resumen de lo revisado;
+2. procesos o servicios legítimos que estén consumiendo recursos de forma apreciable;
+3. programas conocidos que se cargan al inicio y pueden afectar rendimiento;
+4. comandos sugeridos para revisar rendimiento y arranque.
 
 Ejemplo:
 
 ```text
-«Hola, ¿te gustaría destruir algo de maldad hoy?»
+«Hola. ¿Te gustaría destruir algún mal hoy?»
+
+No encontré nada particularmente llamativo.
+
+Revisado:
+  procesos               173
+  conexiones activas      42
+  inicio automático       18
+  servicios activos       96
+  procesos nuevos          5
+  elementos pendientes     3
+
+Carga relevante:
+  MsMpEng.exe            disk I/O high
+  SearchIndexer.exe      disk I/O medium
+  OneDrive.exe           startup + memory medium
+
+Sugerencias:
+  top --tree
+  sys startup
+  sys services --impact
+```
+
+El objetivo es poder responder también a:
+
+```text
+"el equipo está lento, pero no veo señales de compromiso"
+```
+
+#### Inicio automático y servicios legítimos
+
+Aunque no existan sospechas de seguridad, SST debe revisar de forma ligera:
+
+- programas de inicio del usuario;
+- Run / RunOnce;
+- Startup folders;
+- servicios automáticos;
+- procesos que aparecen inmediatamente después del inicio de sesión;
+- impacto actual aproximado en CPU, RAM e I/O;
+- historial de consumo cuando exista en SQLite.
+
+Un programa firmado o conocido puede ser perfectamente legítimo y aun así perjudicar el rendimiento.
+
+SST debe poder decir:
+
+```text
+PERFORMANCE
+
+OneDrive.exe
+  known / signed
+  starts with user session
+  memory: 620 MB
+  disk I/O: medium
+
+No security anomaly detected.
+```
+
+Esto es información de rendimiento, no una alerta de seguridad.
+
+Comandos a implementar:
+
+```bash
+sys startup
+sys services --impact
+```
+
+`sys startup` debe mostrar qué se carga al iniciar sesión o arrancar Windows y, cuando sea posible, su impacto actual/histórico.
+
+`sys services --impact` debe priorizar servicios por consumo de recursos, sin sugerir deshabilitarlos automáticamente.
+
+---
+
+### Caso 2 — Hay algo que merece revisión
+
+Existen una o más anomalías, pero la evidencia todavía es insuficiente para considerar que existe un incidente claro.
+
+SST debe mostrar sólo los procesos relevantes y explicar entre 2 y 4 razones principales.
+
+Ejemplo:
+
+```text
+«Hola. ¿Te gustaría destruir algún mal hoy?»
 
 Encontré 2 procesos que merecen una mirada:
 
 ATTENTION  powershell.exe [7712]
-           parent: msedge.exe
+           parent inusual
            encoded command
            first seen in this context
 
-SUSPICIOUS helper.exe [8124]
-           disk I/O: high
+ATTENTION  helper.exe [8124]
            first seen today
-           unusual parent
            outbound connection
+           behavior differs from history
 
-Pendientes de análisis: 3
-
-Usa:
+Sugerencias para revisar la sospecha:
   sys why 7712
   sys inspect 7712
+  sys diff 8124
+  intel lookup <sha256>
+
+Sugerencias para revisar el equipo completo:
+  triage
+  sys suspicious
+  sys startup
+  sys services --impact
 ```
 
-La salida debe priorizar claridad:
+La segunda parte es importante: SST no debe conducir al operador únicamente hacia el proceso marcado.
 
-- mostrar proceso, PID y nivel de atención;
-- mostrar entre 2 y 4 razones principales;
-- no imprimir toda la evidencia en el arranque;
-- no mostrar procesos normales;
-- no bloquear la shell esperando análisis diferidos;
-- no tomar acciones automáticas.
+También debe permitir comprobar si:
 
-### Procesos normales bajo carga
+- existen otros procesos relacionados;
+- la carga general explica el síntoma;
+- el proceso marcado era un falso positivo;
+- existe otra causa legítima de lentitud;
+- hay una segunda anomalía que cambia el contexto.
 
-Un proceso legítimo que explique la lentitud pero no tenga señales de seguridad puede mostrarse como contexto, separado de las alertas:
+En este caso SST **alerta e invita a verificar**, pero no recomienda todavía una acción destructiva.
+
+---
+
+### Caso 3 — Las alarmas se encienden
+
+Es el caso menos frecuente.
+
+Debe reservarse para evidencia fuerte o varias señales independientes que convergen, por ejemplo:
 
 ```text
-Carga del sistema:
-  MsMpEng.exe        disk I/O high
-  SearchIndexer.exe  disk I/O medium
-
-No notable security anomalies.
+hash exacto en blocklist / reputación externa
++ comportamiento local anómalo
 ```
 
-Esto permite distinguir entre:
+o:
 
 ```text
-"el equipo está lento"
+proceso nuevo
++ lineage sospechoso
++ persistencia
++ conexión saliente
 ```
 
-y:
+o:
 
 ```text
-"el equipo está lento y además hay algo raro"
+ejecutable históricamente conocido
++ comportamiento cambia de forma importante
++ nueva coincidencia de inteligencia externa
 ```
 
-sin convertir el preload en un detector agresivo.
+Ejemplo:
+
+```text
+«Hola. ¿Te gustaría destruir algún mal hoy?»
+
+ALERT
+
+helper.exe [8124]
+
+Why:
+  new executable in user-writable path
+  spawned by encoded PowerShell
+  outbound connection active
+  persistence detected
+  SHA-256 matched external reputation source
+
+Sugerencias para profundizar:
+  sys why 8124
+  sys inspect 8124
+  sys inspect 8124 --deep
+  sys persistence
+  intel lookup <sha256>
+
+Si necesitas privilegios adicionales:
+  sudo sys inspect 8124
+  sudo sys suspend 8124
+
+Acción destructiva sólo bajo decisión del operador:
+  sudo sys kill 8124
+  sudo sys kill 8124 --tree
+```
+
+El orden importa:
+
+```text
+entender
+-> confirmar
+-> escalar privilegios si hace falta
+-> contener o terminar sólo si el operador lo decide
+```
+
+SST nunca debe matar, suspender o modificar persistencia automáticamente por entrar en este tercer caso.
+
+---
+
+### Reglas comunes a los tres casos
+
+- El saludo siempre aparece después del FAST PRELOAD.
+- No se muestran todos los procesos normales cuando existen alertas.
+- `PENDING/YELLOW` significa análisis incompleto, no sospecha.
+- Un proceso legítimo con alto consumo se muestra como **PERFORMANCE**, no como `ATTENTION`.
+- `ATTENTION` significa "revísalo", no "es malware".
+- El tercer caso requiere señales fuertes o múltiples señales independientes.
+- Las sugerencias de comandos dependen del caso detectado.
+- Los comandos sugeridos deben existir realmente en SST; si aún no están implementados, forman parte del alcance de implementación correspondiente.
+- El preload no debe esperar consultas web ni análisis pesados.
+- El enriquecimiento continúa en background después de entregar el prompt.
 
 ### Regla de rendimiento
 
@@ -255,15 +391,15 @@ La presentación del preload no cambia el presupuesto definido para el FAST PREL
 Si una etapa excede su tiempo:
 
 ```text
-[~] firmas / hashes     diferido
+[~] firmas / hashes       diferido
 ```
 
-y SST continúa con la siguiente.
+SST continúa con la siguiente.
 
 La interfaz debe privilegiar siempre:
 
 ```text
-mostrar estado -> entregar prompt -> seguir enriqueciendo en background
+mostrar estado -> clasificar en uno de 3 casos -> sugerir comandos -> entregar prompt -> seguir enriqueciendo en background
 ```
 
 ---
@@ -1580,7 +1716,8 @@ Debe capturar, como mínimo:
 - conexiones TCP/UDP activas y PID asociado;
 - CPU, RAM e I/O de disco por proceso mediante lecturas baratas;
 - presión global de CPU, memoria y disco;
-- servicios activos;
+- servicios activos y su consumo cuando pueda obtenerse de forma barata;
+- programas de inicio automático ya indexados y su impacto aproximado;
 - tareas programadas de interés ya indexadas;
 - entradas principales de persistencia;
 - comparación inmediata con el baseline local;
