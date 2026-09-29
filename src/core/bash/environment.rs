@@ -1044,6 +1044,7 @@ impl ShellEnvironment {
         else { self.trace_vars.remove(name); }
     }
 
+    #[allow(dead_code)]
     pub fn is_integer(&self, name: &str) -> bool {
         let resolved = self.dereference_name(name);
         self.integer_vars.contains(&resolved)
@@ -1057,6 +1058,7 @@ impl ShellEnvironment {
         self.shell_options.contains(name) || self.shopt_options.contains(name)
     }
 
+    #[allow(dead_code)]
     pub fn elapsed_seconds(&self) -> f64 {
         self.started_at.elapsed().as_secs_f64()
     }
