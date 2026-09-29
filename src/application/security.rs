@@ -229,16 +229,22 @@ impl SecurityTriageService {
                     report.findings.len()
                 ));
                 append_findings(&mut out, &report.findings);
-                out.push_str(
-                    "\r\nSugerencias para revisar la sospecha:\r\n  sys why PID\r\n  sys inspect PID\r\n  sys diff PID\r\n  intel lookup SHA256\r\n\r\nSugerencias para revisar el equipo completo:\r\n  triage\r\n  sys suspicious\r\n  sys startup\r\n  sys services --impact\r\n",
-                );
+                if let Some(primary) = report.findings.first() {
+                    out.push_str(&format!(
+                        "\r\nSugerencias para revisar la sospecha:\r\n  sys why {0}\r\n  sys inspect {0}\r\n  sys diff {0}\r\n  intel lookup <SHA256>\r\n\r\nSugerencias para revisar el equipo completo:\r\n  triage\r\n  sys suspicious\r\n  sys startup\r\n  sys services --impact\r\n",
+                        primary.pid
+                    ));
+                }
             }
             PreloadCase::Alarm => {
                 out.push_str("ALERT — encontré señales fuertes que conviene revisar.\r\n\r\n");
                 append_findings(&mut out, &report.findings);
-                out.push_str(
-                    "\r\nProfundiza primero:\r\n  sys why PID\r\n  sys inspect PID\r\n  sys inspect PID --deep\r\n  sys persistence\r\n  intel lookup SHA256\r\n\r\nSi necesitas privilegios adicionales:\r\n  sudo sys inspect PID\r\n  sudo sys suspend PID\r\n\r\nAcción destructiva sólo bajo tu decisión:\r\n  sudo sys kill PID\r\n  sudo sys kill PID --tree\r\n",
-                );
+                if let Some(primary) = report.findings.first() {
+                    out.push_str(&format!(
+                        "\r\nProfundiza primero:\r\n  sys why {0}\r\n  sys inspect {0}\r\n  sys inspect {0} --deep\r\n  sys persistence\r\n  intel lookup <SHA256>\r\n\r\nSi necesitas privilegios adicionales:\r\n  sudo sys inspect {0}\r\n  sudo sys suspend {0}\r\n\r\nAcción destructiva sólo bajo tu decisión:\r\n  sudo sys kill {0}\r\n  sudo sys kill {0} --tree\r\n",
+                        primary.pid
+                    ));
+                }
             }
         }
 
@@ -390,7 +396,7 @@ impl SecurityTriageService {
         let mut stmt = conn.prepare(
             "SELECT parent_pid, command_line, observed_at
              FROM process_observations
-             WHERE exe = ?1
+             WHERE exe = ?1 COLLATE NOCASE
              ORDER BY observed_at DESC
              LIMIT 1",
         )?;
@@ -672,7 +678,7 @@ impl SecurityTriageService {
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
         let mut known = HashSet::new();
         for row in rows {
-            known.insert(row?);
+            known.insert(row?.to_ascii_lowercase());
         }
         Ok(known)
     }
@@ -716,7 +722,8 @@ fn collect_processes(system: &System, known_exes: &HashSet<String>) -> Vec<Proce
                     .map(|part| part.to_string_lossy())
                     .collect::<Vec<_>>()
                     .join(" "),
-                new_to_history: !exe.is_empty() && !known_exes.contains(&exe),
+                new_to_history: !exe.is_empty()
+                    && !known_exes.contains(&exe.to_ascii_lowercase()),
                 exe,
                 cpu: process.cpu_usage(),
                 memory_mib: process.memory() as f64 / 1024.0 / 1024.0,
