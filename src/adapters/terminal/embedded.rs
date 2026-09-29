@@ -93,7 +93,7 @@ impl EmbeddedSession {
         thread::spawn(move || {
             io::install(terminal_io);
             let result = (|| -> Result<()> {
-                let (mut engine, _, _paths) = crate::composition::build_engine()?;
+                let (mut engine, _, paths) = crate::composition::build_engine()?;
                 engine.set_interactive(true);
 
                 // The native GUI is an interactive non-login Bash session. Unlike
@@ -113,7 +113,15 @@ impl EmbeddedSession {
                 }
 
                 *worker_bindings.lock().unwrap_or_else(|error| error.into_inner()) = engine.readline_bindings();
+
                 io::write(crate::presentation::shell::prompt::banner().as_bytes())?;
+
+                let security = crate::application::security::shared_security_service(paths.clone());
+                let report = security.run_startup_preload(|line| {
+                    let _ = io::write(line.as_bytes());
+                });
+                io::write(security.render_startup(&report).as_bytes())?;
+
                 let (prompt_stdout, prompt_stderr, bash_prompt) = engine.prepare_prompt(false)?;
                 io::write(prompt_stdout.as_bytes())?;
                 io::write(prompt_stderr.as_bytes())?;
