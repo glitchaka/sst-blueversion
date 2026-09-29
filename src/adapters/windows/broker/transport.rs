@@ -3,7 +3,7 @@ use crate::core::broker::{MAX_FRAME, Request, Response};
 use anyhow::{Result, bail, ensure};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{
-    mem::zeroed,
+    mem::{size_of, zeroed},
     ptr::{null, null_mut},
     time::{Duration, Instant},
 };
