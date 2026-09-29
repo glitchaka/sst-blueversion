@@ -26,9 +26,9 @@ SST_CORNER_RADIUS=16
 SST_CONTENT_TOP_GAP=12
 
 # Densidad de la terminal.
-SST_FONT_SIZE=14
+SST_FONT_SIZE=13
 SST_CELL_WIDTH=8
-SST_CELL_HEIGHT=18
+SST_CELL_HEIGHT=17
 SST_TERMINAL_PADDING_X=8
 SST_TERMINAL_PADDING_Y=6
 "#;
@@ -110,9 +110,9 @@ impl Default for AppearanceConfig {
             background_image_fit: "cover".to_owned(),
             corner_radius: 16,
             content_top_gap: 12,
-            font_size: 14,
+            font_size: 13,
             cell_width: 8,
-            cell_height: 18,
+            cell_height: 17,
             terminal_padding_x: 8,
             terminal_padding_y: 6,
         }
@@ -179,9 +179,9 @@ impl AppPaths {
             }
 
             for (key, value, comment) in [
-                ("SST_FONT_SIZE", "14", "# Tamaño de fuente de la terminal."),
+                ("SST_FONT_SIZE", "13", "# Tamaño de fuente de la terminal."),
                 ("SST_CELL_WIDTH", "8", "# Ancho de celda de la terminal."),
-                ("SST_CELL_HEIGHT", "18", "# Alto de celda de la terminal."),
+                ("SST_CELL_HEIGHT", "17", "# Alto de celda de la terminal."),
                 ("SST_TERMINAL_PADDING_X", "8", "# Padding horizontal de la terminal."),
                 ("SST_TERMINAL_PADDING_Y", "6", "# Padding vertical de la terminal."),
             ] {
