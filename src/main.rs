@@ -199,7 +199,6 @@ fn parse_invocation(args: &[String]) -> Result<BashInvocation> {
                 }
             }
             _ => {
-                parsing_options = false;
                 invocation.operands.extend(args[index..].iter().cloned());
                 break;
             }
