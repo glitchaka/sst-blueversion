@@ -38,6 +38,41 @@ alias cls='clear'
 # alias scanlab='net scan 192.168.1.0/24'
 "#;
 
+const DEFAULT_SECURITY_SOURCES: &str = r#"# SST security intelligence source registry
+# Editable sin recompilar SST. No guardar API keys aquí.
+
+[source malwarebazaar]
+enabled=true
+adapter=abusech_hash
+endpoint=https://mb-api.abuse.ch/api/v1/
+auth_env=SST_MALWAREBAZAAR_AUTH_KEY
+ttl_hours=24
+priority=10
+
+[source threatfox]
+enabled=true
+adapter=abusech_ioc
+endpoint=https://threatfox-api.abuse.ch/api/v1/
+auth_env=SST_THREATFOX_AUTH_KEY
+ttl_hours=12
+priority=20
+
+[source urlhaus]
+enabled=true
+adapter=abusech_url
+endpoint=https://urlhaus.abuse.ch/api/
+auth_env=SST_URLHAUS_AUTH_KEY
+ttl_hours=12
+priority=30
+
+[source lolbas]
+enabled=true
+adapter=behavior_catalog
+endpoint=https://github.com/LOLBAS-Project/LOLBAS
+ttl_hours=168
+priority=40
+"#;
+
 #[derive(Debug, Clone)]
 pub struct AppearanceConfig {
     pub backdrop: String,
@@ -84,12 +119,18 @@ impl AppPaths {
     pub fn ensure_layout(&self) -> Result<()> {
         fs::create_dir_all(self.config_dir())?;
         fs::create_dir_all(self.data_dir())?;
+        fs::create_dir_all(self.intel_dir())?;
 
         let config = self.config_file();
         if !config.exists() {
             fs::write(&config, format!("{DEFAULT_CONFIG}{APPEARANCE_BLOCK}"))?;
         } else {
             self.ensure_appearance_block()?;
+        }
+
+        let sources = self.security_sources_file();
+        if !sources.exists() {
+            fs::write(&sources, DEFAULT_SECURITY_SOURCES)?;
         }
 
         self.migrate_legacy_terminal_toml()?;
@@ -241,6 +282,9 @@ impl AppPaths {
     pub fn providers_file(&self) -> PathBuf { self.data_dir().join("network_providers.json") }
     pub fn switches_file(&self) -> PathBuf { self.data_dir().join("switches.json") }
     pub fn history_file(&self) -> PathBuf { self.data_dir().join("history") }
+    pub fn security_db_file(&self) -> PathBuf { self.data_dir().join("security.db") }
+    pub fn security_sources_file(&self) -> PathBuf { self.data_dir().join("security.sources") }
+    pub fn intel_dir(&self) -> PathBuf { self.data_dir().join("intel") }
 }
 
 fn assignment_value(text: &str, key: &str) -> Option<String> {
