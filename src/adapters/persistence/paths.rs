@@ -19,7 +19,8 @@ SST_BACKGROUND_IMAGE_OPACITY=100
 # Ajuste de imagen: cover | contain | fill | preserve
 SST_BACKGROUND_IMAGE_FIT='cover'
 
-# Radio de esquinas en píxeles. Al maximizar se usa 0.
+# Esquinas nativas de Windows: 0 = rectas; cualquier valor > 0 = redondeadas.
+# Windows decide el radio real y el comportamiento al maximizar/restaurar.
 SST_CORNER_RADIUS=16
 
 # Separación entre la isla superior y la primera línea de contenido.
