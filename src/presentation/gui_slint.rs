@@ -61,10 +61,10 @@ const NERD_FONT_BYTES: &[u8] = include_bytes!(concat!(
 slint::slint! {
     export component SstBlueWindow inherits Window {
         title: "Shell Shock Tool";
-        preferred-width: 1240px;
-        preferred-height: 820px;
-        min-width: 520px;
-        min-height: 320px;
+        preferred-width: 980px;
+        preferred-height: 640px;
+        min-width: 480px;
+        min-height: 300px;
         no-frame: true;
         resize-border-width: 7px;
         background: transparent;
@@ -1391,7 +1391,7 @@ pub fn run() -> Result<()> {
     let weak = ui.as_weak();
     let last_status = Rc::new(RefCell::new(Instant::now() - Duration::from_secs(2)));
     let last_focus = Rc::new(RefCell::new(true));
-    let last_region = Rc::new(RefCell::new((0u32, 0u32, false, 0u16, 0u32)));
+    let last_region = Rc::new(RefCell::new((0u32, 0u32, false, false, 0u16, 0u32)));
     let timer = Timer::default();
     {
         let model = model.clone();
@@ -1447,7 +1447,7 @@ pub fn run() -> Result<()> {
                             }
                         }
 
-                        *last_region.borrow_mut() = (0, 0, false, 0, 0);
+                        *last_region.borrow_mut() = (0, 0, false, false, 0, 0);
                     }
                     Err(error) => {
                         eprintln!("No se pudo recargar la apariencia de SST: {error}");
@@ -1474,6 +1474,7 @@ pub fn run() -> Result<()> {
                     size.width,
                     size.height,
                     maximized,
+                    focused,
                     appearance.corner_radius,
                     scale_key,
                 );
