@@ -2470,13 +2470,9 @@ SST debe distinguir claramente:
 - PPL-Antimalware;
 - otros niveles soportados por Windows.
 
-Procesos críticos del sistema no deben poder matarse por accidente.
-
-Para acciones extremas se debe exigir un flag explícito, por ejemplo:
-
-```bash
-sudo sys kill PID --force-system-critical
-```
+En este release, los procesos críticos, Protected Process y PPL se rechazan para
+cualquier mutación del broker. No existe `--force-system-critical` ni otra vía
+de override.
 
 SST no debe intentar burlar PPL.
 
