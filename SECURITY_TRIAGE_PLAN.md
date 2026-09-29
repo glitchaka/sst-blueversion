@@ -45,6 +45,47 @@ SST no debe marcar como malware un proceso por una sola señal. Debe detectar y 
 
 ---
 
+## Alcance y límites del módulo
+
+Este módulo forma parte de SST y debe respetar el alcance original de la herramienta: **shell administrativa local con capacidad de observación, diagnóstico y acción manual**.
+
+No debe intentar convertirse en:
+
+- antivirus;
+- EDR completo;
+- sandbox;
+- SIEM;
+- motor forense integral;
+- sistema autónomo de remediación;
+- servicio permanente de vigilancia invasiva.
+
+El núcleo de seguridad de SST debe limitarse a:
+
+1. hacer una lectura rápida al arrancar;
+2. mostrar procesos y relaciones relevantes;
+3. detectar anomalías básicas y conocidas;
+4. consultar historial local;
+5. enriquecer con inteligencia externa cuando corresponda;
+6. explicar por qué algo merece atención;
+7. permitir inspección manual;
+8. permitir suspensión/terminación manual cuando el operador lo decida.
+
+Características como dumps completos de memoria, cuarentena automática, aislamiento de red por proceso, monitoreo permanente fuera de SST o recolección forense extensa quedan **fuera del núcleo** y sólo podrían considerarse posteriormente como módulos opcionales.
+
+La prioridad es:
+
+```text
+bajo costo + alta visibilidad + explicación clara
+```
+
+no:
+
+```text
+máxima cobertura a cualquier costo
+```
+
+---
+
 # 1. Arquitectura
 
 La arquitectura debe separar estrictamente:
@@ -1869,22 +1910,158 @@ KNOWN BLOCKED HASH
 
 ---
 
-# 40. Threat intelligence externa
+# 40. Inteligencia externa y reputación
 
-Debe ser opcional y desactivada por defecto.
+SST debe poder consultar **fuentes públicas o privadas de inteligencia de seguridad** para enriquecer una observación local.
 
-SST no debe enviar automáticamente:
+Esto es especialmente útil cuando un hash, URL, dominio, IP, certificado o patrón de ejecución ya ha sido identificado previamente por comunidades o proveedores de seguridad.
 
-- hashes;
-- nombres de archivos;
-- información del host;
-- procesos;
-- direcciones;
-- telemetría.
+La inteligencia externa es una **señal adicional**, no un veredicto automático.
 
-Un lookup externo debe ser siempre explícito.
+## Qué consultar
+
+Orden de valor recomendado:
+
+1. SHA-256 del ejecutable;
+2. certificado / publisher;
+3. dominio o URL observada;
+4. IP:puerto;
+5. patrón LOLBin / LOLScript;
+6. nombre de archivo o proceso, sólo como señal débil.
+
+Un nombre como `update.exe` o `svchost.exe` nunca debe considerarse suficiente para declarar algo sospechoso.
+
+## Fuentes configurables
+
+Las fuentes no deben quedar hardcodeadas en Rust.
+
+SST debe cargar un archivo editable:
+
+```text
+data/security-sources.toml
+```
+
+Este archivo es **registro de fuentes de inteligencia**, no configuración general de SST; `config/sstrc` sigue siendo el único archivo principal de configuración de la aplicación.
+
+Cada fuente debe poder definir:
+
+```text
+id
+enabled
+kind
+base_url
+lookup
+auth
+timeout_ms
+cache_ttl
+priority
+notes
+```
+
+Si una fuente desaparece, cambia API, exige autenticación o deja de ser útil, debe poder deshabilitarse o reemplazarse sin recompilar SST.
+
+## Actualización
+
+SST debe mantener una caché local de reputación en SQLite.
+
+Flujo:
+
+```text
+observación local
+    -> buscar caché
+        -> dato vigente: usar
+        -> dato vencido/desconocido:
+             consultar fuentes habilitadas
+             actualizar caché
+```
+
+No debe consultar Internet durante el FAST PRELOAD.
+
+Las consultas externas se ejecutan:
+
+- en background;
+- bajo demanda con `sys inspect`;
+- o mediante actualización manual.
+
+Comandos previstos:
+
+```bash
+intel update
+intel status
+intel lookup SHA256
+intel sources
+```
+
+## Resiliencia
+
+Una fuente caída nunca debe bloquear SST.
+
+Estados de fuente:
+
+```text
+OK
+STALE
+UNAVAILABLE
+AUTH_REQUIRED
+DISABLED
+INVALID_RESPONSE
+```
+
+Si todas fallan:
+
+```text
+external reputation unavailable
+local analysis continues
+```
+
+## Fuentes iniciales razonables
+
+El registro inicial puede incluir fuentes como:
+
+- MalwareBazaar, para reputación/metadata por hash;
+- ThreatFox, para IOC conocidos;
+- URLhaus, para URLs relacionadas con malware;
+- LOLBAS, para contexto sobre binarios y scripts legítimos susceptibles de abuso.
+
+Estas fuentes tienen propósitos diferentes y no deben mezclarse como si todas afirmaran "malware".
+
+MalwareBazaar y ThreatFox actualmente requieren Auth-Key para sus APIs comunitarias; SST no debe almacenar claves directamente en el archivo de fuentes. El registro debe referenciar una variable de entorno o un secreto local separado. Las APIs y condiciones de uso pueden cambiar, por lo que el archivo editable es deliberadamente parte del diseño. 
+
+## Correlación con historial local
+
+La inteligencia externa debe integrarse con la base histórica:
+
+```text
+LOCAL:
+  known_stable for 180 days
+
+EXTERNAL:
+  hash newly reported malicious
+
+RESULT:
+  HIGH ATTENTION
+  "Previously stable executable now has an external malicious-hash match."
+```
+
+Y también al revés:
+
+```text
+LOCAL:
+  unusual parent + new outbound connection
+
+EXTERNAL:
+  no matches
+
+RESULT:
+  ATTENTION
+  "No external reputation match; local anomaly remains."
+```
+
+Ausencia en fuentes externas **no significa seguro**.
 
 ---
+
+
 
 # 41. Auditoría interna
 
@@ -2028,26 +2205,33 @@ La herramienta debe ayudar al operador a acotar el peligro sin sustituir su crit
 
 # 46. Primera fase de implementación
 
-La primera versión funcional debe cubrir:
+La primera versión funcional debe mantenerse dentro del scope original de SST:
 
-1. preload rápido de seguridad al arrancar;
-2. snapshot inicial read-only;
-3. process tree PID/PPID;
-4. `sys inspect PID`;
-5. executable path;
-6. command line;
-7. owner/SID/integrity;
-8. SHA-256;
-9. Authenticode;
-10. network connections by PID;
-11. modules/DLLs;
-12. protection/PPL;
-13. LocalSystem broker;
-14. suspend/resume;
-15. kill/kill-tree;
-16. verify termination;
-17. persistence correlation;
-18. suspicious signals;
-19. timeline.
+1. preload rápido y read-only;
+2. process tree PID/PPID con identidad estable de instancia;
+3. `sys inspect PID` básico;
+4. path, command line, owner/SID/integrity;
+5. conexiones por PID;
+6. SHA-256 y Authenticode bajo demanda/background;
+7. SQLite histórico local;
+8. comparación contra comportamiento previo;
+9. señales explicables `ATTENTION / SUSPICIOUS / HIGH`;
+10. reputación externa configurable y cacheada;
+11. `intel update / status / lookup`;
+12. suspensión y kill/kill-tree manual;
+13. verificación de terminación;
+14. broker LocalSystem únicamente para operaciones que realmente lo requieran.
+
+Quedan fuera de esta primera fase:
+
+- cuarentena automática;
+- dumps completos;
+- aislamiento de red por PID;
+- sensor residente permanente;
+- análisis profundo de memoria;
+- vigilancia del portapapeles;
+- framework forense completo;
+- remediación automática de persistencia.
+
 
 Con este bloque SST ya tendría valor real como herramienta de triage y respuesta local sin convertirse en un sistema autónomo de bloqueo o exterminio de procesos.
