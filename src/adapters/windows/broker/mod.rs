@@ -6,7 +6,7 @@ mod transport;
 use crate::core::{CommandOutput, broker::*};
 use anyhow::{Result, bail, ensure};
 use security::{Handle, identity};
-use std::{mem::zeroed, ptr::null_mut};
+use std::{mem::{size_of, zeroed}, ptr::null_mut};
 use windows_sys::Win32::{
     Security::Cryptography::{BCRYPT_USE_SYSTEM_PREFERRED_RNG, BCryptGenRandom},
     System::Threading::*,
@@ -33,9 +33,10 @@ pub fn command(operation: Operation, args: &[String]) -> Result<CommandOutput> {
     let target = if let Some(created) = created {
         ProcessIdentity { pid, created }
     } else {
-        let process =
-            Handle::new(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) })?;
-        identity(process.0)?
+        // INSPECT is the bootstrap operation: the LocalSystem broker resolves
+        // the exact FILETIME while holding the target handle. Mutations still
+        // require the exact identity returned by a prior inspect.
+        ProcessIdentity { pid, created: 0 }
     };
     // The portable GUI stays unelevated and need not live in Program Files.
     // Launch only our ACL-protected, fixed-purpose client entrypoint, with the
@@ -97,13 +98,14 @@ pub fn command(operation: Operation, args: &[String]) -> Result<CommandOutput> {
     response.validate(&request)?;
     match response.outcome {
         Outcome::Inspected {
+            identity,
             image,
             critical,
             protection,
             session,
         } => Ok(CommandOutput::ok(format!(
             "PID: {}\nStart time (FILETIME): {}\nImage: {}\nSession: {}\nCritical: {}\nProtection: {}\n",
-            target.pid, target.created, image, session, critical, protection
+            identity.pid, identity.created, image, session, critical, protection
         ))),
         Outcome::Completed => Ok(CommandOutput::ok(format!(
             "{:?} completed for PID {} / {}\n",
@@ -155,10 +157,13 @@ pub(super) fn perform(request: &Request, client: &security::Client) -> Result<Ou
         };
     // This handle is never reopened by PID after identity validation.
     let process = Handle::new(unsafe { OpenProcess(rights, 0, request.target.pid) })?;
-    ensure!(
-        identity(process.0)? == request.target,
-        "target PID was reused or creation time differs"
-    );
+    let actual_identity = identity(process.0)?;
+    if request.target.created != 0 {
+        ensure!(
+            actual_identity == request.target,
+            "target PID was reused or creation time differs"
+        );
+    }
     ensure!(
         unsafe { WaitForSingleObject(process.0, 0) } == 258,
         "target already exited"
@@ -189,6 +194,7 @@ pub(super) fn perform(request: &Request, client: &security::Client) -> Result<Ou
     let image = security::image_path(process.0)?;
     if !mutation {
         return Ok(Outcome::Inspected {
+            identity: actual_identity,
             image,
             critical: critical != 0,
             protection: protection.ProtectionLevel,
