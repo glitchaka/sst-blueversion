@@ -24,15 +24,20 @@ use crate::{
         ports::{TerminalFactory, TerminalKey},
     },
     support::options,
+    application::security::SecurityTriageService,
 };
 
 pub struct SystemService {
     terminal: Arc<dyn TerminalFactory>,
+    security: Arc<SecurityTriageService>,
 }
 
 impl SystemService {
-    pub fn new(terminal: Arc<dyn TerminalFactory>) -> Self {
-        Self { terminal }
+    pub fn new(
+        terminal: Arc<dyn TerminalFactory>,
+        security: Arc<SecurityTriageService>,
+    ) -> Self {
+        Self { terminal, security }
     }
 
     pub fn execute(&self, args: &[String]) -> anyhow::Result<CommandOutput> {
@@ -50,7 +55,24 @@ impl SystemService {
             "kill" => kill_process(&args[1..]),
             "fetch" | "neofetch" | "fastfetch" => fetch(&args[1..]),
             "uptime" => uptime(),
+            "services" if args[1..].iter().any(|arg| arg == "--impact") => {
+                self.security.services_impact()
+            }
             "services" => services(&args[1..]),
+            "startup" => self.security.startup(),
+            "inspect" => self.security.inspect(&args[1..]),
+            "why" => self.security.why(&args[1..]),
+            "diff" => self.security.diff(&args[1..]),
+            "suspicious" => self.security.suspicious(),
+            "persistence" => self.security.persistence(),
+            "suspend" => Ok(CommandOutput::error(
+                "sys suspend: el esqueleto reservó el comando; la implementación privilegiada llegará con el broker",
+                3,
+            )),
+            "resume" => Ok(CommandOutput::error(
+                "sys resume: el esqueleto reservó el comando; la implementación privilegiada llegará con el broker",
+                3,
+            )),
             "users" => users(&args[1..]),
             "drivers" => drivers(&args[1..]),
             "events" => events(&args[1..]),
