@@ -13,7 +13,12 @@ use windows_sys::Win32::{
     Foundation::*,
     Security::{Authorization::*, *},
     Storage::FileSystem::FILE_SHARE_READ,
-    System::{Pipes::*, Services::*, Threading::*},
+    System::{
+        Pipes::*,
+        Services::*,
+        SystemServices::{SE_GROUP_ENABLED, SE_GROUP_USE_FOR_DENY_ONLY},
+        Threading::*,
+    },
 };
 
 pub(super) fn wide(value: &str) -> Vec<u16> {
