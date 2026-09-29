@@ -34,6 +34,7 @@ pub enum Family {
     ExternalIntel,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObservationState {
     Known,
@@ -92,6 +93,7 @@ pub struct Assessment {
 }
 
 /// Compare only verified digests supplied by enrichment, never path identity.
+#[allow(dead_code)]
 pub fn compare_hashes(previous: &str, current: &str) -> Evidence {
     let valid = |hash: &str| hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit());
     if !valid(previous) || !valid(current) {
@@ -176,6 +178,7 @@ impl ParentProfile {
 
 /// Collectors must verify the exact digest and the source's validity before
 /// supplying ExactBlockedHash. Filename resemblance never raises priority.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub enum Reputation {
     ExactBlockedHash,
@@ -183,6 +186,7 @@ pub enum Reputation {
     NoMatch,
 }
 
+#[allow(dead_code)]
 impl Reputation {
     pub fn evidence(self, source: &str) -> Evidence {
         let (strength, reason) = match self {
