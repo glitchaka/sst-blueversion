@@ -164,7 +164,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(DiagnosticsBuiltin::new(diagnostics_service)))?;
     registry.register(Arc::new(SystemBuiltin::new(system_service)))?;
     registry.register(Arc::new(TriageBuiltin::new(Arc::clone(&security_service))))?;
-    registry.register(Arc::new(IntelBuiltin::new(security_service))?;
+    registry.register(Arc::new(IntelBuiltin::new(security_service)))?;
     registry.register(Arc::new(SudoBuiltin))?;
 
     for &(name, help) in UNIX_COMMANDS {
