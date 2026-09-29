@@ -781,6 +781,57 @@ fuente lenta / bloqueada
 
 Nunca debe existir una operación individual capaz de bloquear indefinidamente el arranque.
 
+## Cola amarilla de análisis diferido
+
+Si un proceso, archivo, firma, conexión o fuente de datos requiere más tiempo del permitido por el preload, SST **no debe quedarse esperando**.
+
+Debe marcar ese elemento como pendiente y continuar inmediatamente con el siguiente.
+
+Estado visual sugerido:
+
+```text
+YELLOW / PENDING
+```
+
+Esto no significa que el elemento sea sospechoso. Significa únicamente:
+
+```text
+SST encontró algo que merece completar,
+pero su análisis excede el presupuesto del preload.
+```
+
+Ejemplo:
+
+```text
+YELLOW  PID 8124  helper.exe
+        signature: pending
+        hash: pending
+        modules: deferred
+        reason: preload time budget exceeded
+```
+
+Reglas:
+
+- cada operación del preload debe tener timeout propio;
+- al excederlo, el elemento pasa a la cola amarilla;
+- SST continúa con el siguiente proceso sin bloquear;
+- la cola amarilla se procesa después en background;
+- los elementos amarillos no deben elevarse automáticamente a `ATTENTION`, `SUSPICIOUS` o `HIGH`;
+- si el enriquecimiento posterior encuentra señales reales, recién entonces cambia su nivel;
+- si el análisis termina sin anomalías, el elemento vuelve silenciosamente a estado normal;
+- el operador puede inspeccionar manualmente cualquier elemento pendiente sin esperar al background.
+
+La cola debe priorizar:
+
+1. procesos nuevos;
+2. procesos con parent/child inusual;
+3. ejecutables en rutas escribibles por usuario;
+4. procesos con conexiones salientes activas;
+5. elementos que ya tenían señales previas;
+6. procesos conocidos y estables al final.
+
+El objetivo es que SST prefiera **cobertura amplia y rápida** antes que atascarse intentando resolver exhaustivamente un único elemento.
+
 ## Caché y trabajo incremental
 
 Para reducir costo:
