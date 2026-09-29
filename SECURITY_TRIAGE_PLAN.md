@@ -120,6 +120,154 @@ Esto permite que SST sea útil incluso cuando la causa termina siendo completame
 
 ---
 
+## Experiencia de arranque y presentación del preload
+
+Al ejecutar SST, la terminal debe abrirse inmediatamente y mostrar el avance del preload de forma breve y legible mientras revisa el estado inicial del equipo.
+
+No se debe usar un porcentaje artificial de progreso. Cada etapa puede tardar tiempos distintos y algunas pueden diferirse al background. En su lugar, SST debe mostrar **qué está revisando y en qué estado quedó**.
+
+Estados visuales sugeridos:
+
+```text
+[·] revisando
+[✓] completado
+[~] diferido / pendiente
+[!] requiere atención
+[x] no disponible
+```
+
+Ejemplo durante el arranque:
+
+```text
+SST preload
+
+[✓] procesos            173 encontrados
+[✓] árbol PID/PPID      construido
+[✓] CPU / RAM / I/O     revisado
+[✓] conexiones          42 activas
+[✓] historial local     168 conocidos · 5 nuevos
+[~] firmas / hashes     3 diferidos
+[✓] persistencia rápida 7 entradas revisadas
+[✓] inteligencia local  caché disponible
+```
+
+Las líneas deben actualizarse sin inundar el scroll de la terminal. El objetivo es que el operador vea qué está ocurriendo, no un log verboso.
+
+Cuando termina la fase rápida, SST debe mostrar exactamente:
+
+> **«Hola, ¿te gustaría destruir algo de maldad hoy?»**
+
+La frase es deliberadamente una referencia a Nightblood y funciona como saludo de SST después del preload.
+
+### Arranque sin anomalías relevantes
+
+Si no hay nada que merezca atención, SST no debe llenar la pantalla con detalles innecesarios ni declarar que el sistema está "seguro".
+
+Debe mostrar sólo el resumen de lo revisado:
+
+```text
+«Hola, ¿te gustaría destruir algo de maldad hoy?»
+
+Preload completado. No encontré nada particularmente llamativo.
+
+Revisado:
+  procesos             173
+  conexiones activas    42
+  procesos nuevos        5
+  persistencias          7
+  elementos pendientes   3
+
+3 elementos quedaron en revisión diferida.
+```
+
+Después aparece el prompt normal de SST.
+
+Los elementos `PENDING/YELLOW` no deben mostrarse como sospechosos sólo porque su análisis siga pendiente.
+
+### Arranque con elementos que merecen atención
+
+Si el preload encuentra anomalías, después del saludo debe mostrar **sólo los procesos relevantes**, no toda la lista de procesos del sistema.
+
+Ejemplo:
+
+```text
+«Hola, ¿te gustaría destruir algo de maldad hoy?»
+
+Encontré 2 procesos que merecen una mirada:
+
+ATTENTION  powershell.exe [7712]
+           parent: msedge.exe
+           encoded command
+           first seen in this context
+
+SUSPICIOUS helper.exe [8124]
+           disk I/O: high
+           first seen today
+           unusual parent
+           outbound connection
+
+Pendientes de análisis: 3
+
+Usa:
+  sys why 7712
+  sys inspect 7712
+```
+
+La salida debe priorizar claridad:
+
+- mostrar proceso, PID y nivel de atención;
+- mostrar entre 2 y 4 razones principales;
+- no imprimir toda la evidencia en el arranque;
+- no mostrar procesos normales;
+- no bloquear la shell esperando análisis diferidos;
+- no tomar acciones automáticas.
+
+### Procesos normales bajo carga
+
+Un proceso legítimo que explique la lentitud pero no tenga señales de seguridad puede mostrarse como contexto, separado de las alertas:
+
+```text
+Carga del sistema:
+  MsMpEng.exe        disk I/O high
+  SearchIndexer.exe  disk I/O medium
+
+No notable security anomalies.
+```
+
+Esto permite distinguir entre:
+
+```text
+"el equipo está lento"
+```
+
+y:
+
+```text
+"el equipo está lento y además hay algo raro"
+```
+
+sin convertir el preload en un detector agresivo.
+
+### Regla de rendimiento
+
+La presentación del preload no cambia el presupuesto definido para el FAST PRELOAD.
+
+Si una etapa excede su tiempo:
+
+```text
+[~] firmas / hashes     diferido
+```
+
+y SST continúa con la siguiente.
+
+La interfaz debe privilegiar siempre:
+
+```text
+mostrar estado -> entregar prompt -> seguir enriqueciendo en background
+```
+
+---
+
 ## Alcance y límites del módulo
 
 Este módulo forma parte de SST y debe respetar el alcance original de la herramienta: **shell administrativa local con capacidad de observación, diagnóstico y acción manual**.
