@@ -122,3 +122,61 @@ impl Response {
         Ok(())
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(operation: Operation, created: u64) -> Request {
+        Request {
+            version: VERSION,
+            nonce: [7; 16],
+            client: ProcessIdentity {
+                pid: 100,
+                created: 123,
+            },
+            session: 1,
+            operation,
+            target: ProcessIdentity {
+                pid: 200,
+                created,
+            },
+        }
+    }
+
+    #[test]
+    fn inspect_may_bootstrap_without_creation_time() {
+        assert!(request(Operation::Inspect, 0).validate().is_ok());
+    }
+
+    #[test]
+    fn mutations_require_exact_creation_time() {
+        for operation in [Operation::Suspend, Operation::Resume, Operation::Kill] {
+            assert!(request(operation, 0).validate().is_err());
+            assert!(request(operation, 456).validate().is_ok());
+        }
+    }
+
+    #[test]
+    fn inspect_response_returns_exact_identity() {
+        let request = request(Operation::Inspect, 0);
+        let response = Response {
+            version: VERSION,
+            nonce: request.nonce,
+            operation: Operation::Inspect,
+            target: request.target,
+            outcome: Outcome::Inspected {
+                identity: ProcessIdentity {
+                    pid: request.target.pid,
+                    created: 456,
+                },
+                image: r"C:\Windows\System32\notepad.exe".into(),
+                critical: false,
+                protection: 0,
+                session: 1,
+            },
+        };
+        assert!(response.validate(&request).is_ok());
+    }
+}
