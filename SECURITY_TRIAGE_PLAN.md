@@ -824,7 +824,419 @@ signed host process
 
 ---
 
-# 9. Detección específica de cadenas ClickFix
+# 9. Motor de correlación y priorización
+
+El **motor de correlación** es la pieza central del triage de SST.
+
+Su función no es decidir si un proceso es malware. Su función es decidir:
+
+~~~text
+¿Hay algo aquí que merezca que el operador lo mire?
+¿Por qué?
+¿Con qué prioridad?
+~~~
+
+Debe combinar señales actuales, historial local e inteligencia externa sin convertir una sola señal débil en una alerta.
+
+## Entradas
+
+El motor puede recibir, según disponibilidad y costo:
+
+~~~text
+Proceso actual
+  PID + creation/start time
+  nombre
+  path
+  command line
+  parent / children
+  CPU
+  RAM
+  I/O
+  conexiones
+  inicio automático
+  servicio asociado
+  persistencia
+
+Identidad
+  SHA-256
+  firma Authenticode
+  publisher
+
+Historial local
+  first_seen
+  last_seen
+  execution_count
+  parents habituales
+  children habituales
+  rutas habituales
+  comportamiento de red habitual
+  consumo habitual
+  decisiones previas del operador
+  estado de análisis previo
+
+Inteligencia
+  listas locales
+  caché externa
+  reputación por hash
+  IOC
+  contexto LOLBin / LOLScript
+~~~
+
+No todas las entradas estarán disponibles en el FAST PRELOAD.
+
+El motor debe funcionar con información parcial y actualizar su conclusión cuando llegue información adicional desde la cola de background.
+
+## Salidas
+
+El motor debe producir una clasificación operacional:
+
+~~~text
+NORMAL
+PERFORMANCE
+ATTENTION
+SUSPICIOUS
+ALERT
+~~~
+
+### NORMAL
+
+No se detectaron diferencias o señales relevantes con la información disponible.
+
+No significa "seguro".
+
+### PERFORMANCE
+
+Existe consumo relevante de recursos que puede explicar lentitud, pero no hay señales de seguridad suficientes.
+
+Ejemplo:
+
+~~~text
+PERFORMANCE
+SearchIndexer.exe
+disk I/O high
+known process
+expected parent
+no unusual behavior detected
+~~~
+
+### ATTENTION
+
+Existe una anomalía concreta que merece revisión, pero no hay evidencia suficiente para tratarla como incidente.
+
+### SUSPICIOUS
+
+Varias señales independientes convergen o existe una diferencia importante respecto del comportamiento histórico.
+
+### ALERT
+
+Existe evidencia fuerte o una combinación de señales de alta relevancia que justifica profundizar inmediatamente.
+
+ALERT sigue sin significar "malware confirmado".
+
+## Reglas de precedencia
+
+El motor debe respetar estas reglas:
+
+~~~text
+historial conocido        != seguro
+firma válida              != seguro
+sin reputación externa    != seguro
+sin firma                  != sospechoso por sí solo
+alto consumo               != sospechoso por sí solo
+ruta AppData               != sospechoso por sí solo
+PowerShell                 != sospechoso por sí solo
+PENDING                    != sospechoso
+ACCESS_DENIED              != ausencia de evidencia
+~~~
+
+Y:
+
+~~~text
+señal fuerte actual
+    > confianza histórica
+
+varias señales independientes
+    > una señal aislada
+
+coincidencia exacta de SHA-256
+    > coincidencia por nombre
+
+cambio de comportamiento
+    > mera antigüedad del proceso
+
+evidencia local observable
+    > inferencia por reputación genérica
+~~~
+
+## Independencia de señales
+
+No se debe aumentar severidad simplemente por contar muchas señales que describen la misma cosa.
+
+Ejemplo incorrecto:
+
+~~~text
+unsigned
+unknown publisher
+no trusted certificate
+~~~
+
+Estas tres pueden ser esencialmente la misma observación.
+
+En cambio:
+
+~~~text
+unsigned
++ parent inusual
++ nueva persistencia
++ conexión saliente
+~~~
+
+sí representan señales independientes.
+
+El motor debe agrupar señales por familias:
+
+~~~text
+IDENTITY
+LINEAGE
+EXECUTION
+PERSISTENCE
+NETWORK
+RESOURCE_USAGE
+HISTORY
+EXTERNAL_INTEL
+~~~
+
+La severidad debe crecer principalmente cuando coinciden familias distintas.
+
+## Confianza histórica
+
+El historial local sirve para reducir ruido, no para blindar procesos.
+
+Ejemplo:
+
+~~~text
+helper.exe
+same hash
+184 executions
+usual parent: app.exe
+usual network: none
+~~~
+
+Si hoy aparece:
+
+~~~text
+parent: powershell.exe
+network: outbound
+persistence: new
+~~~
+
+el resultado debe ser:
+
+~~~text
+ATTENTION o SUSPICIOUS
+
+Reason:
+historically known executable,
+but current behavior differs from baseline.
+~~~
+
+Un proceso KNOWN_STABLE puede volver a revisión inmediatamente si cambia una señal importante.
+
+## Información incompleta
+
+Cada observación debe poder estar en estados como:
+
+~~~text
+KNOWN
+UNKNOWN
+PENDING
+ACCESS_DENIED
+UNAVAILABLE
+~~~
+
+El motor nunca debe interpretar UNKNOWN como FALSE.
+
+Ejemplo:
+
+~~~text
+signature: ACCESS_DENIED
+~~~
+
+no equivale a:
+
+~~~text
+signature: invalid
+~~~
+
+## Inteligencia externa
+
+La inteligencia externa modifica prioridad, pero no reemplaza el análisis local.
+
+Ejemplos:
+
+~~~text
+LOCAL:
+  no anomaly
+
+EXTERNAL:
+  exact SHA-256 match in blocklist
+
+RESULT:
+  ALERT
+  reason: exact external hash match
+~~~
+
+~~~text
+LOCAL:
+  unusual parent + new outbound connection
+
+EXTERNAL:
+  no match
+
+RESULT:
+  ATTENTION
+  local anomaly remains
+~~~
+
+~~~text
+LOCAL:
+  normal behavior
+
+EXTERNAL:
+  filename resembles known malware name
+
+RESULT:
+  no escalation by name alone
+~~~
+
+## Rendimiento y seguridad deben permanecer separados
+
+El motor no debe convertir una causa de lentitud en una alerta de seguridad sólo por consumir recursos.
+
+Ejemplo:
+
+~~~text
+MsMpEng.exe
+disk I/O high
+signed
+known path
+expected behavior
+~~~
+
+Resultado:
+
+~~~text
+PERFORMANCE
+~~~
+
+No ATTENTION.
+
+Pero:
+
+~~~text
+helper.exe
+disk I/O high
+first seen today
+parent: powershell.exe
+outbound connection
+~~~
+
+puede resultar ATTENTION o SUSPICIOUS porque el consumo está acompañado de señales independientes.
+
+## Explicabilidad
+
+Toda clasificación distinta de NORMAL debe poder explicarse sin mostrar un score opaco.
+
+El motor puede usar pesos internos para ordenar prioridades, pero la interfaz debe mostrar razones concretas.
+
+Ejemplo:
+
+~~~text
+SUSPICIOUS  helper.exe [8124]
+
+Why:
+  first seen today
+  parent differs from historical profile
+  outbound connection present
+  executable located in user-writable path
+~~~
+
+No mostrar un "Risk score: 87/100" como explicación principal.
+
+## Relación con sys why
+
+sys why PID debe ser la vista humana del resultado del motor de correlación.
+
+Debe responder:
+
+~~~text
+Why SST noticed PID 8124
+
+1. First appearance on this host
+2. Parent differs from historical profile
+3. Outbound connection is unusual for this executable
+4. Similar behavior was previously marked WATCH
+5. External reputation is pending
+~~~
+
+## Relación con sys diff
+
+sys diff PID debe mostrar únicamente las diferencias entre el comportamiento actual y el perfil histórico relevante.
+
+El motor puede usar ese diff como una de sus entradas.
+
+## Relación con el preload
+
+Durante el FAST PRELOAD:
+
+~~~text
+snapshot barato
+    -> historial local
+    -> reglas baratas
+    -> clasificación inicial
+~~~
+
+Después:
+
+~~~text
+background enrichment
+    -> hash / firma
+    -> conexiones detalladas
+    -> persistencia
+    -> inteligencia externa
+    -> recalcular clasificación si cambia la evidencia
+~~~
+
+Una clasificación puede cambiar durante la sesión:
+
+~~~text
+NORMAL -> ATTENTION
+ATTENTION -> SUSPICIOUS
+SUSPICIOUS -> ALERT
+ATTENTION -> NORMAL
+~~~
+
+Toda transición relevante debe conservar la razón en el historial.
+
+## Regla central
+
+El motor debe optimizar para:
+
+~~~text
+detectar cambios relevantes
++ explicar por qué
++ minimizar falsos positivos
+~~~
+
+No para:
+
+~~~text
+marcar la mayor cantidad posible de cosas
+~~~
+
+---
+
+# 10. Detección específica de cadenas ClickFix
 
 SST debe reconocer como cadena de interés:
 
@@ -857,7 +1269,7 @@ No deben marcarse por existir, sino por **cómo fueron lanzados y qué hicieron 
 
 ---
 
-# 10. PowerShell
+# 11. PowerShell
 
 SST debe prestar atención a patrones como:
 
@@ -889,7 +1301,7 @@ Signals:
 
 ---
 
-# 11. Baseline local
+# 12. Baseline local
 
 SST debe aprender qué es normal **en ese equipo**, no en Internet.
 
@@ -928,7 +1340,7 @@ seen: 18492 times
 
 ---
 
-# 12. Base histórica local y memoria de comportamiento
+# 13. Base histórica local y memoria de comportamiento
 
 SST necesita una **base de datos local persistente** para no empezar de cero en cada ejecución y para poder comparar el comportamiento actual con lo observado anteriormente.
 
@@ -1386,7 +1798,7 @@ La base histórica nunca debe convertirse en un requisito para abrir la shell.
 
 ---
 
-# 13. UNKNOWN no es SUSPICIOUS
+# 14. UNKNOWN no es SUSPICIOUS
 
 SST debe distinguir explícitamente:
 
@@ -1404,7 +1816,7 @@ Un binario recién instalado puede ser desconocido sólo porque SST nunca lo hab
 
 ---
 
-# 14. Hashes
+# 15. Hashes
 
 Todo ejecutable inspeccionado debe tener SHA-256.
 
@@ -1425,7 +1837,7 @@ FIRST SEEN TODAY
 
 ---
 
-# 15. Firma Authenticode
+# 16. Firma Authenticode
 
 Mostrar al menos:
 
@@ -1445,7 +1857,7 @@ Una firma válida reduce incertidumbre, pero **no anula otras señales**.
 
 ---
 
-# 16. DLLs cargadas
+# 17. DLLs cargadas
 
 Comando:
 
@@ -1465,7 +1877,7 @@ Especialmente útil para detectar DLL sideloading.
 
 ---
 
-# 17. Red
+# 18. Red
 
 Comandos sugeridos:
 
@@ -1496,7 +1908,7 @@ País, ASN y organización pueden mostrarse como **contexto**, nunca como veredi
 
 ---
 
-# 18. Persistencia
+# 19. Persistencia
 
 Comando:
 
@@ -1521,7 +1933,7 @@ Debe revisar al menos:
 
 ---
 
-# 19. Ejecutables recientes
+# 20. Ejecutables recientes
 
 Comando:
 
@@ -1538,7 +1950,7 @@ TIME        SIGNED PATH
 
 ---
 
-# 20. Línea temporal
+# 21. Línea temporal
 
 Comando:
 
@@ -1561,7 +1973,7 @@ Ejemplo:
 
 ---
 
-# 21. Preload de seguridad al arrancar SST
+# 22. Preload de seguridad al arrancar SST
 
 SST debe ejecutar un **preload ligero y no intrusivo** cada vez que arranca.
 
@@ -1853,7 +2265,7 @@ y esperar una decisión explícita del operador.
 
 ---
 
-# 22. Monitoreo en tiempo real
+# 23. Monitoreo en tiempo real
 
 SST debe poder mantener un sensor ligero de eventos:
 
@@ -1871,7 +2283,7 @@ Esto permite conservar el PPID real incluso si el proceso padre desaparece despu
 
 ---
 
-# 23. Husmear de forma progresiva
+# 24. Husmear de forma progresiva
 
 El análisis debe ser escalonado.
 
@@ -1923,7 +2335,7 @@ Sólo bajo demanda:
 
 ---
 
-# 24. Respuesta manual
+# 25. Respuesta manual
 
 El flujo recomendado debe ser:
 
@@ -1941,7 +2353,7 @@ SST no debe ejecutar automáticamente esta secuencia.
 
 ---
 
-# 25. Suspend / Resume
+# 26. Suspend / Resume
 
 Antes de matar, debe existir:
 
@@ -1954,7 +2366,7 @@ Suspender permite detener actividad potencialmente peligrosa sin perder el proce
 
 ---
 
-# 26. Dump / evidencia
+# 27. Dump / evidencia
 
 Comando:
 
@@ -1977,7 +2389,7 @@ evidence\
 
 ---
 
-# 27. Terminación
+# 28. Terminación
 
 Comandos:
 
@@ -1993,7 +2405,7 @@ Nunca debe asumir éxito sólo porque `TerminateProcess` devolvió éxito.
 
 ---
 
-# 28. Procesos que reaparecen
+# 29. Procesos que reaparecen
 
 Si un proceso reaparece, SST debe buscar:
 
@@ -2023,7 +2435,7 @@ No debe matar infinitamente a ciegas.
 
 ---
 
-# 29. Quarantine
+# 30. Quarantine
 
 Comando:
 
@@ -2048,7 +2460,7 @@ SHA256.bin.quarantined
 
 ---
 
-# 30. Procesos críticos y PPL
+# 31. Procesos críticos y PPL
 
 SST debe distinguir claramente:
 
@@ -2070,7 +2482,7 @@ SST no debe intentar burlar PPL.
 
 ---
 
-# 31. Broker LocalSystem
+# 32. Broker LocalSystem
 
 Servicio sugerido:
 
@@ -2105,7 +2517,7 @@ PERSISTENCE_DISABLE
 
 ---
 
-# 32. Seguridad del broker
+# 33. Seguridad del broker
 
 IPC sugerido:
 
@@ -2132,7 +2544,7 @@ RUN "cualquier comando como SYSTEM"
 
 ---
 
-# 33. Snapshot de incidente
+# 34. Snapshot de incidente
 
 Comando:
 
@@ -2165,7 +2577,7 @@ evidence\HOST_DATE\
 
 ---
 
-# 34. Compare
+# 35. Compare
 
 Comando:
 
@@ -2184,7 +2596,7 @@ Debe mostrar:
 
 ---
 
-# 35. Watch mode
+# 36. Watch mode
 
 Comando:
 
@@ -2203,7 +2615,7 @@ TIME      EVENT       PID     PROCESS
 
 ---
 
-# 36. PowerShell history
+# 37. PowerShell history
 
 Cuando exista, SST puede inspeccionar:
 
@@ -2215,7 +2627,7 @@ También debe correlacionar Script Block Logging si está habilitado.
 
 ---
 
-# 37. Portapapeles
+# 38. Portapapeles
 
 Puede existir una función bajo demanda:
 
@@ -2235,7 +2647,7 @@ No debe vigilar ni bloquear permanentemente el clipboard salvo que exista una po
 
 ---
 
-# 38. Allowlist
+# 39. Allowlist
 
 No confiar sólo por nombre.
 
@@ -2257,7 +2669,7 @@ Una firma válida no debe cancelar automáticamente otras señales.
 
 ---
 
-# 39. Denylist local
+# 40. Denylist local
 
 Comando conceptual:
 
@@ -2273,7 +2685,7 @@ KNOWN BLOCKED HASH
 
 ---
 
-# 40. Inteligencia externa y reputación
+# 41. Inteligencia externa y reputación
 
 SST debe poder consultar **fuentes públicas o privadas de inteligencia de seguridad** para enriquecer una observación local.
 
@@ -2426,7 +2838,7 @@ Ausencia en fuentes externas **no significa seguro**.
 
 
 
-# 41. Auditoría interna
+# 42. Auditoría interna
 
 Toda acción destructiva debe registrarse.
 
@@ -2451,7 +2863,7 @@ data/audit/
 
 ---
 
-# 42. Evidencia verificable
+# 43. Evidencia verificable
 
 Snapshots y evidencia deben incluir:
 
@@ -2464,7 +2876,7 @@ para detectar alteraciones posteriores.
 
 ---
 
-# 43. Interfaz visual
+# 44. Interfaz visual
 
 Modos sugeridos:
 
@@ -2509,7 +2921,7 @@ No llenar la interfaz de rojo. El propósito es priorizar atención, no generar 
 
 ---
 
-# 44. Triage rápido
+# 45. Triage rápido
 
 Comando:
 
@@ -2552,7 +2964,7 @@ Luego:
 
 ---
 
-# 45. Regla central de UX
+# 46. Regla central de UX
 
 SST debe decir:
 
@@ -2566,7 +2978,7 @@ La herramienta debe ayudar al operador a acotar el peligro sin sustituir su crit
 
 ---
 
-# 46. Primera fase de implementación
+# 47. Primera fase de implementación
 
 La primera versión funcional debe mantenerse dentro del scope original de SST:
 
