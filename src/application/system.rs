@@ -200,6 +200,10 @@ fn system_help() -> CommandOutput {
          Administración / auditoría de solo lectura:\n\
            sys services [NOMBRE]        servicios de Windows\n\
            sys users [USUARIO]          cuentas locales (o --domain)\n\
+           sys printers                 impresoras, servidor, puerto e IP\n\
+           sys printers --default       impresora predeterminada\n\
+           sys printer [NOMBRE]         detalle de una impresora\n\
+           sys printer NOMBRE --ip      servidor, puerto e IP\n\
            sys drivers                  controladores instalados\n\
            sys drivers --pnp            paquetes de controladores PnP\n\
            sys drivers --devices        dispositivos PnP conectados\n\
@@ -591,10 +595,11 @@ fn resolve_printer_ip(port: &str) -> Option<String> {
         b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_')
     }) {
         if let Ok(addresses) = dns_lookup::lookup_host(raw) {
+            let fallback = addresses.first().copied();
             if let Some(ip) = addresses
                 .into_iter()
                 .find(|ip| matches!(ip, IpAddr::V4(_)))
-                .or_else(|| dns_lookup::lookup_host(raw).ok()?.into_iter().next())
+                .or(fallback)
             {
                 return Some(ip.to_string());
             }
