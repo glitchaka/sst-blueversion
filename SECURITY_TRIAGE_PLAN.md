@@ -683,7 +683,7 @@ La interfaz debe usar pocos niveles:
 NORMAL
 ATTENTION
 SUSPICIOUS
-HIGH
+ALERT
 ```
 
 ## NORMAL
@@ -700,7 +700,7 @@ Algo poco habitual merece revisión.
 
 Varias señales independientes coinciden.
 
-## HIGH
+## ALERT
 
 Existe una cadena de comportamiento con fuerte interés de seguridad.
 
@@ -773,7 +773,7 @@ msedge.exe
 puede escalar a:
 
 ```text
-HIGH
+ALERT
 Cadena de comportamiento anómala.
 ```
 
@@ -1289,7 +1289,7 @@ SST debe prestar atención a patrones como:
 Ejemplo:
 
 ```text
-HIGH powershell.exe PID 7712
+ALERT powershell.exe PID 7712
 
 Signals:
   - parent: msedge.exe
@@ -2086,7 +2086,7 @@ Reglas:
 - al excederlo, el elemento pasa a la cola amarilla;
 - SST continúa con el siguiente proceso sin bloquear;
 - la cola amarilla se procesa después en background;
-- los elementos amarillos no deben elevarse automáticamente a `ATTENTION`, `SUSPICIOUS` o `HIGH`;
+- los elementos amarillos no deben elevarse automáticamente a `ATTENTION`, `SUSPICIOUS` o `ALERT`;
 - si el enriquecimiento posterior encuentra señales reales, recién entonces cambia su nivel;
 - si el análisis termina sin anomalías, el elemento vuelve silenciosamente a estado normal;
 - el operador puede inspeccionar manualmente cualquier elemento pendiente sin esperar al background.
@@ -2843,7 +2843,7 @@ EXTERNAL:
   hash newly reported malicious
 
 RESULT:
-  HIGH ATTENTION
+  ALERT ATTENTION
   "Previously stable executable now has an external malicious-hash match."
 ```
 
@@ -3019,7 +3019,7 @@ La primera versión funcional debe mantenerse dentro del scope original de SST:
 6. SHA-256 y Authenticode bajo demanda/background;
 7. SQLite histórico local;
 8. comparación contra comportamiento previo;
-9. señales explicables `ATTENTION / SUSPICIOUS / HIGH`;
+9. señales explicables `ATTENTION / SUSPICIOUS / ALERT`;
 10. reputación externa configurable y cacheada;
 11. `intel update / status / lookup`;
 12. suspensión y kill/kill-tree manual;
