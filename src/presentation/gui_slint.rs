@@ -45,12 +45,8 @@ use crate::adapters::{
 
 const INITIAL_COLS: u16 = 112;
 const INITIAL_ROWS: u16 = 31;
-const PAD: f32 = 14.0;
 const ISLAND_TOP: f32 = 6.0;
 const ISLAND_HEIGHT: f32 = 34.0;
-const CELL_WIDTH: f32 = 10.0;
-const CELL_HEIGHT: f32 = 23.0;
-const FONT_SIZE: f32 = 19.0;
 
 const FG: Rgb = Rgb(0xDF, 0xE8, 0xEF);
 const BG: Rgb = Rgb(0x11, 0x16, 0x29);
@@ -458,7 +454,7 @@ impl TerminalModel {
 
     fn set_appearance(&mut self, appearance: TerminalAppearance) {
         self.appearance = appearance;
-        // Force a geometry recalculation because content_top_gap can change.
+        // Force a geometry recalculation because density/spacing can change.
         self.width = 0;
         self.height = 0;
         self.glyphs.clear();
@@ -535,19 +531,20 @@ impl TerminalModel {
 
     fn geometry(&self) -> (f32, f32, f32, f32) {
         let scale = self.scale.max(0.5);
-        let left_pad = (PAD * scale).round();
+        let pad_x = (self.appearance.terminal_padding_x as f32 * scale).round();
+        let pad_y = (self.appearance.terminal_padding_y as f32 * scale).round();
         let top_pad = ((ISLAND_TOP
             + ISLAND_HEIGHT
             + self.appearance.content_top_gap as f32)
             * scale)
             .round()
-            .max(left_pad);
+            + pad_y;
 
         (
-            left_pad,
+            pad_x,
             top_pad,
-            (CELL_WIDTH * scale).round().max(1.0),
-            (CELL_HEIGHT * scale).round().max(1.0),
+            (self.appearance.cell_width as f32 * scale).round().max(1.0),
+            (self.appearance.cell_height as f32 * scale).round().max(1.0),
         )
     }
 
@@ -566,7 +563,8 @@ impl TerminalModel {
         let (left_pad, top_pad, cell_width, cell_height) = self.geometry();
         let cols = (((self.width as f32 - left_pad * 2.0) / cell_width).floor() as i32)
             .clamp(2, 500) as u16;
-        let rows = (((self.height as f32 - top_pad - left_pad) / cell_height).floor() as i32)
+        let bottom_pad = (self.appearance.terminal_padding_y as f32 * scale).round();
+        let rows = (((self.height as f32 - top_pad - bottom_pad) / cell_height).floor() as i32)
             .clamp(2, 200) as u16;
 
         if self.parser.screen().size() != (rows, cols) {
@@ -687,7 +685,7 @@ impl TerminalModel {
             let cursor_on =
                 self.cursor_on && screen.scrollback() == 0 && !screen.hide_cursor();
             let (left_pad, top_pad, cell_width, cell_height) = self.geometry();
-            let font_px = (FONT_SIZE * self.scale).round().max(8.0);
+            let font_px = (self.appearance.font_size as f32 * self.scale).round().max(8.0);
             let font_key = font_px.round() as u16;
 
             for row in 0..rows {
