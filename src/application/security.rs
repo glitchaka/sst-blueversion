@@ -266,10 +266,11 @@ impl SecurityTriageService {
             "SST TRIAGE\n------------------------------------------------------------\n",
         );
         out.push_str(&format!(
-            "Processes        {}\nPaths seen       {}\nNew paths        {}\nPending          {}\nFindings         {}\n\n",
+            "Processes        {}\nPaths seen       {}\nNew paths        {}\nHistory          {}\nPending          {}\nFindings         {}\n\n",
             report.process_count,
             report.known_count,
             report.new_count,
+            if report.history_available { "available" } else { "unavailable" },
             report.pending_count,
             report.findings.len(),
         ));
