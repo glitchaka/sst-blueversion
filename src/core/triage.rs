@@ -43,6 +43,18 @@ pub enum ObservationState {
     Unavailable,
 }
 
+impl ObservationState {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Known => "KNOWN",
+            Self::Unknown => "UNKNOWN",
+            Self::Pending => "PENDING",
+            Self::AccessDenied => "ACCESS_DENIED",
+            Self::Unavailable => "UNAVAILABLE",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Strength {
     Context,
@@ -115,25 +127,50 @@ impl ParentProfile {
         *self.executions.entry(parent).or_default() += 1;
     }
 
-    pub fn anomaly(&self, parent: &str) -> Option<String> {
+    pub fn evidence(&self, parent: &str) -> Evidence {
         let total: u64 = self.executions.values().sum();
-        if total == 0 {
-            return None;
+        if total < 3 {
+            return Evidence {
+                family: Family::Lineage,
+                state: ObservationState::Unavailable,
+                strength: Strength::Context,
+                reason: format!("parent baseline insufficient ({total} executions; minimum 3)"),
+            };
         }
         let count = self.executions.get(parent).copied().unwrap_or(0);
         let frequency = count as f64 / total as f64;
-        if count == 0 {
-            Some(format!(
-                "parent never observed in recent profile: {parent} (0/{total} executions)"
-            ))
+        let (strength, reason) = if count == 0 && total < 20 {
+            (
+                Strength::Weak,
+                format!("parent not observed in immature profile: {parent} (0/{total} executions)"),
+            )
+        } else if count == 0 {
+            (
+                Strength::Anomaly,
+                format!(
+                    "parent never observed in mature historical profile: {parent} (0/{total} executions)"
+                ),
+            )
         } else if total >= 20 && frequency < 0.05 {
-            Some(format!(
-                "rare historical parent: {parent} ({count}/{total} executions, {:.1}%)",
-                frequency * 100.0
-            ))
+            (
+                Strength::Anomaly,
+                format!(
+                    "rare historical parent: {parent} ({count}/{total} executions, {:.1}%)",
+                    frequency * 100.0
+                ),
+            )
         } else {
-            None
-        }
+            (
+                Strength::Context,
+                format!("observed historical parent: {parent} ({count}/{total} executions)"),
+            )
+        };
+        Evidence::known(Family::Lineage, strength, reason)
+    }
+
+    pub fn anomaly(&self, parent: &str) -> Option<String> {
+        let evidence = self.evidence(parent);
+        (evidence.strength >= Strength::Weak).then_some(evidence.reason)
     }
 }
 
@@ -174,7 +211,7 @@ pub fn correlate(evidence: &[Evidence]) -> Assessment {
     let mut performance = false;
     for item in evidence {
         if item.state != ObservationState::Known {
-            let limitation = format!("{}: {:?}", item.reason, item.state);
+            let limitation = format!("{}: {}", item.reason, item.state.label());
             if !limitations.contains(&limitation) {
                 limitations.push(limitation);
             }

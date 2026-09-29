@@ -22,10 +22,17 @@ La integración actual observa ruta, ejecución PowerShell y linaje. Compara el
 ejecutable padre con los padres observados históricamente, evitando comparar PIDs
 entre ejecuciones. La primera aparición por sí sola no es una anomalía.
 El perfil cuenta ejecuciones distintas por PID + start_time, excluye instancias
-actuales y utiliza observaciones de los últimos 90 días. Un padre nunca observado
-es una anomalía; uno observado con frecuencia inferior al 5% también lo es cuando
-hay al menos 20 ejecuciones. Estos umbrales son una política inicial explícita.
+actuales y utiliza observaciones de los últimos 90 días. Con 0–2 ejecuciones
+el perfil es insuficiente y no eleva por padre nuevo. Con 3–19, un padre nuevo
+aporta `Weak`. Desde 20, un padre nuevo o con frecuencia inferior al 5% aporta
+`Anomaly`. Estos umbrales son una política inicial explícita.
 `sys diff` muestra cambios de padre y de línea de comandos disponibles.
+
+`sys why` representa directamente el `Assessment`: clasificación, razones y
+limitaciones, incluso para `NORMAL` y `PERFORMANCE`. Los datos ausentes y el
+historial insuficiente entran al motor como observaciones incompletas. Los
+recolectores no conectados se declaran `UNAVAILABLE`, no `PENDING`. Los hallazgos
+conservan las limitaciones y `sys suspicious` también las muestra.
 
 `correlation_history` conserva clasificación y razones por PID, hora de inicio e
 identidad de ruta. Sólo agrega filas cuando cambia clasificación o explicación;

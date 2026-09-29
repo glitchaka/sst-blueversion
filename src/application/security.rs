@@ -14,7 +14,9 @@ use sysinfo::{Pid, System};
 
 use crate::{adapters::persistence::AppPaths, core::CommandOutput};
 
-use crate::core::triage::{Evidence, Family, ParentProfile, Strength, correlate};
+use crate::core::triage::{
+    Assessment, Evidence, Family, ObservationState, ParentProfile, Strength, correlate,
+};
 
 static SECURITY_SERVICE: OnceLock<Arc<SecurityTriageService>> = OnceLock::new();
 
@@ -39,6 +41,7 @@ pub struct Finding {
     pub name: String,
     pub level: AttentionLevel,
     pub reasons: Vec<String>,
+    pub limitations: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -292,32 +295,36 @@ impl SecurityTriageService {
 
         let known = self.known_executables().unwrap_or_default();
         let snapshots = collect_processes(&system, &known);
-        let findings = self.analyze_security(&snapshots);
-        let finding = findings
-            .into_iter()
-            .chain(analyze_performance(
-                &snapshots
-                    .iter()
-                    .filter(|p| p.pid == pid)
-                    .cloned()
-                    .collect::<Vec<_>>(),
-            ))
-            .find(|f| f.pid == pid);
-
+        let instances = snapshots
+            .iter()
+            .map(|p| (p.pid, p.start_time))
+            .collect::<Vec<_>>();
+        let history = self.historical_parents(&instances);
+        let snapshot = snapshots
+            .iter()
+            .find(|p| p.pid == pid)
+            .expect("process from same snapshot");
+        let result = assess_process(snapshot, &snapshots, history.as_ref().ok());
         let mut out = format!(
-            "Why SST noticed PID {pid}\n------------------------------------------------------------\n"
+            "{} {} [{pid}]\n\nWhy:\n",
+            result.classification.label(),
+            process.name().to_string_lossy()
         );
-        if let Some(finding) = finding {
-            out.push_str(&format!("{}\n", finding.level.label()));
-            for (index, reason) in finding.reasons.iter().enumerate() {
-                out.push_str(&format!("{}. {}\n", index + 1, reason));
+        if result.reasons.is_empty() {
+            out.push_str(
+                "  No relevant signals with available information; NORMAL does not mean safe.\n",
+            );
+        }
+        for reason in &result.reasons {
+            out.push_str(&format!("  {reason}\n"));
+        }
+        if !result.limitations.is_empty() {
+            out.push_str("\nIncomplete:\n");
+            for limitation in &result.limitations {
+                out.push_str(&format!("  {limitation}\n"));
             }
-        } else {
-            out.push_str("NORMAL: sin señales relevantes con la información disponible; no significa seguro.\n");
-            out.push_str(&format!("Process: {}\n", process.name().to_string_lossy()));
         }
 
-        out.push_str("Incomplete information: signature / SHA-256, connections, persistence and external reputation PENDING.\n");
         Ok(CommandOutput::ok(out))
     }
 
@@ -421,7 +428,10 @@ impl SecurityTriageService {
                     .and_then(|p| p.exe());
                 if let Some(parent) = parent {
                     let current = parent.display().to_string().to_ascii_lowercase();
-                    if let Some(reason) = parents.anomaly(&current) {
+                    let evidence = parents.evidence(&current);
+                    if evidence.state != ObservationState::Known {
+                        out.push_str(&format!("Incomplete: {}\n", evidence.reason));
+                    } else if let Some(reason) = parents.anomaly(&current) {
                         let mut expected = parents
                             .executions
                             .iter()
@@ -700,8 +710,8 @@ impl SecurityTriageService {
             .iter()
             .map(|p| (p.pid, p.start_time))
             .collect::<Vec<_>>();
-        let history = self.historical_parents(&instances).unwrap_or_default();
-        let findings = analyze_security(snapshots, &history);
+        let history = self.historical_parents(&instances);
+        let findings = analyze_security(snapshots, history.as_ref().ok());
         // Best effort: unavailable history never prevents local analysis.
         let paths = self.paths.clone();
         let observed = snapshots.to_vec();
@@ -833,95 +843,149 @@ fn collect_processes(system: &System, known_exes: &HashSet<String>) -> Vec<Proce
         .collect()
 }
 
-fn analyze_security(
+fn assess_process(
+    process: &ProcessSnapshot,
     snapshots: &[ProcessSnapshot],
-    history: &HashMap<String, ParentProfile>,
-) -> Vec<Finding> {
+    history: Option<&HashMap<String, ParentProfile>>,
+) -> Assessment {
     let names = snapshots
         .iter()
-        .map(|process| (process.pid, process.name.to_ascii_lowercase()))
+        .map(|p| (p.pid, p.name.to_ascii_lowercase()))
         .collect::<HashMap<_, _>>();
+    let name = process.name.to_ascii_lowercase();
+    let cmd = process.command_line.to_ascii_lowercase();
+    let path = process.exe.to_ascii_lowercase();
+    let parent = snapshots
+        .iter()
+        .find(|p| p.pid == process.ppid && p.start_time <= process.start_time)
+        .and_then(|p| names.get(&p.pid))
+        .map(String::as_str)
+        .unwrap_or("");
 
-    let mut findings = Vec::new();
-    for process in snapshots {
-        let name = process.name.to_ascii_lowercase();
-        let cmd = process.command_line.to_ascii_lowercase();
-        let path = process.exe.to_ascii_lowercase();
-        let parent = snapshots
-            .iter()
-            .find(|p| p.pid == process.ppid && p.start_time <= process.start_time)
-            .and_then(|p| names.get(&p.pid))
-            .map(String::as_str)
-            .unwrap_or("");
+    let powershell = matches!(name.as_str(), "powershell.exe" | "pwsh.exe");
+    let encoded = cmd.contains("-encodedcommand")
+        || cmd.contains(" -enc ")
+        || cmd.ends_with(" -enc")
+        || cmd.contains("frombase64string");
+    let suspicious_ps = powershell
+        && (encoded
+            || cmd.contains("invoke-expression")
+            || cmd.contains(" iex ")
+            || cmd.contains("downloadstring"));
 
-        let powershell = matches!(name.as_str(), "powershell.exe" | "pwsh.exe");
-        let encoded = cmd.contains("-encodedcommand")
-            || cmd.contains(" -enc ")
-            || cmd.ends_with(" -enc")
-            || cmd.contains("frombase64string");
-        let suspicious_ps = powershell
-            && (encoded
-                || cmd.contains("invoke-expression")
-                || cmd.contains(" iex ")
-                || cmd.contains("downloadstring"));
+    let script_parent = matches!(
+        parent,
+        "powershell.exe" | "pwsh.exe" | "cmd.exe" | "mshta.exe" | "wscript.exe" | "cscript.exe"
+    );
+    let user_writable =
+        path.contains("\\appdata\\") || path.contains("\\temp\\") || path.contains("\\downloads\\");
 
-        let script_parent = matches!(
-            parent,
-            "powershell.exe" | "pwsh.exe" | "cmd.exe" | "mshta.exe" | "wscript.exe" | "cscript.exe"
-        );
-        let user_writable = path.contains("\\appdata\\")
-            || path.contains("\\temp\\")
-            || path.contains("\\downloads\\");
-
-        let mut evidence = Vec::new();
-        if suspicious_ps {
-            evidence.push(Evidence::known(
-                Family::Execution,
-                Strength::Anomaly,
-                "PowerShell: execution pattern requires review",
-            ));
-        }
-        if user_writable {
-            evidence.push(Evidence::known(
-                Family::Identity,
-                Strength::Weak,
-                "executable in user-writable path",
-            ));
-        }
-        if script_parent {
-            evidence.push(Evidence::known(
-                Family::Lineage,
-                Strength::Weak,
-                "launched by command interpreter",
-            ));
-        }
-        if let Some(parents) = history.get(&path) {
-            if let Some(current_parent) = snapshots
-                .iter()
-                .find(|p| p.pid == process.ppid && p.start_time <= process.start_time)
-            {
-                if !current_parent.exe.is_empty() {
-                    if let Some(reason) = parents.anomaly(&current_parent.exe.to_ascii_lowercase())
-                    {
-                        evidence.push(Evidence::known(Family::Lineage, Strength::Anomaly, reason));
-                    }
-                }
-            }
-        }
-        let result = correlate(&evidence);
-        let level = result.classification;
-        if level < AttentionLevel::Attention {
-            continue;
-        }
-        let reasons = result.reasons;
-        findings.push(Finding {
-            pid: process.pid,
-            name: process.name.clone(),
-            level,
-            reasons,
+    let mut evidence = Vec::new();
+    if history.is_none() {
+        evidence.push(Evidence {
+            family: Family::History,
+            state: ObservationState::Unavailable,
+            strength: Strength::Context,
+            reason: "Historical database".into(),
         });
     }
+    if suspicious_ps {
+        evidence.push(Evidence::known(
+            Family::Execution,
+            Strength::Anomaly,
+            "PowerShell: execution pattern requires review",
+        ));
+    }
+    if user_writable {
+        evidence.push(Evidence::known(
+            Family::Identity,
+            Strength::Weak,
+            "executable in user-writable path",
+        ));
+    }
+    if script_parent {
+        evidence.push(Evidence::known(
+            Family::Lineage,
+            Strength::Weak,
+            "launched by command interpreter",
+        ));
+    }
+    if let Some(current_parent) = snapshots
+        .iter()
+        .find(|p| p.pid == process.ppid && p.start_time <= process.start_time && !p.exe.is_empty())
+    {
+        let profile = history
+            .and_then(|h| h.get(&path))
+            .cloned()
+            .unwrap_or_default();
+        evidence.push(profile.evidence(&current_parent.exe.to_ascii_lowercase()));
+    } else {
+        evidence.push(Evidence {
+            family: Family::Lineage,
+            state: ObservationState::Unknown,
+            strength: Strength::Context,
+            reason: "Parent identity".into(),
+        });
+    }
+    for (family, label) in [
+        (Family::Network, "Network"),
+        (Family::Identity, "Authenticode"),
+        (Family::Identity, "SHA-256"),
+        (Family::Persistence, "Persistence"),
+        (Family::ExternalIntel, "ExternalIntel"),
+    ] {
+        evidence.push(Evidence {
+            family,
+            state: ObservationState::Unavailable,
+            strength: Strength::Context,
+            reason: format!("{label} (collector not connected)"),
+        });
+    }
+    if process.exe.is_empty() {
+        evidence.push(Evidence {
+            family: Family::Identity,
+            state: ObservationState::Unknown,
+            strength: Strength::Context,
+            reason: "Executable path".into(),
+        });
+    }
+    if process.command_line.is_empty() {
+        evidence.push(Evidence {
+            family: Family::Execution,
+            state: ObservationState::Unknown,
+            strength: Strength::Context,
+            reason: "Command line".into(),
+        });
+    }
+    for finding in analyze_performance(std::slice::from_ref(process)) {
+        for reason in finding.reasons {
+            evidence.push(Evidence::known(
+                Family::ResourceUsage,
+                Strength::Anomaly,
+                reason,
+            ));
+        }
+    }
+    correlate(&evidence)
+}
 
+fn analyze_security(
+    snapshots: &[ProcessSnapshot],
+    history: Option<&HashMap<String, ParentProfile>>,
+) -> Vec<Finding> {
+    let mut findings = snapshots
+        .iter()
+        .filter_map(|process| {
+            let result = assess_process(process, snapshots, history);
+            (result.classification >= AttentionLevel::Attention).then(|| Finding {
+                pid: process.pid,
+                name: process.name.clone(),
+                level: result.classification,
+                reasons: result.reasons,
+                limitations: result.limitations,
+            })
+        })
+        .collect::<Vec<_>>();
     findings.sort_by(|a, b| b.level.cmp(&a.level).then_with(|| a.pid.cmp(&b.pid)));
     findings
 }
@@ -948,6 +1012,7 @@ fn analyze_performance(snapshots: &[ProcessSnapshot]) -> Vec<Finding> {
                 name: process.name.clone(),
                 level: AttentionLevel::Performance,
                 reasons,
+                limitations: Vec::new(),
             })
         })
         .collect::<Vec<_>>();
@@ -987,6 +1052,9 @@ fn append_findings_lf(out: &mut String, findings: &[Finding]) {
         ));
         for reason in finding.reasons.iter().take(4) {
             out.push_str(&format!("  - {reason}\n"));
+        }
+        for limitation in &finding.limitations {
+            out.push_str(&format!("  Incomplete: {limitation}\n"));
         }
         out.push('\n');
     }
@@ -1276,7 +1344,7 @@ mod correlation_tests {
                 "helper",
             ),
         ];
-        assert!(analyze_security(&rows, &HashMap::new()).is_empty());
+        assert!(analyze_security(&rows, Some(&HashMap::new())).is_empty());
     }
     #[test]
     fn known_executable_is_not_immune_to_current_execution() {
@@ -1293,7 +1361,7 @@ mod correlation_tests {
             child,
         ];
         assert_eq!(
-            analyze_security(&rows, &HashMap::new())[0].level,
+            analyze_security(&rows, Some(&HashMap::new()))[0].level,
             AttentionLevel::Suspicious
         );
     }
@@ -1307,18 +1375,18 @@ mod correlation_tests {
         history.insert(
             "helper.exe".into(),
             ParentProfile {
-                executions: std::collections::BTreeMap::from([("app.exe".into(), 1)]),
+                executions: std::collections::BTreeMap::from([("app.exe".into(), 20)]),
             },
         );
-        assert!(analyze_security(&rows, &history).is_empty());
+        assert!(analyze_security(&rows, Some(&history)).is_empty());
         history.insert(
             "helper.exe".into(),
             ParentProfile {
-                executions: std::collections::BTreeMap::from([("other.exe".into(), 1)]),
+                executions: std::collections::BTreeMap::from([("other.exe".into(), 20)]),
             },
         );
         assert_eq!(
-            analyze_security(&rows, &history)[0].level,
+            analyze_security(&rows, Some(&history))[0].level,
             AttentionLevel::Attention
         );
     }
