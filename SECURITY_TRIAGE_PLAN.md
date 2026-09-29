@@ -896,7 +896,7 @@ SST debe aprender qué es normal **en ese equipo**, no en Internet.
 Base sugerida:
 
 ```text
-data/baseline.db
+data/security.db
 ```
 
 Datos:
@@ -2301,7 +2301,7 @@ Las fuentes no deben quedar hardcodeadas en Rust.
 SST debe cargar un archivo editable:
 
 ```text
-data/security-sources.toml
+data/security.sources
 ```
 
 Este archivo es **registro de fuentes de inteligencia**, no configuración general de SST; `config/sstrc` sigue siendo el único archivo principal de configuración de la aplicación.
