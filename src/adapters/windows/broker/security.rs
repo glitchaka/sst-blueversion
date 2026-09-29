@@ -242,8 +242,8 @@ pub(super) fn token_identity(token: HANDLE) -> Result<TokenIdentity> {
     let mut administrator = false;
     let mut interactive = false;
     for group in unsafe { std::slice::from_raw_parts(groups_header.Groups.as_ptr(), count) } {
-        if group.Attributes & SE_GROUP_ENABLED == 0
-            || group.Attributes & SE_GROUP_USE_FOR_DENY_ONLY != 0
+        if group.Attributes & (SE_GROUP_ENABLED as u32) == 0
+            || group.Attributes & (SE_GROUP_USE_FOR_DENY_ONLY as u32) != 0
         {
             continue;
         }
