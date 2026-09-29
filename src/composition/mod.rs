@@ -32,6 +32,7 @@ use crate::{
             NetworkService,
             NetworkTrafficService,
         },
+        security::shared_security_service,
         switch::SwitchService,
         system::SystemService,
         unix::UnixService,
@@ -49,6 +50,8 @@ use crate::{
         SwitchBuiltin,
         SudoBuiltin,
         SystemBuiltin,
+        TriageBuiltin,
+        IntelBuiltin,
         UNIX_COMMANDS,
         UnixBuiltin,
         WakeOnLanBuiltin,
@@ -108,7 +111,11 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
         Arc::clone(&presence),
     ));
     let domain_service = Arc::new(DomainService::new(domain_probe));
-    let system_service = Arc::new(SystemService::new(Arc::clone(&terminal)));
+    let security_service = shared_security_service(paths.clone());
+    let system_service = Arc::new(SystemService::new(
+        Arc::clone(&terminal),
+        Arc::clone(&security_service),
+    ));
     let unix_service = Arc::new(UnixService);
 
     let network_diagnostics =
@@ -156,6 +163,8 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(WakeOnLanBuiltin::new(wol_service)))?;
     registry.register(Arc::new(DiagnosticsBuiltin::new(diagnostics_service)))?;
     registry.register(Arc::new(SystemBuiltin::new(system_service)))?;
+    registry.register(Arc::new(TriageBuiltin::new(Arc::clone(&security_service))))?;
+    registry.register(Arc::new(IntelBuiltin::new(security_service))?;
     registry.register(Arc::new(SudoBuiltin))?;
 
     for &(name, help) in UNIX_COMMANDS {
