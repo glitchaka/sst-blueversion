@@ -141,16 +141,46 @@ impl ParentProfile {
         }
         let count = self.executions.get(parent).copied().unwrap_or(0);
         let frequency = count as f64 / total as f64;
+        let distinct_parents = self.executions.len();
+        let dominant_share = self
+            .executions
+            .values()
+            .copied()
+            .max()
+            .map(|count| count as f64 / total as f64)
+            .unwrap_or(0.0);
+        // Some legitimate host runtimes (WebView2 is the common case) are
+        // intentionally spawned by many unrelated applications. For a mature
+        // profile with broad parent diversity, a new/rare parent is weak
+        // novelty, not a lineage anomaly by itself.
+        let diverse_parent_profile =
+            total >= 20 && distinct_parents >= 4 && dominant_share < 0.80;
+
         let (strength, reason) = if count == 0 && total < 20 {
             (
                 Strength::Weak,
                 format!("parent not observed in immature profile: {parent} (0/{total} executions)"),
+            )
+        } else if count == 0 && diverse_parent_profile {
+            (
+                Strength::Weak,
+                format!(
+                    "new parent in diverse historical profile: {parent} (0/{total} executions across {distinct_parents} parents)"
+                ),
             )
         } else if count == 0 {
             (
                 Strength::Anomaly,
                 format!(
                     "parent never observed in mature historical profile: {parent} (0/{total} executions)"
+                ),
+            )
+        } else if total >= 20 && frequency < 0.05 && diverse_parent_profile {
+            (
+                Strength::Weak,
+                format!(
+                    "rare parent in diverse historical profile: {parent} ({count}/{total} executions, {:.1}%)",
+                    frequency * 100.0
                 ),
             )
         } else if total >= 20 && frequency < 0.05 {
@@ -274,6 +304,28 @@ mod tests {
             Classification::Performance
         );
     }
+    #[test]
+    fn diverse_parent_profiles_do_not_raise_attention_by_lineage_alone() {
+        let mut profile = ParentProfile::default();
+        for index in 0..27 {
+            profile.observe(format!("host{}.exe", index % 6));
+        }
+        let evidence = profile.evidence("brand-new-host.exe");
+        assert_eq!(evidence.strength, Strength::Weak);
+        assert_eq!(correlate(&[evidence]).classification, Classification::Normal);
+    }
+
+    #[test]
+    fn stable_mature_parent_profiles_still_flag_new_parent() {
+        let mut profile = ParentProfile::default();
+        for _ in 0..27 {
+            profile.observe("stable-host.exe".into());
+        }
+        let evidence = profile.evidence("unexpected-host.exe");
+        assert_eq!(evidence.strength, Strength::Anomaly);
+        assert_eq!(correlate(&[evidence]).classification, Classification::Attention);
+    }
+
     #[test]
     fn independent_families_converge() {
         let mut items = vec![
