@@ -703,7 +703,186 @@ Ejemplo:
 
 ---
 
-# 20. Monitoreo en tiempo real
+# 20. Preload de seguridad al arrancar SST
+
+SST debe ejecutar un **preload ligero y no intrusivo** cada vez que arranca.
+
+La finalidad no es "escanear el equipo completo" ni tomar acciones automáticas. Su objetivo es evitar que SST empiece completamente a ciegas frente a procesos, conexiones o mecanismos de persistencia que ya estaban activos antes de abrir la herramienta.
+
+El preload debe responder rápidamente:
+
+```text
+¿Qué estaba vivo cuando SST arrancó?
+¿Qué estaba conectado?
+¿Qué apareció recientemente?
+¿Qué merece que el operador lo mire?
+```
+
+## Principio operativo
+
+El prompt y la interfaz deben estar disponibles cuanto antes.
+
+El preload debe dividirse en dos fases:
+
+```text
+ARRANQUE
+   |
+   +-> FAST PRELOAD       lectura breve y prioritaria
+   |      |
+   |      +-> prompt usable
+   |
+   +-> BACKGROUND ENRICH  enriquecimiento progresivo
+```
+
+La primera fase debe tener un presupuesto de tiempo pequeño y predecible. No debe calcular hashes de todos los ejecutables, verificar todas las firmas ni recorrer todo el Registro antes de entregar la shell.
+
+## FAST PRELOAD
+
+Debe capturar, como mínimo:
+
+- snapshot completo de procesos PID/PPID;
+- usuario/SID y sesión cuando estén disponibles;
+- ruta del ejecutable;
+- command line cuando pueda obtenerse de forma barata;
+- procesos iniciados recientemente;
+- conexiones TCP/UDP activas y PID asociado;
+- servicios activos;
+- tareas programadas de interés ya indexadas;
+- entradas principales de persistencia;
+- comparación inmediata con el baseline local;
+- procesos que SST nunca había observado;
+- relaciones padre/hijo especialmente relevantes;
+- nivel de protección de procesos cuando pueda consultarse sin elevar.
+
+El resultado se guarda como el **estado inicial de la sesión**.
+
+## Enumeración defensiva de procesos
+
+SST no debe depender únicamente de una lista visual o de una única fuente de enumeración.
+
+La implementación debe poder contrastar, cuando sea viable:
+
+- snapshot nativo de procesos;
+- información PID/PPID del sistema;
+- procesos observados por el sensor de eventos;
+- conexiones de red que referencian PIDs;
+- servicios con PID asociado.
+
+Una discrepancia no significa automáticamente malware, pero sí debe convertirse en una señal:
+
+```text
+ATTENTION
+
+PID 8124 aparece asociado a una conexión TCP,
+pero no estaba presente en una de las vistas de procesos.
+
+Reason:
+process-enumeration discrepancy
+```
+
+Esto permite detectar anomalías que una vista superficial podría omitir.
+
+SST no debe afirmar que puede descubrir un proceso oculto por un rootkit de kernel únicamente desde user mode. Si las distintas fuentes de Windows coinciden en ocultarlo, SST debe reconocer ese límite.
+
+## BACKGROUND ENRICH
+
+Después de entregar el prompt, SST puede completar progresivamente:
+
+- SHA-256;
+- Authenticode;
+- publisher;
+- first_seen / last_seen;
+- frecuencia histórica;
+- módulos cargados;
+- correlación con persistencia;
+- destinos de red conocidos para ese proceso;
+- lineage más profundo;
+- señales heurísticas adicionales.
+
+Los resultados deben incorporarse al modelo de la sesión sin bloquear al usuario.
+
+## Salida del preload
+
+SST no debe imprimir una pared de información en cada arranque.
+
+Si no encuentra nada destacable:
+
+```text
+preload: 168 processes · 42 connections · no notable anomalies
+```
+
+Si encuentra algo:
+
+```text
+preload: 171 processes · 45 connections · 2 items need attention
+
+ATTENTION  powershell.exe [7712]
+           browser parent + encoded command
+
+ATTENTION  helper.exe [8124]
+           first seen today + unsigned + outbound connection
+```
+
+El preload sólo debe llamar la atención. No debe suspender, terminar, bloquear red, eliminar persistencia ni poner archivos en cuarentena.
+
+## Persistencia entre ejecuciones
+
+Cada preload debe alimentar el baseline local:
+
+- qué procesos existían al arrancar;
+- hashes ya conocidos;
+- rutas habituales;
+- relaciones padre/hijo habituales;
+- servicios habituales;
+- destinos de red habituales;
+- primeras y últimas apariciones.
+
+Esto permite que la próxima ejecución de SST no parta de cero.
+
+## Preload manual
+
+Debe existir también:
+
+```bash
+triage preload
+```
+
+para repetir la lectura rápida sin reiniciar SST.
+
+Opciones futuras:
+
+```bash
+triage preload --quiet
+triage preload --details
+triage preload --compare-last
+```
+
+## Regla de seguridad
+
+El preload es **read-only**.
+
+Nunca debe:
+
+- matar;
+- suspender;
+- bloquear;
+- modificar servicios;
+- modificar tareas;
+- borrar persistencia;
+- cambiar ACL;
+- elevar automáticamente a SYSTEM.
+
+Si necesita datos que requieren privilegios superiores, debe marcar:
+
+```text
+additional inspection available with elevated privileges
+```
+
+y esperar una decisión explícita del operador.
+
+---
+
+# 21. Monitoreo en tiempo real
 
 SST debe poder mantener un sensor ligero de eventos:
 
@@ -721,7 +900,7 @@ Esto permite conservar el PPID real incluso si el proceso padre desaparece despu
 
 ---
 
-# 21. Husmear de forma progresiva
+# 22. Husmear de forma progresiva
 
 El análisis debe ser escalonado.
 
@@ -772,7 +951,7 @@ Sólo bajo demanda:
 
 ---
 
-# 22. Respuesta manual
+# 23. Respuesta manual
 
 El flujo recomendado debe ser:
 
@@ -790,7 +969,7 @@ SST no debe ejecutar automáticamente esta secuencia.
 
 ---
 
-# 23. Suspend / Resume
+# 24. Suspend / Resume
 
 Antes de matar, debe existir:
 
@@ -803,7 +982,7 @@ Suspender permite detener actividad potencialmente peligrosa sin perder el proce
 
 ---
 
-# 24. Dump / evidencia
+# 25. Dump / evidencia
 
 Comando:
 
@@ -826,7 +1005,7 @@ evidence\
 
 ---
 
-# 25. Terminación
+# 26. Terminación
 
 Comandos:
 
@@ -842,7 +1021,7 @@ Nunca debe asumir éxito sólo porque `TerminateProcess` devolvió éxito.
 
 ---
 
-# 26. Procesos que reaparecen
+# 27. Procesos que reaparecen
 
 Si un proceso reaparece, SST debe buscar:
 
@@ -872,7 +1051,7 @@ No debe matar infinitamente a ciegas.
 
 ---
 
-# 27. Quarantine
+# 28. Quarantine
 
 Comando:
 
@@ -897,7 +1076,7 @@ SHA256.bin.quarantined
 
 ---
 
-# 28. Procesos críticos y PPL
+# 29. Procesos críticos y PPL
 
 SST debe distinguir claramente:
 
@@ -919,7 +1098,7 @@ SST no debe intentar burlar PPL.
 
 ---
 
-# 29. Broker LocalSystem
+# 30. Broker LocalSystem
 
 Servicio sugerido:
 
@@ -954,7 +1133,7 @@ PERSISTENCE_DISABLE
 
 ---
 
-# 30. Seguridad del broker
+# 31. Seguridad del broker
 
 IPC sugerido:
 
@@ -981,7 +1160,7 @@ RUN "cualquier comando como SYSTEM"
 
 ---
 
-# 31. Snapshot de incidente
+# 32. Snapshot de incidente
 
 Comando:
 
@@ -1014,7 +1193,7 @@ evidence\HOST_DATE\
 
 ---
 
-# 32. Compare
+# 33. Compare
 
 Comando:
 
@@ -1033,7 +1212,7 @@ Debe mostrar:
 
 ---
 
-# 33. Watch mode
+# 34. Watch mode
 
 Comando:
 
@@ -1052,7 +1231,7 @@ TIME      EVENT       PID     PROCESS
 
 ---
 
-# 34. PowerShell history
+# 35. PowerShell history
 
 Cuando exista, SST puede inspeccionar:
 
@@ -1064,7 +1243,7 @@ También debe correlacionar Script Block Logging si está habilitado.
 
 ---
 
-# 35. Portapapeles
+# 36. Portapapeles
 
 Puede existir una función bajo demanda:
 
@@ -1084,7 +1263,7 @@ No debe vigilar ni bloquear permanentemente el clipboard salvo que exista una po
 
 ---
 
-# 36. Allowlist
+# 37. Allowlist
 
 No confiar sólo por nombre.
 
@@ -1106,7 +1285,7 @@ Una firma válida no debe cancelar automáticamente otras señales.
 
 ---
 
-# 37. Denylist local
+# 38. Denylist local
 
 Comando conceptual:
 
@@ -1122,7 +1301,7 @@ KNOWN BLOCKED HASH
 
 ---
 
-# 38. Threat intelligence externa
+# 39. Threat intelligence externa
 
 Debe ser opcional y desactivada por defecto.
 
@@ -1139,7 +1318,7 @@ Un lookup externo debe ser siempre explícito.
 
 ---
 
-# 39. Auditoría interna
+# 40. Auditoría interna
 
 Toda acción destructiva debe registrarse.
 
@@ -1164,7 +1343,7 @@ data/audit/
 
 ---
 
-# 40. Evidencia verificable
+# 41. Evidencia verificable
 
 Snapshots y evidencia deben incluir:
 
@@ -1177,7 +1356,7 @@ para detectar alteraciones posteriores.
 
 ---
 
-# 41. Interfaz visual
+# 42. Interfaz visual
 
 Modos sugeridos:
 
@@ -1222,7 +1401,7 @@ No llenar la interfaz de rojo. El propósito es priorizar atención, no generar 
 
 ---
 
-# 42. Triage rápido
+# 43. Triage rápido
 
 Comando:
 
@@ -1265,7 +1444,7 @@ Luego:
 
 ---
 
-# 43. Regla central de UX
+# 44. Regla central de UX
 
 SST debe decir:
 
@@ -1279,26 +1458,28 @@ La herramienta debe ayudar al operador a acotar el peligro sin sustituir su crit
 
 ---
 
-# 44. Primera fase de implementación
+# 45. Primera fase de implementación
 
 La primera versión funcional debe cubrir:
 
-1. process tree PID/PPID;
-2. `sys inspect PID`;
-3. executable path;
-4. command line;
-5. owner/SID/integrity;
-6. SHA-256;
-7. Authenticode;
-8. network connections by PID;
-9. modules/DLLs;
-10. protection/PPL;
-11. LocalSystem broker;
-12. suspend/resume;
-13. kill/kill-tree;
-14. verify termination;
-15. persistence correlation;
-16. suspicious signals;
-17. timeline.
+1. preload rápido de seguridad al arrancar;
+2. snapshot inicial read-only;
+3. process tree PID/PPID;
+4. `sys inspect PID`;
+5. executable path;
+6. command line;
+7. owner/SID/integrity;
+8. SHA-256;
+9. Authenticode;
+10. network connections by PID;
+11. modules/DLLs;
+12. protection/PPL;
+13. LocalSystem broker;
+14. suspend/resume;
+15. kill/kill-tree;
+16. verify termination;
+17. persistence correlation;
+18. suspicious signals;
+19. timeline.
 
 Con este bloque SST ya tendría valor real como herramienta de triage y respuesta local sin convertirse en un sistema autónomo de bloqueo o exterminio de procesos.
