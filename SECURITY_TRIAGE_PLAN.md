@@ -2484,7 +2484,7 @@ SST no debe intentar burlar PPL.
 
 # 32. Broker LocalSystem
 
-Servicio sugerido:
+Servicio:
 
 ```text
 SSTPrivilegedBroker
@@ -2496,30 +2496,48 @@ Cuenta:
 LocalSystem
 ```
 
-No debe aceptar ejecución arbitraria de comandos.
+El broker de la primera versión funcional es deliberadamente pequeño. No acepta
+ejecución arbitraria de comandos ni amplía el lenguaje del shell.
 
-Operaciones permitidas:
+Contrato v2 implementado:
 
 ```text
-PROCESS_QUERY
-PROCESS_SUSPEND
-PROCESS_RESUME
-PROCESS_TERMINATE
-PROCESS_DUMP
-
-FILE_HASH
-FILE_QUARANTINE
-
-NETWORK_BLOCK_PID
-
-PERSISTENCE_DISABLE
+INSPECT
+SUSPEND
+RESUME
+KILL
 ```
+
+`INSPECT` puede comenzar sólo con PID. El broker abre el objetivo una vez,
+obtiene su FILETIME exacto y devuelve la identidad estable `PID + FILETIME`.
+
+Toda mutación exige esa identidad exacta obtenida previamente:
+
+```text
+PID + FILETIME
+```
+
+Si el PID fue reutilizado o la creación no coincide, la operación se rechaza.
+
+Quedan fuera del protocolo de este release:
+
+```text
+PROCESS_DUMP
+FILE_QUARANTINE
+NETWORK_BLOCK_PID
+PERSISTENCE_DISABLE
+RUN / ejecución arbitraria
+```
+
+Esas capacidades no deben aparecer accidentalmente como extensiones genéricas
+del broker. Si alguna se incorpora en una versión futura, debe añadirse como
+operación tipada y revisarse de manera independiente.
 
 ---
 
 # 33. Seguridad del broker
 
-IPC sugerido:
+IPC:
 
 ```text
 \\.\pipe\SSTPrivilegedBroker
@@ -2527,20 +2545,31 @@ IPC sugerido:
 
 El broker debe validar:
 
-- PID cliente;
-- SID cliente;
-- sesión;
-- usuario interactivo;
-- integrity;
-- pertenencia a Administrators cuando corresponda;
-- hash/firma interna del binario SST cliente;
-- origen exclusivamente local.
+- PID y FILETIME exacto del cliente;
+- SID cliente configurado;
+- sesión interactiva;
+- integrity mínimo Medium;
+- ausencia de AppContainer;
+- AuthenticationId y coincidencia con el token primario;
+- pertenencia a Administrators + token elevado para mutaciones;
+- identidad del servidor contra SCM;
+- cuenta LocalSystem;
+- misma imagen SST protegida y mismo SHA-256;
+- origen exclusivamente local;
+- nonce por petición y rechazo de replay;
+- tamaño máximo de frame;
+- timeout de I/O y ACK;
+- estado crítico/PPL antes de mutar;
+- identidad exacta del objetivo antes de actuar.
 
 No debe existir una primitive genérica del tipo:
 
 ```text
 RUN "cualquier comando como SYSTEM"
 ```
+
+El helper `--broker-client` tampoco carga configuración, RC, plugins o shell.
+Su única función es construir una petición tipada y hablar con el servicio.
 
 ---
 
