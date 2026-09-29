@@ -137,7 +137,7 @@ fn change_suspension(process: windows_sys::Win32::Foundation::HANDLE, suspend: b
     Ok(())
 }
 
-pub(super) fn perform(request: &Request, client: &security::Client) -> Result<Outcome> {
+fn perform(request: &Request, client: &security::Client) -> Result<Outcome> {
     ensure!(client.alive(), "authenticated client exited");
     ensure!(
         request.target.pid != unsafe { GetCurrentProcessId() },
