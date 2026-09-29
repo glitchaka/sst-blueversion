@@ -1,0 +1,33 @@
+# SST security intelligence source registry
+# Editable sin recompilar SST. No guardar API keys aquí.
+
+[source malwarebazaar]
+enabled=true
+adapter=abusech_hash
+endpoint=https://mb-api.abuse.ch/api/v1/
+auth_env=SST_MALWAREBAZAAR_AUTH_KEY
+ttl_hours=24
+priority=10
+
+[source threatfox]
+enabled=true
+adapter=abusech_ioc
+endpoint=https://threatfox-api.abuse.ch/api/v1/
+auth_env=SST_THREATFOX_AUTH_KEY
+ttl_hours=12
+priority=20
+
+[source urlhaus]
+enabled=true
+adapter=abusech_url
+endpoint=https://urlhaus.abuse.ch/api/
+auth_env=SST_URLHAUS_AUTH_KEY
+ttl_hours=12
+priority=30
+
+[source lolbas]
+enabled=true
+adapter=behavior_catalog
+endpoint=https://github.com/LOLBAS-Project/LOLBAS
+ttl_hours=168
+priority=40
