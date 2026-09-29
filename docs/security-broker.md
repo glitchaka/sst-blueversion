@@ -71,6 +71,12 @@ token y argumentos cerrados. Ese helper entra por `--broker-client`, sin leer
 RC/configuración ni inicializar el shell. Sólo él habla con el servicio.
 La GUI no pasa a ejecutarse como SYSTEM. El helper no realiza UAC por su cuenta.
 
+`INSPECT` es la única operación que puede comenzar sólo con PID. El broker abre
+el objetivo una vez, obtiene su FILETIME exacto y lo devuelve como identidad.
+Esto permite usar el broker precisamente cuando el proceso no puede inspeccionarse
+desde el token normal. `SUSPEND`, `RESUME` y `KILL` siguen exigiendo el
+FILETIME exacto devuelto por una inspección previa.
+
 ```bash
 sys inspect 8124 --broker
 # La salida incluye "Start time (FILETIME)". Copiar ese valor exacto:
@@ -80,9 +86,9 @@ sudo sys kill 8124 --broker --start-time 134000000000000000
 ```
 
 El número anterior es sólo un ejemplo. Las mutaciones exigen `--start-time`;
-no recapturan la identidad después de UAC. Si el inspect inicial no puede
-consultar la creación, debe ejecutarse con privilegios suficientes; no se
-envía una identidad aproximada o comodín al broker.
+no recapturan la identidad después de UAC. El inspect inicial puede enviar sólo
+el PID: el servicio resuelve y devuelve la identidad exacta mientras conserva
+abierto el handle del objetivo.
 
 `sys inspect` y `sys kill` sin `--broker` conservan su implementación local.
 Los mecanismos antiguos de `sudo --system`/TrustedInstaller son independientes
@@ -126,5 +132,6 @@ si están disponibles. Conservan la semántica nativa de suspensión: no son
 operaciones idempotentes y no debe repetirse una petición cuyo resultado sea
 incierto. Reiniciar el broker no reanuda automáticamente procesos suspendidos.
 
-Estado de validación: implementación revisada estáticamente; no compilada,
-probada, instalada ni activada durante este trabajo, por instrucción del usuario.
+Estado del release: implementación funcional cerrada en código y protocolo v2.
+La compilación, instalación y prueba real del servicio siguen siendo la validación
+final separada; no se ejecutaron durante esta implementación.
