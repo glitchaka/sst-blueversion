@@ -1,13 +1,12 @@
 //! Shell Shock Tool native terminal: custom renderer, embedded Nerd Font and portable shell.
 use std::{
     ffi::c_void,
-    fs,
     mem::size_of,
     ptr::{null, null_mut},
     time::{Duration, Instant},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use chrono::Local;
 use sysinfo::System;
 use crossterm::event::{KeyCode as CtKeyCode, KeyEvent as CtKeyEvent, KeyModifiers as CtKeyModifiers};

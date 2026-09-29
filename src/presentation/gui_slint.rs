@@ -7,7 +7,6 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     ffi::c_void,
-    fs,
     mem::size_of,
     rc::Rc,
     time::{Duration, Instant},
@@ -1379,7 +1378,6 @@ pub fn run() -> Result<()> {
             if let Some(ui) = weak.upgrade() {
                 apply_slint_window_effects(&ui, &appearance);
                 if let Some(hwnd) = slint_hwnd(&ui) {
-                    let size = ui.window().size();
                     unsafe {
                         apply_native_window_region(
                             hwnd,

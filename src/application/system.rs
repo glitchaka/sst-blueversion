@@ -831,7 +831,7 @@ fn kill_process(args: &[String]) -> anyhow::Result<CommandOutput> {
             for child in descendants {
                 match terminate_pid_native(child.as_u32()) {
                     Ok(()) => {}
-                    Err(error) if process_is_gone(child.as_u32()) => {}
+                    Err(_) if process_is_gone(child.as_u32()) => {}
                     Err(error) => {
                         return Ok(CommandOutput::error(
                             format!(

@@ -6838,7 +6838,6 @@ impl Interpreter {
                 }
                 RedirectKind::Read
                 | RedirectKind::DupInput
-                | RedirectKind::ReadWrite
                 | RedirectKind::HereString => {}
             }
         }
