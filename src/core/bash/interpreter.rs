@@ -3378,14 +3378,6 @@ impl Interpreter {
         Ok(())
     }
 
-    fn save_history_lines(&self, lines: &[String]) -> Result<()> {
-        let entries = lines.iter()
-            .cloned()
-            .map(|command| HistoryEntry { timestamp: None, command })
-            .collect::<Vec<_>>();
-        self.save_history_entries(&entries)
-    }
-
     fn builtin_history(&mut self, args: &[String]) -> Result<ExecutionResult> {
         let mut entries = self.history_entries();
 
