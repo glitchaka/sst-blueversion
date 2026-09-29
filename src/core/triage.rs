@@ -49,6 +49,8 @@ pub enum Strength {
     Weak,
     Anomaly,
     Strong,
+    /// Reserved for verified exact malicious identity matches, not generic suspicion.
+    Decisive,
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +79,64 @@ pub struct Assessment {
     pub limitations: Vec<String>,
 }
 
+/// Compare only verified digests supplied by enrichment, never path identity.
+pub fn compare_hashes(previous: &str, current: &str) -> Evidence {
+    let valid = |hash: &str| hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit());
+    if !valid(previous) || !valid(current) {
+        return Evidence {
+            family: Family::Identity,
+            state: ObservationState::Unknown,
+            strength: Strength::Context,
+            reason: "SHA-256 comparison requires two valid digests".into(),
+        };
+    }
+    if previous.eq_ignore_ascii_case(current) {
+        Evidence::known(
+            Family::Identity,
+            Strength::Context,
+            "same verified SHA-256; not a safety verdict",
+        )
+    } else {
+        Evidence::known(
+            Family::Identity,
+            Strength::Strong,
+            "SHA-256 changed at previously observed path",
+        )
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ParentProfile {
+    pub executions: BTreeMap<String, u64>,
+}
+
+impl ParentProfile {
+    pub fn observe(&mut self, parent: String) {
+        *self.executions.entry(parent).or_default() += 1;
+    }
+
+    pub fn anomaly(&self, parent: &str) -> Option<String> {
+        let total: u64 = self.executions.values().sum();
+        if total == 0 {
+            return None;
+        }
+        let count = self.executions.get(parent).copied().unwrap_or(0);
+        let frequency = count as f64 / total as f64;
+        if count == 0 {
+            Some(format!(
+                "parent never observed in recent profile: {parent} (0/{total} executions)"
+            ))
+        } else if total >= 20 && frequency < 0.05 {
+            Some(format!(
+                "rare historical parent: {parent} ({count}/{total} executions, {:.1}%)",
+                frequency * 100.0
+            ))
+        } else {
+            None
+        }
+    }
+}
+
 /// Collectors must verify the exact digest and the source's validity before
 /// supplying ExactBlockedHash. Filename resemblance never raises priority.
 #[derive(Debug, Clone, Copy)]
@@ -89,7 +149,7 @@ pub enum Reputation {
 impl Reputation {
     pub fn evidence(self, source: &str) -> Evidence {
         let (strength, reason) = match self {
-            Self::ExactBlockedHash => (Strength::Strong, "exact SHA-256 blocklist match"),
+            Self::ExactBlockedHash => (Strength::Decisive, "exact SHA-256 blocklist match"),
             Self::NameResemblance => (Strength::Context, "filename resemblance only"),
             Self::NoMatch => (
                 Strength::Context,
@@ -106,7 +166,7 @@ impl Reputation {
 
 /// Keep only the strongest contribution of each independent family. Trust and
 /// negative reputation results are context, never subtractors from current evidence.
-/// Exact malicious SHA-256 matches are Strong; name resemblance is Context.
+/// Exact malicious SHA-256 matches are Decisive; generic Strong requires convergence.
 pub fn correlate(evidence: &[Evidence]) -> Assessment {
     let mut families = BTreeMap::new();
     let mut reasons = Vec::new();
@@ -134,17 +194,22 @@ pub fn correlate(evidence: &[Evidence]) -> Assessment {
         }
     }
     let anomaly = families.values().any(|s| *s >= Strength::Anomaly);
-    let classification = if families.values().any(|s| *s == Strength::Strong) {
-        Classification::Alert
-    } else if families.len() >= 3 && anomaly {
-        Classification::Suspicious
-    } else if anomaly || families.len() >= 2 {
-        Classification::Attention
-    } else if performance {
-        Classification::Performance
-    } else {
-        Classification::Normal
-    };
+    let strong_families = families
+        .values()
+        .filter(|s| **s >= Strength::Strong)
+        .count();
+    let classification =
+        if families.values().any(|s| *s == Strength::Decisive) || strong_families >= 2 {
+            Classification::Alert
+        } else if families.len() >= 3 && anomaly {
+            Classification::Suspicious
+        } else if anomaly || families.len() >= 2 {
+            Classification::Attention
+        } else if performance {
+            Classification::Performance
+        } else {
+            Classification::Normal
+        };
     Assessment {
         classification,
         reasons,
@@ -183,7 +248,7 @@ mod tests {
         let items = [
             e(Family::History, Strength::Context),
             e(Family::Identity, Strength::Context),
-            e(Family::ExternalIntel, Strength::Strong),
+            Reputation::ExactBlockedHash.evidence("local"),
         ];
         assert_eq!(correlate(&items).classification, Classification::Alert);
         assert_eq!(
@@ -215,7 +280,7 @@ mod tests {
             ObservationState::AccessDenied,
             ObservationState::Unavailable,
         ] {
-            let mut item = e(Family::ExternalIntel, Strength::Strong);
+            let mut item = Reputation::ExactBlockedHash.evidence("local");
             item.state = state;
             let result = correlate(&[item.clone()]);
             assert_eq!(result.classification, Classification::Normal);

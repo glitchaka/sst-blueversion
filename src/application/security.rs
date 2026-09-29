@@ -14,7 +14,7 @@ use sysinfo::{Pid, System};
 
 use crate::{adapters::persistence::AppPaths, core::CommandOutput};
 
-use crate::core::triage::{Evidence, Family, Strength, correlate};
+use crate::core::triage::{Evidence, Family, ParentProfile, Strength, correlate};
 
 static SECURITY_SERVICE: OnceLock<Arc<SecurityTriageService>> = OnceLock::new();
 
@@ -113,12 +113,15 @@ impl SecurityTriageService {
         let known_exes = known_exes.unwrap_or_default();
         let snapshots = collect_processes(&system, &known_exes);
 
-        let known_count = snapshots.iter().filter(|p| !p.new_to_history).count();
-        let new_count = snapshots.len().saturating_sub(known_count);
+        let known_count = snapshots
+            .iter()
+            .filter(|p| !p.exe.is_empty() && !p.new_to_history)
+            .count();
+        let new_count = snapshots.iter().filter(|p| p.new_to_history).count();
 
         if history_available {
             progress(&format!(
-                "[✓] historial local       {known_count} conocidos · {new_count} nuevos\r\n"
+                "[✓] historial local       {known_count} rutas vistas · {new_count} rutas nuevas\r\n"
             ));
         } else {
             progress("[x] historial local       no disponible; modo temporal\r\n");
@@ -186,7 +189,7 @@ impl SecurityTriageService {
             PreloadCase::Normal => {
                 out.push_str("No encontré nada particularmente llamativo.\r\n\r\n");
                 out.push_str(&format!(
-                    "Revisado:\r\n  procesos               {}\r\n  procesos conocidos     {}\r\n  procesos nuevos        {}\r\n  elementos pendientes   {}\r\n",
+                    "Revisado:\r\n  procesos               {}\r\n  rutas vistas antes     {}\r\n  procesos nuevos        {}\r\n  elementos pendientes   {}\r\n",
                     report.process_count,
                     report.known_count,
                     report.new_count,
@@ -260,7 +263,7 @@ impl SecurityTriageService {
             "SST TRIAGE\n------------------------------------------------------------\n",
         );
         out.push_str(&format!(
-            "Processes        {}\nKnown            {}\nNew              {}\nPending          {}\nFindings         {}\n\n",
+            "Processes        {}\nPaths seen       {}\nNew paths        {}\nPending          {}\nFindings         {}\n\n",
             report.process_count,
             report.known_count,
             report.new_count,
@@ -418,13 +421,17 @@ impl SecurityTriageService {
                     .and_then(|p| p.exe());
                 if let Some(parent) = parent {
                     let current = parent.display().to_string().to_ascii_lowercase();
-                    if !parents.contains(&current) {
-                        let mut expected = parents.iter().cloned().collect::<Vec<_>>();
+                    if let Some(reason) = parents.anomaly(&current) {
+                        let mut expected = parents
+                            .executions
+                            .iter()
+                            .map(|(parent, count)| format!("{parent} ({count} executions)"))
+                            .collect::<Vec<_>>();
                         expected.sort();
                         out.push_str(&format!(
                             "parent executable: {} -> {}\n",
                             expected.join(", "),
-                            current
+                            reason
                         ));
                     } else {
                         out.push_str("No parent identity difference.\n");
@@ -705,20 +712,17 @@ impl SecurityTriageService {
         findings
     }
 
-    fn historical_parents(
-        &self,
-        current: &[(u32, u64)],
-    ) -> Result<HashMap<String, HashSet<String>>> {
+    fn historical_parents(&self, current: &[(u32, u64)]) -> Result<HashMap<String, ParentProfile>> {
         let conn = self.open_db()?;
         let mut stmt = conn.prepare(
             "SELECT DISTINCT lower(child.exe), lower(parent.exe), child.pid, child.start_time
              FROM process_observations child JOIN process_observations parent
              ON child.session_id = parent.session_id AND child.parent_pid = parent.pid
              AND parent.start_time <= child.start_time
-             WHERE child.exe <> '' AND parent.exe <> ''",
+             WHERE child.exe <> '' AND parent.exe <> '' AND child.observed_at >= ?1",
         )?;
-        let mut profiles: HashMap<String, HashSet<String>> = HashMap::new();
-        for row in stmt.query_map([], |row| {
+        let mut profiles: HashMap<String, ParentProfile> = HashMap::new();
+        for row in stmt.query_map(params![unix_now() - 90 * 24 * 60 * 60], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -730,7 +734,7 @@ impl SecurityTriageService {
             if current.contains(&(pid, start_time)) {
                 continue;
             }
-            profiles.entry(exe).or_default().insert(parent);
+            profiles.entry(exe).or_default().observe(parent);
         }
         Ok(profiles)
     }
@@ -831,7 +835,7 @@ fn collect_processes(system: &System, known_exes: &HashSet<String>) -> Vec<Proce
 
 fn analyze_security(
     snapshots: &[ProcessSnapshot],
-    history: &HashMap<String, HashSet<String>>,
+    history: &HashMap<String, ParentProfile>,
 ) -> Vec<Finding> {
     let names = snapshots
         .iter()
@@ -896,14 +900,11 @@ fn analyze_security(
                 .iter()
                 .find(|p| p.pid == process.ppid && p.start_time <= process.start_time)
             {
-                if !current_parent.exe.is_empty()
-                    && !parents.contains(&current_parent.exe.to_ascii_lowercase())
-                {
-                    evidence.push(Evidence::known(
-                        Family::Lineage,
-                        Strength::Anomaly,
-                        "parent executable differs from historical profile",
-                    ));
+                if !current_parent.exe.is_empty() {
+                    if let Some(reason) = parents.anomaly(&current_parent.exe.to_ascii_lowercase())
+                    {
+                        evidence.push(Evidence::known(Family::Lineage, Strength::Anomaly, reason));
+                    }
                 }
             }
         }
@@ -1303,9 +1304,19 @@ mod correlation_tests {
             process(8, 7, "helper.exe", "helper.exe", "helper"),
         ];
         let mut history = HashMap::new();
-        history.insert("helper.exe".into(), HashSet::from(["app.exe".into()]));
+        history.insert(
+            "helper.exe".into(),
+            ParentProfile {
+                executions: std::collections::BTreeMap::from([("app.exe".into(), 1)]),
+            },
+        );
         assert!(analyze_security(&rows, &history).is_empty());
-        history.insert("helper.exe".into(), HashSet::from(["other.exe".into()]));
+        history.insert(
+            "helper.exe".into(),
+            ParentProfile {
+                executions: std::collections::BTreeMap::from([("other.exe".into(), 1)]),
+            },
+        );
         assert_eq!(
             analyze_security(&rows, &history)[0].level,
             AttentionLevel::Attention
