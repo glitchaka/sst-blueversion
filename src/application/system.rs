@@ -2,6 +2,8 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     fmt::Write as _,
+    mem::size_of,
+    net::IpAddr,
     process::Command,
     sync::Arc,
     time::Duration,
@@ -12,6 +14,10 @@ use sysinfo::{Disks, Pid, System};
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError},
+    Graphics::Printing::{
+        EnumPrintersW, GetDefaultPrinterW, PRINTER_ENUM_CONNECTIONS, PRINTER_ENUM_LOCAL,
+        PRINTER_INFO_2W,
+    },
     System::Threading::{
         GetExitCodeProcess, OpenProcess, TerminateProcess,
         PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
@@ -70,6 +76,8 @@ impl SystemService {
             "suspend" => broker_process(crate::core::broker::Operation::Suspend, &args[1..]),
             "resume" => broker_process(crate::core::broker::Operation::Resume, &args[1..]),
             "users" => users(&args[1..]),
+            "printers" => printers(&args[1..]),
+            "printer" => printer(&args[1..]),
             "drivers" => drivers(&args[1..]),
             "events" => events(&args[1..]),
             "registry" | "reg" => registry(&args[1..]),
@@ -265,6 +273,335 @@ fn users(args: &[String]) -> anyhow::Result<CommandOutput> {
     }
 
     run_windows_tool("net.exe", &native)
+}
+
+
+#[derive(Debug, Clone)]
+struct PrinterRow {
+    name: String,
+    server: String,
+    share: String,
+    port: String,
+    driver: String,
+    location: String,
+    is_default: bool,
+    ip: Option<String>,
+}
+
+fn printers(args: &[String]) -> anyhow::Result<CommandOutput> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        return Ok(CommandOutput::ok(
+            "sys printers — impresoras instaladas en el usuario/equipo\n\
+             uso:\n\
+               sys printers             todas las impresoras instaladas\n\
+               sys printers --default   sólo la impresora predeterminada\n\
+\n\
+             Muestra cola, servidor de impresión, recurso compartido, puerto e IP cuando\n\
+             el puerto TCP/IP permite resolverla. No usa PowerShell.\n",
+        ));
+    }
+
+    let only_default = options::has(args, "--default");
+    let mut rows = enumerate_printers()?;
+    if only_default {
+        rows.retain(|row| row.is_default);
+    }
+
+    if rows.is_empty() {
+        return Ok(CommandOutput::ok(if only_default {
+            "No hay una impresora predeterminada configurada.\n"
+        } else {
+            "No hay impresoras instaladas para el usuario/equipo actual.\n"
+        }));
+    }
+
+    rows.sort_by(|a, b| {
+        b.is_default
+            .cmp(&a.is_default)
+            .then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()))
+    });
+
+    let mut out = String::from(
+        "IMPRESORAS\n----------------------------------------------------------------------------------------------------\n",
+    );
+    for row in rows {
+        writeln!(
+            out,
+            "{} {}\n  servidor: {}\n  compartida: {}\n  puerto: {}\n  IP: {}\n",
+            if row.is_default { "*" } else { " " },
+            row.name,
+            display_or_dash(&row.server),
+            display_or_dash(&row.share),
+            display_or_dash(&row.port),
+            row.ip.as_deref().unwrap_or("<no resuelta>"),
+        )?;
+    }
+    Ok(CommandOutput::ok(out))
+}
+
+fn printer(args: &[String]) -> anyhow::Result<CommandOutput> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        return Ok(CommandOutput::ok(
+            "sys printer — detalle de una impresora\n\
+             uso:\n\
+               sys printer                  impresora predeterminada\n\
+               sys printer NOMBRE           detalle por nombre o recurso compartido\n\
+               sys printer NOMBRE --ip      muestra servidor, puerto e IP\n",
+        ));
+    }
+
+    let ip_only = options::has(args, "--ip");
+    let requested = args
+        .iter()
+        .filter(|arg| !arg.starts_with('-'))
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let rows = enumerate_printers()?;
+    let selected = if requested.trim().is_empty() {
+        rows.into_iter().find(|row| row.is_default)
+    } else {
+        find_printer(rows, requested.trim())
+    };
+
+    let Some(row) = selected else {
+        return Ok(CommandOutput::error(
+            if requested.trim().is_empty() {
+                "sys printer: no hay una impresora predeterminada configurada".to_owned()
+            } else {
+                format!("sys printer: no se encontró '{requested}'")
+            },
+            1,
+        ));
+    };
+
+    if ip_only {
+        return Ok(CommandOutput::ok(format!(
+            "Impresora: {}\nServidor:  {}\nPuerto:    {}\nIP:        {}\n",
+            row.name,
+            display_or_dash(&row.server),
+            display_or_dash(&row.port),
+            row.ip.as_deref().unwrap_or("<no resuelta>"),
+        )));
+    }
+
+    Ok(CommandOutput::ok(format!(
+        "Impresora\n------------------------------------------------------------\n\
+         Nombre:      {}\n\
+         Predeterminada: {}\n\
+         Servidor:    {}\n\
+         Compartida:  {}\n\
+         Puerto:      {}\n\
+         IP:          {}\n\
+         Driver:      {}\n\
+         Ubicación:   {}\n",
+        row.name,
+        if row.is_default { "sí" } else { "no" },
+        display_or_dash(&row.server),
+        display_or_dash(&row.share),
+        display_or_dash(&row.port),
+        row.ip.as_deref().unwrap_or("<no resuelta>"),
+        display_or_dash(&row.driver),
+        display_or_dash(&row.location),
+    )))
+}
+
+fn find_printer(rows: Vec<PrinterRow>, requested: &str) -> Option<PrinterRow> {
+    let wanted = requested.trim().to_ascii_lowercase();
+    rows.into_iter().find(|row| {
+        row.name.eq_ignore_ascii_case(requested)
+            || (!row.share.is_empty() && row.share.eq_ignore_ascii_case(requested))
+            || row
+                .name
+                .rsplit('\\')
+                .next()
+                .is_some_and(|tail| tail.to_ascii_lowercase() == wanted)
+    })
+}
+
+fn display_or_dash(value: &str) -> &str {
+    if value.trim().is_empty() { "-" } else { value }
+}
+
+#[cfg(windows)]
+fn enumerate_printers() -> anyhow::Result<Vec<PrinterRow>> {
+    let default_name = default_printer_name()?;
+    let flags = PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS;
+    let mut needed = 0u32;
+    let mut returned = 0u32;
+
+    unsafe {
+        let _ = EnumPrintersW(
+            flags,
+            std::ptr::null(),
+            2,
+            std::ptr::null_mut(),
+            0,
+            &mut needed,
+            &mut returned,
+        );
+    }
+
+    if needed == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut buffer = vec![0u8; needed as usize];
+    let ok = unsafe {
+        EnumPrintersW(
+            flags,
+            std::ptr::null(),
+            2,
+            buffer.as_mut_ptr(),
+            needed,
+            &mut needed,
+            &mut returned,
+        )
+    };
+    if ok == 0 {
+        anyhow::bail!(
+            "sys printers: EnumPrintersW falló con error Win32 {}",
+            unsafe { GetLastError() }
+        );
+    }
+
+    let mut rows = Vec::with_capacity(returned as usize);
+    for index in 0..returned as usize {
+        let info = unsafe {
+            std::ptr::read_unaligned(
+                buffer
+                    .as_ptr()
+                    .add(index * size_of::<PRINTER_INFO_2W>())
+                    .cast::<PRINTER_INFO_2W>(),
+            )
+        };
+
+        let name = unsafe { wide_ptr_string(info.pPrinterName) };
+        let mut server = unsafe { wide_ptr_string(info.pServerName) };
+        let mut share = unsafe { wide_ptr_string(info.pShareName) };
+        let port = unsafe { wide_ptr_string(info.pPortName) };
+        let driver = unsafe { wide_ptr_string(info.pDriverName) };
+        let location = unsafe { wide_ptr_string(info.pLocation) };
+
+        if name.starts_with(r"\\") {
+            let mut parts = name.trim_start_matches('\\').splitn(2, '\\');
+            if server.is_empty() {
+                if let Some(host) = parts.next() {
+                    server = format!(r"\\{host}");
+                }
+            } else {
+                let _ = parts.next();
+            }
+            if share.is_empty() {
+                if let Some(queue) = parts.next() {
+                    share = queue.to_owned();
+                }
+            }
+        }
+
+        let ip = resolve_printer_ip(&port);
+        let is_default = default_name
+            .as_deref()
+            .is_some_and(|default| default.eq_ignore_ascii_case(&name));
+
+        rows.push(PrinterRow {
+            name,
+            server,
+            share,
+            port,
+            driver,
+            location,
+            is_default,
+            ip,
+        });
+    }
+    Ok(rows)
+}
+
+#[cfg(not(windows))]
+fn enumerate_printers() -> anyhow::Result<Vec<PrinterRow>> {
+    anyhow::bail!("sys printers sólo está disponible en Windows")
+}
+
+#[cfg(windows)]
+fn default_printer_name() -> anyhow::Result<Option<String>> {
+    let mut chars = 0u32;
+    unsafe {
+        let _ = GetDefaultPrinterW(std::ptr::null_mut(), &mut chars);
+    }
+    if chars == 0 {
+        return Ok(None);
+    }
+
+    let mut buffer = vec![0u16; chars as usize];
+    let ok = unsafe { GetDefaultPrinterW(buffer.as_mut_ptr(), &mut chars) };
+    if ok == 0 {
+        anyhow::bail!(
+            "sys printers: GetDefaultPrinterW falló con error Win32 {}",
+            unsafe { GetLastError() }
+        );
+    }
+
+    let len = buffer.iter().position(|ch| *ch == 0).unwrap_or(buffer.len());
+    Ok(Some(String::from_utf16_lossy(&buffer[..len])))
+}
+
+#[cfg(windows)]
+unsafe fn wide_ptr_string(ptr: *const u16) -> String {
+    if ptr.is_null() {
+        return String::new();
+    }
+    let mut len = 0usize;
+    unsafe {
+        while *ptr.add(len) != 0 {
+            len += 1;
+        }
+        String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len))
+    }
+}
+
+fn resolve_printer_ip(port: &str) -> Option<String> {
+    let raw = port.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    for candidate in [raw, raw.strip_prefix("IP_").unwrap_or(raw)] {
+        if let Ok(ip) = candidate.parse::<IpAddr>() {
+            return Some(ip.to_string());
+        }
+    }
+
+    let upper = raw.to_ascii_uppercase();
+    if upper.starts_with("WSD-")
+        || upper.starts_with("USB")
+        || upper.starts_with("LPT")
+        || upper.starts_with("COM")
+        || upper == "FILE:"
+        || upper == "PORTPROMPT:"
+        || raw.starts_with(r"\\")
+    {
+        return None;
+    }
+
+    // Muchos servidores usan el hostname/DNS de la impresora como nombre de
+    // puerto TCP/IP. Resolverlo aquí evita depender de PowerShell o WMI.
+    if raw.bytes().all(|b| {
+        b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_')
+    }) {
+        if let Ok(addresses) = dns_lookup::lookup_host(raw) {
+            if let Some(ip) = addresses
+                .into_iter()
+                .find(|ip| matches!(ip, IpAddr::V4(_)))
+                .or_else(|| dns_lookup::lookup_host(raw).ok()?.into_iter().next())
+            {
+                return Some(ip.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 fn drivers(args: &[String]) -> anyhow::Result<CommandOutput> {
