@@ -2,7 +2,7 @@
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 pub const MAX_FRAME: usize = 8192;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -42,9 +42,10 @@ impl Request {
             self.client.pid > 4 && self.client.created > 0,
             "invalid client identity"
         );
+        ensure!(self.target.pid > 4, "invalid target PID");
         ensure!(
-            self.target.pid > 4 && self.target.created > 0,
-            "invalid target identity"
+            self.operation == Operation::Inspect || self.target.created > 0,
+            "mutating broker operations require exact target creation time"
         );
         ensure!(
             self.target.pid != self.client.pid,
@@ -58,6 +59,7 @@ impl Request {
 #[serde(tag = "status", deny_unknown_fields)]
 pub enum Outcome {
     Inspected {
+        identity: ProcessIdentity,
         image: String,
         critical: bool,
         protection: u32,
@@ -90,10 +92,16 @@ impl Response {
             "broker response operation/identity mismatch"
         );
         match &self.outcome {
-            Outcome::Inspected { image, .. } => {
+            Outcome::Inspected {
+                identity, image, ..
+            } => {
                 ensure!(
                     request.operation == Operation::Inspect,
                     "unexpected inspect response"
+                );
+                ensure!(
+                    identity.pid == request.target.pid && identity.created > 0,
+                    "invalid inspected process identity"
                 );
                 ensure!(
                     !image.is_empty()
