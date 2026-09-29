@@ -192,6 +192,70 @@ runas COMANDO [argumentos]
 
 `runas` es un alias de este builtin. **No ejecuta `runas.exe`.**
 
+## Triage de seguridad local
+
+SST incorpora un triage local explicable. El motor separa rendimiento de señales
+de seguridad y conserva historial en `data/security.db`.
+
+Comandos principales:
+
+```bash
+triage
+sys why PID
+sys inspect PID
+sys diff PID
+sys suspicious
+sys startup
+sys persistence
+sys services --impact
+intel status
+intel sources
+intel lookup INDICADOR
+```
+
+La clasificación operacional es:
+
+```text
+NORMAL
+PERFORMANCE
+ATTENTION
+SUSPICIOUS
+ALERT
+```
+
+Los collectors todavía no conectados se muestran como información incompleta;
+no se interpretan como evidencia negativa ni como señal de seguridad.
+
+### Broker LocalSystem
+
+Las operaciones privilegiadas de proceso usan el servicio cerrado
+`SSTPrivilegedBroker`. El protocolo v2 sólo admite:
+
+```text
+INSPECT
+SUSPEND
+RESUME
+KILL
+```
+
+No existe una operación genérica para ejecutar comandos como SYSTEM.
+
+```bash
+sys inspect 8124 --broker
+sudo sys suspend 8124 --start-time FILETIME
+sudo sys resume 8124 --start-time FILETIME
+sudo sys kill 8124 --broker --start-time FILETIME
+```
+
+`INSPECT` puede comenzar sólo con PID y devuelve el FILETIME exacto del proceso.
+Las mutaciones exigen `PID + FILETIME` para rechazar reutilización de PID.
+
+La instalación del broker es explícita y se documenta en
+`docs/security-broker.md`; SST portable no instala ni inicia el servicio por sí
+solo.
+
+---
+
 ## `net` — diagnóstico, descubrimiento y tráfico de red
 
 ### Interfaces
