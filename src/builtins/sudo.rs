@@ -319,46 +319,48 @@ unsafe fn launch_gui_with_token(
     arg: &str,
     cwd: &Path,
 ) -> Result<()> {
-    let exe = env::current_exe()?;
-    let exe_w = wide(exe.as_os_str());
-    let cwd_w = wide(cwd.as_os_str());
-    let mut command_line = wide(format!(
-        "{} {}",
-        windows_quote(&exe.to_string_lossy()),
-        arg
-    ));
-    let mut desktop = wide("winsta0\\default");
+    unsafe {
+        let exe = env::current_exe()?;
+        let exe_w = wide(exe.as_os_str());
+        let cwd_w = wide(cwd.as_os_str());
+        let mut command_line = wide(format!(
+            "{} {}",
+            windows_quote(&exe.to_string_lossy()),
+            arg
+        ));
+        let mut desktop = wide("winsta0\\default");
 
-    let mut startup: STARTUPINFOW = zeroed();
-    startup.cb = size_of::<STARTUPINFOW>() as u32;
-    startup.lpDesktop = desktop.as_mut_ptr();
-    let mut process_info: PROCESS_INFORMATION = zeroed();
+        let mut startup: STARTUPINFOW = zeroed();
+        startup.cb = size_of::<STARTUPINFOW>() as u32;
+        startup.lpDesktop = desktop.as_mut_ptr();
+        let mut process_info: PROCESS_INFORMATION = zeroed();
 
-    if CreateProcessWithTokenW(
-        token,
-        0,
-        exe_w.as_ptr(),
-        command_line.as_mut_ptr(),
-        0,
-        null(),
-        cwd_w.as_ptr(),
-        &startup,
-        &mut process_info,
-    ) == 0
-    {
-        anyhow::bail!(
-            "sudo: CreateProcessWithTokenW({arg}) falló con error Win32 {}",
-            GetLastError()
-        );
-    }
+        if CreateProcessWithTokenW(
+            token,
+            0,
+            exe_w.as_ptr(),
+            command_line.as_mut_ptr(),
+            0,
+            null(),
+            cwd_w.as_ptr(),
+            &startup,
+            &mut process_info,
+        ) == 0
+        {
+            anyhow::bail!(
+                "sudo: CreateProcessWithTokenW({arg}) falló con error Win32 {}",
+                GetLastError()
+            );
+        }
 
-    if !process_info.hThread.is_null() {
-        CloseHandle(process_info.hThread);
+        if !process_info.hThread.is_null() {
+            CloseHandle(process_info.hThread);
+        }
+        if !process_info.hProcess.is_null() {
+            CloseHandle(process_info.hProcess);
+        }
+        Ok(())
     }
-    if !process_info.hProcess.is_null() {
-        CloseHandle(process_info.hProcess);
-    }
-    Ok(())
 }
 
 fn launch_system_shell(cwd: &Path) -> Result<()> {
@@ -543,93 +545,94 @@ unsafe fn run_with_system_token(
     command: &str,
     cwd: &Path,
 ) -> Result<CommandOutput> {
+    unsafe {
     let tag = format!(
-        "system-{}-{}",
-        std::process::id(),
-        REQUEST_ID.fetch_add(1, Ordering::Relaxed)
-    );
-    let base = env::temp_dir();
-    let stdout_path = base.join(format!("sst-sudo-{tag}.out"));
-    let stderr_path = base.join(format!("sst-sudo-{tag}.err"));
-
-    let wrapped = format!(
-        "{{ {command}; }} > {} 2> {}",
-        shell_quote(&stdout_path.to_string_lossy()),
-        shell_quote(&stderr_path.to_string_lossy())
-    );
-
-    let exe = env::current_exe()?;
-    let exe_w = wide(exe.as_os_str());
-    let cwd_w = wide(cwd.as_os_str());
-    let command_line = format!(
-        "{} -c {}",
-        windows_quote(&exe.to_string_lossy()),
-        windows_quote(&wrapped)
-    );
-    let mut command_line_w = wide(command_line);
-
-    let mut startup: STARTUPINFOW = zeroed();
-    startup.cb = size_of::<STARTUPINFOW>() as u32;
-    let mut process_info: PROCESS_INFORMATION = zeroed();
-
-    let launched = CreateProcessWithTokenW(
-        token,
-        0,
-        exe_w.as_ptr(),
-        command_line_w.as_mut_ptr(),
-        CREATE_NO_WINDOW,
-        null(),
-        cwd_w.as_ptr(),
-        &startup,
-        &mut process_info,
-    );
-
-    if launched == 0 {
-        let error = GetLastError();
-        let _ = fs::remove_file(&stdout_path);
-        let _ = fs::remove_file(&stderr_path);
-        anyhow::bail!(
-            "sudo --system: CreateProcessWithTokenW falló con error Win32 {error}"
+            "system-{}-{}",
+            std::process::id(),
+            REQUEST_ID.fetch_add(1, Ordering::Relaxed)
         );
-    }
-
-    if !process_info.hThread.is_null() {
-        CloseHandle(process_info.hThread);
-    }
-
-    let wait = WaitForSingleObject(process_info.hProcess, INFINITE_WAIT);
-    if wait != WAIT_OBJECT_0_VALUE {
+        let base = env::temp_dir();
+        let stdout_path = base.join(format!("sst-sudo-{tag}.out"));
+        let stderr_path = base.join(format!("sst-sudo-{tag}.err"));
+    
+        let wrapped = format!(
+            "{{ {command}; }} > {} 2> {}",
+            shell_quote(&stdout_path.to_string_lossy()),
+            shell_quote(&stderr_path.to_string_lossy())
+        );
+    
+        let exe = env::current_exe()?;
+        let exe_w = wide(exe.as_os_str());
+        let cwd_w = wide(cwd.as_os_str());
+        let command_line = format!(
+            "{} -c {}",
+            windows_quote(&exe.to_string_lossy()),
+            windows_quote(&wrapped)
+        );
+        let mut command_line_w = wide(command_line);
+    
+        let mut startup: STARTUPINFOW = zeroed();
+        startup.cb = size_of::<STARTUPINFOW>() as u32;
+        let mut process_info: PROCESS_INFORMATION = zeroed();
+    
+        let launched = CreateProcessWithTokenW(
+            token,
+            0,
+            exe_w.as_ptr(),
+            command_line_w.as_mut_ptr(),
+            CREATE_NO_WINDOW,
+            null(),
+            cwd_w.as_ptr(),
+            &startup,
+            &mut process_info,
+        );
+    
+        if launched == 0 {
+            let error = GetLastError();
+            let _ = fs::remove_file(&stdout_path);
+            let _ = fs::remove_file(&stderr_path);
+            anyhow::bail!(
+                "sudo --system: CreateProcessWithTokenW falló con error Win32 {error}"
+            );
+        }
+    
+        if !process_info.hThread.is_null() {
+            CloseHandle(process_info.hThread);
+        }
+    
+        let wait = WaitForSingleObject(process_info.hProcess, INFINITE_WAIT);
+        if wait != WAIT_OBJECT_0_VALUE {
+            CloseHandle(process_info.hProcess);
+            let _ = fs::remove_file(&stdout_path);
+            let _ = fs::remove_file(&stderr_path);
+            anyhow::bail!(
+                "sudo --system: error esperando el proceso SYSTEM ({wait})"
+            );
+        }
+    
+        let mut status = 1u32;
+        let got_status = GetExitCodeProcess(process_info.hProcess, &mut status);
         CloseHandle(process_info.hProcess);
+    
+        let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
+        let stderr = fs::read_to_string(&stderr_path).unwrap_or_default();
         let _ = fs::remove_file(&stdout_path);
         let _ = fs::remove_file(&stderr_path);
-        anyhow::bail!(
-            "sudo --system: error esperando el proceso SYSTEM ({wait})"
-        );
+    
+        if got_status == 0 {
+            anyhow::bail!(
+                "sudo --system: GetExitCodeProcess falló con error Win32 {}",
+                GetLastError()
+            );
+        }
+    
+        Ok(CommandOutput {
+            stdout,
+            stderr,
+            status: status as i32,
+        })
     }
-
-    let mut status = 1u32;
-    let got_status = GetExitCodeProcess(process_info.hProcess, &mut status);
-    CloseHandle(process_info.hProcess);
-
-    let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
-    let stderr = fs::read_to_string(&stderr_path).unwrap_or_default();
-    let _ = fs::remove_file(&stdout_path);
-    let _ = fs::remove_file(&stderr_path);
-
-    if got_status == 0 {
-        anyhow::bail!(
-            "sudo --system: GetExitCodeProcess falló con error Win32 {}",
-            GetLastError()
-        );
-    }
-
-    Ok(CommandOutput {
-        stdout,
-        stderr,
-        status: status as i32,
-    })
 }
-
 fn run_via_uac(command: &str, cwd: &Path) -> Result<CommandOutput> {
     let tag = format!(
         "{}-{}",
