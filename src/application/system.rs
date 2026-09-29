@@ -52,6 +52,7 @@ impl SystemService {
             "hostname" => hostname(),
             "whoami" => whoami(),
             "uname" => uname(&args[1..]),
+            "kill" if args[1..].iter().any(|arg| arg == "--broker") => broker_process(crate::core::broker::Operation::Kill, &args[1..]),
             "kill" => kill_process(&args[1..]),
             "fetch" | "neofetch" | "fastfetch" => fetch(&args[1..]),
             "uptime" => uptime(),
@@ -60,19 +61,14 @@ impl SystemService {
             }
             "services" => services(&args[1..]),
             "startup" => self.security.startup(),
+            "inspect" if args[1..].iter().any(|arg| arg == "--broker") => broker_process(crate::core::broker::Operation::Inspect, &args[1..]),
             "inspect" => self.security.inspect(&args[1..]),
             "why" => self.security.why(&args[1..]),
             "diff" => self.security.diff(&args[1..]),
             "suspicious" => self.security.suspicious(),
             "persistence" => self.security.persistence(),
-            "suspend" => Ok(CommandOutput::error(
-                "sys suspend: el esqueleto reservó el comando; la implementación privilegiada llegará con el broker",
-                3,
-            )),
-            "resume" => Ok(CommandOutput::error(
-                "sys resume: el esqueleto reservó el comando; la implementación privilegiada llegará con el broker",
-                3,
-            )),
+            "suspend" => broker_process(crate::core::broker::Operation::Suspend, &args[1..]),
+            "resume" => broker_process(crate::core::broker::Operation::Resume, &args[1..]),
             "users" => users(&args[1..]),
             "drivers" => drivers(&args[1..]),
             "events" => events(&args[1..]),
@@ -187,7 +183,12 @@ fn system_help() -> CommandOutput {
            sys hostname                 nombre del equipo\n\
            sys whoami                   usuario actual\n\
            sys uname [-a]               identificación del sistema\n\
-           sys kill PID [--tree]         termina un proceso o su árbol\n\n\
+           sys kill PID [--tree]         termina un proceso o su árbol\n\
+           sys inspect PID --broker     consulta mediante broker autenticado\n\
+           sys suspend PID --start-time FILETIME\n\
+           sys resume PID --start-time FILETIME\n\
+           sys kill PID --broker --start-time FILETIME\n\
+                                        broker; requiere token admin para modificar\n\n\
          Administración / auditoría de solo lectura:\n\
            sys services [NOMBRE]        servicios de Windows\n\
            sys users [USUARIO]          cuentas locales (o --domain)\n\
@@ -785,6 +786,15 @@ fn uname(args: &[String]) -> anyhow::Result<CommandOutput> {
     } else {
         Ok(CommandOutput::ok("SST-Windows\n"))
     }
+}
+
+fn broker_process(operation: crate::core::broker::Operation, args: &[String]) -> anyhow::Result<CommandOutput> {
+    anyhow::ensure!(args.iter().filter(|arg| arg.as_str() == "--broker").count() <= 1, "duplicate --broker flag");
+    let args = args.iter().filter(|arg| arg.as_str() != "--broker").cloned().collect::<Vec<_>>();
+    #[cfg(windows)]
+    { crate::adapters::windows::broker::command(operation, &args) }
+    #[cfg(not(windows))]
+    { let _ = (operation, args); Ok(CommandOutput::error("broker requires Windows", 3)) }
 }
 
 fn kill_process(args: &[String]) -> anyhow::Result<CommandOutput> {

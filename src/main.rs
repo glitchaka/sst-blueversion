@@ -17,6 +17,18 @@ use app::ShellShockTool;
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     #[cfg(windows)]
+    if args.first().map(String::as_str) == Some("--broker-service") {
+        // Do this before any GUI/shell initialization or user-controlled config.
+        unsafe {
+            use windows_sys::Win32::System::LibraryLoader::*;
+            if SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR) == 0 {
+                std::process::exit(2);
+            }
+        }
+        let status = if adapters::windows::broker::dispatch(&args).is_ok() { 0 } else { 2 };
+        std::process::exit(status);
+    }
+    #[cfg(windows)]
     if args.is_empty() || args.first().is_some_and(|arg| matches!(
         arg.as_str(),
         "--gui" | "--console" | "--gui-admin" | "--gui-system" | "--gui-trustedinstaller"
@@ -55,6 +67,25 @@ fn main() {
         use windows_sys::Win32::{Foundation::INVALID_HANDLE_VALUE, System::Console::*};
         let handle = GetStdHandle(STD_OUTPUT_HANDLE);
         if handle.is_null() || handle == INVALID_HANDLE_VALUE { AttachConsole(ATTACH_PARENT_PROCESS); }
+    }
+    #[cfg(windows)]
+    if args.first().map(String::as_str) == Some("--broker-client") {
+        use crate::core::broker::Operation;
+        let operation = match args.get(1).map(String::as_str) {
+            Some("inspect") => Operation::Inspect,
+            Some("suspend") => Operation::Suspend,
+            Some("resume") => Operation::Resume,
+            Some("kill") => Operation::Kill,
+            _ => { eprintln!("invalid broker client operation"); std::process::exit(2); }
+        };
+        let result = adapters::windows::broker::command(operation, &args[2..]);
+        let status = match result {
+            Ok(output) => { print!("{}", output.stdout); eprint!("{}", output.stderr); output.status }
+            Err(error) => { eprintln!("broker: {error}"); 2 }
+        };
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+        std::process::exit(status);
     }
     let status = match run_cli(&args) {
         Ok(status) => status,
