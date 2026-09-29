@@ -45,6 +45,81 @@ SST no debe marcar como malware un proceso por una sola señal. Debe detectar y 
 
 ---
 
+## Caso de uso prioritario: degradación repentina del equipo
+
+Un caso de uso central de SST es cuando el operador no sabe si existe un incidente de seguridad y sólo observa síntomas como:
+
+- el equipo está repentinamente lento;
+- abrir carpetas o archivos tarda mucho;
+- aplicaciones que antes abrían rápido ahora demoran;
+- el disco permanece ocupado;
+- ventiladores/CPU trabajan sin una causa evidente;
+- la RAM se consume de forma anormal;
+- aparecen congelamientos o pausas breves;
+- la red presenta actividad inesperada.
+
+SST no debe asumir que esto significa malware.
+
+Al arrancar debe poder distinguir rápidamente entre:
+
+```text
+DEGRADACIÓN EXPLICABLE
+  proceso legítimo usando CPU
+  presión de memoria
+  I/O elevado
+  antivirus escaneando
+  Windows Update
+  indexación
+  aplicación conocida pesada
+
+y
+
+ANOMALÍA A REVISAR
+  proceso nuevo o raro
+  comportamiento distinto al histórico
+  I/O inesperado
+  parent/child inusual
+  persistencia nueva
+  conexión saliente no habitual
+  reputación externa negativa
+```
+
+La salida debe ser breve y accionable.
+
+Ejemplo normal:
+
+```text
+preload: system under load
+
+Disk I/O:
+  MsMpEng.exe        high
+  SearchIndexer.exe  medium
+
+No notable security anomalies.
+```
+
+Ejemplo que merece revisión:
+
+```text
+preload: system under load · 1 item needs attention
+
+ATTENTION  helper.exe [8124]
+           disk I/O: high
+           first seen today
+           parent differs from historical profile
+           outbound connection present
+
+Use: sys why 8124
+```
+
+El objetivo no es diagnosticar únicamente malware, sino responder:
+
+> **"¿Qué está haciendo lento el equipo y hay algo en esa actividad que además sea inusual?"**
+
+Esto permite que SST sea útil incluso cuando la causa termina siendo completamente legítima.
+
+---
+
 ## Alcance y límites del módulo
 
 Este módulo forma parte de SST y debe respetar el alcance original de la herramienta: **shell administrativa local con capacidad de observación, diagnóstico y acción manual**.
@@ -1355,6 +1430,8 @@ Debe capturar, como mínimo:
 - command line cuando pueda obtenerse de forma barata;
 - procesos iniciados recientemente;
 - conexiones TCP/UDP activas y PID asociado;
+- CPU, RAM e I/O de disco por proceso mediante lecturas baratas;
+- presión global de CPU, memoria y disco;
 - servicios activos;
 - tareas programadas de interés ya indexadas;
 - entradas principales de persistencia;
@@ -1518,6 +1595,7 @@ El análisis debe ser escalonado.
 Barata y rápida:
 
 - process tree;
+- CPU/RAM/I/O;
 - path;
 - publisher;
 - signature;
