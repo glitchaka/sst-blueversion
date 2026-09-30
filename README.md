@@ -662,7 +662,7 @@ net neighbors
 net arp
 ```
 
-Muestra la relación IP → MAC conocida por el equipo.
+Muestra la tabla de vecinos conocida por el equipo enriquecida con **MAC, tipo/scope y fabricante IEEE** cuando la dirección es global. Las MAC `local/private` se muestran como tales y no reciben un fabricante atribuido.
 
 ### Escaneo de puertos
 
