@@ -28,6 +28,9 @@ impl SwitchService {
     }
 
     pub fn execute(&self, args: &[String]) -> Result<CommandOutput> {
+        if args.first().is_some_and(|a| matches!(a.as_str(), "help" | "--help" | "-h")) {
+            return Ok(CommandOutput::ok("switch — resolución MAC a puerto físico por SNMP\nuso:\n  switch list [--json]\n  switch add NOMBRE --host HOST --community-env VARIABLE [--description TEXTO]\n  switch show NOMBRE\n  switch remove NOMBRE\n  switch locate MAC|NOMBRE [--switch NOMBRE] [--vlan N] [--json]\n  switch capabilities\n  switch path\n"));
+        }
         match args.first().map(String::as_str).unwrap_or("list") {
             "list" => self.list(args.get(1..).unwrap_or_default()),
             "add" => self.add(args.get(1..).unwrap_or_default()),
