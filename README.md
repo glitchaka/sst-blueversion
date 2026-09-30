@@ -63,6 +63,7 @@ Esta documentación refleja el código actual, incluidos estos cambios:
 - **Descubrimiento de red por evidencia múltiple:** `net scan` y `net monitor` usan ARP activo, ICMP y TCP. Una respuesta ARP basta para detectar teléfonos/IoT aunque bloqueen ping o no tengan servicios TCP.
 - **Identificación MAC local:** cada host se clasifica como `global`, `local/private`, `multicast`, `broadcast` o `unknown`. Las MAC globales se resuelven contra los registros IEEE **MA-L, MA-M y MA-S**; las MAC privadas/aleatorias no reciben un fabricante inventado.
 - **Monitor con histéresis:** un host debe faltar en tres ciclos consecutivos antes de generar un evento de desconexión, reduciendo falsos `+/-` por una respuesta perdida.
+- **Mensajes SST entre monitores:** `net monitor -m "texto"` publica un mensaje corto mediante UDP broadcast; otros SST con `net monitor` abierto muestran la IP emisora y el texto. Sirve como easter egg y como comprobación práctica de comunicación LAN/broadcast/firewall.
 - **Tiempo de respuesta corregido:** la columna de respuesta mide el probe que confirmó presencia y ya no incluye el tiempo de reverse DNS.
 - **`net identify`:** identifica por IP, MAC o nombre inventariado y reúne hostname, MAC, scope, fabricante IEEE, inventario, método de descubrimiento y último avistamiento.
 - **Registro directo por IP:** `device add IP NOMBRE` resuelve la MAC por ARP y la incorpora al inventario.
@@ -729,6 +730,9 @@ IP               NOMBRE
 net monitor
 net monitor 192.168.1.0/24
 net monitor --unknown
+net monitor -m "Prueba desde soporte"
+net monitor 10.11.24.0/24 --message "Estoy en biblioteca"
+net monitor 10.11.24.0/24 --say "Hola SST"
 ```
 
 Abre una vista TUI que repite el mismo descubrimiento ARP/ICMP/TCP de `net scan` y registra:
@@ -739,7 +743,26 @@ Abre una vista TUI que repite el mismo descubrimiento ARP/ICMP/TCP de `net scan`
 - primera y última vez vistos;
 - fabricante/tipo de MAC y método de descubrimiento.
 
-Para evitar flapping, un equipo no se declara desconectado por un único ciclo fallido: SST exige **tres fallos consecutivos** antes de emitir el evento `-`. Durante esa ventana conserva la última identidad estable en pantalla.
+Para evitar flapping, un equipo no se declara desconectado por un único ciclo fallido: SST exige **tres fallos consecutivos** antes de emitir el evento `-`. Durante esa ventana conserva la última identidad estable en pantalla y muestra `miss 1/3` o `miss 2/3` en vez de fingir que la detección fue positiva.
+
+#### Mensajes SST entre monitores
+
+`-m`, `--message` y `--say` publican un texto de hasta 120 caracteres mediante **UDP broadcast al puerto 43837** del segmento monitorizado. El monitor vuelve a anunciar el mensaje periódicamente mientras permanezca abierto.
+
+Cualquier otro SST que esté ejecutando `net monitor` en el mismo segmento puede mostrar:
+
+```text
+Mensajes SST:
+10.11.24.13     anscharve.uautonoma.cl      1s   Prueba desde soporte
+```
+
+La IP mostrada se toma de la **dirección de origen del datagrama UDP**, no de un campo declarado por el remitente. El contenido recibido se trata exclusivamente como texto: se eliminan caracteres de control, se limita la longitud y **nunca se ejecuta**.
+
+Esto permite usar el truco también como comprobación rápida de conectividad entre dos estaciones SST. Si ambos monitores descubren equipos pero no reciben sus mensajes, pueden estar interviniendo el firewall local, client isolation del Wi-Fi, filtrado de broadcast/VLAN o una política de red.
+
+El canal es deliberadamente liviano y **no es autenticado ni cifrado**; sirve para señalización/diagnóstico local, no para transmitir secretos.
+
+Si UDP/43837 no puede abrirse, el monitor normal continúa funcionando y muestra una advertencia de que los mensajes SST no están disponibles.
 
 Se sale con `q` o `Esc`.
 
@@ -1677,6 +1700,7 @@ Entre los datos persistentes se encuentran:
 - información y auditoría local de Windows;
 - diagnóstico de red;
 - escaneo multi-evidencia ARP/ICMP/TCP y monitor de presencia con histéresis;
+- mensajes UDP broadcast entre instancias de `net monitor` para señalización y prueba de comunicación LAN;
 - clasificación de MAC global/local/multicast/broadcast e identificación IEEE MA-L/MA-M/MA-S;
 - `net identify` por IP/MAC/nombre;
 - inventario de dispositivos con alta directa por IP;
