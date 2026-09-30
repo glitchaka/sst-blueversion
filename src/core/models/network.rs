@@ -31,6 +31,7 @@ pub struct TrafficRow {
     pub download_bps: u64,
     pub ppid: Option<u32>,
     pub foreground: bool,
+    pub signature: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
