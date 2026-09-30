@@ -252,10 +252,11 @@ impl NetworkProviderService {
         };
 
         let (traffic, fdb, api) = match provider.kind.as_str() {
-            "openwrt" => ("planned", "possible", "ubus/rpc"),
-            "opnsense" | "pfsense" => ("planned", "possible", "api"),
-            "unifi" => ("planned", "possible", "controller-api"),
+            "openwrt" => ("normalized-http", "possible", "http-json"),
+            "opnsense" | "pfsense" => ("requires-adapter", "possible", "api"),
+            "unifi" => ("requires-adapter", "possible", "controller-api"),
             "snmp" => ("depends-on-mib", "possible", "snmp"),
+            "generic" => ("normalized-http", "unknown", "http-json"),
             _ => ("unknown", "unknown", "generic"),
         };
 
