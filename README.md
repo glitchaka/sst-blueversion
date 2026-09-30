@@ -103,6 +103,7 @@ Esta documentación refleja el código actual, incluidos estos cambios:
 | `firewall` | Perfiles/reglas de Windows Firewall | `firewall status` |
 | `power` | Apagado, reinicio, logoff, hibernación | `sudo power restart` |
 | `helix` / `hx` / `helix-sst` | Editor Helix-SST | `helix notas.txt` |
+| `tour` | Menú TUI de ejemplos ejecutables de Nwash/SST | `tour` |
 | `config` | Configuración portable de shell | `config edit` |
 | `sst-path` | Traducción de rutas Unix → Windows | `sst-path /c/Windows/System32` |
 
@@ -133,6 +134,9 @@ Esta documentación refleja el código actual, incluidos estos cambios:
 | `sys why PID` | Explica la clasificación/señales observadas. | `sys why 8124` |
 | `sys diff PID` | Compara identidad/parent/command line con historial. | `sys diff 8124` |
 | `sys suspicious` | Lista procesos que superan reglas actuales de atención. | `sys suspicious` |
+| `sys safe PID [PID ...]` | Confía la relación exacta ejecutable ← padre actual; no desactiva otras señales. | `sys safe 4912 6192` |
+| `sys safe list` | Lista relaciones de linaje confiables. | `sys safe list` |
+| `sys safe remove ID [...]` | Elimina una relación de confianza por ID. | `sys safe remove 3` |
 | `sys startup` | Revisa puntos de inicio observables. | `sys startup` |
 | `sys persistence` | Vista de persistencia basada en startup + tareas/servicios existentes. | `sys persistence` |
 | `sys services --impact` | Relaciona servicios con PID, CPU y RAM. | `sys services --impact` |
@@ -545,6 +549,26 @@ ATTENTION
 SUSPICIOUS
 ALERT
 ```
+
+### Confianza local de linaje
+
+Cuando SST marca un proceso únicamente porque su padre es nuevo o históricamente raro, el operador puede registrar esa **pareja exacta** como conocida:
+
+```bash
+sys safe PID
+sys safe PID1 PID2 PID3
+sys safe list
+sys safe remove ID
+```
+
+Ejemplo:
+
+```bash
+sys safe 4912 6192 13792
+```
+
+SST guarda en `data/security.db` la relación completa `child_exe ← parent_exe`. Esto neutraliza solamente la anomalía histórica de ese padre. **No declara el proceso globalmente seguro** y no suprime señales independientes como ejecución sospechosa, Authenticode, SHA-256, red, persistencia o inteligencia externa.
+
 
 ### `intel` — fuentes, caché y credenciales
 
@@ -1375,6 +1399,8 @@ config/helix-sst/helix.log
 
 # Ejemplos de scripting
 
+SST **despliega automáticamente** `tour.sh` y el contenido de `examples/` junto a `sst.exe` al arrancar si faltan. Esto permite que una distribución portable que contenga solo el binario reconstruya los ejemplos localmente.
+
 La carpeta `examples/` contiene demostraciones ejecutables que muestran la consola como entorno de automatización, no solo como lanzador de comandos.
 
 ```text
@@ -1426,6 +1452,44 @@ Los ejemplos cubren, entre otras capacidades:
 Los scripts incluidos son no destructivos por diseño. El objetivo es que funcionen como **showcase técnico, material de aprendizaje y base para automatizaciones reales**.
 
 La guía detallada está en `examples/README.md`. Para una demostración de punta a punta, `examples/10-full-showcase.sh` combina sistema, Windows, red, jobs, ETW, triage, Intel y generación de reportes en una sola ejecución.
+
+---
+
+## SST Tour interactivo
+
+Escribe simplemente:
+
+```bash
+tour
+```
+
+SST abre una TUI:
+
+```text
+SST TOUR
+────────────────────────────────────────────────────────────
+↑/↓ seleccionar · Enter ejecutar · Home/End · q/Esc salir
+
+▶ 01 · Lenguaje Nwash          funciones, arrays, case, aritmética
+  02 · Operador Windows        reporte de sistema y administración
+  03 · Descubrimiento de red   scan, inventario, snapshots, diff
+  ...
+  10 · Full showcase           SST completo de punta a punta
+```
+
+El selector interno usa teclas nativas de la terminal, por lo que las flechas funcionan sin depender de secuencias ANSI interpretadas por un script. Al pulsar `Enter`, `tour.sh` ejecuta el ejemplo seleccionado dentro del propio intérprete Nwash. Al terminar, vuelve al menú.
+
+Archivos desplegados:
+
+```text
+sst.exe
+tour.sh
+examples/
+  README.md
+  01-language-tour.sh
+  ...
+  10-full-showcase.sh
+```
 
 ---
 
