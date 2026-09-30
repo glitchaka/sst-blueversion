@@ -18,7 +18,7 @@ use crate::{
     core::ports::TextEditor,
 };
 
-pub const HELIX_SST_VERSION: &str = "0.2.0";
+pub const HELIX_SST_VERSION: &str = "0.2.1";
 pub const HELIX_UPSTREAM_VERSION: &str = "25.07.1";
 pub const HELP: &str = include_str!("../../docs/helix-sst.txt");
 
@@ -57,7 +57,7 @@ select = "SELECCIÓN · Esc: normal"
 const THEME_TOML: &str = r#"inherits = "gruvbox"
 "#;
 
-const NOTICE: &str = r#"helix-sst 0.2.0
+const NOTICE: &str = r#"helix-sst 0.2.1
 
 This integration bundles Helix 25.07.1.
 Upstream project: https://github.com/helix-editor/helix
@@ -243,12 +243,12 @@ args = ["--helix-sst-spell", "{user_dictionary}"]
 [[language]]
 name = "text"
 scope = "text.plain"
-file-types = ["txt"]
+file-types = ["txt", "text"]
 language-servers = ["helix-sst-spell"]
 
 [[language]]
 name = "markdown"
-language-servers = ["helix-sst-spell", "marksman", "markdown-oxide"]
+language-servers = ["helix-sst-spell"]
 "#
     );
     fs::write(path, content)?;
