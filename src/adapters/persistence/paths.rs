@@ -44,6 +44,12 @@ alias cls='clear'
 # Ejemplos:
 # export SST_SITE='laboratorio'
 # alias scanlab='net scan 192.168.1.0/24'
+
+# Credenciales opcionales para intel.
+# No se escriben en data/security.sources: ese archivo solo referencia estos nombres.
+# export SST_MALWAREBAZAAR_AUTH_KEY='...'
+# export SST_THREATFOX_AUTH_KEY='...'
+# export SST_URLHAUS_AUTH_KEY='...'
 "#;
 
 const DEFAULT_SECURITY_SOURCES: &str = r#"# SST security intelligence source registry
@@ -331,6 +337,13 @@ impl AppPaths {
         }
 
         Ok(config)
+    }
+
+    pub fn config_value(&self, key: &str) -> Result<Option<String>> {
+        let path = self.config_file();
+        let text = fs::read_to_string(&path)
+            .with_context(|| format!("No se pudo leer {}", path.display()))?;
+        Ok(assignment_value(&text, key))
     }
 
     pub fn root_dir(&self) -> PathBuf { self.root.clone() }
