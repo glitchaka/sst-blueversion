@@ -2756,6 +2756,24 @@ impl Interpreter {
                     result
                 }
             }
+            "tour" => {
+                let config_path = PathBuf::from(self.env.get("SST_CONFIG"));
+                let root = config_path
+                    .parent()
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| self.env.cwd.clone());
+                let script = root.join("tour.sh");
+                if !script.is_file() {
+                    ExecutionResult::from_parts(
+                        String::new(),
+                        format!("tour: no existe {}\n", script.display()),
+                        1,
+                    )
+                } else {
+                    self.execute_shell_script_file(&script, args, stdin)?
+                }
+            }
             "config" => {
                 match args.first().map(String::as_str).unwrap_or("path") {
                     "path" => ExecutionResult::from_parts(format!("{}\n", self.env.get("SST_CONFIG")), String::new(), 0),
@@ -2801,7 +2819,7 @@ impl Interpreter {
                 | "wait" | "fg" | "bg" | "disown" | "command" | "builtin" | "type" | "hash" | "getopts"
                 | "exec" | "history" | "fc" | "bind" | "enable" | "complete" | "compgen" | "compopt" | "suspend"
                 | "dirs" | "pushd" | "popd" | "umask" | "ulimit" | "times" | "caller"
-                | "help" | "kill" | "config" | "reload" | ":" | "true" | "false"
+                | "help" | "kill" | "config" | "reload" | "tour" | ":" | "true" | "false"
         )
     }
 
