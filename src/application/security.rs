@@ -305,7 +305,13 @@ impl SecurityTriageService {
             .iter()
             .find(|p| p.pid == pid)
             .expect("process from same snapshot");
-        let result = assess_process(snapshot, &snapshots, history.as_ref().ok());
+        let trusted = self.trusted_lineages();
+        let result = assess_process_with_trust(
+            snapshot,
+            &snapshots,
+            history.as_ref().ok(),
+            trusted.as_ref().ok(),
+        );
         let mut out = format!(
             "{} {} [{pid}]\n\nWhy:\n",
             result.classification.label(),
@@ -491,6 +497,161 @@ impl SecurityTriageService {
 
         let mut out = String::new();
         append_findings_lf(&mut out, &findings);
+        Ok(CommandOutput::ok(out))
+    }
+
+    pub fn safe(&self, args: &[String]) -> Result<CommandOutput> {
+        match args.first().map(String::as_str) {
+            None | Some("list") => self.safe_list(),
+            Some("remove") => self.safe_remove(&args[1..]),
+            _ => self.safe_add(args),
+        }
+    }
+
+    fn safe_add(&self, args: &[String]) -> Result<CommandOutput> {
+        let pids = args
+            .iter()
+            .take_while(|arg| !arg.starts_with('-'))
+            .map(|arg| {
+                arg.parse::<u32>()
+                    .with_context(|| format!("sys safe: PID inválido: {arg}"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        if pids.is_empty() {
+            return Ok(CommandOutput::error(
+                "sys safe: uso: sys safe PID [PID ...] | sys safe list | sys safe remove ID [ID ...]",
+                2,
+            ));
+        }
+
+        let system = refreshed_system();
+        let conn = self.open_db()?;
+        let now = unix_now();
+        let mut out = String::new();
+
+        for pid in pids {
+            let Some(process) = system.process(Pid::from_u32(pid)) else {
+                out.push_str(&format!("PID {pid}: no existe\n"));
+                continue;
+            };
+            let Some(child_exe) = process.exe() else {
+                out.push_str(&format!("PID {pid}: ruta del ejecutable no disponible\n"));
+                continue;
+            };
+            let Some(parent_pid) = process.parent() else {
+                out.push_str(&format!("PID {pid}: proceso padre no disponible\n"));
+                continue;
+            };
+            let Some(parent) = system.process(parent_pid) else {
+                out.push_str(&format!("PID {pid}: proceso padre {} no disponible\n", parent_pid.as_u32()));
+                continue;
+            };
+            let Some(parent_exe) = parent.exe() else {
+                out.push_str(&format!("PID {pid}: ruta del ejecutable padre no disponible\n"));
+                continue;
+            };
+
+            let child_text = child_exe.display().to_string();
+            let parent_text = parent_exe.display().to_string();
+            conn.execute(
+                "INSERT INTO trusted_lineage(child_exe, parent_exe, created_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(child_exe, parent_exe) DO NOTHING",
+                params![child_text, parent_text, now],
+            )?;
+            let id: i64 = conn.query_row(
+                "SELECT id FROM trusted_lineage
+                 WHERE child_exe = ?1 COLLATE NOCASE AND parent_exe = ?2 COLLATE NOCASE",
+                params![child_text, parent_text],
+                |row| row.get(0),
+            )?;
+
+            out.push_str(&format!(
+                "#{id} trusted lineage: {} [{}] <- {} [{}]\n",
+                process.name().to_string_lossy(),
+                pid,
+                parent.name().to_string_lossy(),
+                parent_pid.as_u32(),
+            ));
+        }
+
+        *self
+            .last_report
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
+
+        if out.is_empty() {
+            out.push_str("No se registró ninguna relación de confianza.\n");
+        } else {
+            out.push_str(
+                "\nLa confianza solo neutraliza la anomalía de padre histórico para esa pareja exacta; otras evidencias siguen activas.\n",
+            );
+        }
+        Ok(CommandOutput::ok(out))
+    }
+
+    fn safe_list(&self) -> Result<CommandOutput> {
+        let conn = self.open_db()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, child_exe, parent_exe, created_at
+             FROM trusted_lineage ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })?;
+
+        let mut out = String::from(
+            "ID   CHILD <- PARENT\n------------------------------------------------------------\n",
+        );
+        let mut any = false;
+        for row in rows {
+            let (id, child, parent, _) = row?;
+            any = true;
+            out.push_str(&format!("#{id}  {child}\n     <- {parent}\n"));
+        }
+        if !any {
+            out.push_str("(sin relaciones de confianza)\n");
+        }
+        Ok(CommandOutput::ok(out))
+    }
+
+    fn safe_remove(&self, args: &[String]) -> Result<CommandOutput> {
+        if args.is_empty() {
+            return Ok(CommandOutput::error(
+                "sys safe remove: falta ID; usa 'sys safe list'",
+                2,
+            ));
+        }
+
+        let conn = self.open_db()?;
+        let mut out = String::new();
+        for raw in args {
+            let id = raw
+                .trim_start_matches('#')
+                .parse::<i64>()
+                .with_context(|| format!("sys safe remove: ID inválido: {raw}"))?;
+            let changed = conn.execute(
+                "DELETE FROM trusted_lineage WHERE id = ?1",
+                params![id],
+            )?;
+            if changed == 0 {
+                out.push_str(&format!("#{id}: no existe\n"));
+            } else {
+                out.push_str(&format!("#{id}: eliminado\n"));
+            }
+        }
+
+        *self
+            .last_report
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
+
         Ok(CommandOutput::ok(out))
     }
 
@@ -749,7 +910,12 @@ impl SecurityTriageService {
             .map(|p| (p.pid, p.start_time))
             .collect::<Vec<_>>();
         let history = self.historical_parents(&instances);
-        let findings = analyze_security(snapshots, history.as_ref().ok());
+        let trusted = self.trusted_lineages();
+        let findings = analyze_security_with_trust(
+            snapshots,
+            history.as_ref().ok(),
+            trusted.as_ref().ok(),
+        );
         // Best effort: unavailable history never prevents local analysis.
         let paths = self.paths.clone();
         let observed = snapshots.to_vec();
@@ -819,6 +985,21 @@ impl SecurityTriageService {
         open_security_db(&self.paths)
     }
 
+    fn trusted_lineages(&self) -> Result<HashSet<(String, String)>> {
+        let conn = self.open_db()?;
+        let mut stmt = conn.prepare(
+            "SELECT lower(child_exe), lower(parent_exe) FROM trusted_lineage",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut trusted = HashSet::new();
+        for row in rows {
+            trusted.insert(row?);
+        }
+        Ok(trusted)
+    }
+
     fn known_executables(&self) -> Result<HashSet<String>> {
         let conn = self.open_db()?;
         let mut stmt =
@@ -881,10 +1062,11 @@ fn collect_processes(system: &System, known_exes: &HashSet<String>) -> Vec<Proce
         .collect()
 }
 
-fn assess_process(
+fn assess_process_with_trust(
     process: &ProcessSnapshot,
     snapshots: &[ProcessSnapshot],
     history: Option<&HashMap<String, ParentProfile>>,
+    trusted_lineages: Option<&HashSet<(String, String)>>,
 ) -> Assessment {
     let names = snapshots
         .iter()
@@ -952,11 +1134,22 @@ fn assess_process(
         .iter()
         .find(|p| p.pid == process.ppid && p.start_time <= process.start_time && !p.exe.is_empty())
     {
-        let profile = history
-            .and_then(|h| h.get(&path))
-            .cloned()
-            .unwrap_or_default();
-        evidence.push(profile.evidence(&current_parent.exe.to_ascii_lowercase()));
+        let parent_path = current_parent.exe.to_ascii_lowercase();
+        let trusted = trusted_lineages
+            .is_some_and(|rows| rows.contains(&(path.clone(), parent_path.clone())));
+        if trusted {
+            evidence.push(Evidence::known(
+                Family::Lineage,
+                Strength::Context,
+                format!("trusted parent relation: {}", current_parent.exe),
+            ));
+        } else {
+            let profile = history
+                .and_then(|h| h.get(&path))
+                .cloned()
+                .unwrap_or_default();
+            evidence.push(profile.evidence(&parent_path));
+        }
     } else {
         evidence.push(Evidence {
             family: Family::Lineage,
@@ -1011,10 +1204,23 @@ fn analyze_security(
     snapshots: &[ProcessSnapshot],
     history: Option<&HashMap<String, ParentProfile>>,
 ) -> Vec<Finding> {
+    analyze_security_with_trust(snapshots, history, None)
+}
+
+fn analyze_security_with_trust(
+    snapshots: &[ProcessSnapshot],
+    history: Option<&HashMap<String, ParentProfile>>,
+    trusted_lineages: Option<&HashSet<(String, String)>>,
+) -> Vec<Finding> {
     let mut findings = snapshots
         .iter()
         .filter_map(|process| {
-            let result = assess_process(process, snapshots, history);
+            let result = assess_process_with_trust(
+                process,
+                snapshots,
+                history,
+                trusted_lineages,
+            );
             (result.classification >= AttentionLevel::Attention).then(|| Finding {
                 pid: process.pid,
                 name: process.name.clone(),
@@ -1159,6 +1365,15 @@ fn open_security_db(paths: &AppPaths) -> Result<Connection> {
              reasons TEXT NOT NULL
          );
          CREATE INDEX IF NOT EXISTS idx_correlation_instance ON correlation_history(pid, start_time, exe, id);
+
+         CREATE TABLE IF NOT EXISTS trusted_lineage (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             child_exe TEXT NOT NULL COLLATE NOCASE,
+             parent_exe TEXT NOT NULL COLLATE NOCASE,
+             created_at INTEGER NOT NULL,
+             UNIQUE(child_exe, parent_exe)
+         );
+
          CREATE TABLE IF NOT EXISTS intel_cache (
              indicator TEXT NOT NULL,
              source_id TEXT NOT NULL,
