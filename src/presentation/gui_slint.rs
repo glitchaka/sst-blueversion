@@ -4,7 +4,7 @@
 //! there is deliberately no full-width title bar behind it.
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::HashMap,
     ffi::c_void,
     mem::size_of,
@@ -81,6 +81,7 @@ slint::slint! {
         callback pointer-up(float, float, bool);
         callback pointer-scroll(float);
         callback close-window();
+        callback window-state-change();
 
         surface := Rectangle {
             x: 0;
@@ -287,7 +288,10 @@ slint::slint! {
 
                     minimize-touch := TouchArea {
                         mouse-cursor: pointer;
-                        clicked => { root.minimized = true; }
+                        clicked => {
+                            root.window-state-change();
+                            root.minimized = true;
+                        }
                     }
                 }
 
@@ -315,7 +319,10 @@ slint::slint! {
 
                     maximize-touch := TouchArea {
                         mouse-cursor: pointer;
-                        clicked => { root.maximized = !root.maximized; }
+                        clicked => {
+                            root.window-state-change();
+                            root.maximized = !root.maximized;
+                        }
                     }
                 }
 
@@ -1465,6 +1472,7 @@ pub fn run() -> Result<()> {
         load_background_image(&paths, &appearance)?
     };
     let carousel_state = Rc::new(RefCell::new(initial_carousel));
+    let carousel_window_event = Rc::new(Cell::new(false));
     let appearance_state = Rc::new(RefCell::new(appearance.clone()));
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new_all()));
@@ -1517,6 +1525,12 @@ pub fn run() -> Result<()> {
         });
     }
     {
+        let carousel_window_event = carousel_window_event.clone();
+        ui.on_window_state_change(move || {
+            carousel_window_event.set(true);
+        });
+    }
+    {
         let weak = ui.as_weak();
         ui.on_close_window(move || {
             if let Some(ui) = weak.upgrade() {
@@ -1551,6 +1565,7 @@ pub fn run() -> Result<()> {
         let last_focus = last_focus.clone();
         let appearance_state = appearance_state.clone();
         let carousel_state = carousel_state.clone();
+        let carousel_window_event = carousel_window_event.clone();
         let paths = paths.clone();
 
         timer.start(TimerMode::Repeated, Duration::from_millis(16), move || {
@@ -1635,10 +1650,11 @@ pub fn run() -> Result<()> {
                     let interval = Duration::from_secs(
                         appearance.background_carousel_minutes.saturating_mul(60),
                     );
-                    let should_rotate = carousel_state
+                    let observed_change = carousel_state
                         .borrow_mut()
                         .observe(raw, window_state, interval);
-                    if should_rotate {
+                    let explicit_window_change = carousel_window_event.replace(false);
+                    if observed_change || explicit_window_change {
                         if let Some(path) = carousel_state.borrow_mut().rotate() {
                             match load_background_path(&path) {
                                 Ok(image) => ui.set_background_image(image),
@@ -1652,6 +1668,7 @@ pub fn run() -> Result<()> {
                         }
                     }
                 } else {
+                    carousel_window_event.set(false);
                     let _ = carousel_state
                         .borrow_mut()
                         .observe(raw, window_state, Duration::from_secs(u64::MAX));
