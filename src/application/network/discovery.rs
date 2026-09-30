@@ -235,7 +235,7 @@ impl NetworkDiscoveryService {
             .unwrap_or_else(|| identify_mac("??:??:??:??:??:??"));
 
         let result = IdentifyResult {
-            target: target.clone(),
+            target: target.as_str().to_owned(),
             ip: ip.map(|value| value.to_string()),
             hostname,
             mac,
@@ -356,7 +356,7 @@ impl NetworkDiscoveryService {
                 } else if let Some(existing_id) = stable_online
                     .iter()
                     .find(|(candidate, existing_ip)| {
-                        !candidate.starts_with("ip:") && existing_ip.as_str() == ip_text
+                        !candidate.starts_with("ip:") && existing_ip.as_str() == ip_text.as_str()
                     })
                     .map(|(candidate, _)| candidate.to_string())
                 {
