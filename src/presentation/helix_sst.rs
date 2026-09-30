@@ -28,7 +28,7 @@ static HELIX_ARCHIVE: &[u8] = include_bytes!(concat!(
     "/helix-25.07.1-x86_64-windows.zip"
 ));
 
-const CONFIG_TOML: &str = r#"theme = "shell-shock"
+const CONFIG_TOML: &str = r#"theme = "gruvbox"
 
 [editor]
 line-number = "absolute"
@@ -37,6 +37,11 @@ true-color = true
 cursorline = true
 bufferline = "multiple"
 color-modes = true
+end-of-line-diagnostics = "warning"
+
+[editor.inline-diagnostics]
+cursor-line = "warning"
+other-lines = "disable"
 
 [editor.statusline]
 left = ["mode", "spinner", "file-name", "file-modification-indicator"]
@@ -45,7 +50,7 @@ right = ["diagnostics", "selections", "position", "file-encoding", "file-type"]
 
 [editor.statusline.mode]
 normal = "NORMAL · i: escribir · F1: ayuda"
-insert = "INSERTAR · Esc: comandos"
+insert = "INSERTAR · Alt+d: — · F2: ortografía · Esc: comandos"
 select = "SELECCIÓN · Esc: normal"
 "#;
 
@@ -151,7 +156,7 @@ fn ensure_installed() -> Result<Install> {
 
     fs::create_dir_all(&config_dir)?;
     let config = config_dir.join("config.toml");
-    write_default(&config, CONFIG_TOML)?;
+    write_managed_config(&config)?;
     fs::write(config_dir.join("primeros-pasos.txt"), HELP)?;
 
     let themes = runtime.join("themes");
@@ -250,12 +255,76 @@ language-servers = ["helix-sst-spell", "marksman", "markdown-oxide"]
     Ok(())
 }
 
-fn write_default(path: &Path, content: &str) -> Result<()> {
-    match fs::OpenOptions::new().write(true).create_new(true).open(path) {
-        Ok(mut file) => file.write_all(content.as_bytes())?,
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {},
-        Err(error) => return Err(error.into()),
-    }
+fn write_managed_config(path: &Path) -> Result<()> {
+    let mut config: toml::Value = if path.is_file() {
+        toml::from_str(&fs::read_to_string(path)?)
+            .with_context(|| format!("Configuración inválida: {}", path.display()))?
+    } else {
+        toml::from_str(CONFIG_TOML)?
+    };
+
+    apply_managed_config(&mut config)?;
+    fs::write(path, toml::to_string_pretty(&config)?)?;
+    Ok(())
+}
+
+fn apply_managed_config(config: &mut toml::Value) -> Result<()> {
+    let root = config
+        .as_table_mut()
+        .context("La configuración de Helix debe ser una tabla")?;
+
+    // Helix-SST owns its visual identity and writing diagnostics.
+    root.insert("theme".into(), toml::Value::String("gruvbox".into()));
+
+    let editor = root
+        .entry("editor")
+        .or_insert_with(|| toml::Value::Table(Default::default()))
+        .as_table_mut()
+        .context("La sección editor debe ser una tabla")?;
+
+    editor.insert("true-color".into(), toml::Value::Boolean(true));
+    editor.insert(
+        "end-of-line-diagnostics".into(),
+        toml::Value::String("warning".into()),
+    );
+
+    let inline = editor
+        .entry("inline-diagnostics")
+        .or_insert_with(|| toml::Value::Table(Default::default()))
+        .as_table_mut()
+        .context("editor.inline-diagnostics debe ser una tabla")?;
+    inline.insert(
+        "cursor-line".into(),
+        toml::Value::String("warning".into()),
+    );
+    inline.insert(
+        "other-lines".into(),
+        toml::Value::String("disable".into()),
+    );
+
+    let statusline = editor
+        .entry("statusline")
+        .or_insert_with(|| toml::Value::Table(Default::default()))
+        .as_table_mut()
+        .context("editor.statusline debe ser una tabla")?;
+    let modes = statusline
+        .entry("mode")
+        .or_insert_with(|| toml::Value::Table(Default::default()))
+        .as_table_mut()
+        .context("editor.statusline.mode debe ser una tabla")?;
+    modes.insert(
+        "normal".into(),
+        toml::Value::String("NORMAL · i: escribir · F1: ayuda".into()),
+    );
+    modes.insert(
+        "insert".into(),
+        toml::Value::String("INSERTAR · Alt+d: — · F2: ortografía · Esc: comandos".into()),
+    );
+    modes.insert(
+        "select".into(),
+        toml::Value::String("SELECCIÓN · Esc: normal".into()),
+    );
+
     Ok(())
 }
 
@@ -302,6 +371,7 @@ fn session_files(install: &Install) -> Result<SessionFiles> {
     let exe = install.launcher.to_string_lossy().into_owned();
     let mut config: toml::Value = toml::from_str(&fs::read_to_string(&install.config)?)
         .with_context(|| format!("Configuración inválida: {}", install.config.display()))?;
+    apply_managed_config(&mut config)?;
     let root = config.as_table_mut().context("La configuración de Helix debe ser una tabla")?;
     let editor = root.entry("editor").or_insert_with(|| toml::Value::Table(Default::default()))
         .as_table_mut().context("La sección editor debe ser una tabla")?;
@@ -342,6 +412,7 @@ fn session_files(install: &Install) -> Result<SessionFiles> {
         table.insert("F2".into(), code_action);
         if mode == "insert" {
             table.insert("A-d".into(), toml::Value::String("@—".into()));
+            table.insert("C-g".into(), toml::Value::String("@—".into()));
         }
     }
     fs::write(&files.config, toml::to_string(&config)?)?;
