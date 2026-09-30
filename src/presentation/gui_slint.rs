@@ -422,9 +422,11 @@ impl BackgroundCarousel {
         let index = configured_name
             .as_ref()
             .and_then(|name| {
+                let wanted = name.to_string_lossy();
                 images.iter().position(|path| {
                     path.file_name()
-                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name))
+                        .and_then(|candidate| candidate.to_str())
+                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(&wanted))
                 })
             })
             .unwrap_or(0);
