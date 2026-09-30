@@ -1,6 +1,6 @@
 # Shell Shock Tool (SST)
 
-**Shell Shock Tool**, o **SST**, es una consola portable para Windows escrita en Rust. Combina una terminal Win32 propia, un intérprete Bash-compatible, utilidades Unix integradas y herramientas de soporte técnico, diagnóstico, inventario y red.
+**Shell Shock Tool**, o **SST**, es una consola portable para Windows escrita en Rust. Combina una terminal Win32 propia, **Nwash** —su intérprete basado en la sintaxis y semántica portable de Bash 5.3 y adaptado deliberadamente a Windows—, utilidades Unix integradas y herramientas de soporte técnico, diagnóstico, inventario y red.
 
 El ejecutable actual se llama:
 
@@ -190,6 +190,26 @@ sys tasks NOMBRE --xml
 Consulta tareas programadas, detalles o su definición XML mediante `schtasks.exe`.
 
 ---
+
+## Nwash — primitivas Windows
+
+Además de la compatibilidad Bash portable, Nwash expone operaciones propias de Windows como comandos componibles:
+
+```text
+eventlog   Windows Event Log
+service    Service Control Manager
+registry   Registro de Windows
+process    procesos y árboles de procesos
+acl        ACL/NTFS
+pnp        Plug and Play
+task       tareas programadas
+session    sesiones locales/RDP
+share      recursos SMB
+firewall   Windows Defender Firewall
+power      apagado, reinicio, logoff e hibernación
+```
+
+El intérprete expone `$NWASH_VERSION`, `$NWASH_BASH_BASE` y `$NWASH_PLATFORM`. Nwash no intenta reproducir infraestructura binaria interna de GNU Bash sin valor portable en Windows, como `enable -f`/`enable -d`.
 
 ## Elevación y privilegios
 
@@ -442,7 +462,7 @@ La medición de bytes por PID utiliza ETW de Windows. Si ETW no está disponible
 ```bash
 net provider list
 net provider list --json
-net provider add NOMBRE --type TIPO --host HOST
+net provider add NOMBRE --type TIPO --host HOST [--user-env VAR] [--secret-env VAR] [--community-env VAR]
 net provider use NOMBRE
 net provider current
 net provider remove NOMBRE
