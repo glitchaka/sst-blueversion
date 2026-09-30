@@ -1019,7 +1019,7 @@ Las capacidades de cambio de configuración de switches quedan fuera de la prime
 
 Ya existe una primera implementación de:
 
-- shell Bash-compatible embebida en Rust;
+- Nwash embebido en Rust, basado en Bash 5.3 portable y extendido con primitivas Windows;
 - historial y autocompletado básico de comandos/rutas/subcomandos;
 - configuración portable `sstrc`;
 - utilidades Unix integradas;
@@ -1032,14 +1032,17 @@ Ya existe una primera implementación de:
 - perfiles de gateway para `net usage`;
 - inventario de presencia de LAN;
 - resolución MAC → switch → puerto mediante SNMP read-only;
-- editor modal tipo Vim escrito en Rust.
+- editor modal tipo Vim escrito en Rust;
+- ETW de bytes/s por PID y detección foreground/background;
+- ayuda jerárquica de `net`, `device`, `domain`, `switch` y `diag`;
+- builtins Nwash Windows: `eventlog`, `service`, `registry`, `process`, `acl`, `pnp`, `task`, `session`, `share`, `firewall` y `power`;
+- perfiles de proveedores con referencias a credenciales mediante variables de entorno.
 
 Pendiente dentro del alcance inicial:
 
-- medición ETW de bytes/s por proceso;
-- detección fiable de proceso foreground/background;
+
 - verificación Authenticode;
-- proveedores reales de contadores LAN por router/AP/firewall;
+- proveedores reales de contadores LAN por router/AP/firewall (`net usage`);
 - mayor compatibilidad Vim;
 - proveedores adicionales de switch/controlador;
 - completar utilidades Unix de mayor peso cuando sean necesarias.
