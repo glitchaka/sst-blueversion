@@ -424,7 +424,7 @@ fn truncate_text(value: &str, width: usize) -> String {
 
 fn authenticode_status(path: &str) -> String {
     if path.is_empty() { return "unknown".to_owned(); }
-    let escaped = path.replace(''', "''");
+    let escaped = path.replace('\'', "''");
     let script = format!("$s=Get-AuthenticodeSignature -LiteralPath '{}'; if($s.Status -eq 'Valid'){{'valid'}}elseif($s.Status -eq 'NotSigned'){{'unsigned'}}else{{$s.Status.ToString().ToLowerInvariant()}}", escaped);
     match std::process::Command::new("powershell.exe")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
