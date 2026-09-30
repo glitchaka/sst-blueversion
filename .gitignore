@@ -2,3 +2,4 @@
 /data
 /logs
 *.log
+/config/helix-sst/.spell-user
