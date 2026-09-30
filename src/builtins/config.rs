@@ -131,10 +131,11 @@ impl ConfigBuiltin {
                         .unwrap_or_default()
                 );
 
+                let minutes_text = minutes.to_string();
                 self.paths.set_config_values(&[
                     ("SST_BACKGROUND_MODE", "carrousel"),
-                    ("SST_BACKGROUND_CAROUSEL_MINUTES", &minutes.to_string()),
-                    ("SST_BACKGROUND_IMAGE", &relative),
+                    ("SST_BACKGROUND_CAROUSEL_MINUTES", minutes_text.as_str()),
+                    ("SST_BACKGROUND_IMAGE", relative.as_str()),
                 ])?;
 
                 Ok(CommandOutput::ok(format!(
