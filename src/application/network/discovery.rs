@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -302,14 +302,29 @@ impl NetworkDiscoveryService {
         let mut stable_online: HashMap<String, String> = HashMap::new();
         let mut misses: HashMap<String, u8> = HashMap::new();
         let mut last_rows: HashMap<String, ScanRow> = HashMap::new();
-        let mut history: HashMap<String, PresenceRecord> = self
-            .presence
-            .all()?
-            .into_iter()
-            .map(|record| (record.id.clone(), record))
-            .collect();
+        let (mut history, mut monitor_warning, mut persistence_available) =
+            match self.presence.all() {
+                Ok(records) => (
+                    records
+                        .into_iter()
+                        .map(|record| (record.id.clone(), record))
+                        .collect::<HashMap<String, PresenceRecord>>(),
+                    None,
+                    true,
+                ),
+                Err(error) => (
+                    HashMap::new(),
+                    Some(format!("historial de presencia no disponible: {error}")),
+                    false,
+                ),
+            };
         let mut events = Vec::new();
         let mut message_input: Option<String> = None;
+        let mut display_rows: Vec<(String, ScanRow)> = Vec::new();
+        let mut scan_status = String::from("iniciando");
+        let mut scan_rx: Option<mpsc::Receiver<Result<Vec<ScanRow>>>> = None;
+        let mut next_scan = Instant::now();
+        let mut dirty = true;
 
         loop {
             if let Some(bus) = lan_bus.as_ref() {
@@ -321,19 +336,40 @@ impl NetworkDiscoveryService {
                 bus.receive_into(&mut lan_notes);
             }
 
-            let mut rows = self.scan_rows(network)?;
+            if scan_rx.is_none() && Instant::now() >= next_scan {
+                scan_status = "escaneando".to_owned();
+                dirty = true;
+                scan_rx = Some(self.start_scan(network));
+            }
 
             if let Some(bus) = lan_bus.as_ref() {
                 bus.receive_into(&mut lan_notes);
             }
-            if only_unknown {
-                rows.retain(|row| !row.known);
-            }
 
-            let now = Utc::now().to_rfc3339();
-            let mut observed_ids = HashSet::new();
+            let scan_result = match scan_rx.as_ref().map(mpsc::Receiver::try_recv) {
+                Some(Ok(result)) => Some(result),
+                Some(Err(mpsc::TryRecvError::Disconnected)) => Some(Err(anyhow::anyhow!(
+                    "el worker de descubrimiento terminó sin entregar resultado"
+                ))),
+                Some(Err(mpsc::TryRecvError::Empty)) | None => None,
+            };
 
-            for row in rows {
+            if let Some(result) = scan_result {
+                scan_rx = None;
+                next_scan = Instant::now() + Duration::from_secs(3);
+
+                match result {
+                    Ok(mut rows) => {
+                        scan_status = format!("ok · {} hosts", rows.len());
+                        monitor_warning = None;
+                        if only_unknown {
+                            rows.retain(|row| !row.known);
+                        }
+
+                        let now = Utc::now().to_rfc3339();
+                        let mut observed_ids = HashSet::new();
+
+                        for row in rows {
                 let mut id = scan_identity(&row);
                 let ip_text = row.ip.to_string();
 
@@ -461,110 +497,67 @@ impl NetworkDiscoveryService {
                 }
             }
 
-            let records = history.values().cloned().collect::<Vec<_>>();
-            self.presence.replace_all(&records)?;
-
-            let mut display_rows = last_rows
-                .iter()
-                .filter(|(id, _)| stable_online.contains_key(id.as_str()))
-                .map(|(id, row)| (id.clone(), row.clone()))
-                .collect::<Vec<_>>();
-            display_rows.sort_by_key(|(_, row)| row.ip);
-
-            let mut screen = render_monitor_screen(
-                network,
-                only_unknown,
-                publish_message.as_deref(),
-                message_input.as_deref(),
-                lan_error.as_deref(),
-                &display_rows,
-                &misses,
-                &lan_notes,
-                &events,
-            );
-
-            terminal.clear()?;
-            terminal.write(&screen)?;
-            terminal.flush()?;
-
-            let started = Instant::now();
-            while started.elapsed() < Duration::from_secs(3) {
-                let Some(key) = terminal.poll_key(Duration::from_millis(150))? else {
-                    continue;
-                };
-
-                let mut redraw = false;
-
-                if let Some(input) = message_input.as_mut() {
-                    match key {
-                        TerminalKey::Enter => {
-                            let message = sanitize_message(input);
-                            if !message.is_empty() {
-                                publish_message = Some(message.clone());
-                                if let Some(bus) = lan_bus.as_ref() {
-                                    if let Err(error) = bus.publish(&message) {
-                                        lan_error = Some(format!(
-                                            "no se pudo publicar mensaje SST: {error}"
-                                        ));
-                                    } else {
-                                        bus.receive_into(&mut lan_notes);
-                                    }
-                                }
-                            }
-                            message_input = None;
-                            redraw = true;
-                        }
-                        TerminalKey::Escape => {
-                            message_input = None;
-                            redraw = true;
-                        }
-                        TerminalKey::Backspace => {
-                            input.pop();
-                            redraw = true;
-                        }
-                        TerminalKey::Space => {
-                            if input.chars().count() < 120 {
-                                input.push(' ');
-                                redraw = true;
+                        let records = history.values().cloned().collect::<Vec<_>>();
+                        if persistence_available {
+                            if let Err(error) = self.presence.replace_all(&records) {
+                                monitor_warning =
+                                    Some(format!("no se pudo guardar historial de presencia: {error}"));
+                                persistence_available = false;
                             }
                         }
-                        TerminalKey::Char(ch) if !ch.is_control() => {
-                            if input.chars().count() < 120 {
-                                input.push(ch);
-                                redraw = true;
-                            }
-                        }
-                        _ => {}
+
+                        display_rows = last_rows
+                            .iter()
+                            .filter(|(id, _)| stable_online.contains_key(id.as_str()))
+                            .map(|(id, row)| (id.clone(), row.clone()))
+                            .collect::<Vec<_>>();
+                        display_rows.sort_by_key(|(_, row)| row.ip);
+                        dirty = true;
                     }
-                } else {
-                    match key {
-                        TerminalKey::Enter => {
-                            message_input = Some(String::new());
-                            redraw = true;
-                        }
-                        TerminalKey::Char('q') | TerminalKey::Escape => {
-                            return Ok(CommandOutput::ok(""));
-                        }
-                        _ => {}
+                    Err(error) => {
+                        scan_status = "error".to_owned();
+                        monitor_warning = Some(format!("falló el barrido de red: {error}"));
+                        dirty = true;
                     }
                 }
+            }
 
-                if redraw {
-                    screen = render_monitor_screen(
-                        network,
-                        only_unknown,
-                        publish_message.as_deref(),
-                        message_input.as_deref(),
-                        lan_error.as_deref(),
-                        &display_rows,
-                        &misses,
-                        &lan_notes,
-                        &events,
-                    );
-                    terminal.clear()?;
-                    terminal.write(&screen)?;
-                    terminal.flush()?;
+            if let Some(key) = terminal.poll_key(Duration::from_millis(100))? {
+                let redraw = handle_monitor_key(
+                    key,
+                    &mut message_input,
+                    &mut publish_message,
+                    lan_bus.as_ref(),
+                    &mut lan_notes,
+                    &mut lan_error,
+                )?;
+                if redraw == MonitorInput::Exit {
+                    return Ok(CommandOutput::ok(""));
                 }
+                if redraw == MonitorInput::Redraw {
+                    dirty = true;
+                }
+            }
+
+            if dirty {
+                let screen = render_monitor_screen(
+                    network,
+                    only_unknown,
+                    publish_message.as_deref(),
+                    message_input.as_deref(),
+                    lan_error.as_deref(),
+                    monitor_warning.as_deref(),
+                    &scan_status,
+                    &display_rows,
+                    &misses,
+                    &lan_notes,
+                    &events,
+                );
+
+                terminal.clear()?;
+                terminal.write(&screen)?;
+                terminal.flush()?;
+                dirty = false;
             }
         }
     }
@@ -624,75 +617,24 @@ impl NetworkDiscoveryService {
     }
 
     pub fn scan_rows(&self, network: Ipv4Net) -> Result<Vec<ScanRow>> {
-        let timeout = Duration::from_millis(300);
-        let hosts = network.hosts().collect::<Vec<Ipv4Addr>>();
-        let results = Arc::new(Mutex::new(Vec::new()));
+        scan_rows_with(
+            Arc::clone(&self.diagnostics),
+            Arc::clone(&self.devices),
+            network,
+        )
+    }
 
-        for chunk in hosts.chunks(48) {
-            let mut workers = Vec::new();
+    fn start_scan(&self, network: Ipv4Net) -> mpsc::Receiver<Result<Vec<ScanRow>>> {
+        let (sender, receiver) = mpsc::channel();
+        let diagnostics = Arc::clone(&self.diagnostics);
+        let devices = Arc::clone(&self.devices);
 
-            for ip in chunk {
-                let ip = *ip;
-                let results = Arc::clone(&results);
-                let diagnostics = Arc::clone(&self.diagnostics);
+        thread::spawn(move || {
+            let result = scan_rows_with(diagnostics, devices, network);
+            let _ = sender.send(result);
+        });
 
-                workers.push(thread::spawn(move || {
-                    let Some(evidence) = diagnostics.probe_host(ip, timeout) else {
-                        return;
-                    };
-
-                    let hostname = lookup_addr(&IpAddr::V4(ip)).ok();
-                    if let Ok(mut results) = results.lock() {
-                        results.push((ip, evidence, hostname));
-                    }
-                }));
-            }
-
-            for worker in workers {
-                let _ = worker.join();
-            }
-        }
-
-        let arp = self.diagnostics.arp_map().unwrap_or_default();
-        let devices = self.devices.all().unwrap_or_default();
-        let known_names = devices
-            .iter()
-            .map(|device| (device.mac.to_ascii_uppercase(), device.name.clone()))
-            .collect::<HashMap<_, _>>();
-        let known_macs = devices
-            .into_iter()
-            .map(|device| device.mac.to_ascii_uppercase())
-            .collect::<HashSet<_>>();
-
-        let mut discovered = results
-            .lock()
-            .map(|rows| rows.clone())
-            .unwrap_or_default();
-        discovered.sort_by_key(|row| row.0);
-
-        Ok(discovered
-            .into_iter()
-            .map(|(ip, evidence, hostname)| {
-                let mac = evidence
-                    .mac
-                    .or_else(|| arp.get(&ip).cloned())
-                    .unwrap_or_else(|| "??:??:??:??:??:??".to_owned());
-                let normalized_mac = mac.to_ascii_uppercase();
-                let identity = identify_mac(&mac);
-
-                ScanRow {
-                    ip,
-                    inventory_name: known_names.get(&normalized_mac).cloned(),
-                    known: known_macs.contains(&normalized_mac),
-                    mac,
-                    hostname: hostname.unwrap_or_else(|| "-".to_owned()),
-                    latency_ms: evidence.latency_ms,
-                    discovery: evidence.method,
-                    mac_scope: identity.scope,
-                    vendor: identity.vendor,
-                }
-            })
-            .collect())
+        receiver
     }
 
     fn monitor_options(&self, args: &[String]) -> Result<(Ipv4Net, Option<String>)> {
@@ -757,6 +699,152 @@ impl NetworkDiscoveryService {
     }
 }
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MonitorInput {
+    None,
+    Redraw,
+    Exit,
+}
+
+fn handle_monitor_key(
+    key: TerminalKey,
+    message_input: &mut Option<String>,
+    publish_message: &mut Option<String>,
+    lan_bus: Option<&LanNoteBus>,
+    lan_notes: &mut HashMap<Ipv4Addr, LanNote>,
+    lan_error: &mut Option<String>,
+) -> Result<MonitorInput> {
+    if let Some(input) = message_input.as_mut() {
+        match key {
+            TerminalKey::Enter => {
+                let message = sanitize_message(input);
+                if !message.is_empty() {
+                    *publish_message = Some(message.clone());
+                    if let Some(bus) = lan_bus {
+                        if let Err(error) = bus.publish(&message) {
+                            *lan_error = Some(format!(
+                                "no se pudo publicar mensaje SST: {error}"
+                            ));
+                        } else {
+                            bus.receive_into(lan_notes);
+                        }
+                    }
+                }
+                *message_input = None;
+                return Ok(MonitorInput::Redraw);
+            }
+            TerminalKey::Escape => {
+                *message_input = None;
+                return Ok(MonitorInput::Redraw);
+            }
+            TerminalKey::Backspace => {
+                input.pop();
+                return Ok(MonitorInput::Redraw);
+            }
+            TerminalKey::Space => {
+                if input.chars().count() < 120 {
+                    input.push(' ');
+                    return Ok(MonitorInput::Redraw);
+                }
+            }
+            TerminalKey::Char(ch) if !ch.is_control() => {
+                if input.chars().count() < 120 {
+                    input.push(ch);
+                    return Ok(MonitorInput::Redraw);
+                }
+            }
+            _ => {}
+        }
+        return Ok(MonitorInput::None);
+    }
+
+    match key {
+        TerminalKey::Enter => {
+            *message_input = Some(String::new());
+            Ok(MonitorInput::Redraw)
+        }
+        TerminalKey::Char('q') | TerminalKey::Escape => Ok(MonitorInput::Exit),
+        _ => Ok(MonitorInput::None),
+    }
+}
+
+fn scan_rows_with(
+    diagnostics: Arc<NetworkDiagnosticsService>,
+    devices: Arc<dyn DeviceRepository>,
+    network: Ipv4Net,
+) -> Result<Vec<ScanRow>> {
+    let timeout = Duration::from_millis(300);
+    let hosts = network.hosts().collect::<Vec<Ipv4Addr>>();
+    let results = Arc::new(Mutex::new(Vec::new()));
+
+    for chunk in hosts.chunks(48) {
+        let mut workers = Vec::new();
+
+        for ip in chunk {
+            let ip = *ip;
+            let results = Arc::clone(&results);
+            let diagnostics = Arc::clone(&diagnostics);
+
+            workers.push(thread::spawn(move || {
+                let Some(evidence) = diagnostics.probe_host(ip, timeout) else {
+                    return;
+                };
+
+                let hostname = lookup_addr(&IpAddr::V4(ip)).ok();
+                if let Ok(mut results) = results.lock() {
+                    results.push((ip, evidence, hostname));
+                }
+            }));
+        }
+
+        for worker in workers {
+            let _ = worker.join();
+        }
+    }
+
+    let arp = diagnostics.arp_map().unwrap_or_default();
+    let inventory = devices.all().unwrap_or_default();
+    let known_names = inventory
+        .iter()
+        .map(|device| (device.mac.to_ascii_uppercase(), device.name.clone()))
+        .collect::<HashMap<_, _>>();
+    let known_macs = inventory
+        .into_iter()
+        .map(|device| device.mac.to_ascii_uppercase())
+        .collect::<HashSet<_>>();
+
+    let mut discovered = results
+        .lock()
+        .map(|rows| rows.clone())
+        .unwrap_or_default();
+    discovered.sort_by_key(|row| row.0);
+
+    Ok(discovered
+        .into_iter()
+        .map(|(ip, evidence, hostname)| {
+            let mac = evidence
+                .mac
+                .or_else(|| arp.get(&ip).cloned())
+                .unwrap_or_else(|| "??:??:??:??:??:??".to_owned());
+            let normalized_mac = mac.to_ascii_uppercase();
+            let identity = identify_mac(&mac);
+
+            ScanRow {
+                ip,
+                inventory_name: known_names.get(&normalized_mac).cloned(),
+                known: known_macs.contains(&normalized_mac),
+                mac,
+                hostname: hostname.unwrap_or_else(|| "-".to_owned()),
+                latency_ms: evidence.latency_ms,
+                discovery: evidence.method,
+                mac_scope: identity.scope,
+                vendor: identity.vendor,
+            }
+        })
+        .collect())
+}
+
 fn display_name(row: &ScanRow) -> &str {
     if row.hostname != "-" && !row.hostname.trim().is_empty() {
         &row.hostname
@@ -804,15 +892,18 @@ fn render_monitor_screen(
     publish_message: Option<&str>,
     message_input: Option<&str>,
     lan_error: Option<&str>,
+    monitor_warning: Option<&str>,
+    scan_status: &str,
     display_rows: &[(String, ScanRow)],
     misses: &HashMap<String, u8>,
     lan_notes: &HashMap<Ipv4Addr, LanNote>,
     events: &[String],
 ) -> String {
     let mut screen = format!(
-        "SST net monitor {}{}   [Enter] mensaje · [q/Esc] salir · offline tras {} fallos · UDP/{}\n",
+        "SST net monitor {}{}   [Enter] mensaje · [q/Esc] salir · scan: {} · offline tras {} fallos · UDP/{}\n",
         network,
         if only_unknown { " --unknown" } else { "" },
+        scan_status,
         OFFLINE_MISSES,
         LAN_NOTE_PORT,
     );
@@ -822,6 +913,9 @@ fn render_monitor_screen(
     }
     if let Some(error) = lan_error {
         screen.push_str(&format!("LAN message warning: {error}\n"));
+    }
+    if let Some(warning) = monitor_warning {
+        screen.push_str(&format!("MONITOR WARNING: {warning}\n"));
     }
 
     screen.push('\n');
