@@ -73,9 +73,9 @@ impl DeviceService {
                 .map(|device| {
                     let identity = identify_mac(&device.mac);
                     serde_json::json!({
-                        "mac": device.mac,
-                        "name": device.name,
-                        "notes": device.notes,
+                        "mac": device.mac.clone(),
+                        "name": device.name.clone(),
+                        "notes": device.notes.clone(),
                         "mac_scope": identity.scope,
                         "vendor": identity.vendor,
                         "ieee_registry": identity.registry,
