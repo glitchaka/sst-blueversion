@@ -214,11 +214,17 @@ impl DeviceService {
         self.repository.replace_all(&devices)?;
 
         let identity = identify_mac(&mac);
-        Ok(CommandOutput::ok(format!(
+        let mut out = format!(
             "device saved: {mac} {name}\nmac_scope: {}\nvendor: {}\n",
             identity.scope,
             identity.vendor.as_deref().unwrap_or("-")
-        )))
+        );
+        if identity.scope == "local/private" {
+            out.push_str(
+                "note: esta MAC es administrada localmente; puede ser privada/aleatoria y el inventario identifica esta dirección, no necesariamente el hardware físico.\n",
+            );
+        }
+        Ok(CommandOutput::ok(out))
     }
 
     fn resolve_registration_mac(&self, target: &str) -> Result<String> {
@@ -249,6 +255,17 @@ impl DeviceService {
             .collect::<HashSet<_>>();
 
         let mut records = self.presence.all()?;
+        for record in &mut records {
+            if record.mac_scope.is_empty() || record.vendor.is_none() {
+                let identity = identify_mac(&record.mac);
+                if record.mac_scope.is_empty() {
+                    record.mac_scope = identity.scope;
+                }
+                if record.vendor.is_none() {
+                    record.vendor = identity.vendor;
+                }
+            }
+        }
         records.retain(|record| !known_macs.contains(&record.mac.to_ascii_uppercase()));
         records.sort_by(|a, b| {
             b.last_seen
