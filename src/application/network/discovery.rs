@@ -286,7 +286,7 @@ impl NetworkDiscoveryService {
     }
 
     pub fn monitor(&self, args: &[String]) -> Result<CommandOutput> {
-        let (network, publish_message) = self.monitor_options(args)?;
+        let (network, mut publish_message) = self.monitor_options(args)?;
         let only_unknown = args.iter().any(|arg| arg == "--unknown");
         let mut terminal = self.terminal.alternate_screen()?;
 
@@ -309,6 +309,7 @@ impl NetworkDiscoveryService {
             .map(|record| (record.id.clone(), record))
             .collect();
         let mut events = Vec::new();
+        let mut message_input: Option<String> = None;
 
         loop {
             if let Some(bus) = lan_bus.as_ref() {
@@ -470,32 +471,17 @@ impl NetworkDiscoveryService {
                 .collect::<Vec<_>>();
             display_rows.sort_by_key(|(_, row)| row.ip);
 
-            let mut screen = format!(
-                "SST net monitor {}{}   [q] salir · offline tras {} fallos · mensajes UDP/{}\n",
+            let mut screen = render_monitor_screen(
                 network,
-                if only_unknown { " --unknown" } else { "" },
-                OFFLINE_MISSES,
-                LAN_NOTE_PORT,
+                only_unknown,
+                publish_message.as_deref(),
+                message_input.as_deref(),
+                lan_error.as_deref(),
+                &display_rows,
+                &misses,
+                &lan_notes,
+                &events,
             );
-            if let Some(message) = publish_message.as_deref() {
-                screen.push_str(&format!(
-                    "Publicando: {}\n",
-                    shorten(message, 120)
-                ));
-            }
-            if let Some(error) = lan_error.as_deref() {
-                screen.push_str(&format!("LAN message warning: {error}\n"));
-            }
-            screen.push('\n');
-            screen.push_str(&render_monitor_rows(&display_rows, &misses));
-            screen.push_str("\nMensajes SST:\n");
-            screen.push_str(&render_lan_notes(&lan_notes, &display_rows));
-            screen.push_str("\nEventos recientes:\n");
-
-            for event_line in &events {
-                screen.push_str(event_line);
-                screen.push('\n');
-            }
 
             terminal.clear()?;
             terminal.write(&screen)?;
@@ -503,11 +489,81 @@ impl NetworkDiscoveryService {
 
             let started = Instant::now();
             while started.elapsed() < Duration::from_secs(3) {
-                if matches!(
-                    terminal.poll_key(Duration::from_millis(150))?,
-                    Some(TerminalKey::Char('q') | TerminalKey::Escape)
-                ) {
-                    return Ok(CommandOutput::ok(""));
+                let Some(key) = terminal.poll_key(Duration::from_millis(150))? else {
+                    continue;
+                };
+
+                let mut redraw = false;
+
+                if let Some(input) = message_input.as_mut() {
+                    match key {
+                        TerminalKey::Enter => {
+                            let message = sanitize_message(input);
+                            if !message.is_empty() {
+                                publish_message = Some(message.clone());
+                                if let Some(bus) = lan_bus.as_ref() {
+                                    if let Err(error) = bus.publish(&message) {
+                                        lan_error = Some(format!(
+                                            "no se pudo publicar mensaje SST: {error}"
+                                        ));
+                                    } else {
+                                        bus.receive_into(&mut lan_notes);
+                                    }
+                                }
+                            }
+                            message_input = None;
+                            redraw = true;
+                        }
+                        TerminalKey::Escape => {
+                            message_input = None;
+                            redraw = true;
+                        }
+                        TerminalKey::Backspace => {
+                            input.pop();
+                            redraw = true;
+                        }
+                        TerminalKey::Space => {
+                            if input.chars().count() < 120 {
+                                input.push(' ');
+                                redraw = true;
+                            }
+                        }
+                        TerminalKey::Char(ch) if !ch.is_control() => {
+                            if input.chars().count() < 120 {
+                                input.push(ch);
+                                redraw = true;
+                            }
+                        }
+                        _ => {}
+                    }
+                } else {
+                    match key {
+                        TerminalKey::Enter => {
+                            message_input = Some(String::new());
+                            redraw = true;
+                        }
+                        TerminalKey::Char('q') | TerminalKey::Escape => {
+                            return Ok(CommandOutput::ok(""));
+                        }
+                        _ => {}
+                    }
+                }
+
+                if redraw {
+                    screen = render_monitor_screen(
+                        network,
+                        only_unknown,
+                        publish_message.as_deref(),
+                        message_input.as_deref(),
+                        lan_error.as_deref(),
+                        &display_rows,
+                        &misses,
+                        &lan_notes,
+                        &events,
+                    );
+                    terminal.clear()?;
+                    terminal.write(&screen)?;
+                    terminal.flush()?;
                 }
             }
         }
@@ -740,6 +796,53 @@ fn render_scan_rows(rows: &[ScanRow]) -> String {
     }
 
     out
+}
+
+fn render_monitor_screen(
+    network: Ipv4Net,
+    only_unknown: bool,
+    publish_message: Option<&str>,
+    message_input: Option<&str>,
+    lan_error: Option<&str>,
+    display_rows: &[(String, ScanRow)],
+    misses: &HashMap<String, u8>,
+    lan_notes: &HashMap<Ipv4Addr, LanNote>,
+    events: &[String],
+) -> String {
+    let mut screen = format!(
+        "SST net monitor {}{}   [Enter] mensaje · [q/Esc] salir · offline tras {} fallos · UDP/{}\n",
+        network,
+        if only_unknown { " --unknown" } else { "" },
+        OFFLINE_MISSES,
+        LAN_NOTE_PORT,
+    );
+
+    if let Some(message) = publish_message {
+        screen.push_str(&format!("Publicando: {}\n", shorten(message, 120)));
+    }
+    if let Some(error) = lan_error {
+        screen.push_str(&format!("LAN message warning: {error}\n"));
+    }
+
+    screen.push('\n');
+    screen.push_str(&render_monitor_rows(display_rows, misses));
+    screen.push_str("\nMensajes SST:\n");
+    screen.push_str(&render_lan_notes(lan_notes, display_rows));
+    screen.push_str("\nEventos recientes:\n");
+
+    for event_line in events {
+        screen.push_str(event_line);
+        screen.push('\n');
+    }
+
+    if let Some(input) = message_input {
+        screen.push_str("\nMensaje> ");
+        screen.push_str(input);
+        screen.push('_');
+        screen.push_str("\n[Enter] enviar · [Esc] cancelar\n");
+    }
+
+    screen
 }
 
 fn render_lan_notes(
