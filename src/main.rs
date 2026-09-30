@@ -329,6 +329,14 @@ fn load_bash_startup(
 
 fn run_cli(args: &[String]) -> Result<i32> {
     #[cfg(windows)]
+    if args.first().map(String::as_str) == Some("--helix-sst-spell") {
+        let dictionary = args
+            .get(1)
+            .map(PathBuf::from)
+            .ok_or_else(|| anyhow::anyhow!("--helix-sst-spell requiere ruta de diccionario"))?;
+        return presentation::helix_sst_spell::run_lsp(dictionary);
+    }
+    #[cfg(windows)]
     if args.first().map(String::as_str) == Some("--editor-clipboard") {
         return presentation::editor_clipboard::helper(args);
     }
