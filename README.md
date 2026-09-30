@@ -1258,3 +1258,33 @@ El documento de alcance y arquitectura está en:
 ```text
 SHELL_SHOCK_TOOL_PLAN.md
 ```
+
+
+### `net usage`
+
+`net usage` obtiene consumo por cliente desde un punto de observación de la infraestructura; no intenta deducir el tráfico de otros equipos desde ARP, ping o la NIC local.
+
+El backend `generic` consume HTTP JSON normalizado desde `--host`. También puede usarse con un endpoint OpenWrt que entregue el mismo contrato:
+
+```json
+[
+  {"device":"PC-01","ip":"192.168.1.10","mac":"AA:BB:CC:DD:EE:FF","download_bps":1250000,"upload_bps":85000}
+]
+```
+
+También acepta `{"clients":[...]}`, `rx_bps` como alias de `download_bps` y `tx_bps` como alias de `upload_bps`.
+
+Las credenciales no se guardan en el perfil. `--user-env` y `--secret-env` referencian variables de entorno. Sin usuario, `--secret-env` se envía como token Bearer.
+
+```bash
+net provider add gateway --type generic --host https://gateway.local/sst/usage --user-env SST_ROUTER_USER --secret-env SST_ROUTER_SECRET
+net provider use gateway
+net usage --top 10
+net usage --device 192.168.1.10
+net usage --mac AA:BB:CC:DD:EE:FF
+net usage --json
+net usage --csv
+net usage --watch
+```
+
+SNMP genérico no se presenta como tráfico por cliente porque no existe un MIB universal que proporcione esa métrica. UniFi, OPNsense y pfSense requieren un backend/API correspondiente a la versión y configuración concreta.
