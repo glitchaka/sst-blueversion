@@ -422,15 +422,10 @@ fn session_files(install: &Install) -> Result<SessionFiles> {
         table.insert("F1".into(), toml::Value::Array(vec![toml::Value::String("normal_mode".into()), toml::Value::String(format!(":open \"{help_path}\""))]));
         let paste = match mode { "insert" => "@<C-r>+", "select" => "replace_selections_with_clipboard", _ => "paste_clipboard_before" };
         table.insert("F12".into(), toml::Value::String(paste.into()));
-        let code_action = if mode == "insert" {
-            toml::Value::Array(vec![
-                toml::Value::String("normal_mode".into()),
-                toml::Value::String("code_action".into()),
-            ])
-        } else {
-            toml::Value::String("code_action".into())
-        };
-        table.insert("F2".into(), code_action);
+        table.insert(
+            "F2".into(),
+            toml::Value::String("code_action".into()),
+        );
         if mode == "insert" {
             table.insert("A-d".into(), toml::Value::String("@—".into()));
             table.insert("C-g".into(), toml::Value::String("@—".into()));
