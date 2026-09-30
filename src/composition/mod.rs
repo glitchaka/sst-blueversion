@@ -54,6 +54,7 @@ use crate::{
         TaskBuiltin, SessionBuiltin, ShareBuiltin, FirewallBuiltin, PowerBuiltin,
         TriageBuiltin,
         IntelBuiltin,
+        TourBuiltin,
         UNIX_COMMANDS,
         UnixBuiltin,
         WakeOnLanBuiltin,
@@ -195,6 +196,10 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
         Arc::clone(&editor),
     )))?;
     registry.register(Arc::new(PathBuiltin))?;
+    registry.register(Arc::new(TourBuiltin::new(
+        paths.clone(),
+        Arc::clone(&terminal),
+    )))?;
 
     let registry = Arc::new(registry);
     let command_names = registry.names();
