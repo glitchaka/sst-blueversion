@@ -51,6 +51,51 @@ help
 help COMANDO
 ```
 
+## Cambios recientes de `main`
+
+Esta documentación refleja el código actual, incluidos estos cambios:
+
+- **Descubrimiento de red por ARP activo:** `net scan` y `net monitor` usan `SendARP` en Windows y aceptan una respuesta ARP como evidencia de presencia aunque el equipo bloquee TCP e ICMP. TCP e ICMP quedan como mecanismos complementarios.
+- **`net traffic --unsigned`:** añade estado Authenticode por proceso y permite filtrar ejecutables cuya firma no sea válida.
+- **`net usage` operativo para HTTP JSON normalizado:** los proveedores `generic` y `openwrt` pueden entregar contadores por cliente; existen filtros, JSON/CSV y modo watch.
+- **Credenciales de `intel` desde `config/sstrc`:** las claves pueden declararse con `export`; SST consulta primero el entorno de Windows y después `sstrc`.
+- **`intel update` y caché TTL:** limpia entradas expiradas y muestra el estado/capacidad de las fuentes habilitadas.
+- **Terminal Slint:** restaurada y ampliada la selección/copia; arrastre, doble clic por palabra, triple clic por línea, `Ctrl+C` contextual, `Ctrl+Shift+C/V`, `Ctrl+Insert`, `Shift+Insert` y clic derecho contextual.
+- **Helix-SST 0.2.0:** tema Gruvbox Dark, corrector ortográfico offline es-CL para texto/Markdown, sugerencias con `F2` y `Alt+d` para insertar `—`.
+- **Diccionario personal de Helix-SST:** capacidad interna persistente; su archivo queda excluido del repositorio.
+- **Nwash Windows:** están registrados y exportados `eventlog`, `service`, `registry`, `process`, `acl`, `pnp`, `task`, `session`, `share`, `firewall` y `power`.
+- **Integridad de terminal:** restaurados `AlternateScreenGuard` y `output_sender()`, requeridos por consumidores reales del editor/TUI.
+- **Correcciones de integración:** corregidos el escape Authenticode y el mensaje de formato del backend de `net usage`.
+
+## Referencia rápida de comandos SST/Nwash
+
+| Comando | Función | Ejemplo |
+|---|---|---|
+| `sys` | Sistema, procesos, servicios, usuarios, impresoras, drivers, eventos, registro, tareas y triage | `sys info` |
+| `net` | Interfaces, conexiones, DNS, descubrimiento, presencia, tráfico y proveedores | `net scan 192.168.1.0/24` |
+| `device` | Inventario local por MAC | `device add AA:BB:CC:DD:EE:FF NOTEBOOK-01` |
+| `wol` | Wake-on-LAN | `wol NOTEBOOK-01` |
+| `domain` | Estado de dominio | `domain status PC-01 --verify` |
+| `switch` | MAC → switch → puerto por SNMP | `switch locate NOTEBOOK-01` |
+| `diag` | Diagnósticos compuestos | `diag network` |
+| `triage` | Resumen de señales locales | `triage` |
+| `intel` | Fuentes/caché/lookup de inteligencia | `intel lookup INDICADOR` |
+| `sudo` / `runas` | Elevación Administrador → SYSTEM → TrustedInstaller | `sudo --status` |
+| `eventlog` | Windows Event Log | `eventlog read System --count 20` |
+| `service` | Control de servicios | `service restart Spooler` |
+| `registry` | Lectura/escritura/import/export de Registro | `registry get "HKLM\\SOFTWARE"` |
+| `process` | Listado, detalle, árbol y terminación | `process tree 1234` |
+| `acl` | ACL NTFS | `acl show C:\\Datos` |
+| `pnp` | Dispositivos Plug and Play | `pnp list --problem` |
+| `task` | Tareas programadas | `task show "\\MiTarea"` |
+| `session` | Sesiones locales/RDP | `session users` |
+| `share` | Recursos SMB | `share list` |
+| `firewall` | Perfiles/reglas de Windows Firewall | `firewall status` |
+| `power` | Apagado, reinicio, logoff, hibernación | `sudo power restart` |
+| `helix` / `hx` / `helix-sst` | Editor Helix-SST | `helix notas.txt` |
+| `config` | Configuración portable de shell | `config edit` |
+| `sst-path` | Traducción de rutas Unix → Windows | `sst-path /c/Windows/System32` |
+
 ---
 
 # Herramientas SST
@@ -61,20 +106,30 @@ help COMANDO
 
 ### Información del equipo
 
-| Comando | Qué hace |
-|---|---|
-| `sys info` | Muestra un resumen del sistema operativo, CPU, memoria y equipo. |
-| `sys processes` | Lista procesos y su consumo de CPU/RAM. |
-| `sys top` | Abre un monitor TUI de procesos. Permite ordenar por CPU o memoria. |
-| `sys disks` | Muestra discos, capacidad y uso. |
-| `sys memory` | Muestra memoria física y swap. |
-| `sys uptime` | Indica cuánto tiempo lleva Windows desde el último arranque. |
-| `sys hostname` | Muestra el nombre del equipo. |
-| `sys whoami` | Muestra el usuario actual. |
-| `sys uname [-a]` | Muestra identificación del sistema en formato familiar para usuarios Unix. |
-| `sys kill PID` | Fuerza la terminación del PID indicado y verifica que haya desaparecido. |
-| `sys kill PID --tree` | Termina el PID y su árbol de procesos; útil para aplicaciones multiproceso como navegadores. |
-| `sys fetch [--small|--full]` | Muestra información del sistema acompañada por la mascota de SST. |
+| Comando | Qué hace | Ejemplo |
+|---|---|---|
+| `sys info` | Resumen del sistema operativo, CPU, memoria y equipo. | `sys info` |
+| `sys processes` / `sys ps` | Procesos y consumo. | `sys processes` |
+| `sys top` | TUI de procesos; `c` ordena por CPU, `m` por memoria, `q` sale. | `sys top` |
+| `sys disks` / `sys df` | Discos, capacidad y uso. | `sys disks` |
+| `sys memory` / `sys free` | Memoria física y swap. | `sys memory` |
+| `sys uptime` | Tiempo desde el último arranque. | `sys uptime` |
+| `sys hostname` | Nombre del equipo. | `sys hostname` |
+| `sys whoami` | Usuario actual. | `sys whoami` |
+| `sys uname [-a]` | Identificación del sistema. | `sys uname -a` |
+| `sys kill PID [--tree]` | Termina un PID o su árbol. | `sys kill 8124 --tree` |
+| `sys fetch [--small|--full]` | Resumen visual de SST. | `sys fetch --full` |
+| `sys inspect PID [--deep]` | Inspección local de proceso. | `sys inspect 8124 --deep` |
+| `sys why PID` | Explica la clasificación/señales observadas. | `sys why 8124` |
+| `sys diff PID` | Compara identidad/parent/command line con historial. | `sys diff 8124` |
+| `sys suspicious` | Lista procesos que superan reglas actuales de atención. | `sys suspicious` |
+| `sys startup` | Revisa puntos de inicio observables. | `sys startup` |
+| `sys persistence` | Vista de persistencia basada en startup + tareas/servicios existentes. | `sys persistence` |
+| `sys services --impact` | Relaciona servicios con PID, CPU y RAM. | `sys services --impact` |
+| `sys inspect PID --broker` | Inspección mediante broker autenticado. | `sys inspect 8124 --broker` |
+| `sys suspend PID --start-time FILETIME` | Suspensión mediante broker. | `sudo sys suspend 8124 --start-time 133...` |
+| `sys resume PID --start-time FILETIME` | Reanuda mediante broker. | `sudo sys resume 8124 --start-time 133...` |
+| `sys kill PID --broker --start-time FILETIME` | Terminación broker con protección contra reutilización de PID. | `sudo sys kill 8124 --broker --start-time 133...` |
 
 También existen como comandos directos:
 
@@ -193,39 +248,260 @@ Consulta tareas programadas, detalles o su definición XML mediante `schtasks.ex
 
 ## Nwash — primitivas Windows
 
-Además de la compatibilidad Bash portable, Nwash expone operaciones propias de Windows como comandos componibles:
+Nwash expone operaciones de Windows como builtins componibles. Todos aceptan `-h`, `--help` o `help` cuando el handler lo contempla.
 
-```text
-eventlog   Windows Event Log
-service    Service Control Manager
-registry   Registro de Windows
-process    procesos y árboles de procesos
-acl        ACL/NTFS
-pnp        Plug and Play
-task       tareas programadas
-session    sesiones locales/RDP
-share      recursos SMB
-firewall   Windows Defender Firewall
-power      apagado, reinicio, logoff e hibernación
+### `eventlog`
+
+Subcomandos:
+
+```bash
+eventlog list
+eventlog publishers
+eventlog info LOG
+eventlog read [LOG] [--count N] [--query XPATH] [--xml]
+eventlog export LOG ARCHIVO [--query XPATH] [--overwrite]
+eventlog clear LOG [--backup ARCHIVO]
+```
+
+Ejemplos:
+
+```bash
+eventlog read System --count 50
+eventlog read Security --query "*[System[(Level=2)]]"
+eventlog export Application app.evtx --overwrite
+sudo eventlog clear Application --backup Application-backup.evtx
+```
+
+### `service`
+
+```bash
+service list [--running|--stopped]
+service status NOMBRE
+service start NOMBRE
+service stop NOMBRE
+service pause NOMBRE
+service resume NOMBRE
+service restart NOMBRE
+```
+
+Ejemplos:
+
+```bash
+service list --running
+service status Spooler
+sudo service restart Spooler
+```
+
+### `registry`
+
+```bash
+registry get CLAVE [--value NOMBRE|--default] [--recursive]
+registry set CLAVE NOMBRE DATO [--type TIPO]
+registry set-default CLAVE DATO [--type TIPO]
+registry delete CLAVE [--value NOMBRE|--default|--key]
+registry export CLAVE ARCHIVO [--overwrite]
+registry import ARCHIVO
+```
+
+`TIPO`: `REG_SZ`, `REG_EXPAND_SZ`, `REG_DWORD`, `REG_QWORD`, `REG_MULTI_SZ`, `REG_BINARY`.
+
+Ejemplos:
+
+```bash
+registry get "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" --value ProductName
+sudo registry set "HKCU\Software\SST" Enabled 1 --type REG_DWORD
+registry export "HKCU\Software\SST" sst.reg --overwrite
+sudo registry import sst.reg
+```
+
+### `process`
+
+```bash
+process list
+process info PID
+process tree PID
+process kill PID [--tree] [--force]
+```
+
+Ejemplos:
+
+```bash
+process info 8124
+process tree 8124
+sudo process kill 8124 --tree --force
+```
+
+`process tree` usa el árbol de procesos obtenido desde Rust/`sysinfo`; no depende de WMIC.
+
+### `acl`
+
+```bash
+acl show RUTA
+acl grant RUTA USUARIO PERMISO
+acl deny RUTA USUARIO PERMISO
+acl revoke RUTA USUARIO
+acl inherit RUTA on|off
+acl reset RUTA
+```
+
+Permisos habituales: `F`, `M`, `RX`, `R`, `W`.
+
+Ejemplos:
+
+```bash
+acl show "C:\Datos"
+sudo acl grant "C:\Datos" "DOMINIO\usuario" RX
+sudo acl inherit "C:\Datos" off
+```
+
+### `pnp`
+
+```bash
+pnp list [--connected|--disconnected|--problem]
+pnp info INSTANCE_ID
+pnp enable INSTANCE_ID
+pnp disable INSTANCE_ID
+pnp restart INSTANCE_ID
+pnp scan
+```
+
+Ejemplos:
+
+```bash
+pnp list --problem
+pnp info "PCI\VEN_..."
+sudo pnp scan
+```
+
+### `task`
+
+```bash
+task list [--verbose|--csv]
+task show NOMBRE [--xml]
+task run NOMBRE
+task end NOMBRE
+task enable NOMBRE
+task disable NOMBRE
+task delete NOMBRE
+```
+
+Ejemplos:
+
+```bash
+task list --verbose
+task show "\Microsoft\Windows\Defrag\ScheduledDefrag" --xml
+sudo task disable "\MiTarea"
+```
+
+### `session`
+
+```bash
+session list
+session users
+session logoff ID
+session message ID TEXTO
+```
+
+Ejemplos:
+
+```bash
+session users
+sudo session message 2 "Mantenimiento en 10 minutos"
+sudo session logoff 2
+```
+
+### `share`
+
+```bash
+share list
+share sessions
+share files
+share add NOMBRE RUTA
+share remove NOMBRE
+```
+
+Ejemplos:
+
+```bash
+share list
+sudo share add Datos "C:\Datos"
+sudo share remove Datos
+```
+
+### `firewall`
+
+```bash
+firewall status
+firewall rules
+firewall rule NOMBRE
+firewall enable PROFILE
+firewall disable PROFILE
+```
+
+`PROFILE`: `domain`, `private`, `public`, `all`.
+
+Ejemplos:
+
+```bash
+firewall status
+firewall rule "Remote Desktop - User Mode (TCP-In)"
+sudo firewall enable domain
+```
+
+### `power`
+
+```bash
+power shutdown [--force]
+power restart [--force]
+power logoff [--force]
+power hibernate
+```
+
+Ejemplos:
+
+```bash
+sudo power restart
+power logoff
+power hibernate
 ```
 
 El intérprete expone `$NWASH_VERSION`, `$NWASH_BASH_BASE` y `$NWASH_PLATFORM`. Nwash no intenta reproducir infraestructura binaria interna de GNU Bash sin valor portable en Windows, como `enable -f`/`enable -d`.
 
 ## Elevación y privilegios
 
-SST incorpora elevación propia:
+`sudo` y su alias `runas` usan la elevación nativa de SST; `runas` **no invoca `runas.exe`**.
 
 ```bash
+sudo
 sudo --status
 sudo COMANDO [argumentos]
+sudo --system COMANDO [argumentos]
+sudo --trustedinstaller COMANDO [argumentos]
 runas COMANDO [argumentos]
 ```
 
-`sudo --status` inspecciona directamente el token del proceso mediante Win32 y muestra si SST está elevada, su nivel de integridad y los privilegios `Se*` presentes en el token indicando cuáles están habilitados.
+La escalera de sesión es:
 
-`sudo COMANDO` ejecuta otra instancia de SST. Si la shell ya está elevada, conserva ese nivel; si no lo está, solicita consentimiento UAC mediante la API Shell de Windows. La salida del comando elevado vuelve a la shell actual.
+```text
+USER / ADMIN_FILTERED
+        ↓ sudo
+ADMINISTRATOR
+        ↓ sudo
+LOCAL_SYSTEM
+        ↓ sudo
+TRUSTEDINSTALLER
+```
 
-`runas` es un alias de este builtin. **No ejecuta `runas.exe`.**
+Ejemplos:
+
+```bash
+sudo --status
+sudo service restart Spooler
+sudo --system whoami
+sudo --trustedinstaller registry get "HKLM\SOFTWARE"
+```
+
+`sudo --status` muestra nivel, identidad, integridad y privilegios `Se*` del token. Cuando se ejecuta `sudo` sin comando, SST intenta elevar la **sesión** al siguiente nivel. Las variantes `--system` y `--trustedinstaller` ejecutan un comando concreto con ese token.
 
 ## Triage de seguridad local
 
@@ -238,6 +514,7 @@ Comandos principales:
 triage
 sys why PID
 sys inspect PID
+sys inspect PID --deep
 sys diff PID
 sys suspicious
 sys startup
@@ -245,6 +522,7 @@ sys persistence
 sys services --impact
 intel status
 intel sources
+intel update
 intel lookup INDICADOR
 ```
 
@@ -257,6 +535,29 @@ ATTENTION
 SUSPICIOUS
 ALERT
 ```
+
+### `intel` — fuentes, caché y credenciales
+
+Subcomandos:
+
+| Subcomando | Función | Ejemplo |
+|---|---|---|
+| `intel status` | Estado, adapter, TTL y disponibilidad de autenticación. | `intel status` |
+| `intel sources` | Muestra el registro de fuentes configurado en `data/security.sources`. | `intel sources` |
+| `intel update` | Elimina caché expirada y muestra capacidad/estado de fuentes habilitadas. | `intel update` |
+| `intel lookup INDICADOR` | Consulta listas locales, caché y adapters externos habilitados. | `intel lookup 44d88612fea8a8f36de82e1278abb02f` |
+
+Las credenciales pueden declararse en `config/sstrc`:
+
+```bash
+export SST_MALWAREBAZAAR_AUTH_KEY='...'
+export SST_THREATFOX_AUTH_KEY='...'
+export SST_URLHAUS_AUTH_KEY='...'
+```
+
+El registro `data/security.sources` **no contiene las claves**: guarda nombres como `auth_env=SST_THREATFOX_AUTH_KEY`. Para esas credenciales, `intel` consulta primero el entorno real de Windows y, si no existe allí, lee el mismo nombre desde `config/sstrc`.
+
+
 
 Los collectors todavía no conectados se muestran como información incompleta;
 no se interpretan como evidencia negativa ni como señal de seguridad.
@@ -384,6 +685,8 @@ Escanea una red IPv4 y relaciona los equipos encontrados con:
 - estado conocido/desconocido;
 - nombre del inventario SST, si existe.
 
+El descubrimiento usa **ARP activo como mecanismo primario en IPv4 local** mediante `SendARP`. Si obtiene una MAC, el host se considera presente aunque no tenga puertos TCP escuchando y aunque bloquee ICMP. Si ARP no responde, SST conserva pruebas TCP e ICMP como mecanismos complementarios. Esto permite detectar mejor teléfonos, tablets, IoT y equipos con firewall restrictivo.
+
 La salida normal prioriza las columnas **IP** y **NOMBRE**. SST intenta resolver el hostname del equipo y, si no hay resolución disponible pero el dispositivo está inventariado, utiliza el nombre guardado en el inventario.
 
 Sin red explícita, SST intenta determinar la red IPv4 local y usa una /24. Por seguridad, el escaneo está limitado a redes /20 o más pequeñas.
@@ -406,7 +709,7 @@ net monitor 192.168.1.0/24
 net monitor --unknown
 ```
 
-Abre una vista TUI que repite el descubrimiento y registra:
+Abre una vista TUI que repite el mismo descubrimiento ARP/TCP/ICMP de `net scan` y registra:
 
 - aparición de equipos;
 - desaparición;
@@ -435,6 +738,7 @@ net traffic --pid 4120
 net traffic --process chrome
 net traffic --background
 net traffic --high-usage
+net traffic --unsigned
 net traffic --connections
 net traffic --json
 net traffic --csv
@@ -453,27 +757,34 @@ Correlaciona:
 
 La medición de bytes por PID utiliza ETW de Windows. Si ETW no está disponible, SST lo indica explícitamente en vez de inventar datos.
 
+`--unsigned` conserva procesos cuyo estado Authenticode no sea `valid`; la columna `SIGNATURE` muestra `valid`, `unsigned`, otros estados normalizados o `unknown`.
+
 `--connections` cambia la vista para mostrar protocolo, extremos local/remoto, estado, PID y proceso.
 
 `--watch` abre una vista TUI actualizada periódicamente y se cierra con `q` o `Esc`.
 
+Ejemplos:
+
+```bash
+net traffic --top 15
+net traffic --process chrome --connections
+net traffic --unsigned
+net traffic --watch --background
+```
+
 ### Proveedores de red
 
 ```bash
-net provider list
-net provider list --json
+net provider list [--json]
 net provider add NOMBRE --type TIPO --host HOST [--user-env VAR] [--secret-env VAR] [--community-env VAR]
 net provider use NOMBRE
 net provider current
 net provider remove NOMBRE
-net provider capabilities
-net provider capabilities NOMBRE
+net provider capabilities [NOMBRE]
 net provider path
 ```
 
-Permite registrar routers, firewalls, controladores o fuentes externas de telemetría.
-
-Tipos contemplados por la capa de capacidades:
+Tipos aceptados:
 
 ```text
 openwrt
@@ -484,15 +795,62 @@ snmp
 generic
 ```
 
-Esta capa guarda la configuración del proveedor y describe qué integración sería posible.
+Ejemplos:
 
-### Uso de Internet de toda la LAN
+```bash
+net provider add gateway --type generic --host https://gateway.local/sst/usage
+net provider add router --type openwrt --host https://router.local/sst/usage --user-env SST_ROUTER_USER --secret-env SST_ROUTER_SECRET
+net provider use gateway
+net provider current
+net provider capabilities gateway
+net provider list --json
+```
+
+Los perfiles guardan **nombres de variables**, no secretos. En el backend HTTP de `net usage`, `--user-env` + `--secret-env` produce autenticación básica; si solo existe `--secret-env`, se usa como token Bearer. `--community-env` queda disponible para integraciones SNMP.
+
+### `net usage` — consumo de LAN desde un proveedor
 
 ```bash
 net usage
+net usage --top 10
+net usage --device 192.168.1.10
+net usage --mac AA:BB:CC:DD:EE:FF
+net usage --json
+net usage --csv
+net usage --watch
 ```
 
-**Estado actual: pendiente.** La infraestructura para elegir un proveedor existe, pero todavía no está implementado el driver que obtiene contadores por cliente desde OpenWrt, OPNsense, pfSense, UniFi u otro equipo. SST no intenta inferir esos datos a partir de ARP o ping.
+`net usage` **no intenta deducir tráfico de otros equipos desde ARP, ping o la NIC local**. Consume contadores entregados por un router/firewall/controlador/endpoint que sí tenga visibilidad de la LAN.
+
+Estado por tipo:
+
+| Tipo | Estado actual |
+|---|---|
+| `generic` | HTTP JSON normalizado operativo. |
+| `openwrt` | HTTP JSON normalizado operativo contra el endpoint configurado en `--host`. |
+| `opnsense` | Requiere adapter/API específico; puede exponerse mediante un endpoint `generic` normalizado. |
+| `pfsense` | Requiere adapter/API específico; puede exponerse mediante un endpoint `generic` normalizado. |
+| `unifi` | Requiere adapter/controller API específico; puede exponerse mediante `generic`. |
+| `snmp` | No se presenta como tráfico por cliente porque no existe un MIB universal para esa métrica. |
+
+Contrato JSON aceptado:
+
+```json
+[
+  {
+    "device": "PC-01",
+    "ip": "192.168.1.10",
+    "mac": "AA:BB:CC:DD:EE:FF",
+    "download_bps": 1250000,
+    "upload_bps": 85000
+  }
+]
+```
+
+También acepta `{"clients":[...]}`, `hostname` como alias de `device`, `rx_bps` como alias de `download_bps` y `tx_bps` como alias de `upload_bps`.
+
+`--watch` actualiza cada 2 segundos y actualmente se interrumpe con `Ctrl+C`.
+
 
 ---
 
@@ -638,51 +996,50 @@ Agrupa varias herramientas para obtener una vista rápida:
 
 Estas herramientas están escritas o integradas dentro de SST y no requieren instalar GNU coreutils. La intención es ofrecer una experiencia familiar, no afirmar equivalencia completa con cada implementación GNU original.
 
-| Comando | Función |
-|---|---|
-| `pwd` | Muestra el directorio actual. |
-| `echo` | Imprime argumentos. |
-| `env` | Lista variables de entorno. |
-| `clear` | Limpia la terminal. |
-| `ls` | Lista archivos y directorios. |
-| `cat` | Concatena archivos o stdin. |
-| `head` | Muestra las primeras líneas. |
-| `tail` | Muestra las últimas líneas. |
-| `grep` | Filtra líneas por texto. |
-| `wc` | Cuenta líneas, palabras y bytes. |
-| `sort` | Ordena líneas. |
-| `uniq` | Elimina líneas adyacentes repetidas. |
-| `cut` | Selecciona campos. |
-| `xargs` | Construye y ejecuta comandos a partir de stdin. |
-| `tee` | Copia stdin simultáneamente a archivo y stdout. |
-| `less` | Paginador interactivo. |
-| `more` | Alias del paginador. |
-| `sed` | Sustitución de texto. |
-| `awk` | Selección simple de campos. |
-| `diff` | Compara dos archivos. |
-| `printf` | Imprime texto con formato. |
-| `find` | Busca archivos. |
-| `basename` | Extrae el último componente de una ruta. |
-| `dirname` | Extrae el directorio de una ruta. |
-| `realpath` | Resuelve una ruta absoluta. |
-| `date` | Muestra fecha y hora. |
-| `sleep` | Espera un intervalo. |
-| `true` | Termina con estado 0. |
-| `false` | Termina con estado 1. |
-| `touch` | Crea un archivo vacío o actualiza su presencia. |
-| `mkdir` | Crea directorios. |
-| `rm` | Elimina archivos o directorios. |
-| `cp` | Copia archivos. |
-| `mv` | Mueve o renombra archivos. |
-| `tar` | Crea, lista y extrae TAR/TAR.GZ. |
-| `gzip` | Comprime archivos con gzip. |
-| `gunzip` | Descomprime archivos `.gz`. |
-| `zip` | Crea archivos ZIP. |
-| `unzip` | Lista o extrae ZIP. |
-| `sha256sum` | Calcula SHA-256. |
-| `base64` | Codifica o decodifica Base64. |
-| `which` | Localiza un comando ejecutable. |
-| `type` | Indica cómo se resolverá un nombre de comando. |
+| Comando | Función | Ejemplo |
+|---|---|---|
+| `pwd` | Directorio actual. | `pwd` |
+| `echo` | Imprime argumentos. | `echo hola mundo` |
+| `env` | Lista variables de entorno. | `env` |
+| `clear` | Limpia la terminal. | `clear` |
+| `ls` | Lista archivos; admite `-a` y `-l`. | `ls -la` |
+| `cat` | Concatena archivo o stdin. | `cat notas.txt` |
+| `head` | Primeras líneas. | `head notas.txt` |
+| `tail` | Últimas líneas. | `tail notas.txt` |
+| `grep` | Filtra líneas por texto/patrón soportado. | `grep error app.log` |
+| `wc` | Cuenta líneas, palabras y bytes. | `wc notas.txt` |
+| `sort` | Ordena líneas. | `sort nombres.txt` |
+| `uniq` | Elimina líneas adyacentes repetidas. | `sort nombres.txt \| uniq` |
+| `cut` | Selecciona campos. | `cut -d , -f 1 datos.csv` |
+| `xargs` | Construye comandos desde stdin. | `printf "uno\\ndos\\n" \| xargs echo` |
+| `tee` | Copia stdin a archivo y stdout. | `echo hola \| tee salida.txt` |
+| `less` / `more` | Paginador interactivo. | `less app.log` |
+| `sed` | Sustitución de texto soportada por SST. | `sed "s/error/ERROR/g" app.log` |
+| `awk` | Selección simple de campos. | `awk "{print $1}" datos.txt` |
+| `diff` | Compara dos archivos. | `diff antes.txt despues.txt` |
+| `sha256sum` | SHA-256. | `sha256sum instalador.exe` |
+| `base64` | Codifica/decodifica Base64. | `base64 archivo.txt` |
+| `find` | Busca archivos. | `find .` |
+| `printf` | Salida con formato. | `printf "%s\\n" hola` |
+| `basename` | Último componente de ruta. | `basename /c/temp/a.txt` |
+| `dirname` | Directorio de una ruta. | `dirname /c/temp/a.txt` |
+| `realpath` | Ruta absoluta. | `realpath .` |
+| `date` | Fecha/hora. | `date` |
+| `sleep` | Espera un intervalo. | `sleep 2` |
+| `true` | Estado 0. | `true` |
+| `false` | Estado 1. | `false` |
+| `touch` | Crea/actualiza archivo. | `touch notas.txt` |
+| `mkdir` | Crea directorio. | `mkdir respaldo` |
+| `rm` | Elimina archivo/directorio según opciones soportadas. | `rm archivo.tmp` |
+| `cp` | Copia. | `cp origen.txt copia.txt` |
+| `mv` | Mueve/renombra. | `mv viejo.txt nuevo.txt` |
+| `tar` | Crea/lista/extrae TAR/TAR.GZ. | `tar -cf backup.tar carpeta` |
+| `gzip` | Comprime a gzip. | `gzip datos.txt` |
+| `gunzip` | Descomprime `.gz`. | `gunzip datos.txt.gz` |
+| `zip` | Crea ZIP. | `zip backup.zip archivo.txt` |
+| `unzip` | Lista/extrae ZIP. | `unzip backup.zip` |
+| `which` | Localiza comando. | `which curl` |
+| `type` | Indica resolución de comando. | `type net` |
 
 ## Programas externos disponibles desde SST
 
@@ -730,9 +1087,9 @@ config reload
 ```bash
 sst-config path
 sst-config edit
-sst-config terminal path
-sst-config terminal edit
 ```
+
+`sst-config reload` no es un subcomando válido: la recarga pertenece a la función/builtin de shell `config reload` (también existe `reload`).
 
 La configuración visual de la terminal vive en:
 
@@ -762,6 +1119,14 @@ La variable que contiene la ruta de la configuración Bash es:
 
 ```text
 SST_CONFIG
+```
+
+`config/sstrc` también puede contener las credenciales de `intel` mediante `export`:
+
+```bash
+export SST_MALWAREBAZAAR_AUTH_KEY='...'
+export SST_THREATFOX_AUTH_KEY='...'
+export SST_URLHAUS_AUTH_KEY='...'
 ```
 
 ---
@@ -796,14 +1161,16 @@ helix --credits
 helix --help
 ```
 
-La distribución portable está basada en **Helix 25.07.1** y SST aporta:
+La distribución portable está basada en **Helix 25.07.1**; la integración **Helix-SST 0.2.0** aporta:
 
-- empaquetado dentro de la aplicación;
+- empaquetado dentro de SST;
 - configuración portable;
-- tema propio;
-- puente PTY/ConPTY;
+- **tema Gruvbox Dark**;
+- puente PTY/ConPTY y transporte VT;
 - integración de clipboard;
-- transporte VT;
+- corrector ortográfico **offline es-CL** para `.txt` y Markdown;
+- diagnósticos ortográficos y sugerencias mediante `F2`;
+- `Alt+d` en modo insertar para escribir el guion largo `—`;
 - integración con la terminal nativa.
 
 ### Estado actual
@@ -811,6 +1178,24 @@ La distribución portable está basada en **Helix 25.07.1** y SST aporta:
 **helix-sst está funcional dentro de SST.**
 
 El editor puede iniciarse y utilizarse de forma interactiva desde la terminal nativa, incluyendo edición mediante teclado, navegación y guardado a través del puente PTY/ConPTY integrado.
+
+Ejemplo para escritura:
+
+```bash
+helix capitulo.txt
+```
+
+Dentro de Helix-SST:
+
+- `i`: modo insertar;
+- `Alt+d`: inserta `—`;
+- `F2`: muestra correcciones disponibles para el diagnóstico bajo el cursor;
+- `F1`: guía integrada;
+- `Ctrl+V`: pegado;
+- `:w`: guardar;
+- `:q`: salir.
+
+El corrector no envía el texto a servicios externos.
 
 El log queda en:
 
@@ -1197,11 +1582,15 @@ La interfaz gráfica de SST es una terminal Win32 propia e incluye:
 - soporte para TUIs;
 - clipboard.
 
-Atajos relevantes:
+Interacción relevante:
 
-- `Ctrl+C`: copia cuando existe una selección; sin selección conserva el uso de interrupción.
-- `Ctrl+V` / `Ctrl+Shift+V` / `Shift+Insert`: pegar.
-- `Ctrl+Insert`: copiar.
+- arrastrar con el mouse selecciona texto;
+- doble clic selecciona palabra/token;
+- triple clic selecciona la línea;
+- `Ctrl+C`: copia cuando existe una selección; sin selección conserva el uso de interrupción;
+- `Ctrl+Shift+C` y `Ctrl+Insert`: copiar;
+- `Ctrl+V`, `Ctrl+Shift+V` y `Shift+Insert`: pegar;
+- clic derecho: copia si hay selección; si no la hay, pega.
 
 ---
 
@@ -1241,12 +1630,14 @@ Entre los datos persistentes se encuentran:
 - Wake-on-LAN;
 - dominio;
 - localización MAC → switch → puerto mediante SNMP;
-- tráfico por proceso mediante ETW;
+- tráfico por proceso mediante ETW y estado Authenticode;
+- `net usage` mediante endpoint HTTP JSON normalizado para proveedores `generic`/`openwrt`;
+- Helix-SST 0.2.0 con Gruvbox Dark y corrector es-CL offline;
 - configuración portable.
 
 ### Pendiente o parcial
 
-- drivers reales de `net usage` para routers/AP/firewalls;
+- adapters específicos de `net usage` para OPNsense/pfSense/UniFi y MIBs SNMP concretos;
 - equivalencia completa con GNU Readline;
 - builtins dinámicos de Bash;
 - `/dev/tcp` y `/dev/udp`;
@@ -1258,33 +1649,3 @@ El documento de alcance y arquitectura está en:
 ```text
 SHELL_SHOCK_TOOL_PLAN.md
 ```
-
-
-### `net usage`
-
-`net usage` obtiene consumo por cliente desde un punto de observación de la infraestructura; no intenta deducir el tráfico de otros equipos desde ARP, ping o la NIC local.
-
-El backend `generic` consume HTTP JSON normalizado desde `--host`. También puede usarse con un endpoint OpenWrt que entregue el mismo contrato:
-
-```json
-[
-  {"device":"PC-01","ip":"192.168.1.10","mac":"AA:BB:CC:DD:EE:FF","download_bps":1250000,"upload_bps":85000}
-]
-```
-
-También acepta `{"clients":[...]}`, `rx_bps` como alias de `download_bps` y `tx_bps` como alias de `upload_bps`.
-
-Las credenciales no se guardan en el perfil. `--user-env` y `--secret-env` referencian variables de entorno. Sin usuario, `--secret-env` se envía como token Bearer.
-
-```bash
-net provider add gateway --type generic --host https://gateway.local/sst/usage --user-env SST_ROUTER_USER --secret-env SST_ROUTER_SECRET
-net provider use gateway
-net usage --top 10
-net usage --device 192.168.1.10
-net usage --mac AA:BB:CC:DD:EE:FF
-net usage --json
-net usage --csv
-net usage --watch
-```
-
-SNMP genérico no se presenta como tráfico por cliente porque no existe un MIB universal que proporcione esa métrica. UniFi, OPNsense y pfSense requieren un backend/API correspondiente a la versión y configuración concreta.
