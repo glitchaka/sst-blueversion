@@ -12,6 +12,13 @@ const HELIX_VERSION: &str = "25.07.1";
 const HELIX_ARCHIVE_NAME: &str = "helix-25.07.1-x86_64-windows.zip";
 const HELIX_URL: &str =
     "https://github.com/helix-editor/helix/releases/download/25.07.1/helix-25.07.1-x86_64-windows.zip";
+const SPELL_DICT_REV: &str = "8cfea406b505e4d7df52d5a19bce525df98c54ab";
+const SPELL_AFF_URL: &str =
+    "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es-CL/index.aff";
+const SPELL_DIC_URL: &str =
+    "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es-CL/index.dic";
+const SPELL_LICENSE_URL: &str =
+    "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es-CL/license";
 
 fn main() {
     println!("cargo:rerun-if-env-changed=SST_NERD_FONT_FILE");
@@ -20,6 +27,7 @@ fn main() {
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR no definido"));
     ensure_nerd_font(&out_dir);
+    ensure_spell_dictionary(&out_dir);
 
     #[cfg(windows)]
     ensure_helix_archive(&out_dir);
@@ -74,6 +82,33 @@ fn ensure_nerd_font(out_dir: &Path) {
     }
 }
 
+
+fn ensure_spell_dictionary(out_dir: &Path) {
+    for (name, url, minimum) in [
+        ("helix-sst-es-CL.aff", SPELL_AFF_URL, 50_000u64),
+        ("helix-sst-es-CL.dic", SPELL_DIC_URL, 200_000u64),
+        ("helix-sst-es-CL.LICENSE", SPELL_LICENSE_URL, 500u64),
+    ] {
+        let destination = out_dir.join(name);
+        if !destination.is_file() {
+            let status = Command::new("curl")
+                .args(["-L", "--fail", "--silent", "--show-error", url, "-o"])
+                .arg(&destination)
+                .status()
+                .expect("No se pudo ejecutar curl para obtener el diccionario de Helix-SST");
+            if !status.success() {
+                panic!(
+                    "No se pudo obtener el diccionario ortográfico es-CL de Helix-SST (rev {SPELL_DICT_REV})."
+                );
+            }
+        }
+        let metadata = fs::metadata(&destination)
+            .expect("Falta un archivo del diccionario ortográfico de Helix-SST");
+        if metadata.len() < minimum {
+            panic!("El archivo de diccionario {name} parece incompleto");
+        }
+    }
+}
 
 #[cfg(windows)]
 fn ensure_helix_archive(out_dir: &Path) {
