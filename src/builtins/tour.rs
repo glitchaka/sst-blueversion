@@ -90,6 +90,10 @@ impl BuiltinCommand for TourBuiltin {
         "sst-tour-select"
     }
 
+    fn aliases(&self) -> &'static [&'static str] {
+        &["tour"]
+    }
+
     fn hidden(&self) -> bool {
         true
     }
