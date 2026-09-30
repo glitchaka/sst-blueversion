@@ -50,6 +50,7 @@ use crate::{
         SwitchBuiltin,
         SudoBuiltin,
         SystemBuiltin,
+        AclBuiltin, EventLogBuiltin, PnpBuiltin, ProcessBuiltin, RegistryBuiltin, ServiceBuiltin,
         TriageBuiltin,
         IntelBuiltin,
         UNIX_COMMANDS,
@@ -166,6 +167,12 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(TriageBuiltin::new(Arc::clone(&security_service))))?;
     registry.register(Arc::new(IntelBuiltin::new(security_service)))?;
     registry.register(Arc::new(SudoBuiltin))?;
+    registry.register(Arc::new(EventLogBuiltin))?;
+    registry.register(Arc::new(ServiceBuiltin))?;
+    registry.register(Arc::new(RegistryBuiltin))?;
+    registry.register(Arc::new(ProcessBuiltin))?;
+    registry.register(Arc::new(AclBuiltin))?;
+    registry.register(Arc::new(PnpBuiltin))?;
 
     for &(name, help) in UNIX_COMMANDS {
         registry.register(Arc::new(UnixBuiltin::new(
