@@ -434,24 +434,33 @@ impl SecurityTriageService {
                     .filter(|p| p.start_time() <= process.start_time())
                     .and_then(|p| p.exe());
                 if let Some(parent) = parent {
+                    let child = path.to_ascii_lowercase();
                     let current = parent.display().to_string().to_ascii_lowercase();
-                    let evidence = parents.evidence(&current);
-                    if evidence.state != ObservationState::Known {
-                        out.push_str(&format!("Incomplete: {}\n", evidence.reason));
-                    } else if let Some(reason) = parents.anomaly(&current) {
-                        let mut expected = parents
-                            .executions
-                            .iter()
-                            .map(|(parent, count)| format!("{parent} ({count} executions)"))
-                            .collect::<Vec<_>>();
-                        expected.sort();
-                        out.push_str(&format!(
-                            "parent executable: {} -> {}\n",
-                            expected.join(", "),
-                            reason
-                        ));
+                    let trusted = self
+                        .trusted_lineages()
+                        .map(|rows| rows.contains(&(child, current.clone())))
+                        .unwrap_or(false);
+                    if trusted {
+                        out.push_str("Parent relation is trusted by local operator policy.\n");
                     } else {
-                        out.push_str("No parent identity difference.\n");
+                        let evidence = parents.evidence(&current);
+                        if evidence.state != ObservationState::Known {
+                            out.push_str(&format!("Incomplete: {}\n", evidence.reason));
+                        } else if let Some(reason) = parents.anomaly(&current) {
+                            let mut expected = parents
+                                .executions
+                                .iter()
+                                .map(|(parent, count)| format!("{parent} ({count} executions)"))
+                                .collect::<Vec<_>>();
+                            expected.sort();
+                            out.push_str(&format!(
+                                "parent executable: {} -> {}\n",
+                                expected.join(", "),
+                                reason
+                            ));
+                        } else {
+                            out.push_str("No parent identity difference.\n");
+                        }
                     }
                 } else {
                     out.push_str("Parent identity UNKNOWN; comparison unavailable.\n");
