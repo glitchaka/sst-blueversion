@@ -109,6 +109,30 @@ impl NetworkProbe for WindowsNetworkProbe {
             Ok(output)
         }
     }
+    fn resolve_neighbor(&self, destination: Ipv4Addr) -> Result<Option<String>> {
+        unsafe {
+            let mut mac = [0u8; 8];
+            let mut length = 6u32;
+            let status = SendARP(
+                u32::from_ne_bytes(destination.octets()),
+                0,
+                mac.as_mut_ptr().cast(),
+                &mut length,
+            );
+            if status != 0 || length != 6 {
+                return Ok(None);
+            }
+
+            Ok(Some(
+                mac[..6]
+                    .iter()
+                    .map(|byte| format!("{byte:02X}"))
+                    .collect::<Vec<_>>()
+                    .join(":"),
+            ))
+        }
+    }
+
     fn echo(&self, destination: Ipv4Addr, ttl: u8, timeout: Duration) -> Result<EchoReply> {
         unsafe {
             let handle = IcmpCreateFile();
