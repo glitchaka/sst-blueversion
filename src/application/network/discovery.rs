@@ -332,9 +332,9 @@ impl NetworkDiscoveryService {
                 } else if let Some(existing_id) = stable_online
                     .iter()
                     .find(|(candidate, existing_ip)| {
-                        !candidate.starts_with("ip:") && *existing_ip == &ip_text
+                        !candidate.starts_with("ip:") && existing_ip.as_str() == ip_text
                     })
-                    .map(|(candidate, _)| candidate.clone())
+                    .map(|(candidate, _)| candidate.to_string())
                 {
                     id = existing_id;
                 }
@@ -441,7 +441,7 @@ impl NetworkDiscoveryService {
 
             let mut display_rows = last_rows
                 .iter()
-                .filter(|(id, _)| stable_online.contains_key(*id))
+                .filter(|(id, _)| stable_online.contains_key(id.as_str()))
                 .map(|(_, row)| row.clone())
                 .collect::<Vec<_>>();
             display_rows.sort_by_key(|row| row.ip);
