@@ -246,7 +246,7 @@ impl NetworkDiscoveryService {
     pub fn scan_rows(&self, network: Ipv4Net) -> Result<Vec<ScanRow>> {
         let timeout = Duration::from_millis(300);
         let hosts: Vec<Ipv4Addr> = network.hosts().collect();
-        let results: Arc<Mutex<Vec<(Ipv4Addr, Option<String>, Duration)>>> =
+        let results: Arc<Mutex<Vec<(Ipv4Addr, Option<String>, Option<String>, Duration)>>> =
             Arc::new(Mutex::new(Vec::new()));
 
         for chunk in hosts.chunks(48) {
@@ -259,10 +259,19 @@ impl NetworkDiscoveryService {
 
                 workers.push(thread::spawn(move || {
                     let start = Instant::now();
+
+                    if let Some(mac) = diagnostics.resolve_neighbor(ip) {
+                        let hostname = lookup_addr(&IpAddr::V4(ip)).ok();
+                        if let Ok(mut results) = results.lock() {
+                            results.push((ip, Some(mac), hostname, start.elapsed()));
+                        }
+                        return;
+                    }
+
                     if diagnostics.host_alive(ip, timeout) {
                         let hostname = lookup_addr(&IpAddr::V4(ip)).ok();
                         if let Ok(mut results) = results.lock() {
-                            results.push((ip, hostname, start.elapsed()));
+                            results.push((ip, None, hostname, start.elapsed()));
                         }
                     }
                 }));
@@ -292,10 +301,9 @@ impl NetworkDiscoveryService {
 
         Ok(discovered
             .into_iter()
-            .map(|(ip, hostname, latency)| {
-                let mac = arp
-                    .get(&ip)
-                    .cloned()
+            .map(|(ip, active_mac, hostname, latency)| {
+                let mac = active_mac
+                    .or_else(|| arp.get(&ip).cloned())
                     .unwrap_or_else(|| "??:??:??:??:??:??".to_owned());
 
                 ScanRow {
