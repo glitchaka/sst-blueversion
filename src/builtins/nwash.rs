@@ -40,6 +40,11 @@ simple_builtin!(RegistryBuiltin, "registry", "registry — Registro Windows: get
 simple_builtin!(ProcessBuiltin, "process", "process — procesos Windows: list, info, tree y kill", process);
 simple_builtin!(AclBuiltin, "acl", "acl — ACL Windows: show, grant, deny, revoke, inherit y reset", acl);
 simple_builtin!(PnpBuiltin, "pnp", "pnp — dispositivos Plug and Play: list, info, enable, disable, restart y scan", pnp);
+simple_builtin!(TaskBuiltin, "task", "task — tareas programadas de Windows", task);
+simple_builtin!(SessionBuiltin, "session", "session — sesiones locales/RDP de Windows", session);
+simple_builtin!(ShareBuiltin, "share", "share — recursos compartidos SMB de Windows", share);
+simple_builtin!(FirewallBuiltin, "firewall", "firewall — perfiles y reglas de Windows Firewall", firewall);
+simple_builtin!(PowerBuiltin, "power", "power — apagado, reinicio, cierre de sesión e hibernación", power);
 
 fn eventlog(args: &[String]) -> Result<CommandOutput> {
     if args.is_empty() || help_requested(args) {
@@ -356,4 +361,104 @@ fn process_tree(root_pid: u32) -> Result<CommandOutput> {
     let mut out = String::from("PID PROCESS\n");
     walk(&system, &children, root, "", true, true, &mut out);
     Ok(CommandOutput::ok(out))
+}
+
+fn task(args: &[String]) -> Result<CommandOutput> {
+    if args.is_empty() || help_requested(args) { return Ok(CommandOutput::ok(
+"task — tareas programadas Windows
+uso:
+  task list [--verbose|--csv]
+  task show NOMBRE [--xml]
+  task run NOMBRE
+  task end NOMBRE
+  task enable NOMBRE
+  task disable NOMBRE
+  task delete NOMBRE
+Las mutaciones pueden requerir sudo.
+")); }
+    match args[0].as_str() {
+        "list" => { let mut a=vec!["/Query".into()]; if args.iter().any(|x|x=="--verbose"){a.push("/V".into());} if args.iter().any(|x|x=="--csv"){a.extend(["/FO".into(),"CSV".into()]);} run("schtasks.exe",&a) }
+        "show" => { let Some(n)=args.get(1) else{return Ok(CommandOutput::error("task show: falta NOMBRE",2));}; let mut a=vec!["/Query".into(),"/TN".into(),n.clone()]; if args.iter().any(|x|x=="--xml"){a.push("/XML".into());}else{a.push("/V".into());} run("schtasks.exe",&a) }
+        "run"|"end"|"delete" => { let Some(n)=args.get(1) else{return Ok(CommandOutput::error(format!("task {}: falta NOMBRE",args[0]),2));}; let op=match args[0].as_str(){"run"=>"/Run","end"=>"/End",_=>"/Delete"}; let mut a=vec![op.into(),"/TN".into(),n.clone()]; if args[0]=="delete"{a.push("/F".into());} run("schtasks.exe",&a) }
+        "enable"|"disable" => { let Some(n)=args.get(1) else{return Ok(CommandOutput::error(format!("task {}: falta NOMBRE",args[0]),2));}; run("schtasks.exe",&["/Change".into(),"/TN".into(),n.clone(),if args[0]=="enable"{"/ENABLE".into()}else{"/DISABLE".into()}]) }
+        x=>Ok(CommandOutput::error(format!("task: subcomando desconocido: {x}"),2)),
+    }
+}
+
+fn session(args: &[String]) -> Result<CommandOutput> {
+    if args.is_empty() || help_requested(args) { return Ok(CommandOutput::ok(
+"session — sesiones Windows
+uso:
+  session list
+  session users
+  session logoff ID
+  session message ID TEXTO
+logoff/message pueden requerir sudo.
+")); }
+    match args[0].as_str() {
+        "list"=>run("query.exe",&["session".into()]),
+        "users"=>run("query.exe",&["user".into()]),
+        "logoff"=>args.get(1).map(|id|run("logoff.exe",&[id.clone()])).unwrap_or_else(||Ok(CommandOutput::error("session logoff: falta ID",2))),
+        "message"=>{if args.len()<3{return Ok(CommandOutput::error("session message: uso: session message ID TEXTO",2));} run("msg.exe",&[args[1].clone(),args[2..].join(" ")])}
+        x=>Ok(CommandOutput::error(format!("session: subcomando desconocido: {x}"),2)),
+    }
+}
+
+fn share(args: &[String]) -> Result<CommandOutput> {
+    if args.is_empty() || help_requested(args) { return Ok(CommandOutput::ok(
+"share — recursos SMB Windows
+uso:
+  share list
+  share sessions
+  share files
+  share add NOMBRE RUTA
+  share remove NOMBRE
+Las mutaciones pueden requerir sudo.
+")); }
+    match args[0].as_str() {
+        "list"=>run("net.exe",&["share".into()]),
+        "sessions"=>run("net.exe",&["session".into()]),
+        "files"=>run("net.exe",&["file".into()]),
+        "add"=>{if args.len()<3{return Ok(CommandOutput::error("share add: uso: share add NOMBRE RUTA",2));} run("net.exe",&["share".into(),format!("{}={}",args[1],args[2])])}
+        "remove"=>args.get(1).map(|n|run("net.exe",&["share".into(),n.clone(),"/delete".into(),"/y".into()])).unwrap_or_else(||Ok(CommandOutput::error("share remove: falta NOMBRE",2))),
+        x=>Ok(CommandOutput::error(format!("share: subcomando desconocido: {x}"),2)),
+    }
+}
+
+fn firewall(args: &[String]) -> Result<CommandOutput> {
+    if args.is_empty() || help_requested(args) { return Ok(CommandOutput::ok(
+"firewall — Windows Defender Firewall
+uso:
+  firewall status
+  firewall rules
+  firewall rule NOMBRE
+  firewall enable PROFILE
+  firewall disable PROFILE
+PROFILE: domain | private | public | all
+Las mutaciones pueden requerir sudo.
+")); }
+    match args[0].as_str() {
+        "status"=>run("netsh.exe",&["advfirewall".into(),"show".into(),"allprofiles".into()]),
+        "rules"=>run("netsh.exe",&["advfirewall".into(),"firewall".into(),"show".into(),"rule".into(),"name=all".into()]),
+        "rule"=>args.get(1).map(|n|run("netsh.exe",&["advfirewall".into(),"firewall".into(),"show".into(),"rule".into(),format!("name={n}")])).unwrap_or_else(||Ok(CommandOutput::error("firewall rule: falta NOMBRE",2))),
+        "enable"|"disable"=>{let Some(p)=args.get(1)else{return Ok(CommandOutput::error(format!("firewall {}: falta PROFILE",args[0]),2));}; let profile=match p.to_ascii_lowercase().as_str(){"domain"=>"domainprofile","private"=>"privateprofile","public"=>"publicprofile","all"=>"allprofiles",_=>return Ok(CommandOutput::error("firewall: PROFILE debe ser domain, private, public o all",2))}; run("netsh.exe",&["advfirewall".into(),"set".into(),profile.into(),"state".into(),if args[0]=="enable"{"on".into()}else{"off".into()}])}
+        x=>Ok(CommandOutput::error(format!("firewall: subcomando desconocido: {x}"),2)),
+    }
+}
+
+fn power(args: &[String]) -> Result<CommandOutput> {
+    if args.is_empty() || help_requested(args) { return Ok(CommandOutput::ok(
+"power — control de energía Windows
+uso:
+  power shutdown [--force]
+  power restart [--force]
+  power logoff [--force]
+  power hibernate
+shutdown/restart requieren sudo según la política del equipo.
+")); }
+    match args[0].as_str() {
+        "shutdown"|"restart"|"logoff"=>{let mut a=vec![match args[0].as_str(){"shutdown"=>"/s","restart"=>"/r",_=>"/l"}.into(),"/t".into(),"0".into()];if args.iter().any(|x|x=="--force"){a.push("/f".into());}run("shutdown.exe",&a)}
+        "hibernate"=>run("shutdown.exe",&["/h".into()]),
+        x=>Ok(CommandOutput::error(format!("power: subcomando desconocido: {x}"),2)),
+    }
 }
