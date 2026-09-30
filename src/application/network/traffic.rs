@@ -90,6 +90,7 @@ impl NetworkTrafficService {
         let show_connections = options::has(args, "--connections");
         let background_only = options::has(args, "--background");
         let high_usage_only = options::has(args, "--high-usage");
+        let unsigned_only = options::has(args, "--unsigned");
         let foreground_pid = self.foreground.foreground_pid();
 
         let process_name_by_pid: HashMap<u32, String> = system
@@ -208,13 +209,14 @@ impl NetworkTrafficService {
                 continue;
             }
 
+            let executable_path = process.exe().map(|path| path.display().to_string()).unwrap_or_default();
+            let signature = authenticode_status(&executable_path);
+            if unsigned_only && signature == "valid" { continue; }
+
             rows.push(TrafficRow {
                 pid: pid_u32,
                 process: name,
-                path: process
-                    .exe()
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_default(),
+                path: executable_path,
                 cpu_percent: process.cpu_usage(),
                 memory_mib: process.memory() as f64 / 1024.0 / 1024.0,
                 connections: connection_count,
@@ -222,6 +224,7 @@ impl NetworkTrafficService {
                 download_bps: rate.received,
                 ppid: process.parent().map(|pid| pid.as_u32()),
                 foreground,
+                signature,
             });
         }
 
@@ -250,16 +253,17 @@ impl NetworkTrafficService {
 
         if csv_output {
             let mut out = String::from(
-                "pid,ppid,process,foreground,upload_bps,download_bps,cpu_percent,memory_mib,connections,path\n",
+                "pid,ppid,process,foreground,signature,upload_bps,download_bps,cpu_percent,memory_mib,connections,path\n",
             );
 
             for row in rows {
                 out.push_str(&format!(
-                    "{},{},{},{},{},{},{:.2},{:.2},{},{}\n",
+                    "{},{},{},{},{},{},{},{:.2},{:.2},{},{}\n",
                     row.pid,
                     row.ppid.map(|pid| pid.to_string()).unwrap_or_default(),
                     csv::escape(&row.process),
                     row.foreground,
+                    csv::escape(&row.signature),
                     row.upload_bps,
                     row.download_bps,
                     row.cpu_percent,
@@ -273,16 +277,17 @@ impl NetworkTrafficService {
         }
 
         let mut out = String::from(
-            "PID      PPID     FG  PROCESS                 UP/s         DOWN/s       CPU%    RAM MiB   CONN\n",
+            "PID      PPID     FG  PROCESS                 SIGNATURE   UP/s         DOWN/s       CPU%    RAM MiB   CONN\n",
         );
 
         for row in rows {
             out.push_str(&format!(
-                "{:<8} {:<8} {:<3} {:<23} {:>11} {:>12} {:>6.1} {:>10.1} {:>6}\n",
+                "{:<8} {:<8} {:<3} {:<23} {:<11} {:>11} {:>12} {:>6.1} {:>10.1} {:>6}\n",
                 row.pid,
                 row.ppid.map(|pid| pid.to_string()).unwrap_or_else(|| "-".to_owned()),
                 if row.foreground { "yes" } else { "no" },
                 truncate_text(&row.process, 23),
+                truncate_text(&row.signature, 11),
                 format_rate(row.upload_bps),
                 format_rate(row.download_bps),
                 row.cpu_percent,
@@ -415,4 +420,20 @@ fn truncate_text(value: &str, width: usize) -> String {
     let mut text: String = value.chars().take(width - 3).collect();
     text.push_str("...");
     text
+}
+
+fn authenticode_status(path: &str) -> String {
+    if path.is_empty() { return "unknown".to_owned(); }
+    let escaped = path.replace(''', "''");
+    let script = format!("$s=Get-AuthenticodeSignature -LiteralPath '{}'; if($s.Status -eq 'Valid'){{'valid'}}elseif($s.Status -eq 'NotSigned'){{'unsigned'}}else{{$s.Status.ToString().ToLowerInvariant()}}", escaped);
+    match std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let value=String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if value.is_empty() {"unknown".to_owned()} else {value}
+        }
+        _ => "unknown".to_owned(),
+    }
 }
