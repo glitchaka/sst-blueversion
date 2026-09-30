@@ -110,7 +110,7 @@ requiere un proveedor activo que exponga contadores por cliente.
             Some("provider") => "net provider — fuentes externas de telemetría
 uso:
   net provider list [--json]
-  net provider add NOMBRE --type TIPO --host HOST
+  net provider add NOMBRE --type TIPO --host HOST [--user-env VAR] [--secret-env VAR] [--community-env VAR]
   net provider use NOMBRE
   net provider current
   net provider remove NOMBRE
