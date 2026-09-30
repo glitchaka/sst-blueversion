@@ -36,6 +36,7 @@ TECLAS Y ÓRDENES ESENCIALES
   Backspace / Supr   Borrar texto en modo INSERTAR.
   Ctrl+V             Pegar en la posición del cursor en modo INSERTAR.
   Alt+d              Insertar guion largo: —
+  Ctrl+g             Atajo alternativo para insertar: —
   F2                 Mostrar correcciones ortográficas disponibles.
   u                  Deshacer en modo NORMAL.
   Ctrl+r             Rehacer en modo NORMAL.
@@ -56,8 +57,9 @@ ESCRITURA DE TEXTO
 
 Helix-SST usa la paleta Gruvbox Dark. En archivos .txt y Markdown (.md), el
 corrector ortográfico integrado revisa español de Chile sin enviar el texto a
-servicios externos. Los posibles errores aparecen como diagnósticos; sitúa el
-cursor sobre la palabra y pulsa F2 para ver las correcciones sugeridas.
+servicios externos. Los posibles errores aparecen como diagnósticos visibles en el gutter y al
+final de la línea; sitúa el cursor sobre la palabra y pulsa F2 para ver las
+correcciones sugeridas.
 
 CONFIGURACIÓN Y DIAGNÓSTICO
 
