@@ -604,9 +604,7 @@ impl SecurityTriageService {
         match sub {
             "status" => self.intel_status(),
             "sources" => self.intel_sources(),
-            "update" => Ok(CommandOutput::ok(
-                "intel update: registro cargado; adaptadores HTTP se conectarán en la siguiente fase.\nLa actualización no bloquea el preload.\n",
-            )),
+            "update" => self.intel_update(),
             "lookup" => {
                 let Some(indicator) = args.get(1) else {
                     return Ok(CommandOutput::error("intel lookup: falta indicador", 2));
@@ -666,6 +664,34 @@ impl SecurityTriageService {
             out.push_str(&format!(
                 "[{}]\n  enabled={}\n  adapter={}\n  endpoint={}\n  priority={}\n\n",
                 source.id, source.enabled, source.adapter, source.endpoint, source.priority
+            ));
+        }
+        Ok(CommandOutput::ok(out))
+    }
+
+    fn intel_update(&self) -> Result<CommandOutput> {
+        let sources = self.load_sources()?;
+        let conn = self.open_db()?;
+        let now = unix_now();
+        let expired = conn.execute(
+            "DELETE FROM intel_cache WHERE expires_at IS NOT NULL AND expires_at <= ?1",
+            params![now],
+        )?;
+        let mut out = format!("intel cache: {expired} entrada(s) expirada(s) eliminada(s)\n");
+        for source in sources.into_iter().filter(|source| source.enabled) {
+            let auth = match source.auth_env.as_deref() {
+                Some(name) if env::var_os(name).is_some() => "ready",
+                Some(_) => "missing-auth",
+                None => "no-auth",
+            };
+            let capability = match source.adapter.as_str() {
+                "abusech_hash" | "abusech_ioc" | "abusech_url" => "live-lookup",
+                "behavior_catalog" => "catalog",
+                _ => "unsupported",
+            };
+            out.push_str(&format!(
+                "{}: {} · {} · ttl={}h\n",
+                source.id, capability, auth, source.ttl_hours
             ));
         }
         Ok(CommandOutput::ok(out))
