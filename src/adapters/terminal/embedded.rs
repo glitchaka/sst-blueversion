@@ -147,12 +147,14 @@ impl EmbeddedSession {
                                     io::write(result.stderr.as_bytes())?;
                                     if result.status == 0 {
                                         let normalized = command.split_whitespace().collect::<Vec<_>>().join(" ");
+                                        let bg_change =
+                                            (normalized.starts_with("config bg ")
+                                                && normalized != "config bg list")
+                                            || (normalized.starts_with("sst-config bg ")
+                                                && normalized != "sst-config bg list");
                                         if normalized == "reload"
                                             || normalized == "config reload"
-                                            || normalized == "config bg"
-                                            || normalized.starts_with("config bg ")
-                                            || normalized == "sst-config bg"
-                                            || normalized.starts_with("sst-config bg ")
+                                            || bg_change
                                         {
                                             worker_config_reload_requested.store(true, Ordering::SeqCst);
                                         }
