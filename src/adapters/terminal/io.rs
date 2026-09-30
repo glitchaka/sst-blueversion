@@ -26,6 +26,10 @@ impl WindowIo {
 }
 thread_local! { static WINDOW: RefCell<Option<WindowIo>> = const { RefCell::new(None) }; }
 pub fn install(io: WindowIo) { WINDOW.with(|slot| *slot.borrow_mut() = Some(io)); }
+pub fn output_sender() -> Option<mpsc::Sender<Vec<u8>>> {
+    WINDOW.with(|slot| slot.borrow().as_ref().map(|io| io.output.clone()))
+}
+
 pub fn interrupt_flag() -> Arc<AtomicBool> {
     WINDOW.with(|slot| slot.borrow().as_ref().map(|io| Arc::clone(&io.interrupt)))
         .unwrap_or_default()
