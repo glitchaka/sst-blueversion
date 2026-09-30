@@ -1,11 +1,11 @@
-use std::sync::Arc;
+use std::{collections::HashMap, env, process::Command, sync::Arc, time::{Duration, Instant}};
 
 use anyhow::Result;
 
 use crate::{
     core::{
         CommandOutput,
-        models::network::NetworkProvider,
+        models::network::{LanUsageRow, NetworkProvider},
         ports::NetworkProviderRepository,
     },
     support::options,
@@ -36,22 +36,50 @@ impl NetworkProviderService {
         }
     }
 
-    pub fn usage(&self, _args: &[String]) -> Result<CommandOutput> {
+    pub fn usage(&self, args: &[String]) -> Result<CommandOutput> {
         let providers = self.repository.all()?;
         let Some(active) = providers.iter().find(|provider| provider.active) else {
-            return Ok(CommandOutput::error(
-                "net usage: no hay proveedor activo. Usa 'net provider add' y 'net provider use'.",
-                2,
-            ));
+            return Ok(CommandOutput::error("net usage: no hay proveedor activo. Usa 'net provider add' y 'net provider use'.",2));
         };
+        if args.iter().any(|a| a=="--watch" || a=="-w") {
+            return Ok(CommandOutput::error("net usage --watch: usa snapshots repetidos desde el proveedor; la TUI se incorporará sobre este backend sin estimar tráfico local",2));
+        }
+        let rows = match active.kind.as_str() {
+            "openwrt" => self.openwrt_usage(active)?,
+            "generic" => self.generic_usage(active)?,
+            "snmp" => return Ok(CommandOutput::error("net usage: SNMP estándar no define contadores por cliente; configura un proveedor/MIB específico en vez de inventar datos",2)),
+            "opnsense"|"pfsense"|"unifi" => return Ok(CommandOutput::error(format!("net usage: el perfil {} requiere endpoint/API específico de la instalación; usa --type generic con un endpoint JSON normalizado o un backend dedicado",active.kind),2)),
+            other => return Ok(CommandOutput::error(format!("net usage: proveedor no soportado: {other}"),2)),
+        };
+        self.render_usage(args, rows)
+    }
 
-        Ok(CommandOutput::error(
-            format!(
-                "net usage: proveedor '{}' ({}) configurado en {}, pero el driver de contadores por cliente todavía no está implementado para este tipo",
-                active.name, active.kind, active.host
-            ),
-            2,
-        ))
+    fn render_usage(&self,args:&[String],mut rows:Vec<LanUsageRow>)->Result<CommandOutput>{
+        if let Some(ip)=options::value(args,"--device"){rows.retain(|r|r.ip==ip);}
+        if let Some(mac)=options::value(args,"--mac"){rows.retain(|r|r.mac.eq_ignore_ascii_case(mac));}
+        rows.sort_by_key(|r|std::cmp::Reverse(r.download_bps.saturating_add(r.upload_bps)));
+        if let Some(v)=options::value(args,"--top").and_then(|v|v.parse::<usize>().ok()){rows.truncate(v);}
+        if options::has(args,"--json"){return Ok(CommandOutput::ok(format!("{}\n",serde_json::to_string_pretty(&rows)?)));}
+        if options::has(args,"--csv"){
+            let mut out=String::from("device,ip,mac,download_bps,upload_bps,total_bps\n");
+            for r in rows{out.push_str(&format!("{},{},{},{},{},{}\n",r.device,r.ip,r.mac,r.download_bps,r.upload_bps,r.download_bps.saturating_add(r.upload_bps)));}
+            return Ok(CommandOutput::ok(out));
+        }
+        let mut out=String::from("DEVICE                   IP               MAC                 DOWN         UP           TOTAL\n");
+        for r in rows{out.push_str(&format!("{:<24} {:<16} {:<19} {:>12} {:>12} {:>12}\n",r.device,r.ip,r.mac,rate(r.download_bps),rate(r.upload_bps),rate(r.download_bps.saturating_add(r.upload_bps))));}
+        Ok(CommandOutput::ok(out))
+    }
+
+    fn generic_usage(&self,p:&NetworkProvider)->Result<Vec<LanUsageRow>>{
+        let text=http_json(p,"")?;
+        parse_usage_json(&text)
+    }
+
+    fn openwrt_usage(&self,p:&NetworkProvider)->Result<Vec<LanUsageRow>>{
+        // OpenWrt deployments differ; SST consumes a ubus/cgi endpoint configured in host
+        // and requires normalized JSON counters. This keeps the CLI stable without fabricating data.
+        let text=http_json(p,"")?;
+        parse_usage_json(&text)
     }
 
     fn list(&self, args: &[String]) -> Result<CommandOutput> {
@@ -220,4 +248,40 @@ impl NetworkProviderService {
             provider.name, provider.kind, provider.host, traffic, fdb, api
         )))
     }
+}
+
+fn http_json(p:&NetworkProvider,suffix:&str)->Result<String>{
+    let url=format!("{}{}",p.host.trim_end_matches('/'),suffix);
+    let mut cmd=Command::new("curl.exe");
+    cmd.args(["-fsS","--connect-timeout","5","--max-time","15","-H","Accept: application/json"]);
+    if let Some(user_var)=&p.user_env {
+        let user=env::var(user_var).map_err(|_|anyhow::anyhow!("falta variable de entorno {}",user_var))?;
+        let secret=p.secret_env.as_ref().map(|v|env::var(v)).transpose()?.unwrap_or_default();
+        cmd.args(["-u",&format!("{user}:{secret}")]);
+    } else if let Some(secret_var)=&p.secret_env {
+        let token=env::var(secret_var).map_err(|_|anyhow::anyhow!("falta variable de entorno {}",secret_var))?;
+        cmd.args(["-H",&format!("Authorization: Bearer {token}")]);
+    }
+    let out=cmd.arg(url).output().map_err(|e|anyhow::anyhow!("curl: {e}"))?;
+    if !out.status.success(){anyhow::bail!("proveedor HTTP respondió con error: {}",String::from_utf8_lossy(&out.stderr).trim());}
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn parse_usage_json(text:&str)->Result<Vec<LanUsageRow>>{
+    let value:serde_json::Value=serde_json::from_str(text)?;
+    let array=value.as_array().or_else(||value.get("clients").and_then(|v|v.as_array())).ok_or_else(||anyhow::anyhow!("el proveedor debe devolver un array JSON o {clients:[...]}"))?;
+    array.iter().map(|v|Ok(LanUsageRow{
+        device:v.get("device").or_else(||v.get("hostname")).and_then(|x|x.as_str()).unwrap_or("-").to_owned(),
+        ip:v.get("ip").and_then(|x|x.as_str()).unwrap_or("-").to_owned(),
+        mac:v.get("mac").and_then(|x|x.as_str()).unwrap_or("-").to_owned(),
+        download_bps:v.get("download_bps").or_else(||v.get("rx_bps")).and_then(|x|x.as_u64()).unwrap_or(0),
+        upload_bps:v.get("upload_bps").or_else(||v.get("tx_bps")).and_then(|x|x.as_u64()).unwrap_or(0),
+    })).collect()
+}
+
+fn rate(v:u64)->String{
+    if v>=1_000_000_000{format!("{:.1} Gbps",v as f64/1_000_000_000.0)}
+    else if v>=1_000_000{format!("{:.1} Mbps",v as f64/1_000_000.0)}
+    else if v>=1_000{format!("{:.1} Kbps",v as f64/1_000.0)}
+    else{format!("{v} bps")}
 }
