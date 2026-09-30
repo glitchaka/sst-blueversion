@@ -6,6 +6,7 @@ mod registry;
 mod nwash;
 mod security;
 mod system;
+mod tour;
 mod sudo;
 mod unix;
 
@@ -20,5 +21,6 @@ pub use registry::CommandRegistry;
 pub use nwash::{AclBuiltin, EventLogBuiltin, FirewallBuiltin, PnpBuiltin, PowerBuiltin, ProcessBuiltin, RegistryBuiltin, ServiceBuiltin, SessionBuiltin, ShareBuiltin, TaskBuiltin};
 pub use security::{IntelBuiltin, TriageBuiltin};
 pub use system::SystemBuiltin;
+pub use tour::TourBuiltin;
 pub use sudo::SudoBuiltin;
 pub use unix::{UNIX_COMMANDS, UnixBuiltin};
