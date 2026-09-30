@@ -1,5 +1,6 @@
 mod diagnostics;
 mod discovery;
+mod identity;
 mod provider;
 mod traffic;
 
@@ -55,6 +56,7 @@ impl NetworkService {
             "scan" => self.discovery.scan(args.get(1..).unwrap_or_default()),
             "monitor" => self.discovery.monitor(args.get(1..).unwrap_or_default()),
             "presence" => self.discovery.presence(args.get(1..).unwrap_or_default()),
+            "identify" => self.discovery.identify(args.get(1..).unwrap_or_default()),
             "traffic" => self.traffic.execute(args.get(1..).unwrap_or_default()),
             "usage" => self.providers.usage(args.get(1..).unwrap_or_default()),
             "provider" => self.providers.execute(args.get(1..).unwrap_or_default()),
@@ -83,6 +85,7 @@ subcomandos:
   scan [RED] [opciones]   descubrimiento IPv4
   monitor [RED]           monitor TUI de presencia
   presence                historial persistente de presencia
+  identify OBJETIVO       identifica IP, MAC o nombre inventariado
   traffic [opciones]      tráfico y conexiones por proceso
   usage [opciones]        consumo LAN mediante proveedor activo
   provider SUBCOMANDO     configuración de proveedores
@@ -100,8 +103,12 @@ abre una TUI; salir con q o Esc.
             Some("presence") => "net presence — consulta historial de presencia
 uso: net presence [--json|--csv]
 ",
+            Some("identify") => "net identify — identifica un dispositivo por IP, MAC o nombre inventariado
+uso: net identify IP|MAC|NOMBRE [--json]
+muestra MAC, tipo global/local, fabricante IEEE, inventario, método de detección y último avistamiento.
+",
             Some("traffic") => "net traffic — tráfico por proceso
-uso: net traffic [--watch] [--top N] [--pid PID] [--process NOMBRE] [--background] [--high-usage] [--connections] [--json|--csv]
+uso: net traffic [--watch] [--top N] [--pid PID] [--process NOMBRE] [--background] [--high-usage] [--unsigned] [--connections] [--json|--csv]
 ",
             Some("usage") => "net usage — consumo de Internet de la LAN
 uso: net usage [--watch] [--top [N]] [--device IP] [--mac MAC] [--json|--csv]
