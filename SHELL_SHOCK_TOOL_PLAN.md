@@ -98,9 +98,11 @@ netstat -ano | grep LISTENING
 
 La shell base debe conservar la semántica y sensación de una terminal Linux. Los comandos SST no deben introducir un sistema de interacción paralelo.
 
-La implementación usa `brush-core`/`brush-builtins`, un motor Bash-compatible escrito en Rust, en vez de mantener un parser Bash casero. Esto permite que aliases, funciones, variables, expansiones, sustitución de comandos, pipes, redirecciones, operadores lógicos y scripts compartan el mismo modelo de ejecución.
+El intérprete propio de SST se denomina **Nwash** (*No, Windows Again? Shit*). Toma Bash 5.3 como base de sintaxis y semántica, pero está implementado en Rust dentro de SST y adaptado deliberadamente a Windows. No usa `brush-core`/`brush-builtins` como motor.
 
-Las herramientas SST se registran en ese motor como comandos nativos escritos en Rust.
+Nwash conserva el comportamiento Bash portable, adapta primitivas POSIX cuando Windows ofrece un equivalente útil y añade capacidades propias de Windows como builtins. Infraestructura interna de GNU/Linux sin valor práctico en Windows —por ejemplo la carga binaria GNU Bash mediante `enable -f`/`enable -d`— no se considera deuda de compatibilidad.
+
+Las herramientas SST se registran en el mismo motor como comandos nativos escritos en Rust.
 
 Debe soportar:
 
@@ -142,7 +144,52 @@ tasklist | grep -i chrome
 net scan --alive | sort
 ```
 
-### 2.3 Convención de comandos SST
+### 2.3 Builtins Nwash para Windows
+
+Además de la compatibilidad Bash, Nwash expone primitivas Windows componibles y utilizables desde scripts:
+
+```bash
+eventlog list
+eventlog read System --count 50
+eventlog export System system.evtx
+sudo eventlog clear Application
+
+service list --running
+service status Spooler
+sudo service restart Spooler
+
+registry get "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"
+sudo registry set CLAVE NOMBRE DATO --type REG_SZ
+sudo registry delete CLAVE --value NOMBRE
+
+process list
+process info PID
+process kill PID --tree --force
+
+acl show RUTA
+sudo acl grant RUTA USUARIO RX
+sudo acl revoke RUTA USUARIO
+
+pnp list --connected
+pnp info INSTANCE_ID
+sudo pnp disable INSTANCE_ID
+sudo pnp enable INSTANCE_ID
+sudo pnp restart INSTANCE_ID
+sudo pnp scan
+```
+
+Familias incorporadas:
+
+- `eventlog`: Windows Event Log;
+- `service`: Service Control Manager;
+- `registry`: Registro de Windows;
+- `process`: procesos;
+- `acl`: permisos/ACL;
+- `pnp`: dispositivos Plug and Play.
+
+Las operaciones protegidas se integran con el `sudo` de SST.
+
+### 2.4 Convención de comandos SST
 
 Para evitar que el proyecto termine convertido en un pegote de comandos independientes, las capacidades propias se organizan por familias, igual que una buena CLI Unix moderna.
 
