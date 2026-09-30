@@ -59,6 +59,12 @@ pub struct NetworkProvider {
     pub kind: String,
     pub host: String,
     pub active: bool,
+    #[serde(default)]
+    pub user_env: Option<String>,
+    #[serde(default)]
+    pub secret_env: Option<String>,
+    #[serde(default)]
+    pub community_env: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
