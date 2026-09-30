@@ -133,6 +133,10 @@ slint::slint! {
             }
 
             terminal-touch := TouchArea {
+                x: 0;
+                y: 0;
+                width: 100%;
+                height: 100%;
                 mouse-cursor: text;
 
                 pointer-event(event) => {
@@ -956,14 +960,16 @@ fn handle_key(
         return;
     }
 
-    if (ctrl && text.eq_ignore_ascii_case("c")) && model.has_selection() {
+    let copy_key = text.eq_ignore_ascii_case("c") || text == "\u{3}";
+
+    if ctrl && copy_key && model.has_selection() {
         if let Ok(mut clipboard) = Clipboard::new() {
             let _ = clipboard.set_text(model.selected_text());
         }
         return;
     }
 
-    if ctrl && shift && text.eq_ignore_ascii_case("c") {
+    if ctrl && shift && copy_key {
         let selected = model.selected_text();
         if !selected.is_empty() {
             if let Ok(mut clipboard) = Clipboard::new() {
