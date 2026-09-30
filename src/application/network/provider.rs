@@ -286,7 +286,7 @@ fn http_json(p:&NetworkProvider,suffix:&str)->Result<String>{
 
 fn parse_usage_json(text:&str)->Result<Vec<LanUsageRow>>{
     let value:serde_json::Value=serde_json::from_str(text)?;
-    let array=value.as_array().or_else(||value.get("clients").and_then(|v|v.as_array())).ok_or_else(||anyhow::anyhow!("el proveedor debe devolver un array JSON o {clients:[...]}"))?;
+    let array=value.as_array().or_else(||value.get("clients").and_then(|v|v.as_array())).ok_or_else(||anyhow::anyhow!("el proveedor debe devolver un array JSON o {{clients:[...]}}"))?;
     array.iter().map(|v|Ok(LanUsageRow{
         device:v.get("device").or_else(||v.get("hostname")).and_then(|x|x.as_str()).unwrap_or("-").to_owned(),
         ip:v.get("ip").and_then(|x|x.as_str()).unwrap_or("-").to_owned(),
