@@ -42,16 +42,32 @@ impl NetworkProviderService {
             return Ok(CommandOutput::error("net usage: no hay proveedor activo. Usa 'net provider add' y 'net provider use'.",2));
         };
         if args.iter().any(|a| a=="--watch" || a=="-w") {
-            return Ok(CommandOutput::error("net usage --watch: usa snapshots repetidos desde el proveedor; la TUI se incorporará sobre este backend sin estimar tráfico local",2));
+            return self.watch_usage(active,args);
         }
-        let rows = match active.kind.as_str() {
-            "openwrt" => self.openwrt_usage(active)?,
-            "generic" => self.generic_usage(active)?,
-            "snmp" => return Ok(CommandOutput::error("net usage: SNMP estándar no define contadores por cliente; configura un proveedor/MIB específico en vez de inventar datos",2)),
-            "opnsense"|"pfsense"|"unifi" => return Ok(CommandOutput::error(format!("net usage: el perfil {} requiere endpoint/API específico de la instalación; usa --type generic con un endpoint JSON normalizado o un backend dedicado",active.kind),2)),
-            other => return Ok(CommandOutput::error(format!("net usage: proveedor no soportado: {other}"),2)),
-        };
+        let rows = self.collect_usage(active)?;
         self.render_usage(args, rows)
+    }
+
+    fn collect_usage(&self,active:&NetworkProvider)->Result<Vec<LanUsageRow>>{
+        match active.kind.as_str() {
+            "openwrt" => self.openwrt_usage(active),
+            "generic" => self.generic_usage(active),
+            "snmp" => anyhow::bail!("SNMP estándar no define contadores por cliente; configura un proveedor/MIB específico"),
+            "opnsense"|"pfsense"|"unifi" => anyhow::bail!("el perfil {} requiere endpoint/API específico de la instalación; usa --type generic con endpoint JSON normalizado",active.kind),
+            other => anyhow::bail!("proveedor no soportado: {other}"),
+        }
+    }
+
+    fn watch_usage(&self,active:&NetworkProvider,args:&[String])->Result<CommandOutput>{
+        let filtered:Vec<String>=args.iter().filter(|a|a.as_str()!="--watch"&&a.as_str()!="-w").cloned().collect();
+        loop {
+            let rows=self.collect_usage(active)?;
+            let out=self.render_usage(&filtered,rows)?;
+            print!("\x1b[2J\x1b[Hnet usage --watch   Ctrl+C para salir\n\n{}",out.stdout);
+            use std::io::Write;
+            std::io::stdout().flush()?;
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
     }
 
     fn render_usage(&self,args:&[String],mut rows:Vec<LanUsageRow>)->Result<CommandOutput>{
