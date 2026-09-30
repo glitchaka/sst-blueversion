@@ -191,7 +191,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
 
     registry.register(Arc::new(EditorBuiltin::new(Arc::clone(&editor))))?;
     registry.register(Arc::new(ConfigBuiltin::new(
-        paths.config_file(),
+        paths.clone(),
         Arc::clone(&editor),
     )))?;
     registry.register(Arc::new(PathBuiltin))?;
