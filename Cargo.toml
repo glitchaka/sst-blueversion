@@ -20,6 +20,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 similar = "2.7"
+spellbook = "0.4.2"
 snmp2 = "0.5.2"
 sysinfo = "0.37"
 vt100 = "0.16"
