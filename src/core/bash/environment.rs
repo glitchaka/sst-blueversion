@@ -1050,12 +1050,6 @@ impl ShellEnvironment {
         else { self.trace_vars.remove(name); }
     }
 
-    #[allow(dead_code)]
-    pub fn is_integer(&self, name: &str) -> bool {
-        let resolved = self.dereference_name(name);
-        self.integer_vars.contains(&resolved)
-    }
-
     pub fn special_variable_active(&self, name: &str) -> bool {
         resettable_special_variable(name) && !self.disabled_special_vars.contains(name)
     }
@@ -1064,10 +1058,6 @@ impl ShellEnvironment {
         self.shell_options.contains(name) || self.shopt_options.contains(name)
     }
 
-    #[allow(dead_code)]
-    pub fn elapsed_seconds(&self) -> f64 {
-        self.started_at.elapsed().as_secs_f64()
-    }
 }
 
 fn split_subscript(name: &str) -> Option<(&str, &str)> {
