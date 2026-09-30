@@ -1386,6 +1386,7 @@ examples/
   06-security-triage.sh
   07-operator-console.sh
   08-config-and-backgrounds.sh
+  09-advanced-bash.sh
 ```
 
 Se ejecutan directamente desde SST:
@@ -1396,6 +1397,7 @@ examples/02-windows-operator-report.sh
 examples/03-network-discovery.sh 10.11.24.0/24
 examples/04-jobs-and-coproc.sh
 examples/07-operator-console.sh
+examples/09-advanced-bash.sh
 ```
 
 Los ejemplos cubren, entre otras capacidades:
@@ -1415,7 +1417,8 @@ Los ejemplos cubren, entre otras capacidades:
 - utilidades Unix integradas;
 - composición con `sys`, `net`, `device`, `eventlog`, `service`, `pnp`, `firewall`, `triage` e `intel`;
 - menús interactivos construidos enteramente dentro de Nwash;
-- configuración portable y fondos dinámicos.
+- configuración portable y fondos dinámicos;
+- `getopts`, namerefs, arrays dispersos, `mapfile`, `printf -v` y stack de funciones.
 
 Los scripts incluidos son no destructivos por diseño. El objetivo es que funcionen como **showcase técnico, material de aprendizaje y base para automatizaciones reales**.
 
