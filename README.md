@@ -1271,7 +1271,7 @@ La distribución portable está basada en **Helix 25.07.1**; la integración **H
 - integración de clipboard;
 - corrector ortográfico **offline es-CL** para `.txt` y Markdown;
 - diagnósticos ortográficos y sugerencias mediante `F2`;
-- `Alt+d` en modo insertar para escribir el guion largo `—`;
+- `Alt+d` en modo insertar para escribir el guion largo `—`; `Ctrl+g` queda como atajo alternativo;
 - integración con la terminal nativa.
 
 ### Estado actual
@@ -1290,7 +1290,9 @@ Dentro de Helix-SST:
 
 - `i`: modo insertar;
 - `Alt+d`: inserta `—`;
+- `Ctrl+g`: atajo alternativo para `—`;
 - `F2`: muestra correcciones disponibles para el diagnóstico bajo el cursor;
+- los errores ortográficos se muestran en el gutter y al final de la línea;
 - `F1`: guía integrada;
 - `Ctrl+V`: pegado;
 - `:w`: guardar;
