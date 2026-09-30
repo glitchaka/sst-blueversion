@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use spellbook::Dictionary;
 
 const ES_CL_AFF: &str = include_str!(concat!(env!("OUT_DIR"), "/helix-sst-es-CL.aff"));
@@ -291,21 +291,23 @@ impl SpellServer {
             suggestions.truncate(6);
 
             for suggestion in suggestions {
+                let mut changes = Map::new();
+                changes.insert(
+                    uri.to_owned(),
+                    json!([{
+                        "range": range.clone(),
+                        "newText": suggestion
+                    }]),
+                );
                 actions.push(json!({
                     "title": format!("Cambiar «{word}» por «{suggestion}»"),
                     "kind": "quickfix",
                     "diagnostics": [diagnostic.clone()],
                     "edit": {
-                        "changes": {
-                            uri: [{
-                                "range": range.clone(),
-                                "newText": suggestion
-                            }]
-                        }
+                        "changes": Value::Object(changes)
                     }
                 }));
             }
-
             actions.push(json!({
                 "title": format!("Aceptar «{word}» en Helix-SST"),
                 "kind": "quickfix",
