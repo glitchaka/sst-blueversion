@@ -287,6 +287,16 @@ fn apply_managed_config(config: &mut toml::Value) -> Result<()> {
         "end-of-line-diagnostics".into(),
         toml::Value::String("warning".into()),
     );
+    editor.insert(
+        "gutters".into(),
+        toml::Value::Array(vec![
+            toml::Value::String("diagnostics".into()),
+            toml::Value::String("spacer".into()),
+            toml::Value::String("line-numbers".into()),
+            toml::Value::String("spacer".into()),
+            toml::Value::String("diff".into()),
+        ]),
+    );
 
     let inline = editor
         .entry("inline-diagnostics")
@@ -307,6 +317,17 @@ fn apply_managed_config(config: &mut toml::Value) -> Result<()> {
         .or_insert_with(|| toml::Value::Table(Default::default()))
         .as_table_mut()
         .context("editor.statusline debe ser una tabla")?;
+    statusline.insert(
+        "right".into(),
+        toml::Value::Array(vec![
+            toml::Value::String("diagnostics".into()),
+            toml::Value::String("selections".into()),
+            toml::Value::String("position".into()),
+            toml::Value::String("file-encoding".into()),
+            toml::Value::String("file-type".into()),
+        ]),
+    );
+
     let modes = statusline
         .entry("mode")
         .or_insert_with(|| toml::Value::Table(Default::default()))
