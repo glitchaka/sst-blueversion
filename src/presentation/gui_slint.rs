@@ -31,7 +31,10 @@ use windows_sys::Win32::{
     System::LibraryLoader::{GetModuleHandleW, GetProcAddress},
     UI::{
         Controls::MARGINS,
-        WindowsAndMessaging::{GetForegroundWindow, IsIconic, IsZoomed},
+        WindowsAndMessaging::{
+            GetForegroundWindow, IsIconic, IsZoomed, SetActiveWindow, SetFocus,
+            SetForegroundWindow,
+        },
     },
 };
 
@@ -122,6 +125,10 @@ slint::slint! {
             height: 100%;
             focus-on-click: true;
             focus-on-tab-navigation: false;
+
+            init => {
+                self.focus();
+            }
 
             key-pressed(event) => {
                 root.key-input(
@@ -1590,6 +1597,13 @@ pub fn run() -> Result<()> {
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(ui) = weak.upgrade() {
                 apply_slint_window_effects(&ui, &appearance);
+                if let Some(hwnd) = slint_hwnd(&ui) {
+                    unsafe {
+                        SetForegroundWindow(hwnd);
+                        SetActiveWindow(hwnd);
+                        SetFocus(hwnd);
+                    }
+                }
             }
         });
     }
