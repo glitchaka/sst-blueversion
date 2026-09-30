@@ -627,17 +627,11 @@ impl SecurityTriageService {
             "INTELLIGENCE SOURCES\n------------------------------------------------------------\n",
         );
         for source in sources {
-            let auth = source
-                .auth_env
-                .as_deref()
-                .map(|name| {
-                    if env::var_os(name).is_some() {
-                        "auth ready"
-                    } else {
-                        "auth missing"
-                    }
-                })
-                .unwrap_or("no auth");
+            let auth = match source_auth(&source, &self.paths) {
+                Ok(Some(_)) => "auth ready",
+                Ok(None) => "no auth",
+                Err(_) => "auth missing",
+            };
             out.push_str(&format!(
                 "{:<20} {:<9} {:<18} ttl={}h  {}\n",
                 source.id,
