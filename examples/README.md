@@ -27,7 +27,24 @@ sst.exe examples/01-language-tour.sh
 | `07-operator-console.sh` | menú interactivo con `select`, funciones y composición de herramientas SST |
 | `08-config-and-backgrounds.sh` | configuración portable y administración de fondos `config bg` |
 | `09-advanced-bash.sh` | `getopts`, namerefs, arrays dispersos, `mapfile`, `printf -v`, parámetros y stack de funciones |
+| `10-full-showcase.sh` | demo integral: sistema + Windows + red + jobs + ETW + triage + Intel + reporte |
 
 Los scripts son deliberadamente **no destructivos**: consultan estado, generan reportes y crean archivos temporales, pero no reinician servicios, borran tareas ni modifican ACL/Registro.
 
 Algunos collectors pueden requerir privilegios elevados para entregar todos los datos. En ese caso el ejemplo deja que SST muestre la limitación en vez de ocultarla.
+
+## Demo recomendada
+
+Para enseñar SST de punta a punta:
+
+```bash
+examples/10-full-showcase.sh
+```
+
+o indicando explícitamente la red a explorar:
+
+```bash
+examples/10-full-showcase.sh 10.11.24.0/24
+```
+
+Genera un reporte de operación completo y, al mismo tiempo, muestra composición real entre el lenguaje Nwash y las herramientas nativas de SST.
