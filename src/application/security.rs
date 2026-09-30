@@ -689,6 +689,9 @@ impl SecurityTriageService {
         let mut reported = false;
 
         for source in sources.into_iter().filter(|source| source.enabled) {
+            if source.adapter == "behavior_catalog" {
+                continue;
+            }
             if let Some((verdict, checked_at)) = cached_intel(&conn, indicator, &source.id, now)? {
                 out.push_str(&format!("{}: {} (cache, checked {})\n", source.id, verdict, checked_at));
                 reported = true;
@@ -1402,11 +1405,11 @@ fn query_abusech_ioc(source: &SecuritySource, indicator: &str) -> Result<Option<
 fn query_abusech_url(source: &SecuritySource, indicator: &str) -> Result<Option<String>> {
     let auth = source_auth(source)?;
     let (endpoint, field) = if is_hash_indicator(indicator) {
-        (format!("{}v1/payload/", source.endpoint.trim_end_matches('/')), "sha256_hash")
+        (format!("{}/v1/payload/", source.endpoint.trim_end_matches('/')), "sha256_hash")
     } else if indicator.starts_with("http://") || indicator.starts_with("https://") {
-        (format!("{}v1/url/", source.endpoint.trim_end_matches('/')), "url")
+        (format!("{}/v1/url/", source.endpoint.trim_end_matches('/')), "url")
     } else {
-        (format!("{}v1/host/", source.endpoint.trim_end_matches('/')), "host")
+        (format!("{}/v1/host/", source.endpoint.trim_end_matches('/')), "host")
     };
     let json = curl_json_post(
         &endpoint,
