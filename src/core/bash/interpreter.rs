@@ -2703,6 +2703,11 @@ impl Interpreter {
                         self.host.execute_builtin("sst-config", &edit_args, &self.env.cwd, stdin)?
                             .unwrap_or_else(|| ExecutionResult::from_parts(String::new(), "config edit: builtin no disponible\n".to_owned(), 127))
                     }
+                    "bg" => {
+                        let bg_args = args.to_vec();
+                        self.host.execute_builtin("sst-config", &bg_args, &self.env.cwd, stdin)?
+                            .unwrap_or_else(|| ExecutionResult::from_parts(String::new(), "config bg: builtin no disponible\n".to_owned(), 127))
+                    }
                     _ => return Ok(None),
                 }
             }
