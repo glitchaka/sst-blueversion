@@ -9,6 +9,10 @@ pub trait BuiltinCommand: Send + Sync {
         &[]
     }
 
+    fn hidden(&self) -> bool {
+        false
+    }
+
     fn help(&self) -> &'static str;
 
     fn execute(
