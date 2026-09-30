@@ -111,6 +111,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     let device_service = Arc::new(DeviceService::new(
         Arc::clone(&devices),
         Arc::clone(&presence),
+        Arc::clone(&network_probe),
     ));
     let domain_service = Arc::new(DomainService::new(domain_probe));
     let security_service = shared_security_service(paths.clone());
