@@ -325,13 +325,23 @@ impl NetworkDiscoveryService {
         let mut scan_rx: Option<mpsc::Receiver<Result<Vec<ScanRow>>>> = None;
         let mut next_scan = Instant::now();
         let mut dirty = true;
+        let mut next_publish = Instant::now();
 
         loop {
             if let Some(bus) = lan_bus.as_ref() {
-                if let Some(message) = publish_message.as_deref()
-                    && let Err(error) = bus.publish(message)
-                {
-                    lan_error = Some(format!("no se pudo publicar mensaje SST: {error}"));
+                if Instant::now() >= next_publish {
+                    if let Some(message) = publish_message.as_deref() {
+                        match bus.publish(message) {
+                            Ok(()) => {
+                                lan_error = None;
+                            }
+                            Err(error) => {
+                                lan_error =
+                                    Some(format!("no se pudo publicar mensaje SST: {error}"));
+                            }
+                        }
+                    }
+                    next_publish = Instant::now() + Duration::from_secs(3);
                 }
                 bus.receive_into(&mut lan_notes);
             }
@@ -361,7 +371,9 @@ impl NetworkDiscoveryService {
                 match result {
                     Ok(mut rows) => {
                         scan_status = format!("ok · {} hosts", rows.len());
-                        monitor_warning = None;
+                        if persistence_available {
+                            monitor_warning = None;
+                        }
                         if only_unknown {
                             rows.retain(|row| !row.known);
                         }
@@ -530,6 +542,7 @@ impl NetworkDiscoveryService {
                     lan_bus.as_ref(),
                     &mut lan_notes,
                     &mut lan_error,
+                    &mut next_publish,
                 )?;
                 if redraw == MonitorInput::Exit {
                     return Ok(CommandOutput::ok(""));
@@ -714,6 +727,7 @@ fn handle_monitor_key(
     lan_bus: Option<&LanNoteBus>,
     lan_notes: &mut HashMap<Ipv4Addr, LanNote>,
     lan_error: &mut Option<String>,
+    next_publish: &mut Instant,
 ) -> Result<MonitorInput> {
     if let Some(input) = message_input.as_mut() {
         match key {
@@ -727,9 +741,11 @@ fn handle_monitor_key(
                                 "no se pudo publicar mensaje SST: {error}"
                             ));
                         } else {
+                            *lan_error = None;
                             bus.receive_into(lan_notes);
                         }
                     }
+                    *next_publish = Instant::now() + Duration::from_secs(3);
                 }
                 *message_input = None;
                 return Ok(MonitorInput::Redraw);
