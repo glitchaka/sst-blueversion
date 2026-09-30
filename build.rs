@@ -19,15 +19,22 @@ const SPELL_DIC_URL: &str =
     "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es-CL/index.dic";
 const SPELL_LICENSE_URL: &str =
     "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es-CL/license";
+const IEEE_MAL_URL: &str = "https://standards-oui.ieee.org/oui/oui.csv";
+const IEEE_MAM_URL: &str = "https://standards-oui.ieee.org/oui28/mam.csv";
+const IEEE_MAS_URL: &str = "https://standards-oui.ieee.org/oui36/oui36.csv";
 
 fn main() {
     println!("cargo:rerun-if-env-changed=SST_NERD_FONT_FILE");
     println!("cargo:rerun-if-env-changed=SST_HELIX_ARCHIVE");
+    println!("cargo:rerun-if-env-changed=SST_IEEE_MAL_CSV");
+    println!("cargo:rerun-if-env-changed=SST_IEEE_MAM_CSV");
+    println!("cargo:rerun-if-env-changed=SST_IEEE_MAS_CSV");
     println!("cargo:rerun-if-changed=assets/shell-shock-mascot.svg");
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR no definido"));
     ensure_nerd_font(&out_dir);
     ensure_spell_dictionary(&out_dir);
+    ensure_ieee_registry(&out_dir);
 
     #[cfg(windows)]
     ensure_helix_archive(&out_dir);
@@ -106,6 +113,39 @@ fn ensure_spell_dictionary(out_dir: &Path) {
             .expect("Falta un archivo del diccionario ortográfico de Helix-SST");
         if metadata.len() < minimum {
             panic!("El archivo de diccionario {name} parece incompleto");
+        }
+    }
+}
+
+fn ensure_ieee_registry(out_dir: &Path) {
+    for (name, url, override_var) in [
+        ("ieee-ma-l.csv", IEEE_MAL_URL, "SST_IEEE_MAL_CSV"),
+        ("ieee-ma-m.csv", IEEE_MAM_URL, "SST_IEEE_MAM_CSV"),
+        ("ieee-ma-s.csv", IEEE_MAS_URL, "SST_IEEE_MAS_CSV"),
+    ] {
+        let destination = out_dir.join(name);
+
+        if let Some(source) = env::var_os(override_var) {
+            fs::copy(Path::new(&source), &destination)
+                .unwrap_or_else(|_| panic!("No se pudo copiar {override_var}"));
+        } else if !destination.is_file() {
+            let status = Command::new("curl")
+                .args(["-L", "--fail", "--silent", "--show-error", url, "-o"])
+                .arg(&destination)
+                .status()
+                .expect("No se pudo ejecutar curl para obtener el registro IEEE de MAC");
+
+            if !status.success() {
+                panic!(
+                    "No se pudo obtener {url}. Compile con Internet o defina {override_var} con el CSV oficial de IEEE."
+                );
+            }
+        }
+
+        let metadata = fs::metadata(&destination)
+            .unwrap_or_else(|_| panic!("Falta el registro IEEE {name}"));
+        if metadata.len() < 10_000 {
+            panic!("El registro IEEE {name} parece incompleto");
         }
     }
 }
