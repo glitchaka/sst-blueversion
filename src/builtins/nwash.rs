@@ -141,6 +141,15 @@ start/stop/pause/resume/restart pueden requerir 'sudo'.
             let Some(n)=args.get(1) else{return Ok(CommandOutput::error("service restart: falta NOMBRE",2));};
             let stopped=run("sc.exe",&["stop".into(),n.clone()])?;
             if stopped.status!=0 {return Ok(stopped);}
+            let mut stopped_state=false;
+            for _ in 0..40 {
+                let state=run("sc.exe",&["query".into(),n.clone()])?;
+                if state.stdout.contains("STOPPED") { stopped_state=true; break; }
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            }
+            if !stopped_state {
+                return Ok(CommandOutput::error(format!("service restart: {n} no alcanzó STOPPED antes del timeout"),1));
+            }
             run("sc.exe",&["start".into(),n.clone()])
         }
         x=>Ok(CommandOutput::error(format!("service: subcomando desconocido: {x}"),2)),
