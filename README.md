@@ -1163,58 +1163,122 @@ Estos programas **no forman parte de SST**; la shell simplemente los ejecuta com
 
 # Configuración portable
 
-El archivo de configuración actual es:
+El archivo principal es:
 
 ```text
 config/sstrc
 ```
 
-Usa sintaxis Bash-compatible.
+Usa sintaxis Bash-compatible y concentra tanto configuración de shell como apariencia de la terminal.
 
-### Comando amigable
+### Comandos
 
 ```bash
 config path
 config edit
 config reload
+config bg
+config bg NOMBRE|NUMERO
+config bg carrousel [MINUTOS]
+config bg next
+config bg off
 ```
 
-- `config path`: muestra la ruta del archivo.
-- `config edit`: lo abre con el editor integrado.
-- `config reload`: vuelve a ejecutar el archivo sin reiniciar SST.
+- `config path`: muestra la ruta de `sstrc`.
+- `config edit`: abre `sstrc` en Helix-SST.
+- `config reload`: recarga la configuración sin reiniciar SST.
+- `config bg`: lista las imágenes de la carpeta portable `bg/` y muestra el modo actual.
+- `config bg NOMBRE|NUMERO`: selecciona un fondo fijo por nombre, stem o número de la lista.
+- `config bg carrousel`: activa el carrusel con intervalo de 3 minutos.
+- `config bg carrousel 5`: cambia el intervalo a 5 minutos; se aceptan valores entre 1 y 60.
+- `config bg next`: avanza manualmente al fondo siguiente y lo deja fijo.
+- `config bg off`: desactiva la imagen de fondo.
 
-### Builtin interno
+El builtin interno equivalente es `sst-config`; `config` es la interfaz normal del shell.
 
-```bash
-sst-config path
-sst-config edit
-```
+### Carpeta `bg/`
 
-`sst-config reload` no es un subcomando válido: la recarga pertenece a la función/builtin de shell `config reload` (también existe `reload`).
-
-La configuración visual de la terminal vive en:
+SST crea automáticamente:
 
 ```text
-config/terminal.toml
+bg/
 ```
 
-Por defecto:
+junto a `sst.exe`. Formatos admitidos:
 
-```toml
-[appearance]
-backdrop = "acrylic"
-background_opacity = 82
-background_color = "#111629"
+```text
+PNG  JPG/JPEG  WebP  BMP  GIF  ICO  TIFF
 ```
 
-Valores admitidos para `backdrop`:
+Ejemplo:
 
-- `acrylic`: desenfoque/tinte fuerte, pensado para el aspecto de vidrio esmerilado;
-- `blur`: desenfoque más simple;
+```text
+sst.exe
+bg/
+  amber-city.jpg
+  gruvbox-terminal.png
+  observatory.webp
+config/
+data/
+```
+
+Entonces:
+
+```bash
+config bg
+config bg gruvbox-terminal
+config bg carrousel
+```
+
+Los cambios hechos con `config bg` se aplican a la ventana actual; no requieren reiniciar SST.
+
+### Carrusel sensible al estado
+
+En `carrousel`, el fondo cambia:
+
+- al cumplirse el intervalo configurado;
+- al entrar o salir de raw/alternate screen, lo que cubre Helix-SST, `net monitor`, `sys top` y otras TUIs;
+- al minimizar o restaurar la ventana;
+- al maximizar o restaurar la ventana.
+
+La rotación ocurre dentro del renderer; no reescribe `sstrc` en cada cambio.
+
+Variables persistentes:
+
+```bash
+SST_BACKGROUND_MODE='off'              # off | fixed | carrousel
+SST_BACKGROUND_IMAGE=''
+SST_BACKGROUND_CAROUSEL_MINUTES=3
+SST_BACKGROUND_IMAGE_OPACITY=100
+SST_BACKGROUND_IMAGE_FIT='cover'       # cover | contain | fill | preserve
+```
+
+### Apariencia
+
+La apariencia se configura también en `config/sstrc`:
+
+```bash
+SST_BACKDROP='acrylic'
+SST_FOCUSED_OPACITY=80
+SST_UNFOCUSED_OPACITY=0
+SST_BACKGROUND_COLOR='#111629'
+SST_CORNER_RADIUS=16
+SST_CONTENT_TOP_GAP=12
+SST_FONT_SIZE=13
+SST_CELL_WIDTH=8
+SST_CELL_HEIGHT=17
+SST_TERMINAL_PADDING_X=8
+SST_TERMINAL_PADDING_Y=6
+```
+
+Valores de `SST_BACKDROP`:
+
+- `acrylic`: desenfoque/tinte fuerte;
+- `blur`: desenfoque simple;
 - `glass`: cristal DWM clásico;
-- `solid`: fondo opaco sin transparencia.
+- `solid`: fondo opaco.
 
-`background_opacity` acepta valores de `0` a `100`. `background_color` usa formato `#RRGGBB`. Los cambios visuales se aplican al abrir una nueva ventana de SST.
+Las instalaciones antiguas que todavía tengan `config/terminal.toml` se migran a `sstrc`; después ese archivo legado se elimina.
 
 La variable que contiene la ruta de la configuración Bash es:
 
@@ -1305,6 +1369,57 @@ El log queda en:
 ```text
 config/helix-sst/helix.log
 ```
+
+---
+
+# Ejemplos de scripting
+
+La carpeta `examples/` contiene demostraciones ejecutables que muestran la consola como entorno de automatización, no solo como lanzador de comandos.
+
+```text
+examples/
+  01-language-tour.sh
+  02-windows-operator-report.sh
+  03-network-discovery.sh
+  04-jobs-and-coproc.sh
+  05-pipelines-and-text.sh
+  06-security-triage.sh
+  07-operator-console.sh
+  08-config-and-backgrounds.sh
+```
+
+Se ejecutan directamente desde SST:
+
+```bash
+examples/01-language-tour.sh
+examples/02-windows-operator-report.sh
+examples/03-network-discovery.sh 10.11.24.0/24
+examples/04-jobs-and-coproc.sh
+examples/07-operator-console.sh
+```
+
+Los ejemplos cubren, entre otras capacidades:
+
+- funciones, variables locales y parámetros;
+- arrays indexados y asociativos;
+- `if`, `case`, `for`, bucles aritméticos y `select`;
+- `[[ ... ]]` y aritmética `(( ... ))`;
+- command substitution;
+- here-docs;
+- pipelines y `pipefail`;
+- redirecciones sobre grupos;
+- traps y limpieza temporal;
+- jobs en background, `$!`, `jobs`, `wait -n -p`;
+- coprocesos con `coproc`, arrays de descriptores y `read -u`;
+- process substitution con `<( ... )`;
+- utilidades Unix integradas;
+- composición con `sys`, `net`, `device`, `eventlog`, `service`, `pnp`, `firewall`, `triage` e `intel`;
+- menús interactivos construidos enteramente dentro de Nwash;
+- configuración portable y fondos dinámicos.
+
+Los scripts incluidos son no destructivos por diseño. El objetivo es que funcionen como **showcase técnico, material de aprendizaje y base para automatizaciones reales**.
+
+La guía detallada está en `examples/README.md`.
 
 ---
 
@@ -1739,7 +1854,9 @@ Entre los datos persistentes se encuentran:
 - tráfico por proceso mediante ETW y estado Authenticode;
 - `net usage` mediante endpoint HTTP JSON normalizado para proveedores `generic`/`openwrt`;
 - Helix-SST 0.2.1 con Gruvbox Dark y corrector es-CL offline;
-- configuración portable.
+- configuración portable;
+- fondos fijos y carrusel de imágenes sensible al estado de la terminal;
+- colección `examples/` de scripts de demostración avanzada.
 
 ### Pendiente o parcial
 
