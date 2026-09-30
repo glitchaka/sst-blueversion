@@ -417,6 +417,8 @@ struct TerminalModel {
     glyphs: HashMap<(char, u16), Glyph>,
     selection: Option<(usize, usize)>,
     dragging: bool,
+    last_click: Option<(Instant, usize)>,
+    click_count: u8,
     cursor_on: bool,
     blink: Instant,
     dirty: bool,
@@ -439,6 +441,8 @@ impl TerminalModel {
             glyphs: HashMap::new(),
             selection: None,
             dragging: false,
+            last_click: None,
+            click_count: 0,
             cursor_on: true,
             blink: Instant::now(),
             dirty: true,
@@ -616,10 +620,98 @@ impl TerminalModel {
         (row * cols as i32 + col) as usize
     }
 
+    fn cell_text_at(&self, index: usize) -> String {
+        let screen = self.parser.screen();
+        let (rows, cols) = screen.size();
+        if cols == 0 {
+            return String::new();
+        }
+        let row = index / cols as usize;
+        let col = index % cols as usize;
+        if row >= rows as usize {
+            return String::new();
+        }
+        screen
+            .cell(row as u16, col as u16)
+            .map(|cell| cell.contents().to_owned())
+            .unwrap_or_default()
+    }
+
+    fn smart_cell_class(&self, index: usize) -> u8 {
+        let text = self.cell_text_at(index);
+        let Some(ch) = text.chars().next() else {
+            return 0;
+        };
+        if ch.is_whitespace() {
+            0
+        } else if ch.is_alphanumeric()
+            || ch == '_'
+            || ".-/:\\@%+?=&~#$[]{}".contains(ch)
+        {
+            1
+        } else {
+            2
+        }
+    }
+
+    fn word_bounds(&self, index: usize) -> (usize, usize) {
+        let (_, cols) = self.parser.screen().size();
+        if cols == 0 {
+            return (index, index);
+        }
+        let cols = cols as usize;
+        let row_start = (index / cols) * cols;
+        let row_end = row_start + cols - 1;
+        let class = self.smart_cell_class(index);
+        if class == 0 {
+            return (index, index);
+        }
+
+        let mut start = index;
+        while start > row_start && self.smart_cell_class(start - 1) == class {
+            start -= 1;
+        }
+        let mut end = index;
+        while end < row_end && self.smart_cell_class(end + 1) == class {
+            end += 1;
+        }
+        (start, end)
+    }
+
+    fn line_bounds(&self, index: usize) -> (usize, usize) {
+        let (_, cols) = self.parser.screen().size();
+        if cols == 0 {
+            return (index, index);
+        }
+        let cols = cols as usize;
+        let start = (index / cols) * cols;
+        let mut end = start + cols - 1;
+        while end > start && self.cell_text_at(end).trim().is_empty() {
+            end -= 1;
+        }
+        (start, end)
+    }
+
     fn pointer_down(&mut self, x: f32, y: f32) {
         let index = self.cell_at_logical(x, y);
-        self.selection = Some((index, index));
-        self.dragging = true;
+        let now = Instant::now();
+        let repeated = self.last_click.is_some_and(|(when, previous)| {
+            now.duration_since(when) <= Duration::from_millis(450)
+                && previous.abs_diff(index) <= 1
+        });
+        self.click_count = if repeated {
+            self.click_count.saturating_add(1).min(3)
+        } else {
+            1
+        };
+        self.last_click = Some((now, index));
+
+        self.selection = match self.click_count {
+            2 => Some(self.word_bounds(index)),
+            3 => Some(self.line_bounds(index)),
+            _ => Some((index, index)),
+        };
+        self.dragging = self.click_count == 1;
         self.dirty = true;
     }
 
@@ -636,6 +728,20 @@ impl TerminalModel {
 
     fn pointer_up(&mut self) {
         self.dragging = false;
+    }
+
+    fn copy_selection(&self) -> bool {
+        if !self.has_selection() {
+            return false;
+        }
+        let selected = self.selected_text();
+        if selected.is_empty() {
+            return false;
+        }
+        if let Ok(mut clipboard) = Clipboard::new() {
+            return clipboard.set_text(selected).is_ok();
+        }
+        false
     }
 
     fn scroll(&mut self, delta_y: f32) {
@@ -963,26 +1069,17 @@ fn handle_key(
     let copy_key = text.eq_ignore_ascii_case("c") || text == "\u{3}";
 
     if ctrl && copy_key && model.has_selection() {
-        if let Ok(mut clipboard) = Clipboard::new() {
-            let _ = clipboard.set_text(model.selected_text());
-        }
+        let _ = model.copy_selection();
         return;
     }
 
     if ctrl && shift && copy_key {
-        let selected = model.selected_text();
-        if !selected.is_empty() {
-            if let Ok(mut clipboard) = Clipboard::new() {
-                let _ = clipboard.set_text(selected);
-            }
-        }
+        let _ = model.copy_selection();
         return;
     }
 
     if ctrl && key_is(text, Key::Insert) && model.has_selection() {
-        if let Ok(mut clipboard) = Clipboard::new() {
-            let _ = clipboard.set_text(model.selected_text());
-        }
+        let _ = model.copy_selection();
         return;
     }
 
@@ -1309,7 +1406,8 @@ pub fn run() -> Result<()> {
         ui.on_pointer_up(move |_x, _y, right| {
             let mut model = model.borrow_mut();
             if right {
-                if let Ok(mut clipboard) = Clipboard::new()
+                if !model.copy_selection()
+                    && let Ok(mut clipboard) = Clipboard::new()
                     && let Ok(value) = clipboard.get_text()
                 {
                     model.paste(&value);
