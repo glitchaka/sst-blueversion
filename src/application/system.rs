@@ -845,26 +845,93 @@ fn info() -> anyhow::Result<CommandOutput> {
 }
 
 
-const FETCH_MASCOT_FULL: &str = r#"
-   .----------------.
-  /  SST        o o o\
- |                  |
- |     >        <   |
- |        \__/      |
-  '----------------'
-"#;
+const FETCH_LOGO_PIXELS: &[&str] = &[
+    " NNNNNNNNNNNNNNNNNNNNNNNNNNNNNN ",
+    "NYGGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
+    "NGYGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
+    "NYGGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
+    "NGGGBBBBNNGGGGGGBBBNNGBBBBBBBBDN",
+    "NGGBNNDDDNNGGGBBNDDDNNNNNNNDDDDN",
+    "NGBNNDGGGNGGGBNNDGGGNGGGGNNDGGGN",
+    "NGNNNGGGGGGGGNNNGGGGGGGGGNNDGGGN",
+    "NGNNNNGGGGGGGNNNNGGGGGGGGNNDGGGN",
+    "NGGNNNNGGGGGGGNNNNGGGGGGGNNDGGGN",
+    "NGGNNNNNNGGGGGNNNNNNGGGGGNNDGGGN",
+    "NGGGNNNNNNGGGGGNNNNNNGGGGNNDGGGN",
+    "NGGGGGNNNNNGGGGGGNNNNNGGGNNDGGGN",
+    "NBGGGGGGNNNGBGGGGGGNNNGGGNNDGGGN",
+    "NNBGGGGGNNNGNBGGGGGNNNGGGNNDGGGN",
+    "NGNBGGGNNNDGGNBGGGNNNDGGGNNDGGGN",
+    "NGNNNNNNNDGGGNNNNNNNDGGGGNNDGGGN",
+    "NGGGDDDDGGGGGGGDDDDGGGGGGDDDGGGN",
+    "NGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
+    "NGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
+    "NGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
+    " NNNNNNNNNNNNNNNNNNNNNNNNNNNNNN ",
+];
 
-const FETCH_MASCOT_SMALL: &str = r#"
- .---------.
-|  >    <  |
-|    \_/   |
- '---------'
-"#;
+fn fetch_logo_color(code: u8) -> Option<(u8, u8, u8)> {
+    match code {
+        b'G' => Some((186, 189, 198)),
+        b'N' => Some((35, 52, 106)),
+        b'D' => Some((17, 30, 70)),
+        b'B' => Some((6, 48, 185)),
+        b'Y' => Some((251, 242, 54)),
+        _ => None,
+    }
+}
+
+fn render_fetch_logo(small: bool) -> Vec<String> {
+    let x_step = if small { 2 } else { 1 };
+    let y_step = if small { 2 } else { 1 };
+    let row_step = y_step * 2;
+    let width = FETCH_LOGO_PIXELS[0].len();
+    let mut lines = Vec::new();
+
+    for top_y in (0..FETCH_LOGO_PIXELS.len()).step_by(row_step) {
+        let bottom_y = (top_y + y_step).min(FETCH_LOGO_PIXELS.len() - 1);
+        let top = FETCH_LOGO_PIXELS[top_y].as_bytes();
+        let bottom = FETCH_LOGO_PIXELS[bottom_y].as_bytes();
+        let mut line = String::new();
+
+        for x in (0..width).step_by(x_step) {
+            let top_color = fetch_logo_color(top[x]);
+            let bottom_color = fetch_logo_color(bottom[x]);
+
+            match (top_color, bottom_color) {
+                (None, None) => line.push(' '),
+                (Some((r, g, b)), None) => {
+                    line.push_str(&format!("\x1b[38;2;{r};{g};{b}m▀\x1b[0m"));
+                }
+                (None, Some((r, g, b))) => {
+                    line.push_str(&format!("\x1b[38;2;{r};{g};{b}m▄\x1b[0m"));
+                }
+                (Some((tr, tg, tb)), Some((br, bg, bb))) => {
+                    line.push_str(&format!(
+                        "\x1b[38;2;{tr};{tg};{tb}m\x1b[48;2;{br};{bg};{bb}m▀\x1b[0m"
+                    ));
+                }
+            }
+        }
+        lines.push(line);
+    }
+
+    lines
+}
+
+fn truncate_fetch(value: &str, max: usize) -> String {
+    if value.chars().count() <= max {
+        return value.to_owned();
+    }
+    let mut result = value.chars().take(max.saturating_sub(1)).collect::<String>();
+    result.push('…');
+    result
+}
 
 fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(CommandOutput::ok(
-            "fetch — muestra información del sistema con la mascota de Shell Shock Tool\n\
+            "fetch — muestra información del sistema con el logo de Shell Shock Tool\n\
              uso: fetch [--small|--full]\n\
              alias: neofetch, fastfetch\n",
         ));
@@ -897,42 +964,46 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     };
 
     let small = args.iter().any(|arg| arg == "--small");
-    let mascot = if small {
-        FETCH_MASCOT_SMALL
-    } else {
-        FETCH_MASCOT_FULL
-    };
+    let logo = render_fetch_logo(small);
+    let logo_width = if small { 16 } else { 32 };
 
-    let mut out = String::new();
-    out.push_str("\x1b[38;5;117m");
-    out.push_str(mascot.trim_matches('\n'));
-    out.push_str("\x1b[0m\n");
+    let title = format!(
+        "\x1b[1;38;2;6;48;185m{user}\x1b[38;2;251;242;54m@\x1b[38;2;35;52;106m{host}\x1b[0m"
+    );
+    let label = "\x1b[1;38;2;251;242;54m";
+    let reset = "\x1b[0m";
 
-    let info = [
-        format!("\x1b[1;38;5;203m{user}@{host}\x1b[0m"),
-        "\x1b[38;5;244m────────────────────────────────────────\x1b[0m".to_owned(),
-        format!("\x1b[1;38;5;222mOS:\x1b[0m {os}"),
-        format!("\x1b[1;38;5;222mHost:\x1b[0m {host}"),
-        format!("\x1b[1;38;5;222mKernel:\x1b[0m {kernel}"),
-        format!("\x1b[1;38;5;222mUptime:\x1b[0m {uptime_text}"),
-        "\x1b[1;38;5;222mShell:\x1b[0m Shell Shock Tool".to_owned(),
-        "\x1b[1;38;5;222mBinary:\x1b[0m sst".to_owned(),
-        "\x1b[1;38;5;222mTerminal:\x1b[0m Shell Shock Native Terminal".to_owned(),
-        format!("\x1b[1;38;5;222mCPU:\x1b[0m {cpu}"),
-        format!("\x1b[1;38;5;222mMemory:\x1b[0m {used:.2} GiB / {total:.2} GiB"),
-        format!("\x1b[1;38;5;222mArch:\x1b[0m {arch}"),
+    let info = vec![
+        title,
+        "\x1b[38;2;35;52;106m────────────────────────────────────────\x1b[0m".to_owned(),
+        format!("{label}OS:{reset} {}", truncate_fetch(&os, 58)),
+        format!("{label}Host:{reset} {host}"),
+        format!("{label}Kernel:{reset} {kernel}"),
+        format!("{label}Uptime:{reset} {uptime_text}"),
+        format!("{label}Shell:{reset} Shell Shock Tool / Nwash"),
+        format!("{label}Version:{reset} {}", env!("CARGO_PKG_VERSION")),
+        format!("{label}Terminal:{reset} Shell Shock Native Terminal"),
+        format!("{label}CPU:{reset} {}", truncate_fetch(&cpu, 58)),
+        format!("{label}Memory:{reset} {used:.2} GiB / {total:.2} GiB"),
+        format!("{label}Arch:{reset} {arch}"),
+        "\x1b[48;2;17;30;70m  \x1b[48;2;35;52;106m  \x1b[48;2;6;48;185m  \x1b[48;2;186;189;198m  \x1b[48;2;251;242;54m  \x1b[0m".to_owned(),
     ];
 
-    for line in info {
-        out.push_str(&line);
+    let rows = logo.len().max(info.len());
+    let mut out = String::new();
+    for index in 0..rows {
+        if let Some(line) = logo.get(index) {
+            out.push_str(line);
+        } else {
+            out.push_str(&" ".repeat(logo_width));
+        }
+
+        out.push_str("   ");
+        if let Some(line) = info.get(index) {
+            out.push_str(line);
+        }
         out.push('\n');
     }
-
-    out.push_str(
-        "\x1b[48;5;203m  \x1b[48;5;117m  \x1b[48;5;222m  \
-         \x1b[48;5;42m  \x1b[48;5;39m  \x1b[48;5;99m  \
-         \x1b[48;5;250m  \x1b[48;5;255m  \x1b[0m\n",
-    );
 
     Ok(CommandOutput::ok(out))
 }
