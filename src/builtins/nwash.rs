@@ -1,6 +1,7 @@
 use std::process::Command;
 
 use anyhow::Result;
+use sysinfo::{Pid, System};
 
 use crate::core::{CommandContext, CommandOutput};
 
@@ -216,8 +217,8 @@ uso:
             run("tasklist.exe",&["/FI".into(),format!("PID eq {pid}"),"/V".into()])
         }
         "tree"=>{
-            let Some(pid)=args.get(1) else{return Ok(CommandOutput::error("process tree: falta PID",2));};
-            run("wmic.exe",&["process".into(),"where".into(),format!("ProcessId={pid} or ParentProcessId={pid}"),"get".into(),"ProcessId,ParentProcessId,Name,ExecutablePath".into()])
+            let Some(pid)=args.get(1).and_then(|value| value.parse::<u32>().ok()) else{return Ok(CommandOutput::error("process tree: requiere PID numérico",2));};
+            process_tree(pid)
         }
         "kill"=>{
             let Some(pid)=args.get(1) else{return Ok(CommandOutput::error("process kill: falta PID",2));};
@@ -301,4 +302,58 @@ enable/disable/restart/scan pueden requerir 'sudo'.
         "scan"=>run("pnputil.exe",&["/scan-devices".into()]),
         x=>Ok(CommandOutput::error(format!("pnp: subcomando desconocido: {x}"),2)),
     }
+}
+
+fn process_tree(root_pid: u32) -> Result<CommandOutput> {
+    let mut system = System::new_all();
+    system.refresh_all();
+    let root = Pid::from_u32(root_pid);
+    if system.process(root).is_none() {
+        return Ok(CommandOutput::error(format!("process tree: no existe PID {root_pid}"), 1));
+    }
+
+    let mut children = std::collections::HashMap::<Pid, Vec<Pid>>::new();
+    for (pid, process) in system.processes() {
+        if let Some(parent) = process.parent() {
+            children.entry(parent).or_default().push(*pid);
+        }
+    }
+    for pids in children.values_mut() {
+        pids.sort_by_key(|pid| pid.as_u32());
+    }
+
+    fn walk(
+        system: &System,
+        children: &std::collections::HashMap<Pid, Vec<Pid>>,
+        pid: Pid,
+        prefix: &str,
+        last: bool,
+        root: bool,
+        out: &mut String,
+    ) {
+        let name = system.process(pid)
+            .map(|p| p.name().to_string_lossy().into_owned())
+            .unwrap_or_else(|| "?".to_owned());
+        if root {
+            out.push_str(&format!("{} {}\n", pid.as_u32(), name));
+        } else {
+            out.push_str(prefix);
+            out.push_str(if last { "└─ " } else { "├─ " });
+            out.push_str(&format!("{} {}\n", pid.as_u32(), name));
+        }
+
+        let Some(kids) = children.get(&pid) else { return; };
+        let next_prefix = if root {
+            String::new()
+        } else {
+            format!("{}{}", prefix, if last { "   " } else { "│  " })
+        };
+        for (index, child) in kids.iter().enumerate() {
+            walk(system, children, *child, &next_prefix, index + 1 == kids.len(), false, out);
+        }
+    }
+
+    let mut out = String::from("PID PROCESS\n");
+    walk(&system, &children, root, "", true, true, &mut out);
+    Ok(CommandOutput::ok(out))
 }
