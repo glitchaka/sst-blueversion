@@ -129,7 +129,7 @@ Esta documentación refleja el código actual, incluidos estos cambios:
 | `sys whoami` | Usuario actual. | `sys whoami` |
 | `sys uname [-a]` | Identificación del sistema. | `sys uname -a` |
 | `sys kill PID [--tree]` | Termina un PID o su árbol. | `sys kill 8124 --tree` |
-| `sys fetch [--small|--full]` | Resumen visual de SST. | `sys fetch --full` |
+| `sys fetch [--small|--full]` | Resumen visual con el logo SST coloreado; `fetch`/`neofetch`/`fastfetch` son equivalentes. | `sys fetch --full` |
 | `sys inspect PID [--deep]` | Inspección local de proceso. | `sys inspect 8124 --deep` |
 | `sys why PID` | Explica la clasificación/señales observadas. | `sys why 8124` |
 | `sys diff PID` | Compara identidad/parent/command line con historial. | `sys diff 8124` |
@@ -161,6 +161,10 @@ fetch
 neofetch
 fastfetch
 ```
+
+Al abrir la terminal gráfica de SST, `fetch` se ejecuta automáticamente antes del preload de seguridad y del primer prompt. El logo mostrado está construido como arte ANSI coloreado a partir de `assets/sst-neofetch.png` y conserva la paleta del branding SST.
+
+La ventana solicita foco de teclado al crearse y, en Windows, refuerza la activación/foco nativo tras `show()`; no debería requerir un clic previo para comenzar a escribir. El ejecutable usa `assets/sst-icon.ico`, generado desde el icono oficial `assets/sst-icon.png`.
 
 ### Servicios de Windows
 
