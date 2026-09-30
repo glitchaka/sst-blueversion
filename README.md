@@ -63,7 +63,7 @@ Esta documentación refleja el código actual, incluidos estos cambios:
 - **Descubrimiento de red por evidencia múltiple:** `net scan` y `net monitor` usan ARP activo, ICMP y TCP. Una respuesta ARP basta para detectar teléfonos/IoT aunque bloqueen ping o no tengan servicios TCP.
 - **Identificación MAC local:** cada host se clasifica como `global`, `local/private`, `multicast`, `broadcast` o `unknown`. Las MAC globales se resuelven contra los registros IEEE **MA-L, MA-M y MA-S**; las MAC privadas/aleatorias no reciben un fabricante inventado.
 - **Monitor con histéresis:** un host debe faltar en tres ciclos consecutivos antes de generar un evento de desconexión, reduciendo falsos `+/-` por una respuesta perdida.
-- **Mensajes SST entre monitores:** `net monitor -m "texto"` publica un mensaje corto mediante UDP broadcast; otros SST con `net monitor` abierto muestran la IP emisora y el texto. Sirve como easter egg y como comprobación práctica de comunicación LAN/broadcast/firewall.
+- **Mensajes SST interactivos entre monitores:** con `net monitor` abierto, `Enter` abre `Mensaje>`; se escribe el texto y otro `Enter` lo publica por UDP broadcast. Otros SST con `net monitor` abierto muestran la IP emisora y el texto. Sirve como easter egg y como comprobación práctica de comunicación LAN/broadcast/firewall.
 - **Tiempo de respuesta corregido:** la columna de respuesta mide el probe que confirmó presencia y ya no incluye el tiempo de reverse DNS.
 - **`net identify`:** identifica por IP, MAC o nombre inventariado y reúne hostname, MAC, scope, fabricante IEEE, inventario, método de descubrimiento y último avistamiento.
 - **Registro directo por IP:** `device add IP NOMBRE` resuelve la MAC por ARP y la incorpora al inventario.
@@ -747,7 +747,34 @@ Para evitar flapping, un equipo no se declara desconectado por un único ciclo f
 
 #### Mensajes SST entre monitores
 
-`-m`, `--message` y `--say` publican un texto de hasta 120 caracteres mediante **UDP broadcast al puerto 43837** del segmento monitorizado. El monitor vuelve a anunciar el mensaje periódicamente mientras permanezca abierto.
+La forma normal de conversar es **sin salir del monitor**:
+
+```text
+[Enter] mensaje · [q/Esc] salir
+
+... monitor ...
+
+Mensaje> Prueba desde soporte_
+[Enter] enviar · [Esc] cancelar
+```
+
+Comportamiento:
+
+- fuera del prompt, `Enter` abre `Mensaje>`;
+- se escribe el texto normalmente;
+- otro `Enter` lo envía y vuelve a la vista del monitor;
+- dentro del prompt, `Esc` cancela la edición;
+- fuera del prompt, `q` o `Esc` salen de `net monitor`;
+- mientras se escribe, la letra `q` se trata como texto y no cierra el monitor;
+- el último mensaje enviado queda como mensaje publicado y SST lo vuelve a anunciar periódicamente mientras el monitor permanezca abierto.
+
+También se mantienen `-m`, `--message` y `--say` como atajos opcionales para **arrancar** el monitor con un mensaje inicial:
+
+```bash
+net monitor 10.11.24.0/24 -m "Prueba desde soporte"
+```
+
+Los mensajes admiten hasta 120 caracteres y usan **UDP broadcast al puerto 43837** del segmento monitorizado.
 
 Cualquier otro SST que esté ejecutando `net monitor` en el mismo segmento puede mostrar:
 
