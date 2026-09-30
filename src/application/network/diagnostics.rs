@@ -14,6 +14,8 @@ use crate::core::{
     ports::NetworkProbe,
 };
 
+use super::identity::identify_mac;
+
 #[derive(Debug, Clone)]
 pub struct HostEvidence {
     pub method: String,
@@ -145,9 +147,18 @@ impl NetworkDiagnosticsService {
         let mut rows: Vec<_> = self.arp_map()?.into_iter().collect();
         rows.sort_by_key(|row| row.0);
 
-        let mut out = String::from("IP               MAC\n");
+        let mut out = String::from(
+            "IP               MAC                 TYPE           VENDOR\n",
+        );
         for (ip, mac) in rows {
-            out.push_str(&format!("{:<16} {mac}\n", ip));
+            let identity = identify_mac(&mac);
+            out.push_str(&format!(
+                "{:<16} {:<19} {:<14} {}\n",
+                ip,
+                mac,
+                identity.scope,
+                identity.vendor.as_deref().unwrap_or("-")
+            ));
         }
 
         Ok(CommandOutput::ok(out))
