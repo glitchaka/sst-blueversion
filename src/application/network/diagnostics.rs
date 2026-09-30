@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs, UdpSocket},
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::Result;
@@ -13,6 +13,13 @@ use crate::core::{
     CommandOutput,
     ports::NetworkProbe,
 };
+
+#[derive(Debug, Clone)]
+pub struct HostEvidence {
+    pub method: String,
+    pub mac: Option<String>,
+    pub latency_ms: Option<u32>,
+}
 
 pub struct NetworkDiagnosticsService {
     probe: Arc<dyn NetworkProbe>,
@@ -187,17 +194,42 @@ impl NetworkDiagnosticsService {
         self.probe.resolve_neighbor(ip).ok().flatten()
     }
 
-    pub fn host_alive(&self, ip: Ipv4Addr, timeout: Duration) -> bool {
+    pub fn probe_host(&self, ip: Ipv4Addr, timeout: Duration) -> Option<HostEvidence> {
+        let arp_started = Instant::now();
+        if let Some(mac) = self.resolve_neighbor(ip) {
+            return Some(HostEvidence {
+                method: "arp".to_owned(),
+                mac: Some(mac),
+                latency_ms: Some(duration_ms(arp_started.elapsed())),
+            });
+        }
+
+        if let Ok(reply) = self.probe.echo(ip, 128, timeout)
+            && reply.status == 0
+        {
+            return Some(HostEvidence {
+                method: "icmp".to_owned(),
+                mac: None,
+                latency_ms: Some(reply.elapsed_ms),
+            });
+        }
+
         for port in [445_u16, 3389, 80, 443, 135, 22] {
+            let started = Instant::now();
             if TcpStream::connect_timeout(&SocketAddr::new(IpAddr::V4(ip), port), timeout).is_ok() {
-                return true;
+                return Some(HostEvidence {
+                    method: format!("tcp:{port}"),
+                    mac: None,
+                    latency_ms: Some(duration_ms(started.elapsed())),
+                });
             }
         }
 
-        self.probe
-            .echo(ip, 128, timeout)
-            .map(|output| output.status == 0)
-            .unwrap_or(false)
+        None
+    }
+
+    pub fn host_alive(&self, ip: Ipv4Addr, timeout: Duration) -> bool {
+        self.probe_host(ip, timeout).is_some()
     }
 
     pub fn default_ipv4_network(&self) -> Result<Ipv4Net> {
@@ -211,6 +243,10 @@ impl NetworkDiagnosticsService {
         Ok(Ipv4Net::new(ip, 24)?)
     }
 
+}
+
+fn duration_ms(duration: Duration) -> u32 {
+    duration.as_millis().min(u32::MAX as u128) as u32
 }
 
 fn resolve_ipv4(host: &str) -> Result<Ipv4Addr> {
