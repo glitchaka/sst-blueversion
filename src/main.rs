@@ -334,7 +334,7 @@ fn run_cli(args: &[String]) -> Result<i32> {
     }
     #[cfg(windows)]
     if args.first().map(String::as_str) == Some("--verify-terminal") {
-        presentation::gui::verify_transport()?;
+        presentation::terminal_verify::verify_transport()?;
         return Ok(0);
     }
 
