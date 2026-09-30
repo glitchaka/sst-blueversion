@@ -72,7 +72,7 @@ Esta documentación refleja el código actual, incluidos estos cambios:
 - **Credenciales de `intel` desde `config/sstrc`:** las claves pueden declararse con `export`; SST consulta primero el entorno de Windows y después `sstrc`.
 - **`intel update` y caché TTL:** limpia entradas expiradas y muestra el estado/capacidad de las fuentes habilitadas.
 - **Terminal Slint:** restaurada y ampliada la selección/copia; arrastre, doble clic por palabra, triple clic por línea, `Ctrl+C` contextual, `Ctrl+Shift+C/V`, `Ctrl+Insert`, `Shift+Insert` y clic derecho contextual.
-- **Helix-SST 0.2.0:** tema Gruvbox Dark, corrector ortográfico offline es-CL para texto/Markdown, sugerencias con `F2` y `Alt+d` para insertar `—`.
+- **Helix-SST 0.2.1:** tema Gruvbox Dark, corrector ortográfico offline es-CL para texto/Markdown, sugerencias con `F2` y `Alt+d` para insertar `—`.
 - **Nwash Windows:** están registrados y exportados `eventlog`, `service`, `registry`, `process`, `acl`, `pnp`, `task`, `session`, `share`, `firewall` y `power`.
 - **Integridad de terminal:** restaurados `AlternateScreenGuard` y `output_sender()`, requeridos por consumidores reales del editor/TUI.
 - **Correcciones de integración:** corregidos el escape Authenticode y el mensaje de formato del backend de `net usage`.
@@ -1262,7 +1262,7 @@ helix --credits
 helix --help
 ```
 
-La distribución portable está basada en **Helix 25.07.1**; la integración **Helix-SST 0.2.0** aporta:
+La distribución portable está basada en **Helix 25.07.1**; la integración **Helix-SST 0.2.1** aporta:
 
 - empaquetado dentro de SST;
 - configuración portable;
@@ -1738,7 +1738,7 @@ Entre los datos persistentes se encuentran:
 - localización MAC → switch → puerto mediante SNMP;
 - tráfico por proceso mediante ETW y estado Authenticode;
 - `net usage` mediante endpoint HTTP JSON normalizado para proveedores `generic`/`openwrt`;
-- Helix-SST 0.2.0 con Gruvbox Dark y corrector es-CL offline;
+- Helix-SST 0.2.1 con Gruvbox Dark y corrector es-CL offline;
 - configuración portable.
 
 ### Pendiente o parcial
