@@ -274,6 +274,10 @@ impl AppPaths {
                 }
                 if let Some(value) = appearance.get("background_image").and_then(toml::Value::as_str) {
                     replace("SST_BACKGROUND_IMAGE", value.to_owned());
+                    replace(
+                        "SST_BACKGROUND_MODE",
+                        if value.trim().is_empty() { "off".to_owned() } else { "fixed".to_owned() },
+                    );
                 }
                 if let Some(value) = appearance.get("background_image_opacity").and_then(toml::Value::as_integer) {
                     replace("SST_BACKGROUND_IMAGE_OPACITY", value.clamp(0, 100).to_string());
