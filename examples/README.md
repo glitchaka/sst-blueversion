@@ -26,6 +26,7 @@ sst.exe examples/01-language-tour.sh
 | `06-security-triage.sh` | triage local, persistencia, servicios, firmas y fuentes intel |
 | `07-operator-console.sh` | menú interactivo con `select`, funciones y composición de herramientas SST |
 | `08-config-and-backgrounds.sh` | configuración portable y administración de fondos `config bg` |
+| `09-advanced-bash.sh` | `getopts`, namerefs, arrays dispersos, `mapfile`, `printf -v`, parámetros y stack de funciones |
 
 Los scripts son deliberadamente **no destructivos**: consultan estado, generan reportes y crean archivos temporales, pero no reinician servicios, borran tareas ni modifican ACL/Registro.
 
