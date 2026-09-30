@@ -25,7 +25,9 @@ impl CommandRegistry {
     pub fn register(&mut self, command: Arc<dyn BuiltinCommand>) -> Result<()> {
         let primary = command.name().to_owned();
         self.insert_name(&primary, Arc::clone(&command))?;
-        self.primary_names.insert(primary);
+        if !command.hidden() {
+            self.primary_names.insert(primary);
+        }
 
         for alias in command.aliases() {
             self.insert_name(alias, Arc::clone(&command))?;
