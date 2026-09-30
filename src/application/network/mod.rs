@@ -99,8 +99,9 @@ sin RED intenta usar la red IPv4 local; el escaneo está limitado a /20 o menor.
 ",
             Some("monitor") => "net monitor — monitoriza presencia de equipos
 uso: net monitor [RED] [--unknown] [-m|--message|--say TEXTO]
-publica TEXTO por UDP broadcast para otros usuarios que tengan net monitor abierto.
-abre una TUI; salir con q o Esc.
+dentro del monitor: Enter abre 'Mensaje>'; escribe y pulsa Enter para enviar.
+fuera del prompt, q o Esc salen; dentro del prompt, Esc cancela la edición.
+-m/--message/--say siguen disponibles para arrancar publicando un mensaje inicial.
 ",
             Some("presence") => "net presence — consulta historial de presencia
 uso: net presence [--json|--csv]
