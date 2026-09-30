@@ -16,6 +16,11 @@ SST_BACKGROUND_COLOR='#111629'
 SST_BACKGROUND_IMAGE=''
 SST_BACKGROUND_IMAGE_OPACITY=100
 
+# Gestión de fondos: off | fixed | carrousel
+# En carrousel se rota también al cambiar de estado de terminal/ventana.
+SST_BACKGROUND_MODE='off'
+SST_BACKGROUND_CAROUSEL_MINUTES=3
+
 # Ajuste de imagen: cover | contain | fill | preserve
 SST_BACKGROUND_IMAGE_FIT='cover'
 
@@ -95,6 +100,8 @@ pub struct AppearanceConfig {
     pub background_color: String,
     pub background_image: String,
     pub background_image_opacity: u8,
+    pub background_mode: String,
+    pub background_carousel_minutes: u64,
     pub background_image_fit: String,
     pub corner_radius: u16,
     pub content_top_gap: u16,
@@ -114,6 +121,8 @@ impl Default for AppearanceConfig {
             background_color: "#111629".to_owned(),
             background_image: String::new(),
             background_image_opacity: 100,
+            background_mode: "off".to_owned(),
+            background_carousel_minutes: 3,
             background_image_fit: "cover".to_owned(),
             corner_radius: 16,
             content_top_gap: 12,
@@ -144,6 +153,7 @@ impl AppPaths {
         fs::create_dir_all(self.config_dir())?;
         fs::create_dir_all(self.data_dir())?;
         fs::create_dir_all(self.intel_dir())?;
+        fs::create_dir_all(self.bg_dir())?;
 
         let config = self.config_file();
         if !config.exists() {
@@ -183,6 +193,20 @@ impl AppPaths {
                     || line.starts_with("export SST_BACKGROUND_IMAGE_FIT=")
             }) {
                 text.push_str("\n# Ajuste de imagen: cover | contain | fill | preserve\nSST_BACKGROUND_IMAGE_FIT='cover'\n");
+            }
+            if !text.lines().any(|line| {
+                let line = line.trim_start();
+                line.starts_with("SST_BACKGROUND_MODE=")
+                    || line.starts_with("export SST_BACKGROUND_MODE=")
+            }) {
+                text.push_str("\n# Gestión de fondos: off | fixed | carrousel\nSST_BACKGROUND_MODE='off'\n");
+            }
+            if !text.lines().any(|line| {
+                let line = line.trim_start();
+                line.starts_with("SST_BACKGROUND_CAROUSEL_MINUTES=")
+                    || line.starts_with("export SST_BACKGROUND_CAROUSEL_MINUTES=")
+            }) {
+                text.push_str("SST_BACKGROUND_CAROUSEL_MINUTES=3\n");
             }
 
             for (key, value, comment) in [
@@ -285,6 +309,17 @@ impl AppPaths {
         {
             config.background_image_opacity = value.min(100);
         }
+        if let Some(value) = assignment_value(&text, "SST_BACKGROUND_MODE") {
+            config.background_mode = value.to_ascii_lowercase();
+        } else if !config.background_image.trim().is_empty() {
+            // Existing installations with a manually configured image retain it.
+            config.background_mode = "fixed".to_owned();
+        }
+        if let Some(value) = assignment_value(&text, "SST_BACKGROUND_CAROUSEL_MINUTES")
+            .and_then(|value| value.parse::<u64>().ok())
+        {
+            config.background_carousel_minutes = value.clamp(1, 60);
+        }
         if let Some(value) = assignment_value(&text, "SST_BACKGROUND_IMAGE_FIT") {
             config.background_image_fit = value.to_ascii_lowercase();
         }
@@ -335,8 +370,51 @@ impl AppPaths {
                 "sstrc: SST_BACKGROUND_IMAGE_FIT debe ser cover, contain, fill o preserve"
             );
         }
+        if !matches!(
+            config.background_mode.as_str(),
+            "off" | "fixed" | "carrousel" | "carousel"
+        ) {
+            anyhow::bail!(
+                "sstrc: SST_BACKGROUND_MODE debe ser off, fixed o carrousel"
+            );
+        }
+        if config.background_mode == "carousel" {
+            config.background_mode = "carrousel".to_owned();
+        }
 
         Ok(config)
+    }
+
+    pub fn background_images(&self) -> Result<Vec<PathBuf>> {
+        let mut images = fs::read_dir(self.bg_dir())?
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.is_file() && is_background_image(path))
+            .collect::<Vec<_>>();
+        images.sort_by(|a, b| {
+            a.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+                .cmp(
+                    &b.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or_default()
+                        .to_ascii_lowercase(),
+                )
+        });
+        Ok(images)
+    }
+
+    pub fn set_config_values(&self, values: &[(&str, &str)]) -> Result<()> {
+        let path = self.config_file();
+        let mut text = fs::read_to_string(&path)
+            .with_context(|| format!("No se pudo leer {}", path.display()))?;
+        for (key, value) in values {
+            set_assignment(&mut text, key, value);
+        }
+        fs::write(&path, text)
+            .with_context(|| format!("No se pudo escribir {}", path.display()))?;
+        Ok(())
     }
 
     pub fn config_value(&self, key: &str) -> Result<Option<String>> {
@@ -358,6 +436,19 @@ impl AppPaths {
     pub fn security_db_file(&self) -> PathBuf { self.data_dir().join("security.db") }
     pub fn security_sources_file(&self) -> PathBuf { self.data_dir().join("security.sources") }
     pub fn intel_dir(&self) -> PathBuf { self.data_dir().join("intel") }
+    pub fn bg_dir(&self) -> PathBuf { self.root.join("bg") }
+}
+
+fn is_background_image(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.to_ascii_lowercase())
+        .is_some_and(|extension| {
+            matches!(
+                extension.as_str(),
+                "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "ico" | "tif" | "tiff"
+            )
+        })
 }
 
 fn assignment_value(text: &str, key: &str) -> Option<String> {
