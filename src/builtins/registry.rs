@@ -37,7 +37,12 @@ impl CommandRegistry {
     }
 
     pub fn names(&self) -> Vec<String> {
-        self.commands.keys().cloned().collect()
+        self.commands
+            .iter()
+            .filter_map(|(name, command)| {
+                (!command.hidden() || name.as_str() != command.name()).then(|| name.clone())
+            })
+            .collect()
     }
 
     pub fn execute(
