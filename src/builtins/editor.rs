@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fs, path::Path, sync::Arc};
 
 use anyhow::Result;
 
@@ -57,8 +57,40 @@ impl BuiltinCommand for EditorBuiltin {
         let stderr = match status {
             0 => String::new(),
             130 => "helix-sst: editor abortado; los cambios sin guardar se descartaron.\n".to_owned(),
-            _ => format!("helix-sst terminó con código {status}. Revisa config/helix-sst/helix.log; ayuda: help helix.\n"),
+            _ => {
+                let mut message = format!(
+                    "helix-sst terminó con código {status}.\n"
+                );
+                if let Some(tail) = helix_log_tail(context.cwd) {
+                    message.push_str("--- helix.log ---\n");
+                    message.push_str(&tail);
+                    if !tail.ends_with('\n') {
+                        message.push('\n');
+                    }
+                    message.push_str("--- fin helix.log ---\n");
+                } else {
+                    message.push_str(
+                        "No se pudo leer config/helix-sst/helix.log.\n"
+                    );
+                }
+                message
+            }
         };
         Ok(CommandOutput { status, stdout: String::new(), stderr })
     }
+}
+
+
+fn helix_log_tail(cwd: &Path) -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let root = exe.parent()?;
+    let candidates = [
+        root.join("config").join("helix-sst").join("helix.log"),
+        cwd.join("config").join("helix-sst").join("helix.log"),
+    ];
+    let text = candidates
+        .iter()
+        .find_map(|path| fs::read_to_string(path).ok())?;
+    let lines = text.lines().rev().take(24).collect::<Vec<_>>();
+    Some(lines.into_iter().rev().collect::<Vec<_>>().join("\n"))
 }
