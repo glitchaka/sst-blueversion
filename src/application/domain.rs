@@ -14,6 +14,9 @@ impl DomainService {
     }
 
     pub fn execute(&self, args: &[String]) -> Result<CommandOutput> {
+        if args.first().is_some_and(|a| matches!(a.as_str(), "help" | "--help" | "-h")) {
+            return Ok(CommandOutput::ok("domain — pertenencia a dominio\nuso: domain status [EQUIPO] [--verify|--cim] [--json]\n"));
+        }
         match args.first().map(String::as_str).unwrap_or("status") {
             "status" => self.status(&args[1..]),
             other => Ok(CommandOutput::error(
