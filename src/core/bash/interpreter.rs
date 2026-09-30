@@ -595,6 +595,10 @@ impl Interpreter {
             return Ok(Vec::new());
         }
 
+        if let Some(values) = self.config_command_completions(command, &words, prefix) {
+            return Ok(self.apply_completion_filters(values));
+        }
+
         if self.env.option_enabled("progcomp") {
             if let Some(spec) = self.completion_specs.get(command).cloned() {
                 return self.generate_completions(&spec, prefix, line);
@@ -617,6 +621,76 @@ impl Interpreter {
         }
         let values = self.path_completions(prefix, false);
         Ok(self.apply_completion_filters(values))
+    }
+
+    fn config_command_completions(
+        &self,
+        command: &str,
+        words: &[String],
+        prefix: &str,
+    ) -> Option<Vec<String>> {
+        if !matches!(command, "config" | "sst-config") {
+            return None;
+        }
+
+        let mut values = if words.len() <= 2 {
+            vec![
+                "path".to_owned(),
+                "edit".to_owned(),
+                "reload".to_owned(),
+                "bg".to_owned(),
+            ]
+        } else if words.get(1).map(String::as_str) == Some("bg") {
+            if words.get(2).is_some_and(|value| {
+                matches!(value.as_str(), "carrousel" | "carousel")
+            }) && words.len() >= 3 && prefix.is_empty()
+            {
+                vec!["1".to_owned(), "3".to_owned(), "5".to_owned(), "10".to_owned()]
+            } else {
+                let mut rows = vec![
+                    "list".to_owned(),
+                    "carrousel".to_owned(),
+                    "carousel".to_owned(),
+                    "next".to_owned(),
+                    "off".to_owned(),
+                ];
+
+                let config = PathBuf::from(self.env.get("SST_CONFIG"));
+                if let Some(root) = config.parent().and_then(Path::parent) {
+                    let bg = root.join("bg");
+                    if let Ok(entries) = fs::read_dir(bg) {
+                        rows.extend(entries.filter_map(|entry| {
+                            let entry = entry.ok()?;
+                            let path = entry.path();
+                            if !path.is_file() {
+                                return None;
+                            }
+                            let extension = path
+                                .extension()
+                                .and_then(|value| value.to_str())?
+                                .to_ascii_lowercase();
+                            if !matches!(
+                                extension.as_str(),
+                                "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" | "ico" | "tif" | "tiff"
+                            ) {
+                                return None;
+                            }
+                            path.file_name()
+                                .and_then(|value| value.to_str())
+                                .map(str::to_owned)
+                        }));
+                    }
+                }
+                rows
+            }
+        } else {
+            Vec::new()
+        };
+
+        values.retain(|value| value.starts_with(prefix));
+        values.sort();
+        values.dedup();
+        Some(values)
     }
 
     fn complete_filename_line(&self, line: &str, cursor: usize) -> Vec<String> {
