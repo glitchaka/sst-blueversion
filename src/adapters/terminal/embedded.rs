@@ -147,7 +147,13 @@ impl EmbeddedSession {
                                     io::write(result.stderr.as_bytes())?;
                                     if result.status == 0 {
                                         let normalized = command.split_whitespace().collect::<Vec<_>>().join(" ");
-                                        if normalized == "reload" || normalized == "config reload" {
+                                        if normalized == "reload"
+                                            || normalized == "config reload"
+                                            || normalized == "config bg"
+                                            || normalized.starts_with("config bg ")
+                                            || normalized == "sst-config bg"
+                                            || normalized.starts_with("sst-config bg ")
+                                        {
                                             worker_config_reload_requested.store(true, Ordering::SeqCst);
                                         }
                                         if crate::support::windows::take_shell_handoff_request() {
