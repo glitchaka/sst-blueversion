@@ -31,9 +31,9 @@ use windows_sys::Win32::{
     System::LibraryLoader::{GetModuleHandleW, GetProcAddress},
     UI::{
         Controls::MARGINS,
+        Input::KeyboardAndMouse::{SetActiveWindow, SetFocus},
         WindowsAndMessaging::{
-            GetForegroundWindow, IsIconic, IsZoomed, SetActiveWindow, SetFocus,
-            SetForegroundWindow,
+            GetForegroundWindow, IsIconic, IsZoomed, SetForegroundWindow,
         },
     },
 };
