@@ -35,6 +35,8 @@ TECLAS Y ÓRDENES ESENCIALES
   Flechas            Mover el cursor.
   Backspace / Supr   Borrar texto en modo INSERTAR.
   Ctrl+V             Pegar en la posición del cursor en modo INSERTAR.
+  Alt+d              Insertar guion largo: —
+  F2                 Mostrar correcciones ortográficas disponibles.
   u                  Deshacer en modo NORMAL.
   Ctrl+r             Rehacer en modo NORMAL.
   /texto, Enter      Buscar en modo NORMAL; n avanza al siguiente resultado.
@@ -49,6 +51,13 @@ TECLAS Y ÓRDENES ESENCIALES
 
 Las órdenes que empiezan por : se escriben después de pulsar Esc.
 Ctrl+C no reemplaza a :q. Los comandos de shell se escriben al volver al prompt.
+
+ESCRITURA DE TEXTO
+
+Helix-SST usa la paleta Gruvbox Dark. En archivos .txt y Markdown (.md), el
+corrector ortográfico integrado revisa español de Chile sin enviar el texto a
+servicios externos. Los posibles errores aparecen como diagnósticos; sitúa el
+cursor sobre la palabra y pulsa F2 para ver las correcciones sugeridas.
 
 CONFIGURACIÓN Y DIAGNÓSTICO
 
