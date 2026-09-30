@@ -14,7 +14,10 @@ pub struct ScanRow {
     pub ip: Ipv4Addr,
     pub mac: String,
     pub hostname: String,
-    pub latency_ms: u128,
+    pub latency_ms: Option<u32>,
+    pub discovery: String,
+    pub mac_scope: String,
+    pub vendor: Option<String>,
     pub known: bool,
     pub inventory_name: Option<String>,
 }
@@ -50,6 +53,12 @@ pub struct PresenceRecord {
     pub mac: String,
     pub ip: String,
     pub hostname: String,
+    #[serde(default)]
+    pub mac_scope: String,
+    #[serde(default)]
+    pub vendor: Option<String>,
+    #[serde(default)]
+    pub discovery: String,
     pub first_seen: String,
     pub last_seen: String,
 }
