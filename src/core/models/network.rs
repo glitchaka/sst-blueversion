@@ -73,3 +73,12 @@ pub struct ByteCounters {
     pub sent: u64,
     pub received: u64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LanUsageRow {
+    pub device: String,
+    pub ip: String,
+    pub mac: String,
+    pub download_bps: u64,
+    pub upload_bps: u64,
+}
