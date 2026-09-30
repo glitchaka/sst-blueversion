@@ -1,4 +1,6 @@
 pub mod helix_sst;
+#[cfg(windows)]
+pub mod helix_sst_spell;
 mod pty_protocol;
 #[cfg(windows)]
 pub mod editor_clipboard;
