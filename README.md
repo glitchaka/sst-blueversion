@@ -24,12 +24,17 @@ El ejecutable se genera en:
 target\release\sst.exe
 ```
 
-Durante la compilación, `build.rs` incorpora la Nerd Font, el paquete oficial de Helix y el diccionario ortográfico es-CL utilizados por la aplicación. Para compilaciones sin Internet pueden definirse:
+Durante la compilación, `build.rs` incorpora la Nerd Font, el paquete oficial de Helix, el diccionario ortográfico es-CL y los registros IEEE MA-L/MA-M/MA-S utilizados para identificación de fabricantes MAC.
+
+Para proporcionar copias locales de los registros IEEE pueden definirse:
 
 ```text
-SST_NERD_FONT_FILE
-SST_HELIX_ARCHIVE
+SST_IEEE_MAL_CSV
+SST_IEEE_MAM_CSV
+SST_IEEE_MAS_CSV
 ```
+
+También existen `SST_NERD_FONT_FILE` y `SST_HELIX_ARCHIVE` para sustituir esos recursos durante la construcción.
 
 No es necesario distribuir los directorios internos de Cargo como `build/`, `deps/`, `incremental/` o los archivos `.pdb`/`.d` para ejecutar SST.
 
@@ -55,7 +60,12 @@ help COMANDO
 
 Esta documentación refleja el código actual, incluidos estos cambios:
 
-- **Descubrimiento de red por ARP activo:** `net scan` y `net monitor` usan `SendARP` en Windows y aceptan una respuesta ARP como evidencia de presencia aunque el equipo bloquee TCP e ICMP. TCP e ICMP quedan como mecanismos complementarios.
+- **Descubrimiento de red por evidencia múltiple:** `net scan` y `net monitor` usan ARP activo, ICMP y TCP. Una respuesta ARP basta para detectar teléfonos/IoT aunque bloqueen ping o no tengan servicios TCP.
+- **Identificación MAC local:** cada host se clasifica como `global`, `local/private`, `multicast`, `broadcast` o `unknown`. Las MAC globales se resuelven contra los registros IEEE **MA-L, MA-M y MA-S**; las MAC privadas/aleatorias no reciben un fabricante inventado.
+- **Monitor con histéresis:** un host debe faltar en tres ciclos consecutivos antes de generar un evento de desconexión, reduciendo falsos `+/-` por una respuesta perdida.
+- **Tiempo de respuesta corregido:** la columna de respuesta mide el probe que confirmó presencia y ya no incluye el tiempo de reverse DNS.
+- **`net identify`:** identifica por IP, MAC o nombre inventariado y reúne hostname, MAC, scope, fabricante IEEE, inventario, método de descubrimiento y último avistamiento.
+- **Registro directo por IP:** `device add IP NOMBRE` resuelve la MAC por ARP y la incorpora al inventario.
 - **`net traffic --unsigned`:** añade estado Authenticode por proceso y permite filtrar ejecutables cuya firma no sea válida.
 - **`net usage` operativo para HTTP JSON normalizado:** los proveedores `generic` y `openwrt` pueden entregar contadores por cliente; existen filtros, JSON/CSV y modo watch.
 - **Credenciales de `intel` desde `config/sstrc`:** las claves pueden declararse con `export`; SST consulta primero el entorno de Windows y después `sstrc`.
@@ -71,8 +81,8 @@ Esta documentación refleja el código actual, incluidos estos cambios:
 | Comando | Función | Ejemplo |
 |---|---|---|
 | `sys` | Sistema, procesos, servicios, usuarios, impresoras, drivers, eventos, registro, tareas y triage | `sys info` |
-| `net` | Interfaces, conexiones, DNS, descubrimiento, presencia, tráfico y proveedores | `net scan 192.168.1.0/24` |
-| `device` | Inventario local por MAC | `device add AA:BB:CC:DD:EE:FF NOTEBOOK-01` |
+| `net` | Interfaces, conexiones, DNS, descubrimiento, identificación, presencia, tráfico y proveedores | `net identify 10.11.24.20` |
+| `device` | Inventario local por MAC o IP | `device add 10.11.24.20 MI-CELULAR` |
 | `wol` | Wake-on-LAN | `wol NOTEBOOK-01` |
 | `domain` | Estado de dominio | `domain status PC-01 --verify` |
 | `switch` | MAC → switch → puerto por SNMP | `switch locate NOTEBOOK-01` |
@@ -678,13 +688,26 @@ net scan --csv
 Escanea una red IPv4 y relaciona los equipos encontrados con:
 
 - dirección IP;
-- nombre del equipo;
+- hostname;
 - MAC;
-- latencia;
+- tipo/scope de MAC;
+- fabricante cuando existe una asignación IEEE válida;
+- método que confirmó presencia (`arp`, `icmp` o `tcp:PUERTO`);
+- tiempo de respuesta del probe;
 - estado conocido/desconocido;
 - nombre del inventario SST, si existe.
 
-El descubrimiento usa **ARP activo como mecanismo primario en IPv4 local** mediante `SendARP`. Si obtiene una MAC, el host se considera presente aunque no tenga puertos TCP escuchando y aunque bloquee ICMP. Si ARP no responde, SST conserva pruebas TCP e ICMP como mecanismos complementarios. Esto permite detectar mejor teléfonos, tablets, IoT y equipos con firewall restrictivo.
+El descubrimiento usa **ARP activo primero** en IPv4 local mediante `SendARP`. Si obtiene una MAC, el host se considera presente aunque no tenga puertos TCP escuchando y aunque bloquee ICMP. Si ARP no responde, SST intenta ICMP y después conectividad TCP sobre puertos habituales.
+
+La identificación MAC distingue:
+
+- `global`: puede resolverse contra IEEE MA-L/MA-M/MA-S;
+- `local/private`: dirección administrada localmente, común en MAC privadas/aleatorias de teléfonos; SST no atribuye fabricante por OUI;
+- `multicast`;
+- `broadcast`;
+- `unknown`: no se obtuvo MAC.
+
+La columna `RESP` ya no incluye reverse DNS: representa únicamente el tiempo del probe que confirmó presencia.
 
 La salida normal prioriza las columnas **IP** y **NOMBRE**. SST intenta resolver el hostname del equipo y, si no hay resolución disponible pero el dispositivo está inventariado, utiliza el nombre guardado en el inventario.
 
@@ -708,14 +731,30 @@ net monitor 192.168.1.0/24
 net monitor --unknown
 ```
 
-Abre una vista TUI que repite el mismo descubrimiento ARP/TCP/ICMP de `net scan` y registra:
+Abre una vista TUI que repite el mismo descubrimiento ARP/ICMP/TCP de `net scan` y registra:
 
 - aparición de equipos;
-- desaparición;
+- desaparición confirmada;
 - cambios de IP;
-- primera y última vez vistos.
+- primera y última vez vistos;
+- fabricante/tipo de MAC y método de descubrimiento.
+
+Para evitar flapping, un equipo no se declara desconectado por un único ciclo fallido: SST exige **tres fallos consecutivos** antes de emitir el evento `-`. Durante esa ventana conserva la última identidad estable en pantalla.
 
 Se sale con `q` o `Esc`.
+
+### Identificación puntual
+
+```bash
+net identify 10.11.24.20
+net identify AE:C0:70:8F:4D:A2
+net identify MI-CELULAR
+net identify 10.11.24.20 --json
+```
+
+`net identify` acepta IP, MAC o nombre del inventario y muestra IP/hostname conocidos, MAC, scope, fabricante IEEE y registro (`MA-L`, `MA-M` o `MA-S`), nombre inventariado, método de descubrimiento, tiempo de respuesta y último avistamiento.
+
+Para una MAC `local/private`, SST lo indica explícitamente y deja el fabricante sin atribuir, porque una dirección administrada localmente puede ser privada/aleatoria.
 
 ### Historial de presencia
 
@@ -862,7 +901,8 @@ device list --csv
 device show MAC
 device show NOMBRE
 device add AA:BB:CC:DD:EE:FF NOMBRE
-device add AA:BB:CC:DD:EE:FF NOMBRE --note "texto"
+device add 10.11.24.20 NOMBRE
+device add 10.11.24.20 NOMBRE --note "texto"
 device remove AA:BB:CC:DD:EE:FF
 device unknown
 device unknown --json
@@ -870,9 +910,21 @@ device unknown --csv
 device path
 ```
 
-El inventario guarda MAC, nombre y notas. Se utiliza para identificar dispositivos durante escaneos, Wake-on-LAN y localización en switches.
+El inventario guarda MAC, nombre y notas. `device add` acepta una MAC directa o una IPv4 del mismo segmento; al recibir una IP, SST resuelve activamente la MAC mediante ARP antes de guardar el equipo.
 
-`device unknown` cruza el historial de presencia generado por `net monitor` con el inventario local y muestra únicamente los equipos detectados cuya MAC todavía no está registrada. La salida incluye IP, hostname, MAC, primera detección y última detección; también puede exportarse con `--json` o `--csv`.
+`device list` y `device show` enriquecen el inventario con tipo de MAC, fabricante IEEE y registro MA-L/MA-M/MA-S cuando corresponde. `device show` añade además último IP, hostname y avistamiento disponibles en el historial de presencia.
+
+Ejemplos:
+
+```bash
+device add 10.11.24.20 MI-CELULAR --note "Teléfono personal"
+device show MI-CELULAR
+device list
+```
+
+El inventario se utiliza para identificar dispositivos durante escaneos, Wake-on-LAN y localización en switches.
+
+`device unknown` cruza el historial de presencia generado por `net monitor` con el inventario local y muestra únicamente los equipos detectados cuya MAC todavía no está registrada. La salida incluye IP, hostname, MAC, scope, fabricante, método de descubrimiento y última detección; también puede exportarse con `--json` o `--csv`.
 
 No vuelve a escanear la red por su cuenta: trabaja sobre observaciones persistidas por SST, de modo que sirve para revisar posteriormente qué equipos aparecieron en una red administrada.
 
@@ -1624,8 +1676,10 @@ Entre los datos persistentes se encuentran:
 - utilidades Unix incluidas;
 - información y auditoría local de Windows;
 - diagnóstico de red;
-- escaneo y monitor de presencia;
-- inventario de dispositivos;
+- escaneo multi-evidencia ARP/ICMP/TCP y monitor de presencia con histéresis;
+- clasificación de MAC global/local/multicast/broadcast e identificación IEEE MA-L/MA-M/MA-S;
+- `net identify` por IP/MAC/nombre;
+- inventario de dispositivos con alta directa por IP;
 - Wake-on-LAN;
 - dominio;
 - localización MAC → switch → puerto mediante SNMP;
