@@ -239,10 +239,6 @@ impl NetworkDiagnosticsService {
         None
     }
 
-    pub fn host_alive(&self, ip: Ipv4Addr, timeout: Duration) -> bool {
-        self.probe_host(ip, timeout).is_some()
-    }
-
     pub fn default_ipv4_network(&self) -> Result<Ipv4Net> {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         socket.connect("8.8.8.8:80")?;
