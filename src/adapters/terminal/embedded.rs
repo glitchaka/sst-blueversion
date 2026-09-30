@@ -122,6 +122,11 @@ impl EmbeddedSession {
                 });
                 io::write(security.render_startup(&report).as_bytes())?;
 
+                // The GUI shell always opens with a system fetch before the first prompt.
+                let fetch = engine.execute("fetch")?;
+                io::write(fetch.stdout.as_bytes())?;
+                io::write(fetch.stderr.as_bytes())?;
+
                 let (prompt_stdout, prompt_stderr, bash_prompt) = engine.prepare_prompt(false)?;
                 io::write(prompt_stdout.as_bytes())?;
                 io::write(prompt_stderr.as_bytes())?;
