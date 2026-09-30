@@ -672,36 +672,50 @@ impl SecurityTriageService {
     }
 
     fn intel_lookup(&self, indicator: &str) -> Result<CommandOutput> {
+        let indicator = indicator.trim();
+        if indicator.is_empty() {
+            return Ok(CommandOutput::error("intel lookup: indicador vacío", 2));
+        }
         if local_indicator_match(&self.paths, indicator)? {
             return Ok(CommandOutput::ok(format!(
                 "LOCAL MATCH\nindicator: {indicator}\nsource: data/intel local lists\n"
             )));
         }
 
+        let sources = self.load_sources()?;
         let conn = self.open_db()?;
-        let mut stmt = conn.prepare(
-            "SELECT source_id, verdict, checked_at
-             FROM intel_cache
-             WHERE indicator = ?1
-             ORDER BY checked_at DESC",
-        )?;
-        let rows = stmt.query_map(params![indicator], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-            ))
-        })?;
-
-        let mut found = false;
+        let now = unix_now();
         let mut out = format!("indicator: {indicator}\n");
-        for row in rows {
-            let (source, verdict, checked_at) = row?;
-            found = true;
-            out.push_str(&format!("{source}: {verdict} (checked {checked_at})\n"));
+        let mut reported = false;
+
+        for source in sources.into_iter().filter(|source| source.enabled) {
+            if let Some((verdict, checked_at)) = cached_intel(&conn, indicator, &source.id, now)? {
+                out.push_str(&format!("{}: {} (cache, checked {})\n", source.id, verdict, checked_at));
+                reported = true;
+                continue;
+            }
+
+            match query_intel_source(&source, indicator) {
+                Ok(Some(verdict)) => {
+                    store_intel_cache(&conn, indicator, &source, &verdict, now)?;
+                    out.push_str(&format!("{}: {} (live)\n", source.id, verdict));
+                    reported = true;
+                }
+                Ok(None) => {
+                    let verdict = "not-found".to_owned();
+                    store_intel_cache(&conn, indicator, &source, &verdict, now)?;
+                    out.push_str(&format!("{}: not-found (live)\n", source.id));
+                    reported = true;
+                }
+                Err(error) => {
+                    out.push_str(&format!("{}: unavailable ({})\n", source.id, error));
+                    reported = true;
+                }
+            }
         }
-        if !found {
-            out.push_str("No local/cache match. External adapter lookup is not active in the skeleton yet.\n");
+
+        if !reported {
+            out.push_str("No hay fuentes de inteligencia externas habilitadas.\n");
         }
         Ok(CommandOutput::ok(out))
     }
@@ -1254,6 +1268,167 @@ fn parse_sources(path: &Path) -> Result<Vec<SecuritySource>> {
     }
     result.sort_by_key(|source| source.priority);
     Ok(result)
+}
+
+fn cached_intel(
+    conn: &Connection,
+    indicator: &str,
+    source_id: &str,
+    now: i64,
+) -> Result<Option<(String, i64)>> {
+    match conn.query_row(
+        "SELECT verdict, checked_at FROM intel_cache
+         WHERE indicator = ?1 AND source_id = ?2 AND (expires_at IS NULL OR expires_at > ?3)",
+        params![indicator, source_id, now],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+    ) {
+        Ok(row) => Ok(Some(row)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn store_intel_cache(
+    conn: &Connection,
+    indicator: &str,
+    source: &SecuritySource,
+    verdict: &str,
+    checked_at: i64,
+) -> Result<()> {
+    let ttl_seconds = source.ttl_hours.saturating_mul(3600).min(i64::MAX as u64) as i64;
+    let expires_at = checked_at.saturating_add(ttl_seconds);
+    conn.execute(
+        "INSERT INTO intel_cache(indicator, source_id, verdict, checked_at, expires_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(indicator, source_id) DO UPDATE SET
+             verdict=excluded.verdict,
+             checked_at=excluded.checked_at,
+             expires_at=excluded.expires_at",
+        params![indicator, source.id, verdict, checked_at, expires_at],
+    )?;
+    Ok(())
+}
+
+fn query_intel_source(source: &SecuritySource, indicator: &str) -> Result<Option<String>> {
+    match source.adapter.as_str() {
+        "abusech_hash" => query_abusech_hash(source, indicator),
+        "abusech_ioc" => query_abusech_ioc(source, indicator),
+        "abusech_url" => query_abusech_url(source, indicator),
+        "behavior_catalog" => Ok(None),
+        adapter => anyhow::bail!("adaptador no soportado: {adapter}"),
+    }
+}
+
+fn curl_json_post(
+    endpoint: &str,
+    auth: Option<(&str, &str)>,
+    fields: &[(&str, &str)],
+) -> Result<serde_json::Value> {
+    let mut command = Command::new("curl.exe");
+    command.args(["-fsS", "--connect-timeout", "5", "--max-time", "15", "-X", "POST"]);
+    command.args(["-H", "Accept: application/json"]);
+    if let Some((header, value)) = auth {
+        let auth_header = format!("{header}: {value}");
+        command.args(["-H", auth_header.as_str()]);
+    }
+    for (key, value) in fields {
+        command.args(["--data-urlencode", &format!("{key}={value}")]);
+    }
+    command.arg(endpoint);
+    let output = command.output().context("no se pudo ejecutar curl.exe")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        anyhow::bail!(
+            "HTTP/curl {}{}",
+            output.status.code().unwrap_or(-1),
+            if stderr.is_empty() { String::new() } else { format!(": {stderr}") }
+        );
+    }
+    serde_json::from_slice(&output.stdout).context("respuesta JSON inválida")
+}
+
+fn source_auth(source: &SecuritySource) -> Result<Option<String>> {
+    let Some(name) = source.auth_env.as_deref() else { return Ok(None); };
+    env::var(name).map(Some).with_context(|| format!("falta variable de autenticación {name}"))
+}
+
+fn query_abusech_hash(source: &SecuritySource, indicator: &str) -> Result<Option<String>> {
+    if !is_hash_indicator(indicator) {
+        return Ok(None);
+    }
+    let auth = source_auth(source)?;
+    let json = curl_json_post(
+        &source.endpoint,
+        auth.as_deref().map(|key| ("Auth-Key", key)),
+        &[("query", "get_info"), ("hash", indicator)],
+    )?;
+    match json.get("query_status").and_then(|v| v.as_str()).unwrap_or("") {
+        "ok" => {
+            let item = json.get("data").and_then(|v| v.as_array()).and_then(|v| v.first());
+            let family = item.and_then(|v| v.get("signature")).and_then(|v| v.as_str());
+            Ok(Some(match family {
+                Some(family) if !family.is_empty() => format!("malicious ({family})"),
+                _ => "malicious".to_owned(),
+            }))
+        }
+        "hash_not_found" | "file_not_found" => Ok(None),
+        status => anyhow::bail!("API status {}", if status.is_empty() { "unknown" } else { status }),
+    }
+}
+
+fn query_abusech_ioc(source: &SecuritySource, indicator: &str) -> Result<Option<String>> {
+    let auth = source_auth(source)?;
+    let json = curl_json_post(
+        &source.endpoint,
+        auth.as_deref().map(|key| ("Auth-Key", key)),
+        &[("query", "search_ioc"), ("search_term", indicator), ("exact_match", "true")],
+    )?;
+    match json.get("query_status").and_then(|v| v.as_str()).unwrap_or("") {
+        "ok" => {
+            let item = json.get("data").and_then(|v| v.as_array()).and_then(|v| v.first());
+            let malware = item.and_then(|v| v.get("malware_printable"))
+                .or_else(|| item.and_then(|v| v.get("malware")))
+                .and_then(|v| v.as_str());
+            Ok(Some(match malware {
+                Some(name) if !name.is_empty() => format!("malicious ({name})"),
+                _ => "malicious".to_owned(),
+            }))
+        }
+        "no_result" | "ioc_not_found" => Ok(None),
+        status => anyhow::bail!("API status {}", if status.is_empty() { "unknown" } else { status }),
+    }
+}
+
+fn query_abusech_url(source: &SecuritySource, indicator: &str) -> Result<Option<String>> {
+    let auth = source_auth(source)?;
+    let (endpoint, field) = if is_hash_indicator(indicator) {
+        (format!("{}v1/payload/", source.endpoint.trim_end_matches('/')), "sha256_hash")
+    } else if indicator.starts_with("http://") || indicator.starts_with("https://") {
+        (format!("{}v1/url/", source.endpoint.trim_end_matches('/')), "url")
+    } else {
+        (format!("{}v1/host/", source.endpoint.trim_end_matches('/')), "host")
+    };
+    let json = curl_json_post(
+        &endpoint,
+        auth.as_deref().map(|key| ("Auth-Key", key)),
+        &[(field, indicator)],
+    )?;
+    match json.get("query_status").and_then(|v| v.as_str()).unwrap_or("") {
+        "ok" => {
+            let threat = json.get("threat").and_then(|v| v.as_str())
+                .or_else(|| json.get("signature").and_then(|v| v.as_str()));
+            Ok(Some(match threat {
+                Some(name) if !name.is_empty() => format!("malicious ({name})"),
+                _ => "malicious".to_owned(),
+            }))
+        }
+        "no_results" | "url_not_found" | "host_not_found" | "payload_not_found" => Ok(None),
+        status => anyhow::bail!("API status {}", if status.is_empty() { "unknown" } else { status }),
+    }
+}
+
+fn is_hash_indicator(value: &str) -> bool {
+    matches!(value.len(), 32 | 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn capture(program: &str, args: &[&str]) -> Result<String> {
