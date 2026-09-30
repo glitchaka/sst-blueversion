@@ -66,7 +66,10 @@ impl ShellEnvironment {
         let exported: HashMap<String, String> = env::vars().collect();
         let mut vars = exported.clone();
         vars.entry("IFS".to_owned()).or_insert_with(|| " \t\n".to_owned());
-        vars.insert("BASH_VERSION".to_owned(), "5.3.0(1)-sst".to_owned());
+        vars.insert("BASH_VERSION".to_owned(), "5.3.0(1)-nwash".to_owned());
+        vars.insert("NWASH_VERSION".to_owned(), env!("CARGO_PKG_VERSION").to_owned());
+        vars.insert("NWASH_BASH_BASE".to_owned(), "5.3".to_owned());
+        vars.insert("NWASH_PLATFORM".to_owned(), "windows".to_owned());
         vars.entry("BASH_TRAPSIG".to_owned()).or_insert_with(|| "0".to_owned());
         vars.entry("BASH_SUBSHELL".to_owned()).or_insert_with(|| "0".to_owned());
         vars.entry("BASH_COMMAND".to_owned()).or_default();
@@ -156,6 +159,9 @@ impl ShellEnvironment {
 
         let mut readonly = HashSet::new();
         readonly.insert("BASH_VERSINFO".to_owned());
+        readonly.insert("NWASH_VERSION".to_owned());
+        readonly.insert("NWASH_BASH_BASE".to_owned());
+        readonly.insert("NWASH_PLATFORM".to_owned());
         readonly.insert("SHELLOPTS".to_owned());
         readonly.insert("BASHOPTS".to_owned());
         Self {
