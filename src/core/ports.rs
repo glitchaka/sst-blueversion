@@ -20,6 +20,9 @@ pub trait NetworkProbe: Send + Sync {
     fn connections(&self) -> Result<Vec<ConnectionRow>>;
     fn routes(&self) -> Result<String>;
     fn neighbors(&self) -> Result<HashMap<std::net::Ipv4Addr, String>>;
+    fn resolve_neighbor(&self, address: std::net::Ipv4Addr) -> Result<Option<String>> {
+        Ok(self.neighbors()?.remove(&address))
+    }
     fn echo(&self, address: std::net::Ipv4Addr, ttl: u8, timeout: std::time::Duration) -> Result<EchoReply>;
 }
 
