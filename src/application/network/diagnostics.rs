@@ -183,6 +183,10 @@ impl NetworkDiagnosticsService {
         Ok(CommandOutput::ok(out))
     }
 
+    pub fn resolve_neighbor(&self, ip: Ipv4Addr) -> Option<String> {
+        self.probe.resolve_neighbor(ip).ok().flatten()
+    }
+
     pub fn host_alive(&self, ip: Ipv4Addr, timeout: Duration) -> bool {
         for port in [445_u16, 3389, 80, 443, 135, 22] {
             if TcpStream::connect_timeout(&SocketAddr::new(IpAddr::V4(ip), port), timeout).is_ok() {
