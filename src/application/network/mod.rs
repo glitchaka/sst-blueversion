@@ -1,6 +1,6 @@
 mod diagnostics;
 mod discovery;
-mod identity;
+pub(crate) mod identity;
 mod provider;
 mod traffic;
 
