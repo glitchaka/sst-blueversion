@@ -68,7 +68,7 @@ priority=20
 [source urlhaus]
 enabled=true
 adapter=abusech_url
-endpoint=https://urlhaus.abuse.ch/api/
+endpoint=https://urlhaus-api.abuse.ch/
 auth_env=SST_URLHAUS_AUTH_KEY
 ttl_hours=12
 priority=30
