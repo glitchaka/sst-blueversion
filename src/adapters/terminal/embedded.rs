@@ -116,16 +116,17 @@ impl EmbeddedSession {
 
                 io::write(crate::presentation::shell::prompt::banner().as_bytes())?;
 
+                // Fetch is part of the visual startup and appears before the
+                // potentially slower security preload.
+                let fetch = engine.execute("fetch")?;
+                io::write(fetch.stdout.as_bytes())?;
+                io::write(fetch.stderr.as_bytes())?;
+
                 let security = crate::application::security::shared_security_service(paths.clone());
                 let report = security.run_startup_preload(|line| {
                     let _ = io::write(line.as_bytes());
                 });
                 io::write(security.render_startup(&report).as_bytes())?;
-
-                // The GUI shell always opens with a system fetch before the first prompt.
-                let fetch = engine.execute("fetch")?;
-                io::write(fetch.stdout.as_bytes())?;
-                io::write(fetch.stderr.as_bytes())?;
 
                 let (prompt_stdout, prompt_stderr, bash_prompt) = engine.prepare_prompt(false)?;
                 io::write(prompt_stdout.as_bytes())?;
