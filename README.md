@@ -1215,6 +1215,7 @@ Ejemplo:
 ```text
 sst.exe
 bg/
+  README.txt
   amber-city.jpg
   gruvbox-terminal.png
   observatory.webp
@@ -1387,6 +1388,7 @@ examples/
   07-operator-console.sh
   08-config-and-backgrounds.sh
   09-advanced-bash.sh
+  10-full-showcase.sh
 ```
 
 Se ejecutan directamente desde SST:
@@ -1398,6 +1400,7 @@ examples/03-network-discovery.sh 10.11.24.0/24
 examples/04-jobs-and-coproc.sh
 examples/07-operator-console.sh
 examples/09-advanced-bash.sh
+examples/10-full-showcase.sh 10.11.24.0/24
 ```
 
 Los ejemplos cubren, entre otras capacidades:
@@ -1422,7 +1425,7 @@ Los ejemplos cubren, entre otras capacidades:
 
 Los scripts incluidos son no destructivos por diseño. El objetivo es que funcionen como **showcase técnico, material de aprendizaje y base para automatizaciones reales**.
 
-La guía detallada está en `examples/README.md`.
+La guía detallada está en `examples/README.md`. Para una demostración de punta a punta, `examples/10-full-showcase.sh` combina sistema, Windows, red, jobs, ETW, triage, Intel y generación de reportes en una sola ejecución.
 
 ---
 
@@ -1822,6 +1825,7 @@ SST crea junto al ejecutable:
 ```text
 config/
 data/
+bg/
 ```
 
 Entre los datos persistentes se encuentran:
