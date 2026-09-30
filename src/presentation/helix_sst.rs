@@ -224,7 +224,7 @@ fn toml_escape(value: &Path) -> String {
     value
         .to_string_lossy()
         .replace('\\', "/")
-        .replace('"', "\\"")
+        .replace('"', "\\\"")
 }
 
 fn write_language_config(path: &Path, launcher: &Path, user_dictionary: &Path) -> Result<()> {
