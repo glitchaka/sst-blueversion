@@ -1,6 +1,7 @@
 mod diagnostics;
 mod discovery;
 pub(crate) mod identity;
+mod lan_note;
 mod provider;
 mod traffic;
 
@@ -97,7 +98,8 @@ uso: net scan [RED] [--unknown|--authorized|--known] [--names] [--json|--csv]
 sin RED intenta usar la red IPv4 local; el escaneo está limitado a /20 o menor.
 ",
             Some("monitor") => "net monitor — monitoriza presencia de equipos
-uso: net monitor [RED] [--unknown]
+uso: net monitor [RED] [--unknown] [-m|--message|--say TEXTO]
+publica TEXTO por UDP broadcast para otros usuarios que tengan net monitor abierto.
 abre una TUI; salir con q o Esc.
 ",
             Some("presence") => "net presence — consulta historial de presencia
