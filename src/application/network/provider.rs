@@ -86,16 +86,29 @@ impl NetworkProviderService {
             ));
         };
 
-        let kind = options::value(args, "--type").unwrap_or("generic").to_owned();
+        let kind = options::value(args, "--type").unwrap_or("generic").to_ascii_lowercase();
+        if !matches!(kind.as_str(), "openwrt" | "opnsense" | "pfsense" | "unifi" | "snmp" | "generic") {
+            return Ok(CommandOutput::error(
+                format!("net provider add: tipo no soportado: {kind}"),
+                2,
+            ));
+        }
         let Some(host) = options::value(args, "--host") else {
             return Ok(CommandOutput::error("net provider add: falta --host", 2));
         };
+
+        let user_env = options::value(args, "--user-env").map(str::to_owned);
+        let secret_env = options::value(args, "--secret-env").map(str::to_owned);
+        let community_env = options::value(args, "--community-env").map(str::to_owned);
 
         let mut providers = self.repository.all()?;
 
         if let Some(existing) = providers.iter_mut().find(|provider| provider.name == *name) {
             existing.kind = kind.clone();
             existing.host = host.to_owned();
+            existing.user_env = user_env.clone();
+            existing.secret_env = secret_env.clone();
+            existing.community_env = community_env.clone();
         } else {
             let active = providers.is_empty();
             providers.push(NetworkProvider {
@@ -103,14 +116,18 @@ impl NetworkProviderService {
                 kind: kind.clone(),
                 host: host.to_owned(),
                 active,
+                user_env,
+                secret_env,
+                community_env,
             });
         }
 
         self.repository.replace_all(&providers)?;
 
         Ok(CommandOutput::ok(format!(
-            "provider saved: {} type={} host={}\n",
-            name, kind, host
+            "provider saved: {} type={} host={} credentials={}\n",
+            name, kind, host,
+            if community_env.is_some() || secret_env.is_some() { "env" } else { "none" }
         )))
     }
 
@@ -164,8 +181,11 @@ impl NetworkProviderService {
 
         if let Some(provider) = providers.iter().find(|provider| provider.active) {
             Ok(CommandOutput::ok(format!(
-                "name: {}\ntype: {}\nhost: {}\n",
-                provider.name, provider.kind, provider.host
+                "name: {}\ntype: {}\nhost: {}\nuser-env: {}\nsecret-env: {}\ncommunity-env: {}\n",
+                provider.name, provider.kind, provider.host,
+                provider.user_env.as_deref().unwrap_or("-"),
+                provider.secret_env.as_deref().unwrap_or("-"),
+                provider.community_env.as_deref().unwrap_or("-")
             )))
         } else {
             Ok(CommandOutput::error("net provider: no hay proveedor activo", 1))
