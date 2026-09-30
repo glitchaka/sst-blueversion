@@ -18,7 +18,7 @@ use crate::{
     core::ports::TextEditor,
 };
 
-pub const HELIX_SST_VERSION: &str = "0.1.1";
+pub const HELIX_SST_VERSION: &str = "0.2.0";
 pub const HELIX_UPSTREAM_VERSION: &str = "25.07.1";
 pub const HELP: &str = include_str!("../../docs/helix-sst.txt");
 
@@ -49,30 +49,10 @@ insert = "INSERTAR · Esc: comandos"
 select = "SELECCIÓN · Esc: normal"
 "#;
 
-const THEME_TOML: &str = r##"inherits = "base16_default_dark"
+const THEME_TOML: &str = r#"inherits = "gruvbox"
+"#;
 
-"ui.background" = { bg = "#111629" }
-"ui.text" = "#DFE8EF"
-"ui.text.focus" = { fg = "#FFFFFF", modifiers = ["bold"] }
-"ui.cursor" = { fg = "#111629", bg = "#69C7FF" }
-"ui.cursor.primary" = { fg = "#111629", bg = "#69C7FF" }
-"ui.cursorline.primary" = { bg = "#171D31" }
-"ui.selection" = { bg = "#293B59" }
-"ui.statusline" = { fg = "#DFE8EF", bg = "#0A0D14" }
-"ui.statusline.normal" = { fg = "#111629", bg = "#69C7FF", modifiers = ["bold"] }
-"ui.statusline.insert" = { fg = "#111629", bg = "#F6C61B", modifiers = ["bold"] }
-"ui.statusline.select" = { fg = "#111629", bg = "#FF9FBD", modifiers = ["bold"] }
-"ui.bufferline" = { fg = "#AFA39D", bg = "#0A0D14" }
-"ui.bufferline.active" = { fg = "#FFFFFF", bg = "#293B59", modifiers = ["bold"] }
-"ui.linenr" = "#756E67"
-"ui.linenr.selected" = { fg = "#69C7FF", modifiers = ["bold"] }
-"diagnostic.error" = { underline = { color = "#FF2D38", style = "curl" } }
-"diagnostic.warning" = { underline = { color = "#F6C61B", style = "curl" } }
-"diagnostic.info" = { underline = { color = "#69C7FF", style = "curl" } }
-"diagnostic.hint" = { underline = { color = "#FF9FBD", style = "curl" } }
-"##;
-
-const NOTICE: &str = r#"helix-sst 0.1.1
+const NOTICE: &str = r#"helix-sst 0.2.0
 
 This integration bundles Helix 25.07.1.
 Upstream project: https://github.com/helix-editor/helix
@@ -90,6 +70,8 @@ struct Install {
     runtime: PathBuf,
     config: PathBuf,
     launcher: PathBuf,
+    helix_appdata: PathBuf,
+    user_dictionary: PathBuf,
 }
 
 impl TextEditor for HelixSstEditor {
@@ -175,10 +157,32 @@ fn ensure_installed() -> Result<Install> {
 
     let themes = runtime.join("themes");
     fs::create_dir_all(&themes)?;
-    write_default(&themes.join("shell-shock.toml"), THEME_TOML)?;
-    fs::write(root.join("HELIX-SST-NOTICE.txt"), NOTICE)?;
+    fs::write(themes.join("shell-shock.toml"), THEME_TOML)?;
 
-    Ok(Install { hx, runtime, config, launcher })
+    let helix_appdata = config_dir.join("appdata");
+    let helix_config_dir = helix_appdata.join("helix");
+    fs::create_dir_all(&helix_config_dir)?;
+    let user_dictionary = config_dir.join(".spell-user");
+    write_language_config(
+        &helix_config_dir.join("languages.toml"),
+        &launcher,
+        &user_dictionary,
+    )?;
+
+    fs::write(root.join("HELIX-SST-NOTICE.txt"), NOTICE)?;
+    fs::write(
+        root.join("HELIX-SST-SPELL-DICTIONARY-LICENSE.txt"),
+        super::helix_sst_spell::DICTIONARY_LICENSE,
+    )?;
+
+    Ok(Install {
+        hx,
+        runtime,
+        config,
+        launcher,
+        helix_appdata,
+        user_dictionary,
+    })
 }
 
 #[cfg(windows)]
@@ -215,6 +219,36 @@ fn write_install_marker(root: &Path, marker: &Path, hx: &Path, runtime: &Path) -
             "helix-upstream={HELIX_UPSTREAM_VERSION}\nhx={hx}\nruntime={runtime}\n"
         ),
     )?;
+    Ok(())
+}
+
+fn toml_escape(value: &Path) -> String {
+    value
+        .to_string_lossy()
+        .replace('\\', "/")
+        .replace('"', "\\"")
+}
+
+fn write_language_config(path: &Path, launcher: &Path, user_dictionary: &Path) -> Result<()> {
+    let launcher = toml_escape(launcher);
+    let user_dictionary = toml_escape(user_dictionary);
+    let content = format!(
+        r#"[language-server.helix-sst-spell]
+command = "{launcher}"
+args = ["--helix-sst-spell", "{user_dictionary}"]
+
+[[language]]
+name = "text"
+scope = "text.plain"
+file-types = ["txt"]
+language-servers = ["helix-sst-spell"]
+
+[[language]]
+name = "markdown"
+language-servers = ["helix-sst-spell", "marksman", "markdown-oxide"]
+"#
+    );
+    fs::write(path, content)?;
     Ok(())
 }
 
@@ -299,6 +333,18 @@ fn session_files(install: &Install) -> Result<SessionFiles> {
         table.insert("F1".into(), toml::Value::Array(vec![toml::Value::String("normal_mode".into()), toml::Value::String(format!(":open \"{help_path}\""))]));
         let paste = match mode { "insert" => "@<C-r>+", "select" => "replace_selections_with_clipboard", _ => "paste_clipboard_before" };
         table.insert("F12".into(), toml::Value::String(paste.into()));
+        let code_action = if mode == "insert" {
+            toml::Value::Array(vec![
+                toml::Value::String("normal_mode".into()),
+                toml::Value::String("code_action".into()),
+            ])
+        } else {
+            toml::Value::String("code_action".into())
+        };
+        table.insert("F2".into(), code_action);
+        if mode == "insert" {
+            table.insert("A-d".into(), toml::Value::String("@—".into()));
+        }
     }
     fs::write(&files.config, toml::to_string(&config)?)?;
     Ok(files)
@@ -327,6 +373,7 @@ fn run_helix(install: &Install, args: &[String], cwd: &Path) -> Result<i32> {
     let mut command = CommandBuilder::new(&install.hx);
     command.cwd(cwd);
     command.env("HELIX_RUNTIME", install.runtime.to_string_lossy().as_ref());
+    command.env("APPDATA", install.helix_appdata.to_string_lossy().as_ref());
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
     command.arg("--config");
