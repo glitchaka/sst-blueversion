@@ -90,10 +90,6 @@ impl BuiltinCommand for TourBuiltin {
         "sst-tour-select"
     }
 
-    fn aliases(&self) -> &'static [&'static str] {
-        &["tour"]
-    }
-
     fn hidden(&self) -> bool {
         true
     }
@@ -104,19 +100,10 @@ impl BuiltinCommand for TourBuiltin {
 
     fn execute(
         &self,
-        invoked_name: &str,
+        _invoked_name: &str,
         _args: &[String],
         _context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
-        // "tour" is intercepted by the Nwash interpreter and runs tour.sh.
-        // The internal selector is what tour.sh calls on each menu iteration.
-        if invoked_name == "tour" {
-            return Ok(CommandOutput::error(
-                "tour: invocación interna inesperada; Nwash debe ejecutar tour.sh",
-                125,
-            ));
-        }
-
         self.paths.ensure_layout()?;
         let entries = self.entries()?;
         if entries.is_empty() {
