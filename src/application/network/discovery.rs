@@ -25,6 +25,7 @@ use crate::{
 use super::{
     NetworkDiagnosticsService,
     identity::identify_mac,
+    lan_note::{LAN_NOTE_PORT, LanNote, LanNoteBus, sanitize_message},
 };
 
 const OFFLINE_MISSES: u8 = 3;
@@ -285,9 +286,19 @@ impl NetworkDiscoveryService {
     }
 
     pub fn monitor(&self, args: &[String]) -> Result<CommandOutput> {
-        let network = self.network_from_args(args, "net monitor")?;
+        let (network, publish_message) = self.monitor_options(args)?;
         let only_unknown = args.iter().any(|arg| arg == "--unknown");
         let mut terminal = self.terminal.alternate_screen()?;
+
+        let mut lan_notes: HashMap<Ipv4Addr, LanNote> = HashMap::new();
+        let (lan_bus, mut lan_error) = match LanNoteBus::bind(network) {
+            Ok(bus) => (Some(bus), None),
+            Err(error) => (
+                None,
+                Some(format!("mensajes SST no disponibles: {error}")),
+            ),
+        };
+
         let mut stable_online: HashMap<String, String> = HashMap::new();
         let mut misses: HashMap<String, u8> = HashMap::new();
         let mut last_rows: HashMap<String, ScanRow> = HashMap::new();
@@ -300,7 +311,20 @@ impl NetworkDiscoveryService {
         let mut events = Vec::new();
 
         loop {
+            if let Some(bus) = lan_bus.as_ref() {
+                if let Some(message) = publish_message.as_deref()
+                    && let Err(error) = bus.publish(message)
+                {
+                    lan_error = Some(format!("no se pudo publicar mensaje SST: {error}"));
+                }
+                bus.receive_into(&mut lan_notes);
+            }
+
             let mut rows = self.scan_rows(network)?;
+
+            if let Some(bus) = lan_bus.as_ref() {
+                bus.receive_into(&mut lan_notes);
+            }
             if only_unknown {
                 rows.retain(|row| !row.known);
             }
@@ -447,12 +471,25 @@ impl NetworkDiscoveryService {
             display_rows.sort_by_key(|(_, row)| row.ip);
 
             let mut screen = format!(
-                "SST net monitor {}{}   [q] salir · offline tras {} fallos consecutivos\n\n",
+                "SST net monitor {}{}   [q] salir · offline tras {} fallos · mensajes UDP/{}\n",
                 network,
                 if only_unknown { " --unknown" } else { "" },
                 OFFLINE_MISSES,
+                LAN_NOTE_PORT,
             );
+            if let Some(message) = publish_message.as_deref() {
+                screen.push_str(&format!(
+                    "Publicando: {}\n",
+                    shorten(message, 120)
+                ));
+            }
+            if let Some(error) = lan_error.as_deref() {
+                screen.push_str(&format!("LAN message warning: {error}\n"));
+            }
+            screen.push('\n');
             screen.push_str(&render_monitor_rows(&display_rows, &misses));
+            screen.push_str("\nMensajes SST:\n");
+            screen.push_str(&render_lan_notes(&lan_notes, &display_rows));
             screen.push_str("\nEventos recientes:\n");
 
             for event_line in &events {
@@ -602,6 +639,53 @@ impl NetworkDiscoveryService {
             .collect())
     }
 
+    fn monitor_options(&self, args: &[String]) -> Result<(Ipv4Net, Option<String>)> {
+        let mut network = None;
+        let mut message = None;
+        let mut index = 0usize;
+
+        while index < args.len() {
+            match args[index].as_str() {
+                "--unknown" => index += 1,
+                "-m" | "--message" | "--say" => {
+                    if index + 1 >= args.len() {
+                        anyhow::bail!(
+                            "net monitor: {} requiere texto; usa comillas si contiene espacios",
+                            args[index]
+                        );
+                    }
+                    let text = sanitize_message(&args[index + 1]);
+                    if text.is_empty() {
+                        anyhow::bail!("net monitor: el mensaje no puede estar vacío");
+                    }
+                    message = Some(text);
+                    index += 2;
+                }
+                value if value.starts_with('-') => {
+                    anyhow::bail!("net monitor: opción desconocida: {value}");
+                }
+                value => {
+                    if network.is_some() {
+                        anyhow::bail!("net monitor: argumento inesperado: {value}");
+                    }
+                    network = Some(value.parse::<Ipv4Net>()?);
+                    index += 1;
+                }
+            }
+        }
+
+        let network = match network {
+            Some(network) => network,
+            None => self.diagnostics.default_ipv4_network()?,
+        };
+
+        if network.prefix_len() < 20 {
+            anyhow::bail!("net monitor: el escaneo está limitado a /20 o redes más pequeñas");
+        }
+
+        Ok((network, message))
+    }
+
     fn network_from_args(&self, args: &[String], command: &str) -> Result<Ipv4Net> {
         let network = if let Some(value) = args.iter().find(|arg| !arg.starts_with('-')) {
             value.parse::<Ipv4Net>()?
@@ -655,6 +739,36 @@ fn render_scan_rows(rows: &[ScanRow]) -> String {
         ));
     }
 
+    out
+}
+
+fn render_lan_notes(
+    notes: &HashMap<Ipv4Addr, LanNote>,
+    rows: &[(String, ScanRow)],
+) -> String {
+    if notes.is_empty() {
+        return String::from("(ninguno recibido)\n");
+    }
+
+    let names = rows
+        .iter()
+        .map(|(_, row)| (row.ip, display_name(row).to_owned()))
+        .collect::<HashMap<_, _>>();
+
+    let mut ordered = notes.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|(ip, _)| **ip);
+
+    let mut out = String::new();
+    for (ip, note) in ordered {
+        let name = names.get(ip).map(String::as_str).unwrap_or("-");
+        out.push_str(&format!(
+            "{:<16} {:<28} {:<3}s  {}\n",
+            ip,
+            shorten(name, 28),
+            note.last_seen.elapsed().as_secs(),
+            note.message
+        ));
+    }
     out
 }
 
