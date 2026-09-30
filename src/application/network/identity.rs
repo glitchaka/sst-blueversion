@@ -112,7 +112,9 @@ fn parse_registry(text: &str, prefix_len: usize) -> HashMap<String, String> {
         let assignment = fields[1]
             .trim()
             .trim_start_matches('\u{feff}')
-            .replace([':', '-', '.'], "")
+            .chars()
+            .filter(|ch| ch.is_ascii_hexdigit())
+            .collect::<String>()
             .to_ascii_uppercase();
 
         if assignment.eq_ignore_ascii_case("Assignment")
