@@ -25,6 +25,9 @@ impl DeviceService {
     }
 
     pub fn execute(&self, args: &[String]) -> Result<CommandOutput> {
+        if args.first().is_some_and(|a| matches!(a.as_str(), "help" | "--help" | "-h")) {
+            return Ok(CommandOutput::ok("device — inventario local por MAC\nuso:\n  device list [--json|--csv]\n  device show MAC|NOMBRE\n  device add MAC NOMBRE [--note TEXTO]\n  device remove MAC\n  device unknown [--json|--csv]\n  device path\n"));
+        }
         match args.first().map(String::as_str).unwrap_or("list") {
             "list" => self.list(args.get(1..).unwrap_or_default()),
             "show" => self.show(args.get(1..).unwrap_or_default()),
