@@ -57,6 +57,21 @@ alias cls='clear'
 # export SST_URLHAUS_AUTH_KEY='...'
 "#;
 
+const TOUR_SCRIPT: &str = include_str!("../../../tour.sh");
+const TOUR_EXAMPLES: &[(&str, &str)] = &[
+    ("README.md", include_str!("../../../examples/README.md")),
+    ("01-language-tour.sh", include_str!("../../../examples/01-language-tour.sh")),
+    ("02-windows-operator-report.sh", include_str!("../../../examples/02-windows-operator-report.sh")),
+    ("03-network-discovery.sh", include_str!("../../../examples/03-network-discovery.sh")),
+    ("04-jobs-and-coproc.sh", include_str!("../../../examples/04-jobs-and-coproc.sh")),
+    ("05-pipelines-and-text.sh", include_str!("../../../examples/05-pipelines-and-text.sh")),
+    ("06-security-triage.sh", include_str!("../../../examples/06-security-triage.sh")),
+    ("07-operator-console.sh", include_str!("../../../examples/07-operator-console.sh")),
+    ("08-config-and-backgrounds.sh", include_str!("../../../examples/08-config-and-backgrounds.sh")),
+    ("09-advanced-bash.sh", include_str!("../../../examples/09-advanced-bash.sh")),
+    ("10-full-showcase.sh", include_str!("../../../examples/10-full-showcase.sh")),
+];
+
 const DEFAULT_SECURITY_SOURCES: &str = r#"# SST security intelligence source registry
 # Editable sin recompilar SST. No guardar API keys aquí.
 
@@ -154,6 +169,7 @@ impl AppPaths {
         fs::create_dir_all(self.data_dir())?;
         fs::create_dir_all(self.intel_dir())?;
         fs::create_dir_all(self.bg_dir())?;
+        self.ensure_tour_assets()?;
 
         let config = self.config_file();
         if !config.exists() {
@@ -396,6 +412,35 @@ impl AppPaths {
         }
 
         Ok(config)
+    }
+
+    pub fn examples_dir(&self) -> PathBuf {
+        self.root.join("examples")
+    }
+
+    pub fn tour_file(&self) -> PathBuf {
+        self.root.join("tour.sh")
+    }
+
+    fn ensure_tour_assets(&self) -> Result<()> {
+        let examples = self.examples_dir();
+        fs::create_dir_all(&examples)?;
+
+        for (name, contents) in TOUR_EXAMPLES {
+            let path = examples.join(name);
+            if !path.is_file() {
+                fs::write(&path, contents)
+                    .with_context(|| format!("No se pudo crear {}", path.display()))?;
+            }
+        }
+
+        let tour = self.tour_file();
+        if !tour.is_file() {
+            fs::write(&tour, TOUR_SCRIPT)
+                .with_context(|| format!("No se pudo crear {}", tour.display()))?;
+        }
+
+        Ok(())
     }
 
     pub fn background_images(&self) -> Result<Vec<PathBuf>> {
