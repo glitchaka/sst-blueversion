@@ -51,18 +51,6 @@ fn main() {
         return;
     }
     #[cfg(windows)]
-    if args.first().map(String::as_str) == Some("--legacy-gui") {
-        if let Err(error) = presentation::gui::run() {
-            let message = format!("Shell Shock Tool (legacy GUI) no pudo iniciarse: {error}");
-            let text: Vec<u16> = message.encode_utf16().chain(Some(0)).collect();
-            unsafe { windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW(
-                std::ptr::null_mut(), text.as_ptr(), text.as_ptr(),
-                windows_sys::Win32::UI::WindowsAndMessaging::MB_ICONERROR); }
-            std::process::exit(1);
-        }
-        return;
-    }
-    #[cfg(windows)]
     unsafe {
         use windows_sys::Win32::{Foundation::INVALID_HANDLE_VALUE, System::Console::*};
         let handle = GetStdHandle(STD_OUTPUT_HANDLE);
