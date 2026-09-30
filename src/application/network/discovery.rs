@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::Result;
-use chrono::Utc;
+use chrono::{Local, Utc};
 use dns_lookup::lookup_addr;
 use ipnet::Ipv4Net;
 use serde::Serialize;
@@ -442,9 +442,9 @@ impl NetworkDiscoveryService {
             let mut display_rows = last_rows
                 .iter()
                 .filter(|(id, _)| stable_online.contains_key(id.as_str()))
-                .map(|(_, row)| row.clone())
+                .map(|(id, row)| (id.clone(), row.clone()))
                 .collect::<Vec<_>>();
-            display_rows.sort_by_key(|row| row.ip);
+            display_rows.sort_by_key(|(_, row)| row.ip);
 
             let mut screen = format!(
                 "SST net monitor {}{}   [q] salir · offline tras {} fallos consecutivos\n\n",
@@ -452,7 +452,7 @@ impl NetworkDiscoveryService {
                 if only_unknown { " --unknown" } else { "" },
                 OFFLINE_MISSES,
             );
-            screen.push_str(&render_scan_rows(&display_rows));
+            screen.push_str(&render_monitor_rows(&display_rows, &misses));
             screen.push_str("\nEventos recientes:\n");
 
             for event_line in &events {
@@ -478,6 +478,9 @@ impl NetworkDiscoveryService {
 
     pub fn presence(&self, args: &[String]) -> Result<CommandOutput> {
         let mut records = self.presence.all()?;
+        for record in &mut records {
+            enrich_presence_record(record);
+        }
         records.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
 
         if args.iter().any(|arg| arg == "--json") {
@@ -655,6 +658,62 @@ fn render_scan_rows(rows: &[ScanRow]) -> String {
     out
 }
 
+fn render_monitor_rows(
+    rows: &[(String, ScanRow)],
+    misses: &HashMap<String, u8>,
+) -> String {
+    let mut out = String::from(
+        "IP               NOMBRE                       MAC                 TYPE           VENDOR                   VIA       RESP     STATE       INVENTORY\n",
+    );
+
+    for (id, row) in rows {
+        let inventory = row
+            .inventory_name
+            .as_deref()
+            .unwrap_or(if row.known { "known" } else { "unknown" });
+        let response = row
+            .latency_ms
+            .map(|value| format!("{value} ms"))
+            .unwrap_or_else(|| "-".to_owned());
+        let state = match misses.get(id).copied().unwrap_or(0) {
+            0 => "online".to_owned(),
+            count => format!("miss {count}/{OFFLINE_MISSES}"),
+        };
+
+        out.push_str(&format!(
+            "{:<16} {:<28} {:<19} {:<14} {:<24} {:<9} {:<8} {:<11} {}\n",
+            row.ip,
+            shorten(display_name(row), 28),
+            row.mac,
+            shorten(&row.mac_scope, 14),
+            shorten(row.vendor.as_deref().unwrap_or("-"), 24),
+            shorten(&row.discovery, 9),
+            response,
+            state,
+            inventory
+        ));
+    }
+
+    out
+}
+
+fn enrich_presence_record(record: &mut PresenceRecord) {
+    if record.mac.starts_with("??") {
+        if record.mac_scope.is_empty() {
+            record.mac_scope = "unknown".to_owned();
+        }
+        return;
+    }
+
+    let identity = identify_mac(&record.mac);
+    if record.mac_scope.is_empty() {
+        record.mac_scope = identity.scope;
+    }
+    if record.vendor.is_none() {
+        record.vendor = identity.vendor;
+    }
+}
+
 fn scan_identity(row: &ScanRow) -> String {
     if row.mac.starts_with("??") {
         format!("ip:{}", row.ip)
@@ -683,5 +742,5 @@ fn push_event(events: &mut Vec<String>, event: String) {
 }
 
 fn timestamp_short() -> String {
-    Utc::now().format("[%H:%M:%S]").to_string()
+    Local::now().format("[%H:%M:%S]").to_string()
 }
