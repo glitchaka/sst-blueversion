@@ -101,6 +101,7 @@ impl NetworkProviderService {
         let secret_env = options::value(args, "--secret-env").map(str::to_owned);
         let community_env = options::value(args, "--community-env").map(str::to_owned);
 
+        let has_credentials = community_env.is_some() || secret_env.is_some() || user_env.is_some();
         let mut providers = self.repository.all()?;
 
         if let Some(existing) = providers.iter_mut().find(|provider| provider.name == *name) {
@@ -127,7 +128,7 @@ impl NetworkProviderService {
         Ok(CommandOutput::ok(format!(
             "provider saved: {} type={} host={} credentials={}\n",
             name, kind, host,
-            if community_env.is_some() || secret_env.is_some() { "env" } else { "none" }
+            if has_credentials { "env" } else { "none" }
         )))
     }
 
