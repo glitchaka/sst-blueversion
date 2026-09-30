@@ -1032,17 +1032,16 @@ Ya existe una primera implementación de:
 - perfiles de gateway para `net usage`;
 - inventario de presencia de LAN;
 - resolución MAC → switch → puerto mediante SNMP read-only;
-- editor modal tipo Vim escrito en Rust;
+- editor modal integrado basado en Helix 25.07.1, con PTY, runtime, tema, portapapeles y configuración SST;
 - ETW de bytes/s por PID y detección foreground/background;
 - ayuda jerárquica de `net`, `device`, `domain`, `switch` y `diag`;
 - builtins Nwash Windows: `eventlog`, `service`, `registry`, `process`, `acl`, `pnp`, `task`, `session`, `share`, `firewall` y `power`;
 - perfiles de proveedores con referencias a credenciales mediante variables de entorno;
 - `net usage` con backend HTTP JSON normalizado y filtrado por IP/MAC/top;
-- verificación Authenticode y filtro `net traffic --unsigned`.
+- verificación Authenticode y filtro `net traffic --unsigned`;
+- utilidades de archivo pesadas integradas: `tar`, `gzip/gunzip`, `zip/unzip`.
 
 Pendiente dentro del alcance inicial:
 
 
-- mayor compatibilidad Vim;
-- proveedores adicionales de switch/controlador;
-- completar utilidades Unix de mayor peso cuando sean necesarias.
+- proveedores adicionales de switch/controlador cuando exista hardware/API objetivo documentado.
