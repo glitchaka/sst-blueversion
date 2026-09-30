@@ -582,7 +582,7 @@ impl TerminalModel {
     }
 
     fn has_selection(&self) -> bool {
-        self.selection.is_some_and(|(a, b)| a != b)
+        self.selection.is_some_and(|(start, end)| end > start)
     }
 
     fn selected_text(&self) -> String {
@@ -599,7 +599,7 @@ impl TerminalModel {
             let mut selected = false;
             for col in 0..cols {
                 let index = row as usize * cols as usize + col as usize;
-                if index < start || index > end {
+                if index < start || index >= end {
                     continue;
                 }
                 selected = true;
@@ -798,9 +798,15 @@ impl TerminalModel {
         self.last_click = Some((now, index));
 
         self.selection = match self.click_count {
-            2 => Some(self.word_bounds(index)),
-            3 => Some(self.line_bounds(index)),
-            _ => Some((index, index)),
+            2 => {
+                let (start, end) = self.word_bounds(index);
+                Some((start, end.saturating_add(1)))
+            }
+            3 => {
+                let (start, end) = self.line_bounds(index);
+                Some((start, end.saturating_add(1)))
+            }
+            _ => Some((index, index.saturating_add(1))),
         };
         self.dragging = self.click_count == 1;
         self.dirty = true;
@@ -811,14 +817,21 @@ impl TerminalModel {
             return;
         }
         let index = self.cell_at_logical(x, y);
-        if let Some((start, _)) = self.selection {
-            self.selection = Some((start, index));
+        if let Some((anchor_start, anchor_end)) = self.selection {
+            let anchor = if anchor_end == anchor_start.saturating_add(1) {
+                anchor_start
+            } else {
+                anchor_start.min(anchor_end)
+            };
+            let end = index.saturating_add(1);
+            self.selection = Some((anchor.min(end), anchor.max(end)));
             self.dirty = true;
         }
     }
 
-    fn pointer_up(&mut self) {
+    fn pointer_up(&mut self) -> bool {
         self.dragging = false;
+        self.copy_selection()
     }
 
     fn copy_selection(&self) -> bool {
@@ -903,7 +916,7 @@ impl TerminalModel {
 
                     let index = row as usize * cols as usize + col as usize;
                     if selection
-                        .is_some_and(|(a, b)| index >= a.min(b) && index <= a.max(b))
+                        .is_some_and(|(a, b)| index >= a.min(b) && index < a.max(b))
                     {
                         fg = Rgb(255, 255, 255);
                         bg = SELECTION;
@@ -1164,7 +1177,7 @@ fn handle_key(
         return;
     }
 
-    if ctrl && shift && copy_key {
+    if ctrl && shift && copy_key && model.has_selection() {
         let _ = model.copy_selection();
         return;
     }
@@ -1514,7 +1527,7 @@ pub fn run() -> Result<()> {
                     model.paste(&value);
                 }
             } else {
-                model.pointer_up();
+                let _ = model.pointer_up();
             }
         });
     }
