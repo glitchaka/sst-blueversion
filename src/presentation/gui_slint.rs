@@ -31,7 +31,7 @@ use windows_sys::Win32::{
     System::LibraryLoader::{GetModuleHandleW, GetProcAddress},
     UI::{
         Controls::MARGINS,
-        WindowsAndMessaging::GetForegroundWindow,
+        WindowsAndMessaging::{GetForegroundWindow, IsIconic, IsZoomed},
     },
 };
 
@@ -369,22 +369,8 @@ fn parse_rgb(value: &str) -> Result<Rgb> {
     ))
 }
 
-fn load_background_image(paths: &AppPaths, appearance: &TerminalAppearance) -> Result<Option<Image>> {
-    let raw = appearance.background_image.trim();
-    if raw.is_empty() {
-        return Ok(None);
-    }
-
-    let configured = std::path::PathBuf::from(raw);
-    let path = if configured.is_absolute() {
-        configured
-    } else {
-        // Las rutas relativas de SST_BACKGROUND_IMAGE se resuelven respecto
-        // de la carpeta que contiene sst.exe, tal como documenta sstrc.
-        paths.root_dir().join(configured)
-    };
-
-    let decoded = image::open(&path)
+fn load_background_path(path: &std::path::Path) -> Result<Image> {
+    let decoded = image::open(path)
         .with_context(|| format!("No se pudo cargar la imagen de fondo {}", path.display()))?
         .into_rgba8();
     let buffer = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
@@ -392,7 +378,103 @@ fn load_background_image(paths: &AppPaths, appearance: &TerminalAppearance) -> R
         decoded.width(),
         decoded.height(),
     );
-    Ok(Some(Image::from_rgba8(buffer)))
+    Ok(Image::from_rgba8(buffer))
+}
+
+fn configured_background_path(
+    paths: &AppPaths,
+    appearance: &TerminalAppearance,
+) -> Option<std::path::PathBuf> {
+    if appearance.background_mode == "off" {
+        return None;
+    }
+    let raw = appearance.background_image.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let configured = std::path::PathBuf::from(raw);
+    Some(if configured.is_absolute() {
+        configured
+    } else {
+        paths.root_dir().join(configured)
+    })
+}
+
+fn load_background_image(paths: &AppPaths, appearance: &TerminalAppearance) -> Result<Option<Image>> {
+    configured_background_path(paths, appearance)
+        .map(|path| load_background_path(&path))
+        .transpose()
+}
+
+struct BackgroundCarousel {
+    images: Vec<std::path::PathBuf>,
+    index: usize,
+    last_change: Instant,
+    last_raw: Option<bool>,
+    last_window_state: Option<(bool, bool)>,
+}
+
+impl BackgroundCarousel {
+    fn new(paths: &AppPaths, appearance: &TerminalAppearance) -> Result<Self> {
+        let images = paths.background_images()?;
+        let configured_name = configured_background_path(paths, appearance)
+            .and_then(|path| path.file_name().map(|name| name.to_owned()));
+        let index = configured_name
+            .as_ref()
+            .and_then(|name| {
+                images.iter().position(|path| {
+                    path.file_name()
+                        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name))
+                })
+            })
+            .unwrap_or(0);
+
+        Ok(Self {
+            images,
+            index,
+            last_change: Instant::now(),
+            last_raw: None,
+            last_window_state: None,
+        })
+    }
+
+    fn current_path(&self) -> Option<&std::path::Path> {
+        self.images.get(self.index).map(std::path::PathBuf::as_path)
+    }
+
+    fn observe(
+        &mut self,
+        raw: bool,
+        window_state: Option<(bool, bool)>,
+        interval: Duration,
+    ) -> bool {
+        let raw_changed = self
+            .last_raw
+            .replace(raw)
+            .is_some_and(|previous| previous != raw);
+
+        let window_changed = match window_state {
+            Some(state) => self
+                .last_window_state
+                .replace(state)
+                .is_some_and(|previous| previous != state),
+            None => false,
+        };
+
+        let timed = self.last_change.elapsed() >= interval;
+        self.images.len() > 1 && (raw_changed || window_changed || timed)
+    }
+
+    fn rotate(&mut self) -> Option<std::path::PathBuf> {
+        if self.images.is_empty() {
+            return None;
+        }
+        if self.images.len() > 1 {
+            self.index = (self.index + 1) % self.images.len();
+        }
+        self.last_change = Instant::now();
+        self.current_path().map(std::path::Path::to_path_buf)
+    }
 }
 
 fn background_image_opacity(appearance: &TerminalAppearance, focused: bool) -> f32 {
@@ -1371,7 +1453,16 @@ pub fn run() -> Result<()> {
     let paths = AppPaths::detect();
     paths.ensure_layout()?;
     let appearance = paths.load_appearance()?;
-    let background_image = load_background_image(&paths, &appearance)?;
+    let initial_carousel = BackgroundCarousel::new(&paths, &appearance)?;
+    let background_image = if appearance.background_mode == "carrousel" {
+        initial_carousel
+            .current_path()
+            .map(load_background_path)
+            .transpose()?
+    } else {
+        load_background_image(&paths, &appearance)?
+    };
+    let carousel_state = Rc::new(RefCell::new(initial_carousel));
     let appearance_state = Rc::new(RefCell::new(appearance.clone()));
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new_all()));
@@ -1457,6 +1548,7 @@ pub fn run() -> Result<()> {
         let last_status = last_status.clone();
         let last_focus = last_focus.clone();
         let appearance_state = appearance_state.clone();
+        let carousel_state = carousel_state.clone();
         let paths = paths.clone();
 
         timer.start(TimerMode::Repeated, Duration::from_millis(16), move || {
@@ -1475,11 +1567,19 @@ pub fn run() -> Result<()> {
             if reload_requested {
                 match paths.load_appearance()
                     .and_then(|next| {
-                        let image = load_background_image(&paths, &next)?;
-                        Ok((next, image))
+                        let carousel = BackgroundCarousel::new(&paths, &next)?;
+                        let image = if next.background_mode == "carrousel" {
+                            carousel
+                                .current_path()
+                                .map(load_background_path)
+                                .transpose()?
+                        } else {
+                            load_background_image(&paths, &next)?
+                        };
+                        Ok((next, image, carousel))
                     })
                 {
-                    Ok((next, image)) => {
+                    Ok((next, image, carousel)) => {
                         let focused = slint_hwnd(&ui)
                             .is_some_and(|hwnd| unsafe { GetForegroundWindow() == hwnd });
 
@@ -1491,6 +1591,7 @@ pub fn run() -> Result<()> {
 
                         model.borrow_mut().set_appearance(next.clone());
                         *appearance_state.borrow_mut() = next.clone();
+                        *carousel_state.borrow_mut() = carousel;
 
                         if let Some(hwnd) = slint_hwnd(&ui) {
                             unsafe {
@@ -1518,6 +1619,40 @@ pub fn run() -> Result<()> {
                         apply_configured_backdrop(hwnd, &appearance, focused);
                         apply_native_corner_preference(hwnd, &appearance);
                     }
+                }
+            }
+
+            {
+                let appearance = appearance_state.borrow().clone();
+                let raw = model.borrow().session.raw_mode();
+                let window_state = slint_hwnd(&ui).map(|hwnd| unsafe {
+                    (IsIconic(hwnd) != 0, IsZoomed(hwnd) != 0)
+                });
+
+                if appearance.background_mode == "carrousel" {
+                    let interval = Duration::from_secs(
+                        appearance.background_carousel_minutes.saturating_mul(60),
+                    );
+                    let should_rotate = carousel_state
+                        .borrow_mut()
+                        .observe(raw, window_state, interval);
+                    if should_rotate {
+                        if let Some(path) = carousel_state.borrow_mut().rotate() {
+                            match load_background_path(&path) {
+                                Ok(image) => ui.set_background_image(image),
+                                Err(error) => {
+                                    eprintln!(
+                                        "No se pudo cargar fondo del carrusel {}: {error}",
+                                        path.display()
+                                    );
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    let _ = carousel_state
+                        .borrow_mut()
+                        .observe(raw, window_state, Duration::from_secs(u64::MAX));
                 }
             }
 
