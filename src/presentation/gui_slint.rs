@@ -507,6 +507,7 @@ struct TerminalModel {
     font: Font,
     glyphs: HashMap<(char, u16), Glyph>,
     selection: Option<(usize, usize)>,
+    selection_anchor: Option<usize>,
     dragging: bool,
     last_click: Option<(Instant, usize)>,
     click_count: u8,
@@ -531,6 +532,7 @@ impl TerminalModel {
             font,
             glyphs: HashMap::new(),
             selection: None,
+            selection_anchor: None,
             dragging: false,
             last_click: None,
             click_count: 0,
@@ -557,6 +559,7 @@ impl TerminalModel {
     fn input(&mut self, bytes: &[u8]) {
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
+        self.selection_anchor = None;
         self.cursor_on = true;
         self.blink = Instant::now();
         self.dirty = true;
@@ -566,6 +569,7 @@ impl TerminalModel {
     fn key_event(&mut self, code: CtKeyCode, modifiers: CtKeyModifiers) {
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
+        self.selection_anchor = None;
         self.cursor_on = true;
         self.blink = Instant::now();
         self.dirty = true;
@@ -575,6 +579,7 @@ impl TerminalModel {
     fn paste(&mut self, text: &str) {
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
+        self.selection_anchor = None;
         self.cursor_on = true;
         self.blink = Instant::now();
         self.dirty = true;
@@ -664,6 +669,7 @@ impl TerminalModel {
             self.parser.screen_mut().set_size(rows, cols);
             self.session.resize(cols, rows);
             self.selection = None;
+            self.selection_anchor = None;
         }
         self.glyphs.clear();
         self.dirty = true;
@@ -809,6 +815,7 @@ impl TerminalModel {
             _ => Some((index, index.saturating_add(1))),
         };
         self.dragging = self.click_count == 1;
+        self.selection_anchor = self.dragging.then_some(index);
         self.dirty = true;
     }
 
@@ -817,20 +824,20 @@ impl TerminalModel {
             return;
         }
         let index = self.cell_at_logical(x, y);
-        if let Some((anchor_start, anchor_end)) = self.selection {
-            let anchor = if anchor_end == anchor_start.saturating_add(1) {
-                anchor_start
+        if let Some(anchor) = self.selection_anchor {
+            let (start, end) = if index >= anchor {
+                (anchor, index.saturating_add(1))
             } else {
-                anchor_start.min(anchor_end)
+                (index, anchor.saturating_add(1))
             };
-            let end = index.saturating_add(1);
-            self.selection = Some((anchor.min(end), anchor.max(end)));
+            self.selection = Some((start, end));
             self.dirty = true;
         }
     }
 
     fn pointer_up(&mut self) -> bool {
         self.dragging = false;
+        self.selection_anchor = None;
         self.copy_selection()
     }
 
@@ -858,6 +865,7 @@ impl TerminalModel {
             .screen_mut()
             .set_scrollback((current + rows).max(0) as usize);
         self.selection = None;
+        self.selection_anchor = None;
         self.dirty = true;
     }
 
@@ -1170,15 +1178,34 @@ fn handle_key(
         return;
     }
 
-    let copy_key = text.eq_ignore_ascii_case("c") || text == "\u{3}";
+    let copy_key = text.eq_ignore_ascii_case("c");
+    let control_c = text == "\u{3}";
 
-    if ctrl && copy_key && model.has_selection() {
+    if model.has_selection() && ((ctrl && copy_key) || control_c) {
         let _ = model.copy_selection();
         return;
     }
 
     if ctrl && shift && copy_key && model.has_selection() {
         let _ = model.copy_selection();
+        return;
+    }
+
+    // Slint/Windows may deliver Ctrl+C as ETX (0x03) without control=true.
+    // With no selection it must remain a terminal interrupt.
+    if control_c && !model.has_selection() {
+        if model.session.raw_mode() {
+            let _ = model.session.send_raw_key(CtKeyEvent::new(
+                CtKeyCode::Char('c'),
+                CtKeyModifiers::CONTROL,
+            ));
+            model.parser.screen_mut().set_scrollback(0);
+            model.selection = None;
+            model.selection_anchor = None;
+            model.dirty = true;
+        } else {
+            model.input(b"\x03");
+        }
         return;
     }
 
@@ -1242,6 +1269,7 @@ fn handle_key(
             let _ = model.session.send_raw_key(CtKeyEvent::new(code, modifiers));
             model.parser.screen_mut().set_scrollback(0);
             model.selection = None;
+            model.selection_anchor = None;
             model.dirty = true;
         }
         return;
