@@ -72,6 +72,7 @@ impl SystemService {
             "why" => self.security.why(&args[1..]),
             "diff" => self.security.diff(&args[1..]),
             "suspicious" => self.security.suspicious(),
+            "safe" => self.security.safe(&args[1..]),
             "persistence" => self.security.persistence(),
             "suspend" => broker_process(crate::core::broker::Operation::Suspend, &args[1..]),
             "resume" => broker_process(crate::core::broker::Operation::Resume, &args[1..]),
