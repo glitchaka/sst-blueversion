@@ -71,7 +71,6 @@ struct Install {
     config: PathBuf,
     launcher: PathBuf,
     helix_appdata: PathBuf,
-    user_dictionary: PathBuf,
 }
 
 impl TextEditor for HelixSstEditor {
@@ -181,7 +180,6 @@ fn ensure_installed() -> Result<Install> {
         config,
         launcher,
         helix_appdata,
-        user_dictionary,
     })
 }
 
