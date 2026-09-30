@@ -679,10 +679,10 @@ impl SecurityTriageService {
         )?;
         let mut out = format!("intel cache: {expired} entrada(s) expirada(s) eliminada(s)\n");
         for source in sources.into_iter().filter(|source| source.enabled) {
-            let auth = match source.auth_env.as_deref() {
-                Some(name) if env::var_os(name).is_some() => "ready",
-                Some(_) => "missing-auth",
-                None => "no-auth",
+            let auth = match source_auth(&source, &self.paths) {
+                Ok(Some(_)) => "ready",
+                Ok(None) => "no-auth",
+                Err(_) => "missing-auth",
             };
             let capability = match source.adapter.as_str() {
                 "abusech_hash" | "abusech_ioc" | "abusech_url" => "live-lookup",
@@ -724,7 +724,7 @@ impl SecurityTriageService {
                 continue;
             }
 
-            match query_intel_source(&source, indicator) {
+            match query_intel_source(&source, indicator, &self.paths) {
                 Ok(Some(verdict)) => {
                     store_intel_cache(&conn, indicator, &source, &verdict, now)?;
                     out.push_str(&format!("{}: {} (live)\n", source.id, verdict));
@@ -1338,11 +1338,15 @@ fn store_intel_cache(
     Ok(())
 }
 
-fn query_intel_source(source: &SecuritySource, indicator: &str) -> Result<Option<String>> {
+fn query_intel_source(
+    source: &SecuritySource,
+    indicator: &str,
+    paths: &AppPaths,
+) -> Result<Option<String>> {
     match source.adapter.as_str() {
-        "abusech_hash" => query_abusech_hash(source, indicator),
-        "abusech_ioc" => query_abusech_ioc(source, indicator),
-        "abusech_url" => query_abusech_url(source, indicator),
+        "abusech_hash" => query_abusech_hash(source, indicator, paths),
+        "abusech_ioc" => query_abusech_ioc(source, indicator, paths),
+        "abusech_url" => query_abusech_url(source, indicator, paths),
         "behavior_catalog" => Ok(None),
         adapter => anyhow::bail!("adaptador no soportado: {adapter}"),
     }
@@ -1376,16 +1380,38 @@ fn curl_json_post(
     serde_json::from_slice(&output.stdout).context("respuesta JSON inválida")
 }
 
-fn source_auth(source: &SecuritySource) -> Result<Option<String>> {
-    let Some(name) = source.auth_env.as_deref() else { return Ok(None); };
-    env::var(name).map(Some).with_context(|| format!("falta variable de autenticación {name}"))
+fn source_auth(source: &SecuritySource, paths: &AppPaths) -> Result<Option<String>> {
+    let Some(name) = source.auth_env.as_deref() else {
+        return Ok(None);
+    };
+
+    if let Ok(value) = env::var(name)
+        && !value.trim().is_empty()
+    {
+        return Ok(Some(value));
+    }
+
+    if let Some(value) = paths.config_value(name)?
+        && !value.trim().is_empty()
+    {
+        return Ok(Some(value));
+    }
+
+    anyhow::bail!(
+        "falta credencial {name}; defínela en el entorno o en {}",
+        paths.config_file().display()
+    )
 }
 
-fn query_abusech_hash(source: &SecuritySource, indicator: &str) -> Result<Option<String>> {
+fn query_abusech_hash(
+    source: &SecuritySource,
+    indicator: &str,
+    paths: &AppPaths,
+) -> Result<Option<String>> {
     if !is_hash_indicator(indicator) {
         return Ok(None);
     }
-    let auth = source_auth(source)?;
+    let auth = source_auth(source, paths)?;
     let json = curl_json_post(
         &source.endpoint,
         auth.as_deref().map(|key| ("Auth-Key", key)),
@@ -1405,8 +1431,12 @@ fn query_abusech_hash(source: &SecuritySource, indicator: &str) -> Result<Option
     }
 }
 
-fn query_abusech_ioc(source: &SecuritySource, indicator: &str) -> Result<Option<String>> {
-    let auth = source_auth(source)?;
+fn query_abusech_ioc(
+    source: &SecuritySource,
+    indicator: &str,
+    paths: &AppPaths,
+) -> Result<Option<String>> {
+    let auth = source_auth(source, paths)?;
     let json = curl_json_post(
         &source.endpoint,
         auth.as_deref().map(|key| ("Auth-Key", key)),
@@ -1428,8 +1458,12 @@ fn query_abusech_ioc(source: &SecuritySource, indicator: &str) -> Result<Option<
     }
 }
 
-fn query_abusech_url(source: &SecuritySource, indicator: &str) -> Result<Option<String>> {
-    let auth = source_auth(source)?;
+fn query_abusech_url(
+    source: &SecuritySource,
+    indicator: &str,
+    paths: &AppPaths,
+) -> Result<Option<String>> {
+    let auth = source_auth(source, paths)?;
     let (endpoint, field) = if is_hash_indicator(indicator) {
         (format!("{}/v1/payload/", source.endpoint.trim_end_matches('/')), "sha256_hash")
     } else if indicator.starts_with("http://") || indicator.starts_with("https://") {
