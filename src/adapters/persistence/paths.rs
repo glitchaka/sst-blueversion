@@ -199,7 +199,16 @@ impl AppPaths {
                 line.starts_with("SST_BACKGROUND_MODE=")
                     || line.starts_with("export SST_BACKGROUND_MODE=")
             }) {
-                text.push_str("\n# Gestión de fondos: off | fixed | carrousel\nSST_BACKGROUND_MODE='off'\n");
+                let legacy_mode = if assignment_value(&text, "SST_BACKGROUND_IMAGE")
+                    .is_some_and(|value| !value.trim().is_empty())
+                {
+                    "fixed"
+                } else {
+                    "off"
+                };
+                text.push_str(&format!(
+                    "\n# Gestión de fondos: off | fixed | carrousel\nSST_BACKGROUND_MODE='{legacy_mode}'\n"
+                ));
             }
             if !text.lines().any(|line| {
                 let line = line.trim_start();
