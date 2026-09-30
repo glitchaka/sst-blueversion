@@ -24,7 +24,7 @@ El ejecutable se genera en:
 target\release\sst.exe
 ```
 
-Durante la compilación, `build.rs` incorpora la Nerd Font y el paquete oficial de Helix utilizados por la aplicación. Para compilaciones sin Internet pueden definirse:
+Durante la compilación, `build.rs` incorpora la Nerd Font, el paquete oficial de Helix y el diccionario ortográfico es-CL utilizados por la aplicación. Para compilaciones sin Internet pueden definirse:
 
 ```text
 SST_NERD_FONT_FILE
@@ -62,7 +62,6 @@ Esta documentación refleja el código actual, incluidos estos cambios:
 - **`intel update` y caché TTL:** limpia entradas expiradas y muestra el estado/capacidad de las fuentes habilitadas.
 - **Terminal Slint:** restaurada y ampliada la selección/copia; arrastre, doble clic por palabra, triple clic por línea, `Ctrl+C` contextual, `Ctrl+Shift+C/V`, `Ctrl+Insert`, `Shift+Insert` y clic derecho contextual.
 - **Helix-SST 0.2.0:** tema Gruvbox Dark, corrector ortográfico offline es-CL para texto/Markdown, sugerencias con `F2` y `Alt+d` para insertar `—`.
-- **Diccionario personal de Helix-SST:** capacidad interna persistente; su archivo queda excluido del repositorio.
 - **Nwash Windows:** están registrados y exportados `eventlog`, `service`, `registry`, `process`, `acl`, `pnp`, `task`, `session`, `share`, `firewall` y `power`.
 - **Integridad de terminal:** restaurados `AlternateScreenGuard` y `output_sender()`, requeridos por consumidores reales del editor/TUI.
 - **Correcciones de integración:** corregidos el escape Authenticode y el mensaje de formato del backend de `net usage`.
@@ -83,11 +82,11 @@ Esta documentación refleja el código actual, incluidos estos cambios:
 | `sudo` / `runas` | Elevación Administrador → SYSTEM → TrustedInstaller | `sudo --status` |
 | `eventlog` | Windows Event Log | `eventlog read System --count 20` |
 | `service` | Control de servicios | `service restart Spooler` |
-| `registry` | Lectura/escritura/import/export de Registro | `registry get "HKLM\\SOFTWARE"` |
+| `registry` | Lectura/escritura/import/export de Registro | `registry get "HKLM\SOFTWARE"` |
 | `process` | Listado, detalle, árbol y terminación | `process tree 1234` |
-| `acl` | ACL NTFS | `acl show C:\\Datos` |
+| `acl` | ACL NTFS | `acl show C:\Datos` |
 | `pnp` | Dispositivos Plug and Play | `pnp list --problem` |
-| `task` | Tareas programadas | `task show "\\MiTarea"` |
+| `task` | Tareas programadas | `task show "\MiTarea"` |
 | `session` | Sesiones locales/RDP | `session users` |
 | `share` | Recursos SMB | `share list` |
 | `firewall` | Perfiles/reglas de Windows Firewall | `firewall status` |
@@ -1015,7 +1014,7 @@ Estas herramientas están escritas o integradas dentro de SST y no requieren ins
 | `tee` | Copia stdin a archivo y stdout. | `echo hola \| tee salida.txt` |
 | `less` / `more` | Paginador interactivo. | `less app.log` |
 | `sed` | Sustitución de texto soportada por SST. | `sed "s/error/ERROR/g" app.log` |
-| `awk` | Selección simple de campos. | `awk "{print $1}" datos.txt` |
+| `awk` | Selección simple de campos. | `awk '{print $1}' datos.txt` |
 | `diff` | Compara dos archivos. | `diff antes.txt despues.txt` |
 | `sha256sum` | SHA-256. | `sha256sum instalador.exe` |
 | `base64` | Codifica/decodifica Base64. | `base64 archivo.txt` |
