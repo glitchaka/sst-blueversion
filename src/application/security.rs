@@ -315,7 +315,7 @@ impl SecurityTriageService {
             .iter()
             .map(|p| (p.pid, p.start_time))
             .collect::<Vec<_>>();
-        let learned = self.learned_lineages(&instances).unwrap_or_default();
+        let learned = self.learned_lineages().unwrap_or_default();
 
         let known_count = snapshots
             .iter()
@@ -335,7 +335,7 @@ impl SecurityTriageService {
                 normalize_install_identity(&process.exe),
                 normalize_install_identity(&parent.exe),
             );
-            if learned.get(&key).copied().unwrap_or(0) >= 1
+            if learned.get(&key).copied().unwrap_or(0) >= local_learning_threshold(process)
                 && auto_learnable_install_path(&process.exe)
                 && auto_learnable_install_path(&parent.exe)
             {
@@ -462,7 +462,7 @@ impl SecurityTriageService {
             .find(|p| p.pid == pid)
             .expect("process from same snapshot");
         let trusted = self.trusted_lineages();
-        let learned = self.learned_lineages(&instances);
+        let learned = self.learned_lineages();
         let result = assess_process_with_trust(
             snapshot,
             &snapshots,
@@ -1078,7 +1078,7 @@ impl SecurityTriageService {
             .collect::<Vec<_>>();
         let history = self.historical_parents(&instances);
         let trusted = self.trusted_lineages();
-        let learned = self.learned_lineages(&instances);
+        let learned = self.learned_lineages();
         let findings = analyze_security_with_trust(
             snapshots,
             history.as_ref().ok(),
@@ -1122,18 +1122,15 @@ impl SecurityTriageService {
         Ok(profiles)
     }
 
-    fn learned_lineages(
-        &self,
-        current: &[(u32, u64)],
-    ) -> Result<HashMap<(String, String), u64>> {
+    fn learned_lineages(&self) -> Result<HashMap<(String, String), u64>> {
         let conn = self.open_db()?;
         let mut stmt = conn.prepare(
-            "SELECT child.exe, parent.exe, child.session_id, child.pid, child.start_time
+            "SELECT child.exe, parent.exe, child.session_id
              FROM process_observations child JOIN process_observations parent
              ON child.session_id = parent.session_id AND child.parent_pid = parent.pid
              AND parent.start_time <= child.start_time
              WHERE child.exe <> '' AND parent.exe <> '' AND child.observed_at >= ?1
-             GROUP BY child.exe, parent.exe, child.session_id, child.pid, child.start_time",
+             GROUP BY child.exe, parent.exe, child.session_id",
         )?;
 
         let mut sessions: HashMap<(String, String), HashSet<i64>> = HashMap::new();
@@ -1142,14 +1139,9 @@ impl SecurityTriageService {
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, i64>(2)?,
-                row.get::<_, u32>(3)?,
-                row.get::<_, u64>(4)?,
             ))
         })? {
-            let (child, parent, session_id, pid, start_time) = row?;
-            if current.contains(&(pid, start_time)) {
-                continue;
-            }
+            let (child, parent, session_id) = row?;
             let key = (
                 normalize_install_identity(&child),
                 normalize_install_identity(&parent),
@@ -1356,7 +1348,7 @@ fn assess_process_with_trust(
             .and_then(|rows| rows.get(&learned_key))
             .copied()
             .unwrap_or(0);
-        let locally_learned = learned_sessions >= 1
+        let locally_learned = learned_sessions >= local_learning_threshold(process)
             && auto_learnable_install_path(&process.exe)
             && auto_learnable_install_path(&current_parent.exe);
 
@@ -1460,6 +1452,20 @@ fn normalize_install_identity(path: &str) -> String {
     }
 
     lower
+}
+
+fn local_learning_threshold(process: &ProcessSnapshot) -> u64 {
+    // WebView2 is a host runtime intentionally created by many Microsoft Store
+    // and desktop applications. A previous local session is enough to stop
+    // treating the same installed parent relation as novel. Other installed
+    // parent/child pairs require two previous sessions.
+    if process.name.eq_ignore_ascii_case("msedgewebview2.exe")
+        && normalize_install_identity(&process.exe).contains("\\microsoft\\edgewebview\\application\\")
+    {
+        1
+    } else {
+        2
+    }
 }
 
 fn auto_learnable_install_path(path: &str) -> bool {
