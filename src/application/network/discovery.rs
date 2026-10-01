@@ -26,7 +26,10 @@ use crate::{
 use super::{
     NetworkDiagnosticsService,
     identity::identify_mac,
-    lan_note::{LAN_NOTE_PORT, LanNote, LanNoteBus, sanitize_message},
+    lan_note::{
+        LAN_NOTE_PORT, LanNote, LanNoteBus, ReceivedNote, derive_room_key,
+        normalize_room_name, sanitize_message,
+    },
 };
 
 const OFFLINE_MISSES: u8 = 3;
@@ -59,6 +62,25 @@ struct ChatHistoryEntry {
     received_at: String,
     source: Ipv4Addr,
     message: String,
+    room: Option<String>,
+    encrypted: bool,
+    private: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ChatRoom {
+    name: String,
+    key: Option<[u8; 32]>,
+}
+
+impl ChatRoom {
+    fn label(&self) -> String {
+        if self.key.is_some() {
+            format!("{} [cifrada]", self.name)
+        } else {
+            self.name.clone()
+        }
+    }
 }
 
 impl NetworkDiscoveryService {
@@ -329,6 +351,7 @@ impl NetworkDiscoveryService {
         let mut events = Vec::new();
         let mut chat_history: Vec<ChatHistoryEntry> = Vec::new();
         let mut chat_status: Option<String> = None;
+        let mut active_room: Option<ChatRoom> = None;
         let mut message_input: Option<String> = None;
         let mut display_rows: Vec<(String, ScanRow)> = Vec::new();
         let mut scan_status = String::from("iniciando");
@@ -341,7 +364,12 @@ impl NetworkDiscoveryService {
             if let Some(bus) = lan_bus.as_ref() {
                 if Instant::now() >= next_publish {
                     if let Some(message) = publish_message.as_deref() {
-                        match bus.publish(message) {
+                        let publish_result = if let Some(room) = active_room.as_ref() {
+                            bus.publish_room(&room.name, room.key.as_ref(), message)
+                        } else {
+                            bus.publish(message)
+                        };
+                        match publish_result {
                             Ok(()) => {
                                 lan_error = None;
                             }
@@ -353,7 +381,14 @@ impl NetworkDiscoveryService {
                     }
                     next_publish = Instant::now() + Duration::from_secs(3);
                 }
-                record_chat_history(&mut chat_history, bus.receive_into(&mut lan_notes));
+                record_chat_history(
+                    &mut chat_history,
+                    bus.receive_into(
+                        &mut lan_notes,
+                        active_room.as_ref().map(|room| room.name.as_str()),
+                        active_room.as_ref().and_then(|room| room.key.as_ref()),
+                    ),
+                );
             }
 
             if scan_rx.is_none() && Instant::now() >= next_scan {
@@ -363,7 +398,14 @@ impl NetworkDiscoveryService {
             }
 
             if let Some(bus) = lan_bus.as_ref() {
-                record_chat_history(&mut chat_history, bus.receive_into(&mut lan_notes));
+                record_chat_history(
+                    &mut chat_history,
+                    bus.receive_into(
+                        &mut lan_notes,
+                        active_room.as_ref().map(|room| room.name.as_str()),
+                        active_room.as_ref().and_then(|room| room.key.as_ref()),
+                    ),
+                );
             }
 
             let scan_result = match scan_rx.as_ref().map(mpsc::Receiver::try_recv) {
@@ -553,6 +595,7 @@ impl NetworkDiscoveryService {
                     &mut lan_notes,
                     &mut chat_history,
                     &mut chat_status,
+                    &mut active_room,
                     &mut lan_error,
                     &mut next_publish,
                 )?;
@@ -565,6 +608,10 @@ impl NetworkDiscoveryService {
             }
 
             if dirty {
+                let terminal_width = terminal
+                    .size()
+                    .map(|(cols, _)| cols as usize)
+                    .unwrap_or(120);
                 let screen = render_monitor_screen(
                     network,
                     only_unknown,
@@ -578,6 +625,8 @@ impl NetworkDiscoveryService {
                     &lan_notes,
                     &events,
                     chat_status.as_deref(),
+                    active_room.as_ref(),
+                    terminal_width,
                 );
 
                 terminal.clear()?;
@@ -741,6 +790,7 @@ fn handle_monitor_key(
     lan_notes: &mut HashMap<Ipv4Addr, LanNote>,
     chat_history: &mut Vec<ChatHistoryEntry>,
     chat_status: &mut Option<String>,
+    active_room: &mut Option<ChatRoom>,
     lan_error: &mut Option<String>,
     next_publish: &mut Instant,
 ) -> Result<MonitorInput> {
@@ -755,6 +805,8 @@ fn handle_monitor_key(
                         lan_notes,
                         chat_history,
                         chat_status,
+                        active_room,
+                        publish_message,
                         lan_error,
                     )?;
                 } else {
@@ -762,13 +814,25 @@ fn handle_monitor_key(
                     if !message.is_empty() {
                         *publish_message = Some(message.clone());
                         if let Some(bus) = lan_bus {
-                            if let Err(error) = bus.publish(&message) {
+                            let publish_result = if let Some(room) = active_room.as_ref() {
+                                bus.publish_room(&room.name, room.key.as_ref(), &message)
+                            } else {
+                                bus.publish(&message)
+                            };
+                            if let Err(error) = publish_result {
                                 *lan_error = Some(format!(
                                     "no se pudo publicar mensaje SST: {error}"
                                 ));
                             } else {
                                 *lan_error = None;
-                                record_chat_history(chat_history, bus.receive_into(lan_notes));
+                                record_chat_history(
+                                    chat_history,
+                                    bus.receive_into(
+                                        lan_notes,
+                                        active_room.as_ref().map(|room| room.name.as_str()),
+                                        active_room.as_ref().and_then(|room| room.key.as_ref()),
+                                    ),
+                                );
                             }
                         }
                         *next_publish = Instant::now() + Duration::from_secs(3);
@@ -814,13 +878,16 @@ fn handle_monitor_key(
 
 fn record_chat_history(
     history: &mut Vec<ChatHistoryEntry>,
-    received: Vec<(Ipv4Addr, String)>,
+    received: Vec<ReceivedNote>,
 ) {
-    for (source, message) in received {
+    for note in received {
         history.push(ChatHistoryEntry {
             received_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-            source,
-            message,
+            source: note.source,
+            message: note.message,
+            room: note.room,
+            encrypted: note.encrypted,
+            private: note.private,
         });
     }
 }
@@ -836,9 +903,19 @@ fn export_chat_lore(history: &[ChatHistoryEntry]) -> Result<String> {
         text.push_str("(sin mensajes recibidos durante esta sesión)\n");
     } else {
         for entry in history {
+            let channel = if entry.private {
+                "pm".to_owned()
+            } else if let Some(room) = entry.room.as_deref() {
+                format!("room:{room}")
+            } else {
+                "general".to_owned()
+            };
+            let encrypted = if entry.encrypted { " encrypted" } else { "" };
             text.push_str(&format!(
-                "[{}] {}  {}\n",
+                "[{}] [{}{}] {}  {}\n",
                 entry.received_at,
+                channel,
+                encrypted,
                 entry.source,
                 entry.message
             ));
@@ -854,6 +931,8 @@ fn handle_chat_command(
     lan_notes: &mut HashMap<Ipv4Addr, LanNote>,
     chat_history: &mut Vec<ChatHistoryEntry>,
     chat_status: &mut Option<String>,
+    active_room: &mut Option<ChatRoom>,
+    publish_message: &mut Option<String>,
     lan_error: &mut Option<String>,
 ) -> Result<()> {
     let name = command
@@ -862,10 +941,12 @@ fn handle_chat_command(
         .unwrap_or(command)
         .to_ascii_lowercase();
 
+    let args = command.split_whitespace().collect::<Vec<_>>();
+
     match name.as_str() {
         "::help" => {
             *chat_status = Some(
-                "::whoisalive · ::lore · ::peers · ::clear · ::help".to_owned()
+                "::whoisalive · ::room NOMBRE [CLAVE] · ::join NOMBRE [CLAVE] · ::leave · ::where · ::rooms · ::pm IP MENSAJE · ::fingerprint · ::lore · ::peers · ::clear · ::help".to_owned()
             );
         }
         "::whoisalive" => {
@@ -885,17 +966,102 @@ fn handle_chat_command(
                 *chat_status = Some("chat LAN no disponible".to_owned());
             }
         }
+        "::room" | "::join" => {
+            let Some(room_raw) = args.get(1) else {
+                *chat_status = Some("uso: ::join NOMBRE [CLAVE]".to_owned());
+                return Ok(());
+            };
+            let room = normalize_room_name(room_raw)?;
+            let key = if args.len() >= 3 {
+                Some(derive_room_key(&room, &args[2..].join(" "))?)
+            } else {
+                None
+            };
+            let encrypted = key.is_some();
+            *active_room = Some(ChatRoom {
+                name: room.clone(),
+                key,
+            });
+            lan_notes.clear();
+            *publish_message = None;
+            *chat_status = Some(if encrypted {
+                format!("sala {room} activa [cifrada]")
+            } else {
+                format!("sala {room} activa")
+            });
+        }
+        "::leave" => {
+            *active_room = None;
+            lan_notes.clear();
+            *publish_message = None;
+            *chat_status = Some("sala general activa".to_owned());
+        }
+        "::where" => {
+            *chat_status = Some(
+                active_room
+                    .as_ref()
+                    .map(|room| format!("sala actual: {}", room.label()))
+                    .unwrap_or_else(|| "sala actual: general".to_owned())
+            );
+        }
+        "::rooms" => {
+            if let Some(bus) = lan_bus {
+                let rooms = bus.seen_rooms();
+                *chat_status = Some(if rooms.is_empty() {
+                    "no se han visto salas durante esta sesión".to_owned()
+                } else {
+                    format!("salas vistas: {}", rooms.join(", "))
+                });
+            } else {
+                *chat_status = Some("chat LAN no disponible".to_owned());
+            }
+        }
+        "::pm" => {
+            if args.len() < 3 {
+                *chat_status = Some("uso: ::pm IP MENSAJE".to_owned());
+                return Ok(());
+            }
+            let Ok(ip) = args[1].parse::<Ipv4Addr>() else {
+                *chat_status = Some(format!("IP inválida: {}", args[1]));
+                return Ok(());
+            };
+            let message = args[2..].join(" ");
+            if let Some(bus) = lan_bus {
+                match bus.send_private(ip, &message) {
+                    Ok(()) => {
+                        *lan_error = None;
+                        *chat_status = Some(format!("PM cifrado enviado a {ip}"));
+                    }
+                    Err(error) => {
+                        *chat_status = Some(error.to_string());
+                    }
+                }
+            } else {
+                *chat_status = Some("chat LAN no disponible".to_owned());
+            }
+        }
+        "::fingerprint" => {
+            *chat_status = Some(if let Some(bus) = lan_bus {
+                format!("fingerprint: {}", bus.fingerprint())
+            } else {
+                "chat LAN no disponible".to_owned()
+            });
+        }
         "::lore" => {
             let path = export_chat_lore(chat_history)?;
             *chat_status = Some(format!("historial guardado en {path}"));
         }
         "::peers" => {
-            let mut peers = lan_notes.keys().map(ToString::to_string).collect::<Vec<_>>();
-            peers.sort();
+            let peers = lan_bus
+                .map(LanNoteBus::peer_addresses)
+                .unwrap_or_default();
             *chat_status = Some(if peers.is_empty() {
-                "ninguna terminal SST visible ahora".to_owned()
+                "ninguna terminal SST con identidad criptográfica conocida; usa ::whoisalive".to_owned()
             } else {
-                format!("terminales visibles: {}", peers.join(", "))
+                format!(
+                    "terminales SST: {}",
+                    peers.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
+                )
             });
         }
         "::clear" => {
@@ -1044,6 +1210,8 @@ fn render_monitor_screen(
     lan_notes: &HashMap<Ipv4Addr, LanNote>,
     events: &[String],
     chat_status: Option<&str>,
+    active_room: Option<&ChatRoom>,
+    terminal_width: usize,
 ) -> String {
     let mut screen = format!(
         "SST net monitor {}{}   [Enter] mensaje · [q/Esc] salir · scan: {} · offline tras {} fallos · UDP/{}\n",
@@ -1053,6 +1221,11 @@ fn render_monitor_screen(
         OFFLINE_MISSES,
         LAN_NOTE_PORT,
     );
+
+    let room_label = active_room
+        .map(ChatRoom::label)
+        .unwrap_or_else(|| "general".to_owned());
+    screen.push_str(&format!("Sala: {room_label}\n"));
 
     if let Some(message) = publish_message {
         screen.push_str(&format!("Publicando: {}\n", shorten(message, 120)));
@@ -1070,7 +1243,11 @@ fn render_monitor_screen(
     if let Some(status) = chat_status {
         screen.push_str(&format!("[chat] {status}\n"));
     }
-    screen.push_str(&render_lan_notes(lan_notes, display_rows));
+    screen.push_str(&render_lan_notes(
+        lan_notes,
+        display_rows,
+        terminal_width,
+    ));
     screen.push_str("\nEventos recientes:\n");
 
     for event_line in events {
@@ -1079,10 +1256,9 @@ fn render_monitor_screen(
     }
 
     if let Some(input) = message_input {
-        screen.push_str("\nMensaje> ");
-        screen.push_str(input);
-        screen.push('_');
-        screen.push_str("\n[Enter] enviar · [Esc] cancelar\n");
+        screen.push_str("\n");
+        screen.push_str(&render_wrapped_prompt("Mensaje> ", input, terminal_width));
+        screen.push_str("_\n[Enter] enviar · [Esc] cancelar\n");
     }
 
     screen
@@ -1091,6 +1267,7 @@ fn render_monitor_screen(
 fn render_lan_notes(
     notes: &HashMap<Ipv4Addr, LanNote>,
     rows: &[(String, ScanRow)],
+    terminal_width: usize,
 ) -> String {
     if notes.is_empty() {
         return String::from("(ninguno recibido)\n");
@@ -1107,13 +1284,73 @@ fn render_lan_notes(
     let mut out = String::new();
     for (ip, note) in ordered {
         let name = names.get(ip).map(String::as_str).unwrap_or("-");
-        out.push_str(&format!(
-            "{:<16} {:<28} {:<3}s  {}\n",
+        let channel = if note.private {
+            "[PM] ".to_owned()
+        } else if note.encrypted {
+            "[ENC] ".to_owned()
+        } else {
+            String::new()
+        };
+        let prefix = format!(
+            "{:<16} {:<28} {:<3}s  {}",
             ip,
             shorten(name, 28),
             note.last_seen.elapsed().as_secs(),
-            note.message
+            channel,
+        );
+        out.push_str(&wrap_with_prefix(
+            &prefix,
+            &note.message,
+            terminal_width,
         ));
+    }
+    out
+}
+
+fn wrap_with_prefix(prefix: &str, text: &str, terminal_width: usize) -> String {
+    let width = terminal_width.max(20);
+    let prefix_len = prefix.chars().count();
+    let available = width.saturating_sub(prefix_len).max(1);
+    let continuation = " ".repeat(prefix_len);
+    let chars = text.chars().collect::<Vec<_>>();
+
+    if chars.is_empty() {
+        return format!("{prefix}\n");
+    }
+
+    let mut out = String::new();
+    for (index, chunk) in chars.chunks(available).enumerate() {
+        if index == 0 {
+            out.push_str(prefix);
+        } else {
+            out.push_str(&continuation);
+        }
+        out.extend(chunk);
+        out.push('\n');
+    }
+    out
+}
+
+fn render_wrapped_prompt(prefix: &str, text: &str, terminal_width: usize) -> String {
+    let width = terminal_width.max(20);
+    let prefix_len = prefix.chars().count();
+    let available = width.saturating_sub(prefix_len).max(1);
+    let continuation = " ".repeat(prefix_len);
+    let chars = text.chars().collect::<Vec<_>>();
+
+    if chars.is_empty() {
+        return prefix.to_owned();
+    }
+
+    let mut out = String::new();
+    for (index, chunk) in chars.chunks(available).enumerate() {
+        if index == 0 {
+            out.push_str(prefix);
+        } else {
+            out.push('\n');
+            out.push_str(&continuation);
+        }
+        out.extend(chunk);
     }
     out
 }
