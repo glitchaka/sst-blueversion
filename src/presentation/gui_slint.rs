@@ -30,11 +30,11 @@ use windows_sys::Win32::{
     Graphics::Dwm::*,
     System::{
         LibraryLoader::{GetModuleHandleW, GetProcAddress},
-        Threading::GetCurrentThreadId,
+        Threading::{AttachThreadInput, GetCurrentThreadId},
     },
     UI::{
         Controls::MARGINS,
-        Input::KeyboardAndMouse::{AttachThreadInput, SetActiveWindow, SetFocus},
+        Input::KeyboardAndMouse::{SetActiveWindow, SetFocus},
         WindowsAndMessaging::{
             BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsZoomed,
             SetForegroundWindow, ShowWindow, SW_RESTORE,
