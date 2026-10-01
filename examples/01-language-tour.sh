@@ -1,4 +1,3 @@
-#!/usr/bin/env nwash
 # Tour del lenguaje Nwash/Bash dentro de SST.
 
 set -o pipefail
