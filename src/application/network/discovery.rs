@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    fs,
     net::{IpAddr, Ipv4Addr},
     sync::{Arc, Mutex, mpsc},
     thread,
@@ -51,6 +52,13 @@ struct IdentifyResult {
     discovery: Option<String>,
     response_ms: Option<u32>,
     last_seen: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ChatHistoryEntry {
+    received_at: String,
+    source: Ipv4Addr,
+    message: String,
 }
 
 impl NetworkDiscoveryService {
@@ -319,6 +327,8 @@ impl NetworkDiscoveryService {
                 ),
             };
         let mut events = Vec::new();
+        let mut chat_history: Vec<ChatHistoryEntry> = Vec::new();
+        let mut chat_status: Option<String> = None;
         let mut message_input: Option<String> = None;
         let mut display_rows: Vec<(String, ScanRow)> = Vec::new();
         let mut scan_status = String::from("iniciando");
@@ -343,7 +353,7 @@ impl NetworkDiscoveryService {
                     }
                     next_publish = Instant::now() + Duration::from_secs(3);
                 }
-                bus.receive_into(&mut lan_notes);
+                record_chat_history(&mut chat_history, bus.receive_into(&mut lan_notes));
             }
 
             if scan_rx.is_none() && Instant::now() >= next_scan {
@@ -353,7 +363,7 @@ impl NetworkDiscoveryService {
             }
 
             if let Some(bus) = lan_bus.as_ref() {
-                bus.receive_into(&mut lan_notes);
+                record_chat_history(&mut chat_history, bus.receive_into(&mut lan_notes));
             }
 
             let scan_result = match scan_rx.as_ref().map(mpsc::Receiver::try_recv) {
@@ -541,6 +551,8 @@ impl NetworkDiscoveryService {
                     &mut publish_message,
                     lan_bus.as_ref(),
                     &mut lan_notes,
+                    &mut chat_history,
+                    &mut chat_status,
                     &mut lan_error,
                     &mut next_publish,
                 )?;
@@ -565,6 +577,7 @@ impl NetworkDiscoveryService {
                     &misses,
                     &lan_notes,
                     &events,
+                    chat_status.as_deref(),
                 );
 
                 terminal.clear()?;
@@ -726,26 +739,40 @@ fn handle_monitor_key(
     publish_message: &mut Option<String>,
     lan_bus: Option<&LanNoteBus>,
     lan_notes: &mut HashMap<Ipv4Addr, LanNote>,
+    chat_history: &mut Vec<ChatHistoryEntry>,
+    chat_status: &mut Option<String>,
     lan_error: &mut Option<String>,
     next_publish: &mut Instant,
 ) -> Result<MonitorInput> {
     if let Some(input) = message_input.as_mut() {
         match key {
             TerminalKey::Enter => {
-                let message = sanitize_message(input);
-                if !message.is_empty() {
-                    *publish_message = Some(message.clone());
-                    if let Some(bus) = lan_bus {
-                        if let Err(error) = bus.publish(&message) {
-                            *lan_error = Some(format!(
-                                "no se pudo publicar mensaje SST: {error}"
-                            ));
-                        } else {
-                            *lan_error = None;
-                            bus.receive_into(lan_notes);
+                let raw = input.trim().to_owned();
+                if raw.starts_with("::") {
+                    handle_chat_command(
+                        &raw,
+                        lan_bus,
+                        lan_notes,
+                        chat_history,
+                        chat_status,
+                        lan_error,
+                    )?;
+                } else {
+                    let message = sanitize_message(&raw);
+                    if !message.is_empty() {
+                        *publish_message = Some(message.clone());
+                        if let Some(bus) = lan_bus {
+                            if let Err(error) = bus.publish(&message) {
+                                *lan_error = Some(format!(
+                                    "no se pudo publicar mensaje SST: {error}"
+                                ));
+                            } else {
+                                *lan_error = None;
+                                record_chat_history(chat_history, bus.receive_into(lan_notes));
+                            }
                         }
+                        *next_publish = Instant::now() + Duration::from_secs(3);
                     }
-                    *next_publish = Instant::now() + Duration::from_secs(3);
                 }
                 *message_input = None;
                 return Ok(MonitorInput::Redraw);
@@ -783,6 +810,108 @@ fn handle_monitor_key(
         TerminalKey::Char('q') | TerminalKey::Escape => Ok(MonitorInput::Exit),
         _ => Ok(MonitorInput::None),
     }
+}
+
+fn record_chat_history(
+    history: &mut Vec<ChatHistoryEntry>,
+    received: Vec<(Ipv4Addr, String)>,
+) {
+    for (source, message) in received {
+        history.push(ChatHistoryEntry {
+            received_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            source,
+            message,
+        });
+    }
+}
+
+fn export_chat_lore(history: &[ChatHistoryEntry]) -> Result<String> {
+    let filename = format!(
+        "sst-net-monitor-lore-{}.txt",
+        Local::now().format("%Y%m%d-%H%M%S")
+    );
+    let path = std::env::current_dir()?.join(filename);
+    let mut text = String::from("SST net monitor — historial de mensajes recibidos\n\n");
+    if history.is_empty() {
+        text.push_str("(sin mensajes recibidos durante esta sesión)\n");
+    } else {
+        for entry in history {
+            text.push_str(&format!(
+                "[{}] {}  {}\n",
+                entry.received_at,
+                entry.source,
+                entry.message
+            ));
+        }
+    }
+    fs::write(&path, text)?;
+    Ok(path.display().to_string())
+}
+
+fn handle_chat_command(
+    command: &str,
+    lan_bus: Option<&LanNoteBus>,
+    lan_notes: &mut HashMap<Ipv4Addr, LanNote>,
+    chat_history: &mut Vec<ChatHistoryEntry>,
+    chat_status: &mut Option<String>,
+    lan_error: &mut Option<String>,
+) -> Result<()> {
+    let name = command
+        .split_whitespace()
+        .next()
+        .unwrap_or(command)
+        .to_ascii_lowercase();
+
+    match name.as_str() {
+        "::help" => {
+            *chat_status = Some(
+                "::whoisalive · ::lore · ::peers · ::clear · ::help".to_owned()
+            );
+        }
+        "::whoisalive" => {
+            if let Some(bus) = lan_bus {
+                match bus.who_is_alive() {
+                    Ok(()) => {
+                        *lan_error = None;
+                        *chat_status = Some(
+                            "sondeo enviado; cada SST escuchando responderá «atrapado»".to_owned()
+                        );
+                    }
+                    Err(error) => {
+                        *lan_error = Some(format!("no se pudo enviar ::whoisalive: {error}"));
+                    }
+                }
+            } else {
+                *chat_status = Some("chat LAN no disponible".to_owned());
+            }
+        }
+        "::lore" => {
+            let path = export_chat_lore(chat_history)?;
+            *chat_status = Some(format!("historial guardado en {path}"));
+        }
+        "::peers" => {
+            let mut peers = lan_notes.keys().map(ToString::to_string).collect::<Vec<_>>();
+            peers.sort();
+            *chat_status = Some(if peers.is_empty() {
+                "ninguna terminal SST visible ahora".to_owned()
+            } else {
+                format!("terminales visibles: {}", peers.join(", "))
+            });
+        }
+        "::clear" => {
+            lan_notes.clear();
+            *chat_status = Some(
+                "mensajes visibles limpiados; ::lore conserva el historial de la sesión".to_owned()
+            );
+        }
+        _ => {
+            *chat_status = Some(format!(
+                "comando desconocido: {name}; usa ::help"
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 fn scan_rows_with(
@@ -914,6 +1043,7 @@ fn render_monitor_screen(
     misses: &HashMap<String, u8>,
     lan_notes: &HashMap<Ipv4Addr, LanNote>,
     events: &[String],
+    chat_status: Option<&str>,
 ) -> String {
     let mut screen = format!(
         "SST net monitor {}{}   [Enter] mensaje · [q/Esc] salir · scan: {} · offline tras {} fallos · UDP/{}\n",
@@ -937,6 +1067,9 @@ fn render_monitor_screen(
     screen.push('\n');
     screen.push_str(&render_monitor_rows(display_rows, misses));
     screen.push_str("\nMensajes SST:\n");
+    if let Some(status) = chat_status {
+        screen.push_str(&format!("[chat] {status}\n"));
+    }
     screen.push_str(&render_lan_notes(lan_notes, display_rows));
     screen.push_str("\nEventos recientes:\n");
 
