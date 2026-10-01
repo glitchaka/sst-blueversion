@@ -13,7 +13,7 @@ use std::{
 use anyhow::{Context, Result};
 
 #[cfg(windows)]
-use std::os::windows::{ffi::OsStrExt, io::AsRawHandle};
+use std::os::windows::{ffi::OsStrExt, io::AsRawHandle, process::CommandExt};
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError, FILETIME, HANDLE, INVALID_HANDLE_VALUE},
@@ -35,8 +35,8 @@ use windows_sys::Win32::{
         },
         Threading::{
             GetCurrentProcess, GetExitCodeProcess, GetProcessTimes, OpenProcess, OpenThread,
-            ResumeThread, SuspendThread, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-            PROCESS_TERMINATE, THREAD_SUSPEND_RESUME,
+            ResumeThread, SuspendThread, TerminateProcess, CREATE_NO_WINDOW,
+            PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, THREAD_SUSPEND_RESUME,
         },
     },
 };
@@ -794,14 +794,29 @@ impl ShellCommandHost for WindowsShellHost {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
+        #[cfg(windows)]
+        {
+            // SST owns the terminal surface. Console-subsystem children must not
+            // create a second transient console window (cmd.exe/ODT helpers, etc.).
+            // GUI-subsystem executables ignore CREATE_NO_WINDOW and can still show UI.
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
         if stdin.is_some() {
             command.stdin(Stdio::piped());
         } else {
             command.stdin(Stdio::inherit());
         }
 
-        let mut child = command.spawn()
-            .with_context(|| format!("no se pudo ejecutar {program}"))?;
+        let mut child = command.spawn().map_err(|error| {
+            if error.raw_os_error() == Some(740) {
+                anyhow::anyhow!(
+                    "{program}: Windows exige elevación para este ejecutable; usa 'sudo {program} ...'"
+                )
+            } else {
+                anyhow::anyhow!("no se pudo ejecutar {program}: {error}")
+            }
+        })?;
 
         if let (Some(bytes), Some(mut writer)) = (stdin, child.stdin.take()) {
             writer.write_all(bytes)?;
@@ -823,11 +838,15 @@ impl ShellCommandHost for WindowsShellHost {
             if child.try_wait()?.is_some() {
                 self.record_child_cpu(&child);
                 let output = child.wait_with_output()?;
-                return Ok(ExecutionResult::from_parts(
-                    String::from_utf8_lossy(&output.stdout).into_owned(),
-                    String::from_utf8_lossy(&output.stderr).into_owned(),
-                    output.status.code().unwrap_or(1),
-                ));
+                let status = output.status.code().unwrap_or(1);
+                let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+                let mut stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+                if status != 0 && stdout.trim().is_empty() && stderr.trim().is_empty() {
+                    stderr = format!(
+                        "{program}: el proceso terminó sin salida con código {status}\n"
+                    );
+                }
+                return Ok(ExecutionResult::from_parts(stdout, stderr, status));
             }
 
             std::thread::sleep(std::time::Duration::from_millis(20));
@@ -1128,6 +1147,11 @@ impl ShellCommandHost for WindowsShellHost {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+
+        #[cfg(windows)]
+        {
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
 
         let child = command.spawn()
             .with_context(|| format!("no se pudo ejecutar {program} en background"))?;
