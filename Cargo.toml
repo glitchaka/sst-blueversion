@@ -31,6 +31,10 @@ toml = "0.5"
 slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-femtovg", "compat-1-18", "raw-window-handle-06", "unstable-winit-030"] }
 fontdue = "0.9.4"
 arboard = "3.6.1"
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+rand_core = { version = "0.6", features = ["getrandom"] }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
 raw-window-handle = "0.6.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif", "ico", "tiff"] }
 
