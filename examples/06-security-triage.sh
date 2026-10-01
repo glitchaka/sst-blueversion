@@ -1,4 +1,3 @@
-#!/usr/bin/env nwash
 # Snapshot de seguridad local no destructivo.
 
 set -o pipefail
