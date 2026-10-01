@@ -1,4 +1,3 @@
-#!/usr/bin/env nwash
 # Mini ETL con las utilidades Unix integradas en SST.
 
 set -o pipefail
