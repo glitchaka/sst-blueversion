@@ -426,18 +426,24 @@ impl AppPaths {
         let examples = self.examples_dir();
         fs::create_dir_all(&examples)?;
 
+        // tour.sh and examples/ are bundled demonstration assets, not user
+        // configuration. Keep the runtime copies synchronized with the binary so
+        // rebuilding SST actually updates fixes to the tour instead of leaving
+        // stale scripts beside an older executable.
         for (name, contents) in TOUR_EXAMPLES {
             let path = examples.join(name);
-            if !path.is_file() {
+            let current = fs::read_to_string(&path).ok();
+            if current.as_deref() != Some(*contents) {
                 fs::write(&path, contents)
-                    .with_context(|| format!("No se pudo crear {}", path.display()))?;
+                    .with_context(|| format!("No se pudo actualizar {}", path.display()))?;
             }
         }
 
         let tour = self.tour_file();
-        if !tour.is_file() {
+        let current = fs::read_to_string(&tour).ok();
+        if current.as_deref() != Some(TOUR_SCRIPT) {
             fs::write(&tour, TOUR_SCRIPT)
-                .with_context(|| format!("No se pudo crear {}", tour.display()))?;
+                .with_context(|| format!("No se pudo actualizar {}", tour.display()))?;
         }
 
         Ok(())
