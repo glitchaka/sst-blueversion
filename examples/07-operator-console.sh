@@ -1,7 +1,8 @@
-# Menú interactivo construido completamente con sintaxis Bash/Nwash.
+# Panel operativo no destructivo construido con funciones Nwash.
+# En el tour se ejecuta de forma secuencial para que toda la salida quede visible.
 
 show_system() {
-    clear
+    echo "=== SISTEMA ==="
     sys fetch --small
     echo
     sys uptime
@@ -9,14 +10,16 @@ show_system() {
 }
 
 show_network() {
-    clear
+    echo
+    echo "=== RED ==="
     net interfaces
     echo
     net neighbors
 }
 
 show_devices() {
-    clear
+    echo
+    echo "=== INVENTARIO ==="
     device list
     echo
     echo "No inventariados:"
@@ -24,53 +27,22 @@ show_devices() {
 }
 
 show_security() {
-    clear
+    echo
+    echo "=== SEGURIDAD ==="
     triage
     echo
     sys suspicious
 }
 
-PS3="SST> "
-options=(
-    "Sistema"
-    "Red"
-    "Inventario"
-    "Seguridad"
-    "Fondos"
-    "Salir"
-)
-
 echo "Shell Shock Tool — Operator Console"
+show_system
+show_network
+show_devices
+show_security
 
-select option in "${options[@]}"; do
-    case "$option" in
-        Sistema)
-            show_system
-            ;;
-        Red)
-            show_network
-            ;;
-        Inventario)
-            show_devices
-            ;;
-        Seguridad)
-            show_security
-            ;;
-        Fondos)
-            clear
-            config bg
-            ;;
-        Salir)
-            break
-            ;;
-        *)
-            echo "Opción inválida"
-            ;;
-    esac
-    echo
-    echo "Pulsa Enter para continuar..."
-    read
-    clear
-done
+echo
+echo "=== FONDOS ==="
+config bg
 
-echo "Sesión de operador finalizada."
+echo
+echo "Operator Console finalizada."
