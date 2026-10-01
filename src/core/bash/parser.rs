@@ -265,21 +265,31 @@ impl Parser {
 
     fn parse_if(&mut self) -> Result<AstNode> {
         self.expect_word("if")?;
+        let node = self.parse_if_clause()?;
+        self.expect_word("fi")?;
+        Ok(node)
+    }
+
+    fn parse_if_clause(&mut self) -> Result<AstNode> {
         let condition = self.parse_list(&["then"])?;
         self.expect_word("then")?;
         self.skip_semi();
+
         let then_branch = self.parse_list(&["else", "elif", "fi"])?;
         let else_branch = if self.word_is("else") {
             self.pos += 1;
             self.skip_semi();
             Some(Box::new(self.parse_list(&["fi"])?))
         } else if self.word_is("elif") {
-            self.tokens[self.pos] = Token::Word("if".into());
-            Some(Box::new(self.parse_if()?))
+            // elif shares the same final fi with the original if. The old
+            // parser recursively called parse_if(), consumed that fi, and then
+            // the outer parser incorrectly expected a second one.
+            self.pos += 1;
+            Some(Box::new(self.parse_if_clause()?))
         } else {
             None
         };
-        self.expect_word("fi")?;
+
         Ok(AstNode::If {
             condition: Box::new(condition),
             then_branch: Box::new(then_branch),
