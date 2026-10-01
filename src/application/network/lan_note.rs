@@ -411,6 +411,13 @@ impl LanNoteBus {
                                 continue;
                             }
 
+                            if room_key.is_some() && frame.ciphertext.is_none() {
+                                continue;
+                            }
+                            if room_key.is_none() && frame.ciphertext.is_some() {
+                                continue;
+                            }
+
                             let (message, encrypted) = if let Some(ciphertext) = frame.ciphertext.as_deref() {
                                 let Some(key) = room_key else {
                                     continue;
