@@ -1,5 +1,8 @@
 use std::process::Command;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use anyhow::Result;
 use sysinfo::{Pid, System};
 
@@ -8,7 +11,17 @@ use crate::core::{CommandContext, CommandOutput};
 use super::BuiltinCommand;
 
 fn run(program: &str, args: &[String]) -> Result<CommandOutput> {
-    let output = Command::new(program).args(args).output()
+    let mut command = Command::new(program);
+    command.args(args);
+
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = command
+        .output()
         .map_err(|e| anyhow::anyhow!("{program}: no se pudo ejecutar: {e}"))?;
     Ok(CommandOutput {
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
