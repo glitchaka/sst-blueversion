@@ -378,6 +378,10 @@ impl Interpreter {
         mut next: ExecutionResult,
     ) -> Result<()> {
         if self.stream_script_output && self.capture_output_depth == 0 {
+            self.host.emit_output(&target.stdout, &target.stderr)?;
+            target.stdout.clear();
+            target.stderr.clear();
+
             self.host.emit_output(&next.stdout, &next.stderr)?;
             next.stdout.clear();
             next.stderr.clear();
