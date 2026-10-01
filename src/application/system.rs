@@ -890,7 +890,7 @@ fn fetch_logo_color(code: u8) -> Option<(u8, u8, u8)> {
     }
 }
 
-fn render_fetch_logo(small: bool) -> Vec<String> {
+fn render_fetch_logo(small: bool, color: bool) -> Vec<String> {
     let x_step = if small { 2 } else { 1 };
     let y_step = if small { 2 } else { 1 };
     let row_step = y_step * 2;
@@ -906,6 +906,16 @@ fn render_fetch_logo(small: bool) -> Vec<String> {
         for x in (0..width).step_by(x_step) {
             let top_color = fetch_logo_color(top[x]);
             let bottom_color = fetch_logo_color(bottom[x]);
+
+            if !color {
+                match (top_color, bottom_color) {
+                    (None, None) => line.push(' '),
+                    (Some(_), None) => line.push('▀'),
+                    (None, Some(_)) => line.push('▄'),
+                    (Some(_), Some(_)) => line.push('█'),
+                }
+                continue;
+            }
 
             match (top_color, bottom_color) {
                 (None, None) => line.push(' '),
@@ -941,7 +951,8 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(CommandOutput::ok(
             "fetch — muestra información del sistema con el logo de Shell Shock Tool\n\
-             uso: fetch [--small|--full]\n\
+             uso: fetch [--small|--full] [--plain|--stdout]\n\
+             --plain/--stdout: salida sin secuencias ANSI, apta para archivos y pipes\n\
              alias: neofetch, fastfetch\n",
         ));
     }
@@ -973,30 +984,48 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     };
 
     let small = args.iter().any(|arg| arg == "--small");
-    let logo = render_fetch_logo(small);
+    let plain = args.iter().any(|arg| matches!(arg.as_str(), "--plain" | "--stdout"));
+    let logo = render_fetch_logo(small, !plain);
     let logo_width = if small { 16 } else { 32 };
 
-    let title = format!(
-        "\x1b[1;38;2;6;48;185m{user}\x1b[38;2;251;242;54m@\x1b[38;2;35;52;106m{host}\x1b[0m"
-    );
-    let label = "\x1b[1;38;2;251;242;54m";
-    let reset = "\x1b[0m";
+    let info = if plain {
+        vec![
+            format!("{user}@{host}"),
+            "────────────────────────────────────────".to_owned(),
+            format!("OS: {}", truncate_fetch(&os, 58)),
+            format!("Host: {host}"),
+            format!("Kernel: {kernel}"),
+            format!("Uptime: {uptime_text}"),
+            "Shell: Shell Shock Tool / Nwash".to_owned(),
+            format!("Version: {}", env!("CARGO_PKG_VERSION")),
+            "Terminal: Shell Shock Native Terminal".to_owned(),
+            format!("CPU: {}", truncate_fetch(&cpu, 58)),
+            format!("Memory: {used:.2} GiB / {total:.2} GiB"),
+            format!("Arch: {arch}"),
+        ]
+    } else {
+        let title = format!(
+            "\x1b[1;38;2;6;48;185m{user}\x1b[38;2;251;242;54m@\x1b[38;2;35;52;106m{host}\x1b[0m"
+        );
+        let label = "\x1b[1;38;2;251;242;54m";
+        let reset = "\x1b[0m";
 
-    let info = vec![
-        title,
-        "\x1b[38;2;35;52;106m────────────────────────────────────────\x1b[0m".to_owned(),
-        format!("{label}OS:{reset} {}", truncate_fetch(&os, 58)),
-        format!("{label}Host:{reset} {host}"),
-        format!("{label}Kernel:{reset} {kernel}"),
-        format!("{label}Uptime:{reset} {uptime_text}"),
-        format!("{label}Shell:{reset} Shell Shock Tool / Nwash"),
-        format!("{label}Version:{reset} {}", env!("CARGO_PKG_VERSION")),
-        format!("{label}Terminal:{reset} Shell Shock Native Terminal"),
-        format!("{label}CPU:{reset} {}", truncate_fetch(&cpu, 58)),
-        format!("{label}Memory:{reset} {used:.2} GiB / {total:.2} GiB"),
-        format!("{label}Arch:{reset} {arch}"),
-        "\x1b[48;2;17;30;70m  \x1b[48;2;35;52;106m  \x1b[48;2;6;48;185m  \x1b[48;2;186;189;198m  \x1b[48;2;251;242;54m  \x1b[0m".to_owned(),
-    ];
+        vec![
+            title,
+            "\x1b[38;2;35;52;106m────────────────────────────────────────\x1b[0m".to_owned(),
+            format!("{label}OS:{reset} {}", truncate_fetch(&os, 58)),
+            format!("{label}Host:{reset} {host}"),
+            format!("{label}Kernel:{reset} {kernel}"),
+            format!("{label}Uptime:{reset} {uptime_text}"),
+            format!("{label}Shell:{reset} Shell Shock Tool / Nwash"),
+            format!("{label}Version:{reset} {}", env!("CARGO_PKG_VERSION")),
+            format!("{label}Terminal:{reset} Shell Shock Native Terminal"),
+            format!("{label}CPU:{reset} {}", truncate_fetch(&cpu, 58)),
+            format!("{label}Memory:{reset} {used:.2} GiB / {total:.2} GiB"),
+            format!("{label}Arch:{reset} {arch}"),
+            "\x1b[48;2;17;30;70m  \x1b[48;2;35;52;106m  \x1b[48;2;6;48;185m  \x1b[48;2;186;189;198m  \x1b[48;2;251;242;54m  \x1b[0m".to_owned(),
+        ]
+    };
 
     let rows = logo.len().max(info.len());
     let mut out = String::new();
