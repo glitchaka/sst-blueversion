@@ -3,7 +3,7 @@
 **Shell Shock Tool**, o **SST**, es una consola portable para Windows escrita en Rust. Combina una terminal Win32 propia, **Nwash** —su intérprete basado en la sintaxis y semántica portable de Bash 5.3 y adaptado deliberadamente a Windows—, utilidades Unix integradas y herramientas de soporte técnico, diagnóstico, inventario y red.
 
 
-[📘 Manual de comandos SST/Nwash](COMMANDS.md)
+[📘 Manual de comandos SST/Nwash](MANUAL.md)
 
 El ejecutable actual se llama:
 
