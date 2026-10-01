@@ -311,10 +311,6 @@ impl SecurityTriageService {
         let snapshots = collect_processes(&system, &known);
         let findings = self.analyze_security(&snapshots);
         let performance = analyze_performance(&snapshots);
-        let instances = snapshots
-            .iter()
-            .map(|p| (p.pid, p.start_time))
-            .collect::<Vec<_>>();
         let learned = self.learned_lineages().unwrap_or_default();
 
         let known_count = snapshots
@@ -323,7 +319,7 @@ impl SecurityTriageService {
             .count();
         let new_count = snapshots.iter().filter(|p| p.new_to_history).count();
 
-        let mut active_learned = 0usize;
+        let mut active_learned = Vec::<(u32, String, u32, String, u64)>::new();
         for process in &snapshots {
             let Some(parent) = snapshots
                 .iter()
@@ -335,11 +331,18 @@ impl SecurityTriageService {
                 normalize_install_identity(&process.exe),
                 normalize_install_identity(&parent.exe),
             );
-            if learned.get(&key).copied().unwrap_or(0) >= local_learning_threshold(process)
+            let sessions = learned.get(&key).copied().unwrap_or(0);
+            if sessions >= local_learning_threshold(process)
                 && auto_learnable_install_path(&process.exe)
                 && auto_learnable_install_path(&parent.exe)
             {
-                active_learned += 1;
+                active_learned.push((
+                    process.pid,
+                    process.name.clone(),
+                    parent.pid,
+                    parent.name.clone(),
+                    sessions,
+                ));
             }
         }
 
@@ -357,7 +360,7 @@ impl SecurityTriageService {
             known_count,
             new_count,
             findings.len(),
-            active_learned,
+            active_learned.len(),
             performance.len(),
         ));
 
@@ -399,6 +402,20 @@ impl SecurityTriageService {
                 out.push_str(&format!(
                     "  revisar: triage {} --deep | sys why {} | sys inspect {}\n",
                     finding.pid, finding.pid, finding.pid
+                ));
+            }
+        }
+
+        if !active_learned.is_empty() {
+            out.push_str("\nAPRENDIZAJE LOCAL\n------------------------------------------------------------\n");
+            out.push_str(
+                "Estas relaciones instaladas ya fueron observadas en sesiones anteriores y no\n\
+                 generan ATTENTION únicamente por rareza histórica:\n",
+            );
+            for (pid, name, parent_pid, parent_name, sessions) in active_learned.iter().take(20) {
+                out.push_str(&format!(
+                    "  {} [{}] <- {} [{}] · {} sesión(es) previa(s)\n",
+                    name, pid, parent_name, parent_pid, sessions
                 ));
             }
         }
@@ -596,10 +613,37 @@ impl SecurityTriageService {
                     let current = parent.display().to_string().to_ascii_lowercase();
                     let trusted = self
                         .trusted_lineages()
-                        .map(|rows| rows.contains(&(child, current.clone())))
+                        .map(|rows| rows.contains(&(child.clone(), current.clone())))
                         .unwrap_or(false);
+                    let learned_sessions = self
+                        .learned_lineages()
+                        .ok()
+                        .and_then(|rows| {
+                            rows.get(&(
+                                normalize_install_identity(&child),
+                                normalize_install_identity(&current),
+                            ))
+                            .copied()
+                        })
+                        .unwrap_or(0);
+                    let locally_learned = learned_sessions >= if path
+                        .rsplit('\\')
+                        .next()
+                        .is_some_and(|name| name.eq_ignore_ascii_case("msedgewebview2.exe"))
+                    {
+                        1
+                    } else {
+                        2
+                    } && auto_learnable_install_path(&path)
+                        && auto_learnable_install_path(&current);
+
                     if trusted {
                         out.push_str("Parent relation is trusted by local operator policy.\n");
+                    } else if locally_learned {
+                        out.push_str(&format!(
+                            "Parent relation is part of the learned local baseline ({} previous session(s)).\n",
+                            learned_sessions
+                        ));
                     } else {
                         let evidence = parents.evidence(&current);
                         if evidence.state != ObservationState::Known {
