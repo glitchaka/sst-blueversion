@@ -210,6 +210,9 @@ impl SecurityTriageService {
     pub fn render_startup(&self, report: &PreloadReport) -> String {
         let mut out = String::from("\r\n«Hola. ¿Te gustaría destruir algún mal hoy?»\r\n\r\n");
         append_startup_memory(&mut out, report);
+        if !report.history_available {
+            out.push_str("Historial local: no disponible; esta sesión usa análisis temporal.\r\n\r\n");
+        }
 
         match report.case {
             PreloadCase::Normal => {
@@ -1671,6 +1674,7 @@ fn triage_connections(pids: &HashSet<u32>) -> String {
     }
 }
 
+#[cfg(test)]
 fn analyze_security(
     snapshots: &[ProcessSnapshot],
     history: Option<&HashMap<String, ParentProfile>>,
@@ -1758,10 +1762,11 @@ fn append_startup_memory(out: &mut String, report: &PreloadReport) {
     };
 
     out.push_str(&format!(
-        "Memoria: {:.2} / {:.2} GiB ({:.1}%) · {}\r\n",
+        "Memoria: {:.2} / {:.2} GiB ({:.1}%) · disponible {:.2} GiB · {}\r\n",
         report.memory_used_mib / 1024.0,
         report.memory_total_mib / 1024.0,
         percent,
+        report.memory_available_mib / 1024.0,
         state,
     ));
 
