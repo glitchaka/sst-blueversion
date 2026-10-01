@@ -100,6 +100,7 @@ sin RED intenta usar la red IPv4 local; el escaneo está limitado a /20 o menor.
             Some("monitor") => "net monitor — monitoriza presencia de equipos
 uso: net monitor [RED] [--unknown] [-m|--message|--say TEXTO]
 dentro del monitor: Enter abre 'Mensaje>'; escribe y pulsa Enter para enviar.
+comandos internos del chat: ::help, ::whoisalive, ::lore, ::peers, ::clear.
 fuera del prompt, q o Esc salen; dentro del prompt, Esc cancela la edición.
 -m/--message/--say siguen disponibles para arrancar publicando un mensaje inicial.
 ",
