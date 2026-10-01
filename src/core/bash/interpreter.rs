@@ -2814,38 +2814,21 @@ impl Interpreter {
                 }
             }
             "tour" => {
-                // The selector owns the alternate screen and returns the selected
-                // example path. Execute exactly one example and then return to the
-                // normal terminal so its output remains visible. The former
-                // tour.sh loop buffered all script output until a later read,
-                // making successful examples look frozen.
-                let selected = self
-                    .host
-                    .execute_builtin("sst-tour-select", &[], &self.env.cwd, None)?
-                    .unwrap_or_else(|| ExecutionResult::from_parts(
+                let config_path = PathBuf::from(self.env.get("SST_CONFIG"));
+                let root = config_path
+                    .parent()
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| self.env.cwd.clone());
+                let script = root.join("tour.sh");
+                if !script.is_file() {
+                    ExecutionResult::from_parts(
                         String::new(),
-                        "tour: selector interno no disponible\n".to_owned(),
-                        127,
-                    ));
-
-                if selected.status != 0 {
-                    selected
+                        format!("tour: no existe {}\n", script.display()),
+                        1,
+                    )
                 } else {
-                    let selected_path = selected.stdout.lines().next().unwrap_or("").trim();
-                    if selected_path.is_empty() {
-                        ExecutionResult::success()
-                    } else {
-                        let path = PathBuf::from(selected_path);
-                        let mut result = self.execute_shell_script_file(&path, args, stdin)?;
-                        result.stdout = format!(
-                            "SST TOUR — {}\n{}",
-                            path.file_name()
-                                .and_then(|name| name.to_str())
-                                .unwrap_or(selected_path),
-                            result.stdout,
-                        );
-                        result
-                    }
+                    self.execute_shell_script_file(&script, args, stdin)?
                 }
             }
             "config" => {
@@ -6349,16 +6332,6 @@ impl Interpreter {
             ));
         };
         if let Some(script) = self.resolve_shell_script_path(&program) {
-            if script
-                .file_name()
-                .and_then(|value| value.to_str())
-                .is_some_and(|value| value.eq_ignore_ascii_case("tour.sh"))
-            {
-                if let Some(result) = self.shell_builtin("tour", args, stdin)? {
-                    return Ok(result);
-                }
-            }
-
             return match self.execute_shell_script_file(&script, args, stdin) {
                 Ok(result) => Ok(result),
                 Err(error) => Ok(ExecutionResult::from_parts(
