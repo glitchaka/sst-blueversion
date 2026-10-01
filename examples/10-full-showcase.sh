@@ -1,4 +1,3 @@
-#!/usr/bin/env nwash
 # Showcase integral de Shell Shock Tool.
 #
 # Uso:
