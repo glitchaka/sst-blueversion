@@ -189,7 +189,7 @@ impl TourEntry {
             "04-jobs-and-coproc.sh" => ("04 · Jobs y coprocesos", "background, wait, coproc, descriptores"),
             "05-pipelines-and-text.sh" => ("05 · Pipelines y texto", "grep, sed, cut, sort, tee, hashes"),
             "06-security-triage.sh" => ("06 · Security triage", "persistencia, firmas, intel, eventos"),
-            "07-operator-console.sh" => ("07 · Operator console", "menú interactivo escrito en Nwash"),
+            "07-operator-console.sh" => ("07 · Operator console", "panel operativo secuencial en Nwash"),
             "08-config-and-backgrounds.sh" => ("08 · Config y fondos", "config bg y carrusel"),
             "09-advanced-bash.sh" => ("09 · Bash avanzado", "getopts, nameref, mapfile, printf -v"),
             "10-full-showcase.sh" => ("10 · Full showcase", "SST completo de punta a punta"),
