@@ -9,10 +9,23 @@ while true; do
         break
     fi
 
+    if [[ ! -f "$selected" ]]; then
+        clear
+        echo "SST TOUR"
+        echo "================================================================"
+        echo "ERROR: el selector devolvió una ruta que no existe:"
+        echo "$selected"
+        echo "================================================================"
+        echo "Pulsa Enter para volver al tour"
+        read -r
+        continue
+    fi
+
     clear
     echo "SST TOUR"
     echo "================================================================"
     echo "Ejecutando: $(basename "$selected")"
+    echo "Ruta: $selected"
     echo "================================================================"
     echo
 
