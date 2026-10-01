@@ -860,8 +860,19 @@ impl TerminalModel {
         if selected.is_empty() {
             return false;
         }
-        if let Ok(mut clipboard) = Clipboard::new() {
-            return clipboard.set_text(selected).is_ok();
+
+        // Windows can keep the clipboard locked very briefly (for example by
+        // clipboard history, RDP or another terminal). A single arboard attempt
+        // made copy look randomly broken. Retry a few times before giving up.
+        for delay_ms in [0_u64, 4, 12, 24] {
+            if delay_ms != 0 {
+                std::thread::sleep(Duration::from_millis(delay_ms));
+            }
+            if let Ok(mut clipboard) = Clipboard::new()
+                && clipboard.set_text(selected.clone()).is_ok()
+            {
+                return true;
+            }
         }
         false
     }
