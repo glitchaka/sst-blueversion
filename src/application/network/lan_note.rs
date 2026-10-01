@@ -20,7 +20,6 @@ use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
 
 pub const LAN_NOTE_PORT: u16 = 43837;
-pub const WHO_IS_ALIVE: &str = "::whoisalive";
 pub const ALIVE_REPLY: &str = "atrapado";
 
 const MAGIC_V1: &str = "SST-NET-MONITOR/1";
@@ -58,7 +57,6 @@ struct WireMessage {
 pub struct LanNote {
     pub message: String,
     pub last_seen: Instant,
-    pub room: Option<String>,
     pub encrypted: bool,
     pub private: bool,
 }
@@ -504,7 +502,6 @@ fn store_note(messages: &mut HashMap<Ipv4Addr, LanNote>, note: &ReceivedNote) {
         LanNote {
             message: note.message.clone(),
             last_seen: Instant::now(),
-            room: note.room.clone(),
             encrypted: note.encrypted,
             private: note.private,
         },
