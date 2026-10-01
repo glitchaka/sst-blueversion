@@ -124,6 +124,18 @@ impl ExecutionResult {
 pub trait ShellCommandHost: Send + Sync {
     fn interrupted(&self) -> bool { false }
 
+    fn emit_output(&self, stdout: &str, stderr: &str) -> Result<()> {
+        if !stdout.is_empty() {
+            print!("{stdout}");
+            std::io::stdout().flush()?;
+        }
+        if !stderr.is_empty() {
+            eprint!("{stderr}");
+            std::io::stderr().flush()?;
+        }
+        Ok(())
+    }
+
     fn read_line(&self, prompt: &str, silent: bool) -> Result<Option<String>> {
         if !prompt.is_empty() {
             eprint!("{prompt}");
@@ -290,6 +302,8 @@ pub struct Interpreter {
     mail_state: HashMap<PathBuf, (u64, std::time::SystemTime)>,
     managed_input_fds: HashMap<i32, ManagedInputFd>,
     next_variable_fd: i32,
+    stream_script_output: bool,
+    capture_output_depth: usize,
 }
 
 impl Interpreter {
@@ -318,6 +332,8 @@ impl Interpreter {
             mail_state: HashMap::new(),
             managed_input_fds: HashMap::new(),
             next_variable_fd: 10,
+            stream_script_output: false,
+            capture_output_depth: 0,
         };
         interpreter.import_exported_functions();
         interpreter
@@ -355,6 +371,16 @@ impl Interpreter {
         env
     }
 
+
+    fn with_captured_output<T>(
+        &mut self,
+        operation: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<T> {
+        self.capture_output_depth = self.capture_output_depth.saturating_add(1);
+        let result = operation(self);
+        self.capture_output_depth = self.capture_output_depth.saturating_sub(1);
+        result
+    }
 
     pub fn set_interactive(&mut self, interactive: bool) {
         set_shell_option(&mut self.env, "interactive", interactive);
@@ -1295,6 +1321,13 @@ impl Interpreter {
         ) {
             self.env.set_array("PIPESTATUS", vec![result.status.to_string()]);
         }
+
+        let mut result = result;
+        if self.stream_script_output && self.capture_output_depth == 0 {
+            self.host.emit_output(&result.stdout, &result.stderr)?;
+            result.stdout.clear();
+            result.stderr.clear();
+        }
         Ok(result)
     }
 
@@ -1494,10 +1527,14 @@ impl Interpreter {
 
         for (index, part) in parts.iter().enumerate() {
             if use_lastpipe && index + 1 == parts.len() {
-                last = self.execute(part, input.as_deref())?;
+                last = self.with_captured_output(|shell| {
+                    shell.execute(part, input.as_deref())
+                })?;
             } else {
                 let saved = self.env.clone();
-                let result = self.execute(part, input.as_deref());
+                let result = self.with_captured_output(|shell| {
+                    shell.execute(part, input.as_deref())
+                });
                 self.env = saved;
                 last = result?;
             }
@@ -1772,7 +1809,9 @@ impl Interpreter {
             }
         }
 
-        let mut result = self.execute(body, local_stdin.as_deref())?;
+        let mut result = self.with_captured_output(|shell| {
+            shell.execute(body, local_stdin.as_deref())
+        })?;
         let command = SimpleCommand {
             words: Vec::new(),
             redirects,
@@ -6131,7 +6170,10 @@ impl Interpreter {
         set_shell_option(&mut self.env, "monitor", false);
         self.sync_call_stack_arrays();
 
+        let saved_stream_script_output = self.stream_script_output;
+        self.stream_script_output = true;
         let execution = self.execute_text_with_stdin(&source, stdin);
+        self.stream_script_output = saved_stream_script_output;
 
         self.env = saved_env;
         self.function_sources = saved_function_sources;
@@ -7189,7 +7231,7 @@ impl Interpreter {
                     {
                         self.env.shell_options.remove("errexit");
                     }
-                    let result = self.execute_text(&source);
+                    let result = self.with_captured_output(|shell| shell.execute_text(&source));
                     self.env = saved;
                     let result = result?;
                     out.push_str(result.stdout.trim_end_matches(['\r','\n']));
@@ -7212,7 +7254,7 @@ impl Interpreter {
                         {
                             self.env.shell_options.remove("errexit");
                         }
-                        let result = self.execute_text(&source);
+                        let result = self.with_captured_output(|shell| shell.execute_text(&source));
                         self.env = saved;
                         let result = result?;
                         out.push_str(result.stdout.trim_end_matches(['\r', '\n']));
@@ -7313,7 +7355,7 @@ impl Interpreter {
 
         if direction == '<' {
             let saved = self.env.clone();
-            let result = self.execute_text(source);
+            let result = self.with_captured_output(|shell| shell.execute_text(source));
             self.env = saved;
             let result = result?;
             fs::write(&path, result.stdout.as_bytes())?;
