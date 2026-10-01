@@ -10,6 +10,8 @@ use ipnet::Ipv4Net;
 use serde::{Deserialize, Serialize};
 
 pub const LAN_NOTE_PORT: u16 = 43837;
+pub const WHO_IS_ALIVE: &str = "::whoisalive";
+pub const ALIVE_REPLY: &str = "atrapado";
 const MAGIC: &str = "SST-NET-MONITOR/1";
 const MAX_MESSAGE_CHARS: usize = 120;
 const MESSAGE_TTL: Duration = Duration::from_secs(20);
@@ -48,7 +50,7 @@ impl LanNoteBus {
         })
     }
 
-    pub fn publish(&self, message: &str) -> Result<()> {
+    fn send_message_to(&self, message: &str, destination: SocketAddrV4) -> Result<()> {
         let message = sanitize_message(message);
         if message.is_empty() {
             return Ok(());
@@ -59,13 +61,25 @@ impl LanNoteBus {
             message,
         })?;
         self.socket
-            .send_to(&payload, self.broadcast)
-            .with_context(|| format!("no se pudo publicar mensaje SST a {}", self.broadcast))?;
+            .send_to(&payload, destination)
+            .with_context(|| format!("no se pudo publicar mensaje SST a {destination}"))?;
         Ok(())
     }
 
-    pub fn receive_into(&self, messages: &mut HashMap<Ipv4Addr, LanNote>) {
+    pub fn publish(&self, message: &str) -> Result<()> {
+        self.send_message_to(message, self.broadcast)
+    }
+
+    pub fn who_is_alive(&self) -> Result<()> {
+        self.send_message_to(WHO_IS_ALIVE, self.broadcast)
+    }
+
+    pub fn receive_into(
+        &self,
+        messages: &mut HashMap<Ipv4Addr, LanNote>,
+    ) -> Vec<(Ipv4Addr, String)> {
         let mut buffer = [0u8; 1024];
+        let mut received = Vec::new();
 
         loop {
             match self.socket.recv_from(&mut buffer) {
@@ -85,13 +99,27 @@ impl LanNoteBus {
                         continue;
                     }
 
+                    if message.eq_ignore_ascii_case(WHO_IS_ALIVE) {
+                        let _ = self.send_message_to(ALIVE_REPLY, source);
+                        continue;
+                    }
+
+                    let source_ip = *source.ip();
+                    let changed = messages
+                        .get(&source_ip)
+                        .is_none_or(|note| note.message != message);
+
                     messages.insert(
-                        *source.ip(),
+                        source_ip,
                         LanNote {
-                            message,
+                            message: message.clone(),
                             last_seen: Instant::now(),
                         },
                     );
+
+                    if changed {
+                        received.push((source_ip, message));
+                    }
                 }
                 Err(error) if error.kind() == ErrorKind::WouldBlock => break,
                 Err(_) => break,
@@ -100,6 +128,7 @@ impl LanNoteBus {
 
         let now = Instant::now();
         messages.retain(|_, note| now.duration_since(note.last_seen) <= MESSAGE_TTL);
+        received
     }
 }
 
