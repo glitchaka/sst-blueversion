@@ -265,7 +265,15 @@ impl SecurityTriageService {
             ));
         }
 
+        if args.iter().any(|arg| matches!(arg.as_str(), "--scan" | "--refresh")) {
+            let mut progress = String::new();
+            let report = self.run_startup_preload(|line| progress.push_str(line));
+            progress.push_str(&self.render_startup(&report));
+            return Ok(CommandOutput::ok(progress));
+        }
+
         let deep = args.iter().any(|arg| arg == "--deep");
+        let memory_only = args.iter().any(|arg| matches!(arg.as_str(), "--memory" | "--ram"));
 
         if let Some(raw_pid) = args.iter().find(|arg| !arg.starts_with('-')) {
             let pid = raw_pid
@@ -364,6 +372,18 @@ impl SecurityTriageService {
             performance.len(),
         ));
 
+        let memory_pressure = if system.total_memory() == 0 {
+            0.0
+        } else {
+            system.used_memory() as f64 * 100.0 / system.total_memory() as f64
+        };
+        if memory_only || deep || memory_pressure >= 75.0 {
+            out.push_str(&triage_memory_report(&system, &snapshots));
+            if memory_only && !deep {
+                return Ok(CommandOutput::ok(out));
+            }
+        }
+
         out.push_str("SEGURIDAD\n------------------------------------------------------------\n");
         if findings.is_empty() {
             out.push_str(
@@ -450,7 +470,7 @@ impl SecurityTriageService {
             }
         } else {
             out.push_str(
-                "\nUsa 'triage --deep' para correlacionar además conexiones, inicio automático y servicios.\n",
+                "\nUsa 'triage --memory' para presión de RAM o 'triage --deep' para correlacionar memoria, conexiones, inicio automático y servicios.\n",
             );
         }
 
@@ -1468,6 +1488,71 @@ fn assess_process_with_trust(
         }
     }
     correlate(&evidence)
+}
+
+fn triage_memory_report(system: &System, snapshots: &[ProcessSnapshot]) -> String {
+    let total = system.total_memory();
+    let used = system.used_memory();
+    let available = system.available_memory();
+    let percent = if total == 0 {
+        0.0
+    } else {
+        used as f64 * 100.0 / total as f64
+    };
+
+    let mut rows = snapshots
+        .iter()
+        .filter(|process| process.memory_mib > 0.0)
+        .collect::<Vec<_>>();
+    rows.sort_by(|a, b| {
+        b.memory_mib
+            .partial_cmp(&a.memory_mib)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.pid.cmp(&b.pid))
+    });
+
+    let visible_sum_mib: f64 = rows.iter().map(|process| process.memory_mib).sum();
+    let used_mib = used as f64 / 1024.0 / 1024.0;
+    let total_mib = total as f64 / 1024.0 / 1024.0;
+    let available_mib = available as f64 / 1024.0 / 1024.0;
+
+    let mut out = String::from(
+        "MEMORIA\n------------------------------------------------------------\n",
+    );
+    out.push_str(&format!(
+        "RAM usada:       {:>8.2} GiB / {:>8.2} GiB ({:.1}%)\n\
+         Disponible:      {:>8.2} GiB\n\
+         Procesos visibles:{:>8.2} GiB (suma orientativa; memoria compartida puede solaparse)\n",
+        used_mib / 1024.0,
+        total_mib / 1024.0,
+        percent,
+        available_mib / 1024.0,
+        visible_sum_mib / 1024.0,
+    ));
+
+    if percent >= 85.0 {
+        out.push_str("Estado:          PRESIÓN ALTA DE MEMORIA\n");
+    } else if percent >= 75.0 {
+        out.push_str("Estado:          presión de memoria elevada\n");
+    } else {
+        out.push_str("Estado:          sin presión global alta\n");
+    }
+
+    out.push_str("\nTop por RAM:\n");
+    for process in rows.into_iter().take(15) {
+        out.push_str(&format!(
+            "  {:>8.1} MiB  PID {:<7} {}\n",
+            process.memory_mib,
+            process.pid,
+            process.name,
+        ));
+    }
+    out.push_str(
+        "\nNota: el total de Windows también incluye kernel, caché, memoria comprimida,\n\
+         pools, drivers y páginas compartidas; por eso no debe compararse como una suma exacta\n\
+         contra los working sets de procesos.\n\n",
+    );
+    out
 }
 
 fn normalize_install_identity(path: &str) -> String {
