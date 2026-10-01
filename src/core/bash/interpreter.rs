@@ -686,9 +686,15 @@ impl Interpreter {
             rows
         };
 
-        values.retain(|value| value.starts_with(prefix));
-        values.sort();
-        values.dedup();
+        values.retain(|value| completion_prefix_matches(value, prefix));
+        values.sort_by_key(|value| value.to_lowercase());
+        values.dedup_by(|left, right| {
+            if cfg!(windows) {
+                left.eq_ignore_ascii_case(right)
+            } else {
+                left == right
+            }
+        });
         Some(values)
     }
 
@@ -4059,9 +4065,15 @@ impl Interpreter {
             }
             _ => Vec::new(),
         };
-        values.retain(|value| value.starts_with(prefix));
-        values.sort();
-        values.dedup();
+        values.retain(|value| completion_prefix_matches(value, prefix));
+        values.sort_by_key(|value| value.to_lowercase());
+        values.dedup_by(|left, right| {
+            if cfg!(windows) {
+                left.eq_ignore_ascii_case(right)
+            } else {
+                left == right
+            }
+        });
         values
     }
 
@@ -4144,7 +4156,7 @@ impl Interpreter {
             values.extend(result.stdout.lines().map(str::to_owned));
         }
 
-        if self.env.option_enabled("nocasematch") {
+        if cfg!(windows) || self.env.option_enabled("nocasematch") {
             let needle = prefix.to_lowercase();
             values.retain(|value| value.to_lowercase().starts_with(&needle));
         } else {
@@ -9515,6 +9527,14 @@ fn completion_words(input: &str, wordbreaks: &str) -> Vec<String> {
 }
 
 
+fn completion_prefix_matches(value: &str, prefix: &str) -> bool {
+    if cfg!(windows) {
+        value.to_lowercase().starts_with(&prefix.to_lowercase())
+    } else {
+        value.starts_with(prefix)
+    }
+}
+
 fn completion_files(cwd: &Path, prefix: &str, directories_only: bool) -> Vec<String> {
     let typed = PathBuf::from(prefix);
     let parent = typed.parent()
@@ -9529,7 +9549,7 @@ fn completion_files(cwd: &Path, prefix: &str, directories_only: bool) -> Vec<Str
             let Ok(file_type) = entry.file_type() else { continue };
             if directories_only && !file_type.is_dir() { continue; }
             let name = entry.file_name().to_string_lossy().into_owned();
-            if !name.starts_with(stem) { continue; }
+            if !completion_prefix_matches(&name, stem) { continue; }
             let mut value = if parent == Path::new(".") {
                 name
             } else {
