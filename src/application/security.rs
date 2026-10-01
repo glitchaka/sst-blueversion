@@ -54,6 +54,10 @@ pub struct PreloadReport {
     pub findings: Vec<Finding>,
     pub performance: Vec<Finding>,
     pub history_available: bool,
+    pub memory_total_mib: f64,
+    pub memory_used_mib: f64,
+    pub memory_available_mib: f64,
+    pub memory_top: Vec<(u32, String, f64)>,
 }
 
 #[derive(Debug, Clone)]
@@ -165,6 +169,20 @@ impl SecurityTriageService {
             PreloadCase::Normal
         };
 
+        let memory_total_mib = system.total_memory() as f64 / 1024.0 / 1024.0;
+        let memory_used_mib = system.used_memory() as f64 / 1024.0 / 1024.0;
+        let memory_available_mib = system.available_memory() as f64 / 1024.0 / 1024.0;
+        let mut memory_top = snapshots
+            .iter()
+            .map(|process| (process.pid, process.name.clone(), process.memory_mib))
+            .collect::<Vec<_>>();
+        memory_top.sort_by(|a, b| {
+            b.2.partial_cmp(&a.2)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
+        memory_top.truncate(12);
+
         let report = PreloadReport {
             case,
             process_count,
@@ -174,6 +192,10 @@ impl SecurityTriageService {
             findings,
             performance,
             history_available,
+            memory_total_mib,
+            memory_used_mib,
+            memory_available_mib,
+            memory_top,
         };
 
         *self
@@ -187,6 +209,7 @@ impl SecurityTriageService {
 
     pub fn render_startup(&self, report: &PreloadReport) -> String {
         let mut out = String::from("\r\n«Hola. ¿Te gustaría destruir algún mal hoy?»\r\n\r\n");
+        append_startup_memory(&mut out, report);
 
         match report.case {
             PreloadCase::Normal => {
@@ -221,6 +244,7 @@ impl SecurityTriageService {
                     report.findings.len()
                 ));
                 append_findings(&mut out, &report.findings);
+                append_startup_performance(&mut out, report);
                 if let Some(primary) = report.findings.first() {
                     out.push_str(&format!(
                         "\r\nSugerencias para revisar la sospecha:\r\n  sys why {0}\r\n  sys inspect {0}\r\n  sys diff {0}\r\n  intel lookup <SHA256>\r\n\r\nSugerencias para revisar el equipo completo:\r\n  triage\r\n  sys suspicious\r\n  sys startup\r\n  sys services --impact\r\n",
@@ -231,6 +255,7 @@ impl SecurityTriageService {
             PreloadCase::Alarm => {
                 out.push_str("ALERT — encontré señales fuertes que conviene revisar.\r\n\r\n");
                 append_findings(&mut out, &report.findings);
+                append_startup_performance(&mut out, report);
                 if let Some(primary) = report.findings.first() {
                     out.push_str(&format!(
                         "\r\nProfundiza primero:\r\n  sys why {0}\r\n  sys inspect {0}\r\n  sys inspect {0} --deep\r\n  sys persistence\r\n  intel lookup <SHA256>\r\n\r\nSi necesitas privilegios adicionales:\r\n  sudo sys inspect {0}\r\n  sudo sys suspend {0}\r\n\r\nAcción destructiva sólo bajo tu decisión:\r\n  sudo sys kill {0}\r\n  sudo sys kill {0} --tree\r\n",
@@ -1717,6 +1742,60 @@ fn analyze_performance(snapshots: &[ProcessSnapshot]) -> Vec<Finding> {
     });
     rows.truncate(6);
     rows
+}
+
+fn append_startup_memory(out: &mut String, report: &PreloadReport) {
+    if report.memory_total_mib <= 0.0 {
+        return;
+    }
+    let percent = report.memory_used_mib * 100.0 / report.memory_total_mib;
+    let state = if percent >= 85.0 {
+        "PRESIÓN ALTA"
+    } else if percent >= 75.0 {
+        "elevada"
+    } else {
+        "normal"
+    };
+
+    out.push_str(&format!(
+        "Memoria: {:.2} / {:.2} GiB ({:.1}%) · {}\r\n",
+        report.memory_used_mib / 1024.0,
+        report.memory_total_mib / 1024.0,
+        percent,
+        state,
+    ));
+
+    if percent >= 75.0 {
+        out.push_str("Mayores consumidores observados:\r\n");
+        for (pid, name, memory_mib) in report.memory_top.iter().take(8) {
+            out.push_str(&format!(
+                "  {:>8.1} MiB  {:<26} [{}]\r\n",
+                memory_mib,
+                shorten(name, 26),
+                pid,
+            ));
+        }
+        out.push_str(
+            "  Nota: Windows también usa RAM en kernel, caché, compresión, drivers y memoria compartida.\r\n\r\n",
+        );
+    } else {
+        out.push_str("\r\n");
+    }
+}
+
+fn append_startup_performance(out: &mut String, report: &PreloadReport) {
+    if report.performance.is_empty() {
+        return;
+    }
+    out.push_str("Carga relevante (separada de seguridad):\r\n");
+    for item in report.performance.iter().take(6) {
+        out.push_str(&format!(
+            "  {:<28} {}\r\n",
+            format!("{} [{}]", item.name, item.pid),
+            item.reasons.join(" · ")
+        ));
+    }
+    out.push_str("\r\n");
 }
 
 fn append_findings(out: &mut String, findings: &[Finding]) {
