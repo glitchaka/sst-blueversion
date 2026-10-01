@@ -299,11 +299,19 @@ fn printers(args: &[String]) -> anyhow::Result<CommandOutput> {
             "sys printers — impresoras instaladas en el usuario/equipo\n\
              uso:\n\
                sys printers             todas las impresoras instaladas\n\
+               sys printers NOMBRE      detalle de la impresora indicada\n\
                sys printers --default   sólo la impresora predeterminada\n\
 \n\
              Muestra cola, servidor de impresión, recurso compartido, puerto e IP cuando\n\
              el puerto TCP/IP permite resolverla. No usa PowerShell.\n",
         ));
+    }
+
+    // Si llega un nombre, nunca caer al listado general: delegar en la misma
+    // ruta de detalle usada por `sys printer NOMBRE`. Esto evita la regresión
+    // donde el argumento se ignoraba y se mostraban todas las impresoras.
+    if args.iter().any(|arg| !arg.starts_with('-')) {
+        return printer(args);
     }
 
     let only_default = options::has(args, "--default");
@@ -359,20 +367,21 @@ fn printer(args: &[String]) -> anyhow::Result<CommandOutput> {
     let requested = args
         .iter()
         .filter(|arg| !arg.starts_with('-'))
-        .cloned()
+        .map(String::as_str)
         .collect::<Vec<_>>()
         .join(" ");
+    let requested = requested.trim();
 
     let rows = enumerate_printers()?;
-    let selected = if requested.trim().is_empty() {
+    let selected = if requested.is_empty() {
         rows.into_iter().find(|row| row.is_default)
     } else {
-        find_printer(rows, requested.trim())
+        find_printer(rows, requested)
     };
 
     let Some(row) = selected else {
         return Ok(CommandOutput::error(
-            if requested.trim().is_empty() {
+            if requested.is_empty() {
                 "sys printer: no hay una impresora predeterminada configurada".to_owned()
             } else {
                 format!("sys printer: no se encontró '{requested}'")
