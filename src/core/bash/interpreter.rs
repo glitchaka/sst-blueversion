@@ -124,18 +124,6 @@ impl ExecutionResult {
 pub trait ShellCommandHost: Send + Sync {
     fn interrupted(&self) -> bool { false }
 
-    fn emit_output(&self, stdout: &str, stderr: &str) -> Result<()> {
-        if !stdout.is_empty() {
-            print!("{stdout}");
-            let _ = std::io::stdout().flush();
-        }
-        if !stderr.is_empty() {
-            eprint!("{stderr}");
-            let _ = std::io::stderr().flush();
-        }
-        Ok(())
-    }
-
     fn read_line(&self, prompt: &str, silent: bool) -> Result<Option<String>> {
         if !prompt.is_empty() {
             eprint!("{prompt}");
@@ -302,8 +290,6 @@ pub struct Interpreter {
     mail_state: HashMap<PathBuf, (u64, std::time::SystemTime)>,
     managed_input_fds: HashMap<i32, ManagedInputFd>,
     next_variable_fd: i32,
-    stream_script_output: bool,
-    capture_output_depth: usize,
 }
 
 impl Interpreter {
@@ -332,8 +318,6 @@ impl Interpreter {
             mail_state: HashMap::new(),
             managed_input_fds: HashMap::new(),
             next_variable_fd: 10,
-            stream_script_output: false,
-            capture_output_depth: 0,
         };
         interpreter.import_exported_functions();
         interpreter
@@ -371,34 +355,6 @@ impl Interpreter {
         env
     }
 
-
-    fn append_execution_result(
-        &mut self,
-        target: &mut ExecutionResult,
-        mut next: ExecutionResult,
-    ) -> Result<()> {
-        if self.stream_script_output && self.capture_output_depth == 0 {
-            self.host.emit_output(&target.stdout, &target.stderr)?;
-            target.stdout.clear();
-            target.stderr.clear();
-
-            self.host.emit_output(&next.stdout, &next.stderr)?;
-            next.stdout.clear();
-            next.stderr.clear();
-        }
-        target.append(next);
-        Ok(())
-    }
-
-    fn with_captured_output<T>(
-        &mut self,
-        operation: impl FnOnce(&mut Self) -> Result<T>,
-    ) -> Result<T> {
-        self.capture_output_depth = self.capture_output_depth.saturating_add(1);
-        let result = operation(self);
-        self.capture_output_depth = self.capture_output_depth.saturating_sub(1);
-        result
-    }
 
     pub fn set_interactive(&mut self, interactive: bool) {
         set_shell_option(&mut self.env, "interactive", interactive);
@@ -980,8 +936,7 @@ impl Interpreter {
             AstNode::Sequence(nodes) => {
                 let mut last = ExecutionResult::success();
                 for node in nodes {
-                    let next = self.execute(node, stdin)?;
-                    self.append_execution_result(&mut last, next)?;
+                    last.append(self.execute(node, stdin)?);
                     if last.exit_requested || last.flow != FlowSignal::None { break; }
                     if last.status != 0
                         && self.env.option_enabled("errexit")
@@ -996,8 +951,7 @@ impl Interpreter {
             AstNode::And(left, right) => {
                 let mut left = self.execute_errexit_ignored(left, stdin)?;
                 if !left.exit_requested && left.flow == FlowSignal::None && left.status == 0 {
-                    let next = self.execute(right, stdin)?;
-                    self.append_execution_result(&mut left, next)?;
+                    left.append(self.execute(right, stdin)?);
                 } else {
                     left.errexit_exempt = true;
                 }
@@ -1006,8 +960,7 @@ impl Interpreter {
             AstNode::Or(left, right) => {
                 let mut left = self.execute_errexit_ignored(left, stdin)?;
                 if !left.exit_requested && left.flow == FlowSignal::None && left.status != 0 {
-                    let next = self.execute(right, stdin)?;
-                    self.append_execution_result(&mut left, next)?;
+                    left.append(self.execute(right, stdin)?);
                 } else {
                     left.errexit_exempt = true;
                 }
@@ -1094,12 +1047,10 @@ impl Interpreter {
                 let mut condition = self.execute_errexit_ignored(condition, stdin)?;
                 if condition.exit_requested { condition }
                 else if condition.status == 0 {
-                    let next = self.execute(then_branch, stdin)?;
-                    self.append_execution_result(&mut condition, next)?;
+                    condition.append(self.execute(then_branch, stdin)?);
                     condition
                 } else if let Some(branch) = else_branch {
-                    let next = self.execute(branch, stdin)?;
-                    self.append_execution_result(&mut condition, next)?;
+                    condition.append(self.execute(branch, stdin)?);
                     condition
                 } else {
                     condition.status = 0;
@@ -1116,8 +1067,7 @@ impl Interpreter {
                 self.loop_depth += 1;
                 for value in values {
                     self.env.set(name.clone(), value);
-                    let next = self.execute(body, stdin)?;
-                    self.append_execution_result(&mut last, next)?;
+                    last.append(self.execute(body, stdin)?);
                     if last.exit_requested { break; }
                     match last.flow {
                         FlowSignal::Break(levels) => {
@@ -1147,8 +1097,7 @@ impl Interpreter {
                         break;
                     }
 
-                    let next = self.execute(body, stdin)?;
-                    self.append_execution_result(&mut last, next)?;
+                    last.append(self.execute(body, stdin)?);
                     if last.exit_requested { break; }
 
                     match last.flow {
@@ -1191,8 +1140,7 @@ impl Interpreter {
                         .unwrap_or_default();
                     self.env.set(name.clone(), selected);
 
-                    let next = self.execute(body, stdin)?;
-                    self.append_execution_result(&mut last, next)?;
+                    last.append(self.execute(body, stdin)?);
                     if last.exit_requested { break; }
                     match last.flow {
                         FlowSignal::Break(levels) => {
@@ -1222,8 +1170,7 @@ impl Interpreter {
                     };
                     if !should_run { break; }
 
-                    let next = self.execute(body, stdin)?;
-                    self.append_execution_result(&mut last, next)?;
+                    last.append(self.execute(body, stdin)?);
                     if last.exit_requested { break; }
 
                     match last.flow {
@@ -1547,10 +1494,10 @@ impl Interpreter {
 
         for (index, part) in parts.iter().enumerate() {
             if use_lastpipe && index + 1 == parts.len() {
-                last = self.with_captured_output(|shell| shell.execute(part, input.as_deref()))?;
+                last = self.execute(part, input.as_deref())?;
             } else {
                 let saved = self.env.clone();
-                let result = self.with_captured_output(|shell| shell.execute(part, input.as_deref()));
+                let result = self.execute(part, input.as_deref());
                 self.env = saved;
                 last = result?;
             }
@@ -1825,9 +1772,7 @@ impl Interpreter {
             }
         }
 
-        let mut result = self.with_captured_output(|shell| {
-            shell.execute(body, local_stdin.as_deref())
-        })?;
+        let mut result = self.execute(body, local_stdin.as_deref())?;
         let command = SimpleCommand {
             words: Vec::new(),
             redirects,
@@ -6186,17 +6131,7 @@ impl Interpreter {
         set_shell_option(&mut self.env, "monitor", false);
         self.sync_call_stack_arrays();
 
-        let saved_stream_script_output = self.stream_script_output;
-        self.stream_script_output = true;
-        let mut execution = self.execute_text_with_stdin(&source, stdin);
-        if let Ok(result) = execution.as_mut()
-            && self.capture_output_depth == 0
-        {
-            self.host.emit_output(&result.stdout, &result.stderr)?;
-            result.stdout.clear();
-            result.stderr.clear();
-        }
-        self.stream_script_output = saved_stream_script_output;
+        let execution = self.execute_text_with_stdin(&source, stdin);
 
         self.env = saved_env;
         self.function_sources = saved_function_sources;
@@ -6892,7 +6827,7 @@ impl Interpreter {
                     .collect::<Vec<_>>()
                     .join(" ");
                 let result = self.execute_text(&command)?;
-                self.append_execution_result(&mut combined, result)?;
+                combined.append(result);
                 if combined.exit_requested || combined.status != 0 {
                     break;
                 }
@@ -6920,7 +6855,7 @@ impl Interpreter {
                 .collect::<Vec<_>>()
                 .join(" ");
             let result = self.execute_text(&command)?;
-            self.append_execution_result(&mut combined, result)?;
+            combined.append(result);
             if combined.exit_requested || combined.status != 0 {
                 break;
             }
@@ -7254,7 +7189,7 @@ impl Interpreter {
                     {
                         self.env.shell_options.remove("errexit");
                     }
-                    let result = self.with_captured_output(|shell| shell.execute_text(&source));
+                    let result = self.execute_text(&source);
                     self.env = saved;
                     let result = result?;
                     out.push_str(result.stdout.trim_end_matches(['\r','\n']));
@@ -7277,7 +7212,7 @@ impl Interpreter {
                         {
                             self.env.shell_options.remove("errexit");
                         }
-                        let result = self.with_captured_output(|shell| shell.execute_text(&source));
+                        let result = self.execute_text(&source);
                         self.env = saved;
                         let result = result?;
                         out.push_str(result.stdout.trim_end_matches(['\r', '\n']));
@@ -7378,7 +7313,7 @@ impl Interpreter {
 
         if direction == '<' {
             let saved = self.env.clone();
-            let result = self.with_captured_output(|shell| shell.execute_text(source));
+            let result = self.execute_text(source);
             self.env = saved;
             let result = result?;
             fs::write(&path, result.stdout.as_bytes())?;
