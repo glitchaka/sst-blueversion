@@ -1,4 +1,3 @@
-#!/usr/bin/env nwash
 # Menú interactivo construido completamente con sintaxis Bash/Nwash.
 
 show_system() {
