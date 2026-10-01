@@ -1,4 +1,3 @@
-#!/usr/bin/env nwash
 # Snapshot de red + comparación temporal.
 # Uso:
 #   examples/03-network-discovery.sh
