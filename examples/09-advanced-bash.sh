@@ -1,4 +1,3 @@
-#!/usr/bin/env nwash
 # Características Bash avanzadas implementadas por Nwash.
 
 set -o pipefail
