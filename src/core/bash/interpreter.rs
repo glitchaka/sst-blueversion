@@ -6288,6 +6288,16 @@ impl Interpreter {
             ));
         };
         if let Some(script) = self.resolve_shell_script_path(&program) {
+            if script
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value.eq_ignore_ascii_case("tour.sh"))
+            {
+                if let Some(result) = self.shell_builtin("tour", args, stdin)? {
+                    return Ok(result);
+                }
+            }
+
             return match self.execute_shell_script_file(&script, args, stdin) {
                 Ok(result) => Ok(result),
                 Err(error) => Ok(ExecutionResult::from_parts(
