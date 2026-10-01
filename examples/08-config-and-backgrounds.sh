@@ -1,4 +1,3 @@
-#!/usr/bin/env nwash
 # Demostración de configuración portable y fondos.
 # No cambia el fondo automáticamente: muestra los comandos disponibles.
 
