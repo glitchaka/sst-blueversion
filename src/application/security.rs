@@ -626,7 +626,7 @@ impl SecurityTriageService {
                             .copied()
                         })
                         .unwrap_or(0);
-                    let locally_learned = learned_sessions >= if path
+                    let required_sessions = if path
                         .rsplit('\\')
                         .next()
                         .is_some_and(|name| name.eq_ignore_ascii_case("msedgewebview2.exe"))
@@ -634,7 +634,9 @@ impl SecurityTriageService {
                         1
                     } else {
                         2
-                    } && auto_learnable_install_path(&path)
+                    };
+                    let locally_learned = learned_sessions >= required_sessions
+                        && auto_learnable_install_path(&path)
                         && auto_learnable_install_path(&current);
 
                     if trusted {
