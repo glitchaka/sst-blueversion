@@ -153,10 +153,14 @@ impl BuiltinCommand for TourBuiltin {
                 TerminalKey::Home => selected = 0,
                 TerminalKey::End => selected = entries.len() - 1,
                 TerminalKey::Enter => {
-                    return Ok(CommandOutput::ok(format!(
-                        "{}\n",
-                        entries[selected].path.display()
-                    )));
+                    // Nwash accepts Windows paths, but returning backslashes through a
+                    // command substitution made the tour depend on shell quoting rules.
+                    // Emit a shell-stable absolute path with forward slashes instead.
+                    let path = entries[selected]
+                        .path
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    return Ok(CommandOutput::ok(format!("{path}\n")));
                 }
                 TerminalKey::Escape | TerminalKey::Char('q') | TerminalKey::Char('Q') => {
                     return Ok(CommandOutput::ok(""));
