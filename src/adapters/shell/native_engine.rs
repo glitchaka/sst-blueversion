@@ -492,7 +492,7 @@ impl ShellCommandHost for WindowsShellHost {
             )));
         }
 
-        if !self.registry.names().iter().any(|candidate| candidate == name) {
+        if !self.registry.contains(name) {
             return Ok(None);
         }
 
@@ -752,7 +752,7 @@ impl ShellCommandHost for WindowsShellHost {
     }
 
     fn command_is_builtin(&self, name: &str) -> bool {
-        name == "help" || name == "man" || self.registry.names().iter().any(|candidate| candidate == name)
+        name == "help" || name == "man" || self.registry.contains(name)
     }
 
     fn command_names(&self) -> Vec<String> {
