@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs, UdpSocket},
     sync::Arc,
     time::{Duration, Instant},
@@ -8,6 +8,7 @@ use std::{
 use anyhow::Result;
 use dns_lookup::lookup_addr;
 use ipnet::Ipv4Net;
+use serde::Serialize;
 
 use crate::core::{
     CommandOutput,
@@ -25,6 +26,12 @@ pub struct HostEvidence {
 
 pub struct NetworkDiagnosticsService {
     probe: Arc<dyn NetworkProbe>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct IpConflictObservation {
+    ip: Ipv4Addr,
+    macs: Vec<String>,
 }
 
 impl NetworkDiagnosticsService {
@@ -162,6 +169,111 @@ impl NetworkDiagnosticsService {
         }
 
         Ok(CommandOutput::ok(out))
+    }
+
+    pub fn conflicts(&self, args: &[String]) -> Result<CommandOutput> {
+        let json = args.iter().any(|arg| arg == "--json");
+        let seconds = args
+            .windows(2)
+            .find(|pair| pair[0] == "--seconds" || pair[0] == "-s")
+            .map(|pair| pair[1].parse::<u64>())
+            .transpose()?
+            .unwrap_or(5);
+
+        if !(1..=30).contains(&seconds) {
+            return Ok(CommandOutput::error(
+                "net conflicts: --seconds debe estar entre 1 y 30",
+                2,
+            ));
+        }
+
+        let target = args
+            .iter()
+            .find(|arg| !arg.starts_with('-') && arg.parse::<u64>().is_err())
+            .map(|arg| arg.parse::<Ipv4Addr>())
+            .transpose()?;
+
+        let deadline = Instant::now() + Duration::from_secs(seconds);
+        let mut seen: HashMap<Ipv4Addr, HashSet<String>> = HashMap::new();
+        let mut samples = 0u32;
+
+        loop {
+            if let Some(ip) = target {
+                // SendARP actively asks for the owner of this IPv4. Repeating it
+                // gives Windows a chance to observe ownership changes caused by
+                // two hosts answering for the same address.
+                if let Some(mac) = self.resolve_neighbor(ip) {
+                    seen.entry(ip)
+                        .or_default()
+                        .insert(mac.to_ascii_uppercase());
+                }
+            } else if let Ok(snapshot) = self.arp_map() {
+                for (ip, mac) in snapshot {
+                    seen.entry(ip)
+                        .or_default()
+                        .insert(mac.to_ascii_uppercase());
+                }
+            }
+
+            samples = samples.saturating_add(1);
+            if Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+
+        let mut conflicts = seen
+            .into_iter()
+            .filter_map(|(ip, macs)| {
+                if macs.len() < 2 {
+                    return None;
+                }
+                let mut macs = macs.into_iter().collect::<Vec<_>>();
+                macs.sort();
+                Some(IpConflictObservation { ip, macs })
+            })
+            .collect::<Vec<_>>();
+        conflicts.sort_by_key(|row| row.ip);
+
+        if json {
+            return Ok(CommandOutput {
+                stdout: format!("{}\n", serde_json::to_string_pretty(&conflicts)?),
+                stderr: String::new(),
+                status: if conflicts.is_empty() { 0 } else { 1 },
+            });
+        }
+
+        let mut out = format!(
+            "IP duplicate check: {samples} muestras durante {seconds}s\n"
+        );
+        if conflicts.is_empty() {
+            out.push_str(
+                "No se observó una IPv4 respondiendo con más de una MAC durante la ventana.\n",
+            );
+            out.push_str(
+                "Nota: esto no demuestra ausencia de conflicto; una caché ARP estable puede ocultar al segundo equipo. Para una IP sospechosa usa: net conflicts IP --seconds 10\n",
+            );
+            return Ok(CommandOutput::ok(out));
+        }
+
+        out.push_str("CONFLICTO        MACS OBSERVADAS\n");
+        for row in &conflicts {
+            out.push_str(&format!("{:<16} {}\n", row.ip, row.macs.join(", ")));
+            for mac in &row.macs {
+                let identity = identify_mac(mac);
+                out.push_str(&format!(
+                    "                 {:<19} {}\n",
+                    mac,
+                    identity.vendor.as_deref().unwrap_or(&identity.scope)
+                ));
+            }
+        }
+
+        Ok(CommandOutput {
+            stdout: out,
+            stderr: String::new(),
+            status: 1,
+        })
     }
 
     pub fn ports(&self, args: &[String]) -> Result<CommandOutput> {
