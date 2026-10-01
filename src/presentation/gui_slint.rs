@@ -1179,6 +1179,27 @@ fn handle_key(
 ) {
     use slint::platform::Key;
 
+    // Slint entrega las teclas modificadoras como eventos con un código Unicode
+    // privado en event.text. No son entrada de terminal. Si se reenvían, Ctrl
+    // por sí solo borra la selección y el PTY llega a mostrar ese código.
+    // Ignorarlas preserva la selección hasta que llegue la tecla real (C, V, etc.).
+    if [
+        Key::Shift,
+        Key::ShiftR,
+        Key::Control,
+        Key::ControlR,
+        Key::Alt,
+        Key::AltGr,
+        Key::Meta,
+        Key::MetaR,
+        Key::CapsLock,
+    ]
+    .into_iter()
+    .any(|key| key_is(text, key))
+    {
+        return;
+    }
+
     if ctrl && text.eq_ignore_ascii_case("q") {
         model.session.force_abort();
         model.dirty = true;
