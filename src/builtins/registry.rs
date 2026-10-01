@@ -45,6 +45,10 @@ impl CommandRegistry {
             .collect()
     }
 
+    pub fn contains(&self, name: &str) -> bool {
+        self.commands.contains_key(name)
+    }
+
     pub fn execute(
         &self,
         name: &str,
