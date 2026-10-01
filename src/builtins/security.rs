@@ -25,16 +25,16 @@ impl BuiltinCommand for TriageBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "triage — resumen del preload y señales que merecen revisión"
+        "triage — análisis activo del equipo, proceso concreto y correlación profunda"
     }
 
     fn execute(
         &self,
         _invoked_name: &str,
-        _args: &[String],
+        args: &[String],
         _context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
-        self.service.triage()
+        self.service.triage(args)
     }
 }
 
