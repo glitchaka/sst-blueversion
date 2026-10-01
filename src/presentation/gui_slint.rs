@@ -28,12 +28,16 @@ use sysinfo::System;
 use windows_sys::Win32::{
     Foundation::HWND,
     Graphics::Dwm::*,
-    System::LibraryLoader::{GetModuleHandleW, GetProcAddress},
+    System::{
+        LibraryLoader::{GetModuleHandleW, GetProcAddress},
+        Threading::GetCurrentThreadId,
+    },
     UI::{
         Controls::MARGINS,
-        Input::KeyboardAndMouse::{SetActiveWindow, SetFocus},
+        Input::KeyboardAndMouse::{AttachThreadInput, SetActiveWindow, SetFocus},
         WindowsAndMessaging::{
-            GetForegroundWindow, IsIconic, IsZoomed, SetForegroundWindow,
+            BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsZoomed,
+            SetForegroundWindow, ShowWindow, SW_RESTORE,
         },
     },
 };
@@ -1488,6 +1492,35 @@ fn slint_hwnd(ui: &SstBlueWindow) -> Option<HWND> {
     Some(win32.hwnd.get() as HWND)
 }
 
+unsafe fn focus_native_window(hwnd: HWND) {
+    unsafe {
+        let foreground = GetForegroundWindow();
+        let current_thread = GetCurrentThreadId();
+        let foreground_thread = if foreground.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(foreground, std::ptr::null_mut())
+        };
+
+        let attached = foreground_thread != 0
+            && foreground_thread != current_thread
+            && AttachThreadInput(current_thread, foreground_thread, 1) != 0;
+
+        // Slint's FocusScope may already be focused internally while Windows
+        // still considers another native window active. Restore/raise the HWND
+        // first, then establish native keyboard focus.
+        ShowWindow(hwnd, SW_RESTORE);
+        BringWindowToTop(hwnd);
+        SetForegroundWindow(hwnd);
+        SetActiveWindow(hwnd);
+        SetFocus(hwnd);
+
+        if attached {
+            AttachThreadInput(current_thread, foreground_thread, 0);
+        }
+    }
+}
+
 unsafe fn apply_native_corner_preference(
     hwnd: HWND,
     appearance: &TerminalAppearance,
@@ -1619,11 +1652,7 @@ pub fn run() -> Result<()> {
             if let Some(ui) = weak.upgrade() {
                 apply_slint_window_effects(&ui, &appearance);
                 if let Some(hwnd) = slint_hwnd(&ui) {
-                    unsafe {
-                        SetForegroundWindow(hwnd);
-                        SetActiveWindow(hwnd);
-                        SetFocus(hwnd);
-                    }
+                    unsafe { focus_native_window(hwnd); }
                 }
             }
         });
@@ -1633,12 +1662,17 @@ pub fn run() -> Result<()> {
     let last_status = Rc::new(RefCell::new(Instant::now() - Duration::from_secs(2)));
     // None forces native DWM state to be applied once after the window is fully shown.
     let last_focus = Rc::new(RefCell::new(None::<bool>));
+    // Winit/Windows can ignore a single activation request while the HWND is
+    // still being shown. Retry briefly during startup so SST accepts typing
+    // immediately without requiring a mouse click.
+    let startup_focus_attempts = Rc::new(Cell::new(30u8));
     let timer = Timer::default();
     {
         let model = model.clone();
         let metrics = metrics.clone();
         let last_status = last_status.clone();
         let last_focus = last_focus.clone();
+        let startup_focus_attempts = startup_focus_attempts.clone();
         let appearance_state = appearance_state.clone();
         let carousel_state = carousel_state.clone();
         let carousel_window_event = carousel_window_event.clone();
@@ -1700,7 +1734,16 @@ pub fn run() -> Result<()> {
             }
 
             if let Some(hwnd) = slint_hwnd(&ui) {
-                let focused = unsafe { GetForegroundWindow() == hwnd };
+                let mut focused = unsafe { GetForegroundWindow() == hwnd };
+
+                if !focused && startup_focus_attempts.get() > 0 {
+                    unsafe { focus_native_window(hwnd); }
+                    startup_focus_attempts.set(startup_focus_attempts.get().saturating_sub(1));
+                    focused = unsafe { GetForegroundWindow() == hwnd };
+                } else if focused {
+                    startup_focus_attempts.set(0);
+                }
+
                 let appearance = appearance_state.borrow().clone();
 
                 let mut previous = last_focus.borrow_mut();
