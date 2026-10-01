@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     io::ErrorKind,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result};
@@ -20,6 +20,8 @@ const MESSAGE_TTL: Duration = Duration::from_secs(20);
 struct WireMessage {
     magic: String,
     message: String,
+    #[serde(default)]
+    sender: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -31,6 +33,7 @@ pub struct LanNote {
 pub struct LanNoteBus {
     socket: UdpSocket,
     broadcast: SocketAddrV4,
+    instance_id: String,
 }
 
 impl LanNoteBus {
@@ -44,9 +47,14 @@ impl LanNoteBus {
             .set_nonblocking(true)
             .context("no se pudo configurar el canal SST como no bloqueante")?;
 
+        let started = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
         Ok(Self {
             socket,
             broadcast: SocketAddrV4::new(network.broadcast(), LAN_NOTE_PORT),
+            instance_id: format!("{}-{started}", std::process::id()),
         })
     }
 
@@ -59,6 +67,7 @@ impl LanNoteBus {
         let payload = serde_json::to_vec(&WireMessage {
             magic: MAGIC.to_owned(),
             message,
+            sender: Some(self.instance_id.clone()),
         })?;
         self.socket
             .send_to(&payload, destination)
@@ -91,6 +100,9 @@ impl LanNoteBus {
                         continue;
                     };
                     if frame.magic != MAGIC {
+                        continue;
+                    }
+                    if frame.sender.as_deref() == Some(self.instance_id.as_str()) {
                         continue;
                     }
 
