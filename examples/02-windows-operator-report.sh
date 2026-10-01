@@ -1,4 +1,3 @@
-#!/usr/bin/env nwash
 # Informe operativo no destructivo de Windows usando builtins SST/Nwash.
 
 set -o pipefail
