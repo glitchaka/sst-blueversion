@@ -157,6 +157,16 @@ impl WindowsShellHost {
 }
 
 impl ShellCommandHost for WindowsShellHost {
+    fn emit_output(&self, stdout: &str, stderr: &str) -> Result<()> {
+        if !stdout.is_empty() {
+            crate::adapters::terminal::io::write(stdout.as_bytes())?;
+        }
+        if !stderr.is_empty() {
+            crate::adapters::terminal::io::write(stderr.as_bytes())?;
+        }
+        Ok(())
+    }
+
     fn interrupted(&self) -> bool { self.interrupt.load(std::sync::atomic::Ordering::SeqCst) }
 
     fn read_line(&self, prompt: &str, silent: bool) -> Result<Option<String>> {
