@@ -1,4 +1,3 @@
-#!/usr/bin/env nwash
 # Concurrencia: jobs Bash, wait -n y coprocesos.
 
 set -o pipefail
