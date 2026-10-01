@@ -53,6 +53,9 @@ impl NetworkService {
             "ping" => self.diagnostics.ping(args.get(1..).unwrap_or_default()),
             "trace" | "traceroute" => self.diagnostics.trace(args.get(1..).unwrap_or_default()),
             "neighbors" | "arp" => self.diagnostics.arp_table(),
+            "conflict" | "conflicts" | "duplicate-ip" | "duplicates" => {
+                self.diagnostics.conflicts(args.get(1..).unwrap_or_default())
+            }
             "ports" => self.diagnostics.ports(args.get(1..).unwrap_or_default()),
             "scan" => self.discovery.scan(args.get(1..).unwrap_or_default()),
             "monitor" => self.discovery.monitor(args.get(1..).unwrap_or_default()),
@@ -82,6 +85,7 @@ subcomandos:
   ping HOST [-c N]        eco ICMP
   trace HOST              trazado ICMP (alias: traceroute)
   neighbors               vecinos IP/MAC (alias: arp)
+  conflicts [IP]          detecta una IPv4 observada con múltiples MAC
   ports HOST [LISTA]      conectividad TCP a puertos
   scan [RED] [opciones]   descubrimiento IPv4
   monitor [RED]           monitor TUI de presencia
@@ -140,6 +144,16 @@ tipos: openwrt, opnsense, pfsense, unifi, snmp, generic
             Some("ping") => "net ping — eco ICMP
 uso: net ping HOST [-c N]
 N: 1..100.
+",
+            Some("conflict") | Some("conflicts") | Some("duplicate-ip") | Some("duplicates") => "net conflicts — detecta conflictos IPv4 por cambios de propietario ARP
+uso:
+  net conflicts
+  net conflicts IP
+  net conflicts IP --seconds 10
+  net conflicts --json
+aliases: net conflict, net duplicate-ip, net duplicates
+un conflicto se marca cuando la misma IPv4 es observada con dos o más MAC durante la ventana.
+una ejecución sin hallazgos no demuestra que no exista duplicidad; para una IP sospechosa usa una ventana mayor.
 ",
             Some("ports") => "net ports — comprueba puertos TCP
 uso: net ports HOST [22,80,443,...]
