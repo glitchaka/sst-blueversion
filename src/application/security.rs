@@ -242,7 +242,7 @@ impl SecurityTriageService {
 
         if report.pending_count > 0 {
             out.push_str(&format!(
-                "\r\n{} elemento(s) quedaron para análisis diferido.\r\n",
+                "\r\n{} colector(es) quedaron para análisis diferido.\r\n",
                 report.pending_count
             ));
         }
@@ -250,35 +250,191 @@ impl SecurityTriageService {
         out
     }
 
-    pub fn triage(&self) -> Result<CommandOutput> {
-        let report = self
-            .last_report
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
+    pub fn triage(&self, args: &[String]) -> Result<CommandOutput> {
+        if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help" | "help")) {
+            return Ok(CommandOutput::ok(
+                "triage — análisis activo del equipo, no sólo el estado del preload\n\n\
+                 uso:\n\
+                   triage                  vuelve a revisar procesos y aprendizaje local\n\
+                   triage PID              investiga un proceso: why + inspect + diff\n\
+                   triage --deep           añade conexiones, inicio automático y servicios\n\
+                   triage PID --deep       investigación profunda del PID y sus conexiones\n\n\
+                 SST aprende relaciones padre/hijo recurrentes del mismo equipo, pero una\n\
+                 relación aprendida sólo reduce la novedad de linaje; no convierte un proceso\n\
+                 en confiable frente a otras señales actuales.\n",
+            ));
+        }
 
-        let report = match report {
-            Some(report) => report,
-            None => self.run_startup_preload(|_| {}),
-        };
+        let deep = args.iter().any(|arg| arg == "--deep");
+
+        if let Some(raw_pid) = args.iter().find(|arg| !arg.starts_with('-')) {
+            let pid = raw_pid
+                .parse::<u32>()
+                .with_context(|| format!("triage: PID inválido: {raw_pid}"))?;
+            let mut out = format!(
+                "SST TRIAGE — PROCESO {pid}\n============================================================\n\n"
+            );
+
+            let one = vec![pid.to_string()];
+            let why = self.why(&one)?;
+            out.push_str(&why.stdout);
+            if !why.stdout.ends_with('\n') {
+                out.push('\n');
+            }
+
+            out.push_str("\nINSPECCIÓN\n------------------------------------------------------------\n");
+            let inspect_args = if deep {
+                vec![pid.to_string(), "--deep".to_owned()]
+            } else {
+                vec![pid.to_string()]
+            };
+            let inspect = self.inspect(&inspect_args)?;
+            out.push_str(&inspect.stdout);
+
+            out.push_str("\nCAMBIOS HISTÓRICOS\n------------------------------------------------------------\n");
+            let diff = self.diff(&one)?;
+            out.push_str(&diff.stdout);
+
+            if deep {
+                let pids = HashSet::from([pid]);
+                out.push_str("\nCONEXIONES DEL PID\n------------------------------------------------------------\n");
+                out.push_str(&triage_connections(&pids));
+            }
+
+            return Ok(CommandOutput::ok(out));
+        }
+
+        // Triage manual siempre toma una muestra nueva. El preload sigue siendo rápido,
+        // pero este comando no recicla last_report.
+        let system = refreshed_system();
+        let known = self.known_executables().unwrap_or_default();
+        let snapshots = collect_processes(&system, &known);
+        let findings = self.analyze_security(&snapshots);
+        let performance = analyze_performance(&snapshots);
+        let instances = snapshots
+            .iter()
+            .map(|p| (p.pid, p.start_time))
+            .collect::<Vec<_>>();
+        let learned = self.learned_lineages(&instances).unwrap_or_default();
+
+        let known_count = snapshots
+            .iter()
+            .filter(|p| !p.exe.is_empty() && !p.new_to_history)
+            .count();
+        let new_count = snapshots.iter().filter(|p| p.new_to_history).count();
+
+        let mut active_learned = 0usize;
+        for process in &snapshots {
+            let Some(parent) = snapshots
+                .iter()
+                .find(|p| p.pid == process.ppid && p.start_time <= process.start_time && !p.exe.is_empty())
+            else {
+                continue;
+            };
+            let key = (
+                normalize_install_identity(&process.exe),
+                normalize_install_identity(&parent.exe),
+            );
+            if learned.get(&key).copied().unwrap_or(0) >= 1
+                && auto_learnable_install_path(&process.exe)
+                && auto_learnable_install_path(&parent.exe)
+            {
+                active_learned += 1;
+            }
+        }
 
         let mut out = String::from(
-            "SST TRIAGE\n------------------------------------------------------------\n",
+            "SST TRIAGE — ANÁLISIS ACTIVO\n============================================================\n",
         );
         out.push_str(&format!(
-            "Processes        {}\nPaths seen       {}\nNew paths        {}\nHistory          {}\nPending          {}\nFindings         {}\n\n",
-            report.process_count,
-            report.known_count,
-            report.new_count,
-            if report.history_available { "available" } else { "unavailable" },
-            report.pending_count,
-            report.findings.len(),
+            "Procesos actuales                 {}\n\
+             Rutas vistas anteriormente         {}\n\
+             Rutas nuevas                       {}\n\
+             Hallazgos que requieren revisión   {}\n\
+             Relaciones locales aprendidas      {}\n\
+             Carga relevante                    {}\n\n",
+            snapshots.len(),
+            known_count,
+            new_count,
+            findings.len(),
+            active_learned,
+            performance.len(),
         ));
 
-        if report.findings.is_empty() {
-            out.push_str("No hay señales de seguridad destacables en el preload actual.\n");
+        out.push_str("SEGURIDAD\n------------------------------------------------------------\n");
+        if findings.is_empty() {
+            out.push_str(
+                "No hay procesos que superen las reglas actuales de atención.\n\
+                 Las relaciones recurrentes sólo dejan de contarse como novedad de linaje;\n\
+                 otras señales siguen pudiendo elevarlas nuevamente.\n",
+            );
         } else {
-            append_findings_lf(&mut out, &report.findings);
+            for finding in findings.iter().take(20) {
+                out.push_str(&format!(
+                    "\n{}  {} [{}]\n",
+                    finding.level.label(),
+                    finding.name,
+                    finding.pid
+                ));
+                if let Some(process) = snapshots.iter().find(|p| p.pid == finding.pid) {
+                    out.push_str(&format!("  ruta:   {}\n", display_path(&process.exe)));
+                    if let Some(parent) = snapshots
+                        .iter()
+                        .find(|p| p.pid == process.ppid && p.start_time <= process.start_time)
+                    {
+                        out.push_str(&format!(
+                            "  padre:  {} [{}]\n  p.ruta: {}\n",
+                            parent.name,
+                            parent.pid,
+                            display_path(&parent.exe),
+                        ));
+                    }
+                }
+                for reason in &finding.reasons {
+                    out.push_str(&format!("  razón:  {reason}\n"));
+                }
+                for limitation in &finding.limitations {
+                    out.push_str(&format!("  falta:  {limitation}\n"));
+                }
+                out.push_str(&format!(
+                    "  revisar: triage {} --deep | sys why {} | sys inspect {}\n",
+                    finding.pid, finding.pid, finding.pid
+                ));
+            }
+        }
+
+        if !performance.is_empty() {
+            out.push_str("\nRECURSOS\n------------------------------------------------------------\n");
+            for item in performance.iter().take(6) {
+                out.push_str(&format!(
+                    "{} [{}]  {}\n",
+                    item.name,
+                    item.pid,
+                    item.reasons.join(" · ")
+                ));
+            }
+        }
+
+        if deep {
+            let pids = findings.iter().map(|f| f.pid).collect::<HashSet<_>>();
+            out.push_str("\nCONEXIONES DE LOS HALLAZGOS\n------------------------------------------------------------\n");
+            out.push_str(&triage_connections(&pids));
+
+            out.push_str("\nINICIO AUTOMÁTICO\n============================================================\n");
+            match self.startup() {
+                Ok(section) => out.push_str(&section.stdout),
+                Err(error) => out.push_str(&format!("No disponible: {error}\n")),
+            }
+
+            out.push_str("\nIMPACTO DE SERVICIOS\n============================================================\n");
+            match self.services_impact() {
+                Ok(section) => out.push_str(&section.stdout),
+                Err(error) => out.push_str(&format!("No disponible: {error}\n")),
+            }
+        } else {
+            out.push_str(
+                "\nUsa 'triage --deep' para correlacionar además conexiones, inicio automático y servicios.\n",
+            );
         }
 
         Ok(CommandOutput::ok(out))
@@ -306,11 +462,13 @@ impl SecurityTriageService {
             .find(|p| p.pid == pid)
             .expect("process from same snapshot");
         let trusted = self.trusted_lineages();
+        let learned = self.learned_lineages(&instances);
         let result = assess_process_with_trust(
             snapshot,
             &snapshots,
             history.as_ref().ok(),
             trusted.as_ref().ok(),
+            learned.as_ref().ok(),
         );
         let mut out = format!(
             "{} {} [{pid}]\n\nWhy:\n",
@@ -920,10 +1078,12 @@ impl SecurityTriageService {
             .collect::<Vec<_>>();
         let history = self.historical_parents(&instances);
         let trusted = self.trusted_lineages();
+        let learned = self.learned_lineages(&instances);
         let findings = analyze_security_with_trust(
             snapshots,
             history.as_ref().ok(),
             trusted.as_ref().ok(),
+            learned.as_ref().ok(),
         );
         // Best effort: unavailable history never prevents local analysis.
         let paths = self.paths.clone();
@@ -960,6 +1120,47 @@ impl SecurityTriageService {
             profiles.entry(exe).or_default().observe(parent);
         }
         Ok(profiles)
+    }
+
+    fn learned_lineages(
+        &self,
+        current: &[(u32, u64)],
+    ) -> Result<HashMap<(String, String), u64>> {
+        let conn = self.open_db()?;
+        let mut stmt = conn.prepare(
+            "SELECT child.exe, parent.exe, child.session_id, child.pid, child.start_time
+             FROM process_observations child JOIN process_observations parent
+             ON child.session_id = parent.session_id AND child.parent_pid = parent.pid
+             AND parent.start_time <= child.start_time
+             WHERE child.exe <> '' AND parent.exe <> '' AND child.observed_at >= ?1
+             GROUP BY child.exe, parent.exe, child.session_id, child.pid, child.start_time",
+        )?;
+
+        let mut sessions: HashMap<(String, String), HashSet<i64>> = HashMap::new();
+        for row in stmt.query_map(params![unix_now() - 90 * 24 * 60 * 60], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, u32>(3)?,
+                row.get::<_, u64>(4)?,
+            ))
+        })? {
+            let (child, parent, session_id, pid, start_time) = row?;
+            if current.contains(&(pid, start_time)) {
+                continue;
+            }
+            let key = (
+                normalize_install_identity(&child),
+                normalize_install_identity(&parent),
+            );
+            sessions.entry(key).or_default().insert(session_id);
+        }
+
+        Ok(sessions
+            .into_iter()
+            .map(|(key, sessions)| (key, sessions.len() as u64))
+            .collect())
     }
 
     fn record_assessments(
@@ -1076,6 +1277,7 @@ fn assess_process_with_trust(
     snapshots: &[ProcessSnapshot],
     history: Option<&HashMap<String, ParentProfile>>,
     trusted_lineages: Option<&HashSet<(String, String)>>,
+    learned_lineages: Option<&HashMap<(String, String), u64>>,
 ) -> Assessment {
     let names = snapshots
         .iter()
@@ -1146,11 +1348,32 @@ fn assess_process_with_trust(
         let parent_path = current_parent.exe.to_ascii_lowercase();
         let trusted = trusted_lineages
             .is_some_and(|rows| rows.contains(&(path.clone(), parent_path.clone())));
+        let learned_key = (
+            normalize_install_identity(&process.exe),
+            normalize_install_identity(&current_parent.exe),
+        );
+        let learned_sessions = learned_lineages
+            .and_then(|rows| rows.get(&learned_key))
+            .copied()
+            .unwrap_or(0);
+        let locally_learned = learned_sessions >= 1
+            && auto_learnable_install_path(&process.exe)
+            && auto_learnable_install_path(&current_parent.exe);
+
         if trusted {
             evidence.push(Evidence::known(
                 Family::Lineage,
                 Strength::Context,
                 format!("trusted parent relation: {}", current_parent.exe),
+            ));
+        } else if locally_learned {
+            evidence.push(Evidence::known(
+                Family::Lineage,
+                Strength::Context,
+                format!(
+                    "learned local parent relation: {} (seen in {learned_sessions} previous session(s))",
+                    current_parent.exe
+                ),
             ));
         } else {
             let profile = history
@@ -1209,17 +1432,95 @@ fn assess_process_with_trust(
     correlate(&evidence)
 }
 
+fn normalize_install_identity(path: &str) -> String {
+    let lower = path.replace('/', "\\").to_ascii_lowercase();
+
+    // Microsoft Store packages carry a version/architecture segment in their
+    // directory name. Learn the package family + executable, not one version.
+    if let Some(pos) = lower.find("\\windowsapps\\") {
+        let prefix_end = pos + "\\windowsapps\\".len();
+        let prefix = &lower[..prefix_end];
+        let rest = &lower[prefix_end..];
+        if let Some((package_dir, tail)) = rest.split_once('\\') {
+            let package = package_dir.split('_').next().unwrap_or(package_dir);
+            return format!("{prefix}{package}\\{tail}");
+        }
+    }
+
+    // Edge WebView2 also puts the runtime version in the executable path.
+    if lower.ends_with("\\msedgewebview2.exe") {
+        let marker = "\\microsoft\\edgewebview\\application\\";
+        if let Some(pos) = lower.find(marker) {
+            let prefix_end = pos + marker.len();
+            let rest = &lower[prefix_end..];
+            if let Some((_version, tail)) = rest.split_once('\\') {
+                return format!("{}<version>\\{tail}", &lower[..prefix_end]);
+            }
+        }
+    }
+
+    lower
+}
+
+fn auto_learnable_install_path(path: &str) -> bool {
+    let lower = path.replace('/', "\\").to_ascii_lowercase();
+    let user_writable = lower.contains("\\users\\")
+        || lower.contains("\\appdata\\")
+        || lower.contains("\\temp\\")
+        || lower.contains("\\downloads\\");
+
+    !user_writable
+        && (lower.contains("\\program files\\")
+            || lower.contains("\\program files (x86)\\")
+            || lower.contains("\\windows\\systemapps\\")
+            || lower.contains("\\windows\\system32\\"))
+}
+
+fn display_path(path: &str) -> &str {
+    if path.trim().is_empty() { "<no disponible>" } else { path }
+}
+
+fn triage_connections(pids: &HashSet<u32>) -> String {
+    if pids.is_empty() {
+        return "No hay PIDs de seguridad que correlacionar en esta muestra.\n".to_owned();
+    }
+
+    let raw = match capture("netstat.exe", &["-ano"]) {
+        Ok(raw) => raw,
+        Err(error) => return format!("No disponible: {error}\n"),
+    };
+
+    let mut out = String::new();
+    for line in raw.lines() {
+        let fields = line.split_whitespace().collect::<Vec<_>>();
+        let Some(pid) = fields.last().and_then(|value| value.parse::<u32>().ok()) else {
+            continue;
+        };
+        if pids.contains(&pid) {
+            out.push_str(line.trim());
+            out.push('\n');
+        }
+    }
+
+    if out.is_empty() {
+        "No se observaron sockets TCP/UDP asociados a esos PIDs.\n".to_owned()
+    } else {
+        out
+    }
+}
+
 fn analyze_security(
     snapshots: &[ProcessSnapshot],
     history: Option<&HashMap<String, ParentProfile>>,
 ) -> Vec<Finding> {
-    analyze_security_with_trust(snapshots, history, None)
+    analyze_security_with_trust(snapshots, history, None, None)
 }
 
 fn analyze_security_with_trust(
     snapshots: &[ProcessSnapshot],
     history: Option<&HashMap<String, ParentProfile>>,
     trusted_lineages: Option<&HashSet<(String, String)>>,
+    learned_lineages: Option<&HashMap<(String, String), u64>>,
 ) -> Vec<Finding> {
     let mut findings = snapshots
         .iter()
@@ -1229,6 +1530,7 @@ fn analyze_security_with_trust(
                 snapshots,
                 history,
                 trusted_lineages,
+                learned_lineages,
             );
             (result.classification >= AttentionLevel::Attention).then(|| Finding {
                 pid: process.pid,
@@ -1333,7 +1635,8 @@ fn open_security_db(paths: &AppPaths) -> Result<Connection> {
              key TEXT PRIMARY KEY,
              value TEXT NOT NULL
          );
-         INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '1');
+         INSERT OR IGNORE INTO schema_meta(key, value) VALUES ('schema_version', '2');
+         UPDATE schema_meta SET value = '2' WHERE key = 'schema_version';
 
          CREATE TABLE IF NOT EXISTS preload_sessions (
              id INTEGER PRIMARY KEY AUTOINCREMENT,
