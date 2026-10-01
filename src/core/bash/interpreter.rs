@@ -2763,21 +2763,38 @@ impl Interpreter {
                 }
             }
             "tour" => {
-                let config_path = PathBuf::from(self.env.get("SST_CONFIG"));
-                let root = config_path
-                    .parent()
-                    .and_then(Path::parent)
-                    .map(Path::to_path_buf)
-                    .unwrap_or_else(|| self.env.cwd.clone());
-                let script = root.join("tour.sh");
-                if !script.is_file() {
-                    ExecutionResult::from_parts(
+                // The selector owns the alternate screen and returns the selected
+                // example path. Execute exactly one example and then return to the
+                // normal terminal so its output remains visible. The former
+                // tour.sh loop buffered all script output until a later read,
+                // making successful examples look frozen.
+                let selected = self
+                    .host
+                    .execute_builtin("sst-tour-select", &[], &self.env.cwd, None)?
+                    .unwrap_or_else(|| ExecutionResult::from_parts(
                         String::new(),
-                        format!("tour: no existe {}\n", script.display()),
-                        1,
-                    )
+                        "tour: selector interno no disponible\n".to_owned(),
+                        127,
+                    ));
+
+                if selected.status != 0 {
+                    selected
                 } else {
-                    self.execute_shell_script_file(&script, args, stdin)?
+                    let selected_path = selected.stdout.lines().next().unwrap_or("").trim();
+                    if selected_path.is_empty() {
+                        ExecutionResult::success()
+                    } else {
+                        let path = PathBuf::from(selected_path);
+                        let mut result = self.execute_shell_script_file(&path, args, stdin)?;
+                        result.stdout = format!(
+                            "SST TOUR — {}\n{}",
+                            path.file_name()
+                                .and_then(|name| name.to_str())
+                                .unwrap_or(selected_path),
+                            result.stdout,
+                        );
+                        result
+                    }
                 }
             }
             "config" => {
