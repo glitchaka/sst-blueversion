@@ -1020,7 +1020,7 @@ impl ShellCommandHost for WindowsShellHost {
             .envs(env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
+            .stderr(Stdio::piped());
 
         #[cfg(windows)]
         {
@@ -1030,7 +1030,21 @@ impl ShellCommandHost for WindowsShellHost {
         let mut child = command.spawn().context("no se pudo iniciar coproc Bash")?;
         let stdin = child.stdin.take().context("coproc sin stdin")?;
         let mut stdout = child.stdout.take().context("coproc sin stdout")?;
+        let stderr = child.stderr.take();
         let pid = child.id();
+
+        if let Some(mut stderr) = stderr {
+            let sender = crate::adapters::terminal::io::output_sender();
+            std::thread::spawn(move || {
+                let mut buffer = [0u8; 4096];
+                loop {
+                    match stderr.read(&mut buffer) {
+                        Ok(0) | Err(_) => break,
+                        Ok(size) => send_async_terminal_output(sender.clone(), &buffer[..size], true),
+                    }
+                }
+            });
+        }
 
         let read_fd = self.next_fd.fetch_add(1, Ordering::SeqCst);
         let write_fd = self.next_fd.fetch_add(1, Ordering::SeqCst);
