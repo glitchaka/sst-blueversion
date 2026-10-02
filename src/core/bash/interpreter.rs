@@ -6641,6 +6641,13 @@ impl Interpreter {
         let expression = expression.trim();
         if expression.is_empty() { return Ok(0); }
 
+        let expanded_expression = if expression.as_bytes().contains(&36) {
+            Some(self.expand_scalar(expression)?)
+        } else {
+            None
+        };
+        let expression = expanded_expression.as_deref().unwrap_or(expression).trim();
+
         if arithmetic_wrapped(expression) {
             return self.evaluate_arithmetic_command(&expression[1..expression.len() - 1]);
         }
