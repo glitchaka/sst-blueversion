@@ -2196,20 +2196,30 @@ impl Interpreter {
             });
             self.sync_call_stack_arrays();
             let execution = self.execute(&body, local_stdin.as_deref());
-            let mut result = execution?;
-            if result.flow == FlowSignal::Return {
-                result.flow = FlowSignal::None;
-            }
-            if let Some(return_trap) = self.run_trap_action("RETURN", result.status)? {
-                result.stdout.push_str(&return_trap.stdout);
-                result.stderr.push_str(&return_trap.stderr);
-                if return_trap.exit_requested { result.exit_requested = true; }
-            }
+            let execution = match execution {
+                Ok(mut result) => {
+                    if result.flow == FlowSignal::Return {
+                        result.flow = FlowSignal::None;
+                    }
+                    match self.run_trap_action("RETURN", result.status) {
+                        Ok(Some(return_trap)) => {
+                            result.stdout.push_str(&return_trap.stdout);
+                            result.stderr.push_str(&return_trap.stderr);
+                            if return_trap.exit_requested { result.exit_requested = true; }
+                            Ok(result)
+                        }
+                        Ok(None) => Ok(result),
+                        Err(error) => Err(error),
+                    }
+                }
+                Err(error) => Err(error),
+            };
+
             self.call_stack.pop();
             self.sync_call_stack_arrays();
             self.env.pop_local_scope();
             self.env.positional = saved;
-            result
+            execution?
         } else if let Some(result) = self.host.execute_builtin(
             &name,
             args,
@@ -2721,18 +2731,30 @@ impl Interpreter {
                 });
                 self.sync_call_stack_arrays();
                 let execution = self.execute_text(&source);
-                let mut result = execution?;
-                if result.flow == FlowSignal::Return { result.flow = FlowSignal::None; }
-                if let Some(return_trap) = self.run_trap_action("RETURN", result.status)? {
-                    result.stdout.push_str(&return_trap.stdout);
-                    result.stderr.push_str(&return_trap.stderr);
-                }
+                let execution = match execution {
+                    Ok(mut result) => {
+                        if result.flow == FlowSignal::Return {
+                            result.flow = FlowSignal::None;
+                        }
+                        match self.run_trap_action("RETURN", result.status) {
+                            Ok(Some(return_trap)) => {
+                                result.stdout.push_str(&return_trap.stdout);
+                                result.stderr.push_str(&return_trap.stderr);
+                                Ok(result)
+                            }
+                            Ok(None) => Ok(result),
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Err(error) => Err(error),
+                };
+
                 self.call_stack.pop();
                 self.source_depth = self.source_depth.saturating_sub(1);
                 self.env.positional = saved_positional;
                 self.env.script_name = saved_name;
                 self.sync_call_stack_arrays();
-                result
+                execution?
             }
             "read" => self.builtin_read(args, stdin)?,
             "local" => {
