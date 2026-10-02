@@ -53,10 +53,12 @@ impl Parser {
             node = match self.peek() {
                 Token::AndIf => {
                     self.pos += 1;
+                    self.skip_semi();
                     AstNode::And(Box::new(node), Box::new(self.parse_pipeline()?))
                 }
                 Token::OrIf => {
                     self.pos += 1;
+                    self.skip_semi();
                     AstNode::Or(Box::new(node), Box::new(self.parse_pipeline()?))
                 }
                 _ => break,
