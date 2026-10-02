@@ -8706,7 +8706,7 @@ fn shell_single_quote(value: &str) -> String {
 fn shell_quote(value: &str) -> String {
     if value.is_empty() { return "''".to_owned(); }
     if value.chars().all(|ch| {
-        ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | '\\' | ':' | '@' | '%')
+        ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':' | '@' | '%')
     }) {
         return value.to_owned();
     }
