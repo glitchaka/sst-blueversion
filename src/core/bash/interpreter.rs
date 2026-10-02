@@ -376,6 +376,8 @@ impl Interpreter {
         // shell variables are reconstructed by shell_child_prelude(), preserving
         // Bash's distinction between shell-local and exported state.
         let mut env = self.execution_environment();
+        env.insert("SHELLOPTS".to_owned(), self.env.get("SHELLOPTS"));
+        env.insert("BASHOPTS".to_owned(), self.env.get("BASHOPTS"));
         for (name, body) in &self.env.functions {
             env.insert(
                 format!("BASH_FUNC_{name}%%"),
