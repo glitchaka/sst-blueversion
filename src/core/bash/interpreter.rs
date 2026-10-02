@@ -372,12 +372,10 @@ impl Interpreter {
     }
 
     fn shell_child_environment(&self) -> HashMap<String, String> {
-        // Internal SST child shells emulate Bash forked shell contexts. They
-        // must inherit ordinary shell variables as well as exported variables;
-        // external programs still receive only execution_environment().
-        let mut env = self.env.vars.clone();
-        env.extend(self.env.exported.clone());
-        env.retain(|name, _| !name.starts_with("BASH_FUNC_"));
+        // Only exported variables become process environment entries. Ordinary
+        // shell variables are reconstructed by shell_child_prelude(), preserving
+        // Bash's distinction between shell-local and exported state.
+        let mut env = self.execution_environment();
         for (name, body) in &self.env.functions {
             env.insert(
                 format!("BASH_FUNC_{name}%%"),
@@ -390,6 +388,25 @@ impl Interpreter {
 
     fn shell_child_prelude(&self) -> String {
         let mut source = String::new();
+
+        let mut scalars = self.env.vars.keys().cloned().collect::<Vec<_>>();
+        scalars.sort();
+        for name in scalars {
+            if self.env.exported.contains_key(&name)
+                || self.env.readonly.contains(&name)
+                || name.starts_with("BASH_")
+                || name.starts_with("NWASH_")
+                || matches!(
+                    name.as_str(),
+                    "RANDOM" | "SRANDOM" | "SECONDS" | "EPOCHSECONDS" | "EPOCHREALTIME"
+                        | "LINENO" | "SHLVL" | "PPID" | "BASHPID"
+                )
+            {
+                continue;
+            }
+            let value = self.env.get(&name);
+            source.push_str(&format!("{name}={}; ", shell_quote(&value)));
+        }
 
         let mut indexed = self.env.arrays.keys().cloned().collect::<Vec<_>>();
         indexed.sort();
