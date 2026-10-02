@@ -1924,8 +1924,9 @@ impl Interpreter {
         if assignment_count == raw.len() {
             for assignment in &raw {
                 let (name, value) = assignment.split_once('=').unwrap();
+                let name = self.resolve_parameter_reference(name)?;
                 let value = self.expand_scalar(value)?;
-                if !self.env.set(name.to_owned(), value) {
+                if !self.env.set(name.clone(), value) {
                     return Ok(ExecutionResult::from_parts(
                         String::new(),
                         format!("{name}: asignación no permitida o variable de solo lectura\n"),
@@ -1957,9 +1958,10 @@ impl Interpreter {
         let mut temporary_assignments: Vec<(String, super::environment::LocalBinding)> = Vec::new();
         for assignment in &raw[..assignment_count] {
             let (variable, value) = assignment.split_once('=').unwrap();
-            let snapshot = self.env.snapshot_binding(variable);
+            let variable = self.resolve_parameter_reference(variable)?;
+            let snapshot = self.env.snapshot_binding(&variable);
             let expanded = self.expand_scalar(value)?;
-            if !self.env.set(variable.to_owned(), expanded.clone()) {
+            if !self.env.set(variable.clone(), expanded.clone()) {
                 for (name, previous) in temporary_assignments.into_iter().rev() {
                     self.env.restore_binding(&name, previous);
                 }
@@ -1971,8 +1973,8 @@ impl Interpreter {
             }
             // Assignment prefixes are part of the environment of an external
             // command even when the variable was not previously exported.
-            self.env.mark_exported(variable);
-            temporary_assignments.push((variable.to_owned(), snapshot));
+            self.env.mark_exported(&variable);
+            temporary_assignments.push((variable, snapshot));
         }
 
         let preserve_assignments = self.env.option_enabled("posix")
