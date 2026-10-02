@@ -9283,7 +9283,7 @@ fn render_redirect(redirect: &super::ast::Redirect) -> String {
         RedirectKind::BothAppend => "&>>",
     };
     if matches!(redirect.kind, RedirectKind::BothWrite | RedirectKind::BothAppend) {
-        format!("{op} {}", shell_quote(&redirect.target))
+        format!("{op} {}", redirect.target.clone())
     } else {
         let default_fd = match redirect.kind {
             RedirectKind::Read | RedirectKind::DupInput | RedirectKind::ReadWrite | RedirectKind::HereString => 0,
@@ -9296,7 +9296,7 @@ fn render_redirect(redirect: &super::ast::Redirect) -> String {
         } else {
             redirect.fd.to_string()
         };
-        format!("{fd}{op} {}", shell_quote(&redirect.target))
+        format!("{fd}{op} {}", redirect.target.clone())
     }
 }
 
@@ -9324,12 +9324,16 @@ fn render_ast(node: &AstNode) -> String {
         AstNode::Negate(body) => format!("! {}", render_ast(body)),
         AstNode::Background(body) => format!("{} &", render_ast(body)),
         AstNode::Simple(command) => {
-            let mut parts = command.words.iter().map(|w| shell_quote(w)).collect::<Vec<_>>();
+            // Lexer words already preserve the shell spelling (quotes, parameter
+            // expansions, command substitutions, escapes). Re-quoting them here
+            // turns syntax such as "$var" into a literal string and breaks every
+            // child shell path: pipelines, jobs, coprocs and exported functions.
+            let mut parts = command.words.clone();
             parts.extend(command.redirects.iter().map(render_redirect));
             parts.join(" ")
         }
         AstNode::ArrayAssign { name, words } => {
-            format!("{name}=({})", words.iter().map(|w| shell_quote(w)).collect::<Vec<_>>().join(" "))
+            format!("{name}=({})", words.join(" "))
         }
         AstNode::If { condition, then_branch, else_branch } => {
             let mut value = format!("if {}; then {}", render_ast(condition), render_ast(then_branch));
@@ -9340,21 +9344,21 @@ fn render_ast(node: &AstNode) -> String {
             value
         }
         AstNode::For { name, words, body } => {
-            let words = words.iter().map(|w| shell_quote(w)).collect::<Vec<_>>().join(" ");
+            let words = words.join(" ");
             format!("for {name} in {words}; do {}; done", render_ast(body))
         }
         AstNode::ArithmeticFor { init, condition, update, body } => {
             format!("for (( {init}; {condition}; {update} )); do {}; done", render_ast(body))
         }
         AstNode::Select { name, words, body } => {
-            let words = words.iter().map(|w| shell_quote(w)).collect::<Vec<_>>().join(" ");
+            let words = words.join(" ");
             format!("select {name} in {words}; do {}; done", render_ast(body))
         }
         AstNode::While { condition, body, until } => {
             format!("{} {}; do {}; done", if *until { "until" } else { "while" }, render_ast(condition), render_ast(body))
         }
         AstNode::Case { word, arms } => {
-            let mut value = format!("case {} in ", shell_quote(word));
+            let mut value = format!("case {word} in ");
             for arm in arms {
                 value.push_str(&arm.patterns.join("|"));
                 value.push_str(") ");
@@ -12117,7 +12121,7 @@ fn render_redirect(redirect: &super::ast::Redirect) -> String {
         RedirectKind::BothAppend => "&>>",
     };
     if matches!(redirect.kind, RedirectKind::BothWrite | RedirectKind::BothAppend) {
-        format!("{op} {}", shell_quote(&redirect.target))
+        format!("{op} {}", redirect.target.clone())
     } else {
         let default_fd = match redirect.kind {
             RedirectKind::Read | RedirectKind::DupInput | RedirectKind::ReadWrite | RedirectKind::HereString => 0,
@@ -12130,7 +12134,7 @@ fn render_redirect(redirect: &super::ast::Redirect) -> String {
         } else {
             redirect.fd.to_string()
         };
-        format!("{fd}{op} {}", shell_quote(&redirect.target))
+        format!("{fd}{op} {}", redirect.target.clone())
     }
 }
 
