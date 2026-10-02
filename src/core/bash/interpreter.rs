@@ -388,6 +388,56 @@ impl Interpreter {
     }
 
 
+    fn shell_child_prelude(&self) -> String {
+        let mut source = String::new();
+
+        let mut indexed = self.env.arrays.keys().cloned().collect::<Vec<_>>();
+        indexed.sort();
+        for name in indexed {
+            if name.starts_with("BASH_") || matches!(name.as_str(), "GROUPS" | "FUNCNAME") {
+                continue;
+            }
+            let Some(values) = self.env.arrays.get(&name) else { continue; };
+            let present = self.env.array_present.get(&name);
+            let body = values
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| present.is_none_or(|indices| indices.contains(index)))
+                .map(|(index, value)| format!("[{index}]={}", shell_quote(value)))
+                .collect::<Vec<_>>()
+                .join(" ");
+            source.push_str(&format!("declare -a {name}=({body}); "));
+        }
+
+        let mut associative = self.env.assoc_arrays.keys().cloned().collect::<Vec<_>>();
+        associative.sort();
+        for name in associative {
+            if name.starts_with("BASH_") {
+                continue;
+            }
+            let Some(values) = self.env.assoc_arrays.get(&name) else { continue; };
+            let mut keys = values.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            let body = keys
+                .into_iter()
+                .map(|key| {
+                    let value = values.get(&key).cloned().unwrap_or_default();
+                    format!("[{}]={}", shell_quote(&key), shell_quote(&value))
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            source.push_str(&format!("declare -A {name}=({body}); "));
+        }
+
+        let mut namerefs = self.env.namerefs.iter().collect::<Vec<_>>();
+        namerefs.sort_by_key(|(name, _)| *name);
+        for (name, target) in namerefs {
+            source.push_str(&format!("declare -n {name}={}; ", shell_quote(target)));
+        }
+
+        source
+    }
+
     fn with_captured_output<T>(
         &mut self,
         operation: impl FnOnce(&mut Self) -> Result<T>,
@@ -1484,8 +1534,9 @@ impl Interpreter {
         let pid = if let Some(pid) = pid {
             pid
         } else {
+            let source = format!("{}{}", self.shell_child_prelude(), render_ast(node));
             self.host.execute_shell_background(
-                &render_ast(node),
+                &source,
                 &self.env.cwd,
                 &self.shell_child_environment(),
             )?
@@ -1513,7 +1564,11 @@ impl Interpreter {
         let use_lastpipe = self.env.option_enabled("lastpipe")
             && !self.env.option_enabled("monitor")
             && parts.len() > 1;
-        let commands: Vec<String> = parts.iter().map(render_ast).collect();
+        let prelude = self.shell_child_prelude();
+        let commands: Vec<String> = parts
+            .iter()
+            .map(|part| format!("{prelude}{}", render_ast(part)))
+            .collect();
         let child_env = self.shell_child_environment();
         if !use_lastpipe {
             if let Some((mut result, statuses)) = self.host.execute_shell_pipeline(
@@ -1610,7 +1665,7 @@ impl Interpreter {
     }
 
     fn execute_coproc(&mut self, name: Option<&str>, body: &AstNode) -> Result<ExecutionResult> {
-        let source = render_ast(body);
+        let source = format!("{}{}", self.shell_child_prelude(), render_ast(body));
         let variable = name.unwrap_or("COPROC");
         let child_env = self.shell_child_environment();
 
@@ -7361,9 +7416,10 @@ impl Interpreter {
 
     fn create_process_substitution(&mut self, direction: char, source: &str) -> Result<PathBuf> {
         let child_env = self.shell_child_environment();
+        let child_source = format!("{}{}", self.shell_child_prelude(), source);
         if let Some(path) = self.host.create_process_substitution_pipe(
             direction,
-            source,
+            &child_source,
             &self.env.cwd,
             &child_env,
         )? {
