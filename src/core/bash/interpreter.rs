@@ -7488,12 +7488,14 @@ impl Interpreter {
             if let Some(base) = name.strip_suffix("[@]").or_else(|| name.strip_suffix("[*]")) {
                 return Ok(self.env.array_values(base).len().to_string());
             }
-            return Ok(self.env.get(name).chars().count().to_string());
+            let name = self.resolve_parameter_reference(name)?;
+            return Ok(self.env.get(&name).chars().count().to_string());
         }
 
         for suffix in ["^^", "^", ",,", ","] {
             if let Some(name) = expression.strip_suffix(suffix) {
-                let value = self.env.get(name);
+                let name = self.resolve_parameter_reference(name)?;
+                let value = self.env.get(&name);
                 return Ok(match suffix {
                     "^^" => value.to_uppercase(),
                     "^" => capitalize_first(&value),
@@ -7600,8 +7602,9 @@ impl Interpreter {
 
         for operator in [":-", ":+", ":=", ":?", "-", "+", "=", "?"] {
             if let Some((name, word)) = split_parameter_operator(expression, operator) {
-                let is_set = self.env.is_set(name);
-                let value = self.env.get(name);
+                let name = self.resolve_parameter_reference(name)?;
+                let is_set = self.env.is_set(&name);
+                let value = self.env.get(&name);
                 let null_counts = operator.starts_with(':');
                 let missing = !is_set || (null_counts && value.is_empty());
                 let expanded_word = if word.is_empty() { String::new() } else { self.expand_scalar(word)? };
@@ -7610,7 +7613,7 @@ impl Interpreter {
                     ":+" | "+" => Ok(if missing { String::new() } else { expanded_word }),
                     ":=" | "=" => {
                         if missing {
-                            if !self.env.set(name.to_owned(), expanded_word.clone()) {
+                            if !self.env.set(name.clone(), expanded_word.clone()) {
                                 bail!("{name}: variable de solo lectura");
                             }
                             Ok(expanded_word)
@@ -7632,7 +7635,8 @@ impl Interpreter {
         }
 
         if let Some((name, rest)) = split_substring_expression(expression) {
-            let value = self.env.get(name);
+            let name = self.resolve_parameter_reference(name)?;
+            let value = self.env.get(&name);
             let mut parts = rest.splitn(2, ':');
             let offset = eval_arithmetic(parts.next().unwrap_or("0").trim(), &self.env)?;
             let length = parts.next().map(|part| eval_arithmetic(part.trim(), &self.env)).transpose()?;
