@@ -310,7 +310,13 @@ impl Interpreter {
     pub fn new(host: Box<dyn ShellCommandHost>) -> Self {
         let mut environment = ShellEnvironment::new();
         let inherited_streaming = environment.get("__SST_NWASH_STREAM_CHILD") == "1";
+        let inherited_status = environment
+            .get("__SST_NWASH_PARENT_STATUS")
+            .parse::<i32>()
+            .unwrap_or(0);
         environment.unset("__SST_NWASH_STREAM_CHILD");
+        environment.unset("__SST_NWASH_PARENT_STATUS");
+        environment.last_status = inherited_status;
 
         let mut interpreter = Self {
             env: environment,
@@ -383,6 +389,10 @@ impl Interpreter {
         env.insert("SHELLOPTS".to_owned(), self.env.get("SHELLOPTS"));
         env.insert("BASHOPTS".to_owned(), self.env.get("BASHOPTS"));
         env.insert("__SST_NWASH_STREAM_CHILD".to_owned(), "1".to_owned());
+        env.insert(
+            "__SST_NWASH_PARENT_STATUS".to_owned(),
+            self.env.last_status.to_string(),
+        );
         for (name, body) in &self.env.functions {
             env.insert(
                 format!("BASH_FUNC_{name}%%"),
@@ -395,6 +405,12 @@ impl Interpreter {
 
     fn shell_child_prelude(&self) -> String {
         let mut source = String::new();
+
+        source.push_str(&format!(
+            "BASH_ARGV0={}; set -- {}; ",
+            shell_quote(&self.env.script_name),
+            self.env.positional.iter().map(|value| shell_quote(value)).collect::<Vec<_>>().join(" ")
+        ));
 
         let mut scalars = self.env.vars.keys().cloned().collect::<Vec<_>>();
         scalars.sort();
