@@ -372,7 +372,12 @@ impl Interpreter {
     }
 
     fn shell_child_environment(&self) -> HashMap<String, String> {
-        let mut env = self.execution_environment();
+        // Internal SST child shells emulate Bash forked shell contexts. They
+        // must inherit ordinary shell variables as well as exported variables;
+        // external programs still receive only execution_environment().
+        let mut env = self.env.vars.clone();
+        env.extend(self.env.exported.clone());
+        env.retain(|name, _| !name.starts_with("BASH_FUNC_"));
         for (name, body) in &self.env.functions {
             env.insert(
                 format!("BASH_FUNC_{name}%%"),
