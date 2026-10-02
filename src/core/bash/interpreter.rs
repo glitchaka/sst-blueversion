@@ -7420,7 +7420,16 @@ impl Interpreter {
             return Ok(format!("{base}[{expanded}]"));
         }
 
-        let expanded = if subscript.contains('
+        let expanded = if subscript.as_bytes().contains(&36) {
+            self.expand_scalar(subscript)?
+        } else {
+            subscript.to_owned()
+        };
+        let index = eval_arithmetic(expanded.trim(), &self.env)?;
+        Ok(format!("{base}[{index}]"))
+    }
+
+    fn expand_parameter(&mut self, expression: &str) -> Result<String> {
         if let Some(source) = expression.strip_prefix('|') {
             let source = source.trim();
             let source = source.strip_suffix(';').unwrap_or(source).trim();
