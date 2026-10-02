@@ -314,9 +314,17 @@ impl Interpreter {
             .get("__SST_NWASH_PARENT_STATUS")
             .parse::<i32>()
             .unwrap_or(0);
+        let inherited_aliases = serde_json::from_str::<HashMap<String, String>>(
+            &environment.get("__SST_NWASH_ALIASES"),
+        )
+        .unwrap_or_default();
         environment.unset("__SST_NWASH_STREAM_CHILD");
         environment.unset("__SST_NWASH_PARENT_STATUS");
+        environment.unset("__SST_NWASH_ALIASES");
         environment.last_status = inherited_status;
+        for (name, value) in inherited_aliases {
+            environment.define_alias(name, value);
+        }
 
         let mut interpreter = Self {
             env: environment,
@@ -392,6 +400,10 @@ impl Interpreter {
         env.insert(
             "__SST_NWASH_PARENT_STATUS".to_owned(),
             self.env.last_status.to_string(),
+        );
+        env.insert(
+            "__SST_NWASH_ALIASES".to_owned(),
+            serde_json::to_string(&self.env.aliases).unwrap_or_else(|_| "{}".to_owned()),
         );
         for (name, body) in &self.env.functions {
             env.insert(
@@ -488,12 +500,6 @@ impl Interpreter {
         namerefs.sort_by_key(|(name, _)| *name);
         for (name, target) in namerefs {
             source.push_str(&format!("declare -n {name}={}; ", shell_quote(target)));
-        }
-
-        let mut aliases = self.env.aliases.iter().collect::<Vec<_>>();
-        aliases.sort_by_key(|(name, _)| *name);
-        for (name, value) in aliases {
-            source.push_str(&format!("alias {name}={}; ", shell_quote(value)));
         }
 
         source
