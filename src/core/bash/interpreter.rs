@@ -371,6 +371,17 @@ impl Interpreter {
         env
     }
 
+    fn shell_child_environment(&self) -> HashMap<String, String> {
+        let mut env = self.execution_environment();
+        for (name, body) in &self.env.functions {
+            env.insert(
+                format!("BASH_FUNC_{name}%%"),
+                format!("() {{ {}; }}", render_ast(body)),
+            );
+        }
+        env
+    }
+
 
     fn with_captured_output<T>(
         &mut self,
@@ -1471,7 +1482,7 @@ impl Interpreter {
             self.host.execute_shell_background(
                 &render_ast(node),
                 &self.env.cwd,
-                &self.execution_environment(),
+                &self.shell_child_environment(),
             )?
         };
 
@@ -1498,7 +1509,7 @@ impl Interpreter {
             && !self.env.option_enabled("monitor")
             && parts.len() > 1;
         let commands: Vec<String> = parts.iter().map(render_ast).collect();
-        let child_env = self.execution_environment();
+        let child_env = self.shell_child_environment();
         if !use_lastpipe {
             if let Some((mut result, statuses)) = self.host.execute_shell_pipeline(
                 &commands,
@@ -1596,7 +1607,7 @@ impl Interpreter {
     fn execute_coproc(&mut self, name: Option<&str>, body: &AstNode) -> Result<ExecutionResult> {
         let source = render_ast(body);
         let variable = name.unwrap_or("COPROC");
-        let child_env = self.execution_environment();
+        let child_env = self.shell_child_environment();
 
         if let Some((pid, read_fd, write_fd)) = self.host.start_coproc(
             &source,
@@ -1612,7 +1623,7 @@ impl Interpreter {
             return Ok(ExecutionResult::success());
         }
 
-        let pid = self.host.execute_shell_background(&source, &self.env.cwd, &self.env.exported)?;
+        let pid = self.host.execute_shell_background(&source, &self.env.cwd, &child_env)?;
         self.env.last_background_pid = Some(pid);
         self.env.set(format!("{variable}_PID"), pid.to_string());
         self.env.set_array(variable.to_owned(), vec![String::new(), String::new()]);
@@ -7335,7 +7346,7 @@ impl Interpreter {
     }
 
     fn create_process_substitution(&mut self, direction: char, source: &str) -> Result<PathBuf> {
-        let child_env = self.execution_environment();
+        let child_env = self.shell_child_environment();
         if let Some(path) = self.host.create_process_substitution_pipe(
             direction,
             source,
