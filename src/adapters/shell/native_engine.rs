@@ -1170,17 +1170,42 @@ impl ShellCommandHost for WindowsShellHost {
             .current_dir(cwd)
             .envs(env)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         #[cfg(windows)]
         {
             command.creation_flags(CREATE_NO_WINDOW);
         }
 
-        let child = command.spawn()
+        let mut child = command.spawn()
             .with_context(|| format!("no se pudo ejecutar {program} en background"))?;
         let pid = child.id();
+        let display = crate::adapters::terminal::io::output_sender();
+        if let Some(mut stdout) = child.stdout.take() {
+            let sender = display.clone();
+            std::thread::spawn(move || {
+                let mut buffer = [0u8; 4096];
+                loop {
+                    match stdout.read(&mut buffer) {
+                        Ok(0) | Err(_) => break,
+                        Ok(size) => send_async_terminal_output(sender.clone(), &buffer[..size], false),
+                    }
+                }
+            });
+        }
+        if let Some(mut stderr) = child.stderr.take() {
+            let sender = display.clone();
+            std::thread::spawn(move || {
+                let mut buffer = [0u8; 4096];
+                loop {
+                    match stderr.read(&mut buffer) {
+                        Ok(0) | Err(_) => break,
+                        Ok(size) => send_async_terminal_output(sender.clone(), &buffer[..size], true),
+                    }
+                }
+            });
+        }
         self.jobs.lock().unwrap_or_else(|e| e.into_inner()).insert(
             pid,
             BackgroundJob {
@@ -1207,15 +1232,40 @@ impl ShellCommandHost for WindowsShellHost {
             .current_dir(cwd)
             .envs(env)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         #[cfg(windows)]
         {
             command.creation_flags(CREATE_NO_WINDOW);
         }
 
-        let child = command.spawn().context("no se pudo lanzar job Bash en background")?;
+        let mut child = command.spawn().context("no se pudo lanzar job Bash en background")?;
         let pid = child.id();
+        let display = crate::adapters::terminal::io::output_sender();
+        if let Some(mut stdout) = child.stdout.take() {
+            let sender = display.clone();
+            std::thread::spawn(move || {
+                let mut buffer = [0u8; 4096];
+                loop {
+                    match stdout.read(&mut buffer) {
+                        Ok(0) | Err(_) => break,
+                        Ok(size) => send_async_terminal_output(sender.clone(), &buffer[..size], false),
+                    }
+                }
+            });
+        }
+        if let Some(mut stderr) = child.stderr.take() {
+            let sender = display.clone();
+            std::thread::spawn(move || {
+                let mut buffer = [0u8; 4096];
+                loop {
+                    match stderr.read(&mut buffer) {
+                        Ok(0) | Err(_) => break,
+                        Ok(size) => send_async_terminal_output(sender.clone(), &buffer[..size], true),
+                    }
+                }
+            });
+        }
         self.jobs.lock().unwrap_or_else(|e| e.into_inner()).insert(
             pid,
             BackgroundJob {
