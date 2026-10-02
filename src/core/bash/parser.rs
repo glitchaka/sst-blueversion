@@ -635,6 +635,7 @@ mod tests {
     #[test]
     fn parses_extended_control_flow() {
         assert!(matches!(Parser::new(lex("if true; then echo ok; fi").unwrap()).parse().unwrap(), AstNode::If { .. }));
+        assert!(matches!(Parser::new(lex("if false; then echo no; elif true; then echo yes; else echo fallback; fi").unwrap()).parse().unwrap(), AstNode::If { .. }));
         assert!(matches!(Parser::new(lex("for x in a b; do echo $x; done").unwrap()).parse().unwrap(), AstNode::For { .. }));
         assert!(matches!(Parser::new(lex("select x in a b; do break; done").unwrap()).parse().unwrap(), AstNode::Select { .. }));
         assert!(matches!(Parser::new(lex("f() { echo hi; }").unwrap()).parse().unwrap(), AstNode::FunctionDef { .. }));
