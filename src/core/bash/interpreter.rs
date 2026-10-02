@@ -8271,10 +8271,11 @@ fn is_shell_quoted(value: &str) -> bool {
 }
 
 fn quoted_array_expansion(raw: &str, suffix: &str) -> Option<String> {
-    let prefix = "\"$".to_owned() + "{";
-    let wrapped_prefix = format!("\"{prefix}");
-    if !raw.starts_with(&wrapped_prefix) || !raw.ends_with("}\"") { return None; }
-    let inner = &raw[wrapped_prefix.len()..raw.len() - 2];
+    const PREFIX: &str = "\\\"${";
+    if !raw.starts_with(PREFIX) || !raw.ends_with("}\\\"") {
+        return None;
+    }
+    let inner = &raw[PREFIX.len()..raw.len() - 2];
     let needle = format!("[{suffix}]");
     inner.strip_suffix(&needle).map(str::to_owned)
 }
