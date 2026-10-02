@@ -7613,39 +7613,40 @@ impl Interpreter {
         }
 
         let base_len = parameter_reference_len(expression);
-        let (name, remainder) = expression.split_at(base_len);
+        let (raw_name, remainder) = expression.split_at(base_len);
+        let name = self.resolve_parameter_reference(raw_name)?;
 
         if let Some(rest) = remainder.strip_prefix("//") {
             let (pattern, replacement) = rest.split_once('/').unwrap_or((rest, ""));
-            return Ok(replace_glob(&self.env.get(name), pattern, replacement, true, self.env.option_enabled("patsub_replacement")));
+            return Ok(replace_glob(&self.env.get(&name), pattern, replacement, true, self.env.option_enabled("patsub_replacement")));
         }
         if let Some(rest) = remainder.strip_prefix("/#") {
             let (pattern, replacement) = rest.split_once('/').unwrap_or((rest, ""));
-            return Ok(replace_glob_anchored(&self.env.get(name), pattern, replacement, true, self.env.option_enabled("patsub_replacement")));
+            return Ok(replace_glob_anchored(&self.env.get(&name), pattern, replacement, true, self.env.option_enabled("patsub_replacement")));
         }
         if let Some(rest) = remainder.strip_prefix("/%") {
             let (pattern, replacement) = rest.split_once('/').unwrap_or((rest, ""));
-            return Ok(replace_glob_anchored(&self.env.get(name), pattern, replacement, false, self.env.option_enabled("patsub_replacement")));
+            return Ok(replace_glob_anchored(&self.env.get(&name), pattern, replacement, false, self.env.option_enabled("patsub_replacement")));
         }
         if let Some(rest) = remainder.strip_prefix('/') {
             let (pattern, replacement) = rest.split_once('/').unwrap_or((rest, ""));
-            return Ok(replace_glob(&self.env.get(name), pattern, replacement, false, self.env.option_enabled("patsub_replacement")));
+            return Ok(replace_glob(&self.env.get(&name), pattern, replacement, false, self.env.option_enabled("patsub_replacement")));
         }
 
         for operator in ["##", "#", "%%", "%"] {
             if let Some(pattern) = remainder.strip_prefix(operator) {
-                return Ok(remove_glob_pattern(&self.env.get(name), pattern, operator));
+                return Ok(remove_glob_pattern(&self.env.get(&name), pattern, operator));
             }
         }
 
         if self.env.option_enabled("nounset")
-            && !special_parameter(name)
-            && !self.env.is_set(name)
+            && !special_parameter(&name)
+            && !self.env.is_set(&name)
         {
             bail!("{name}: variable no definida");
         }
 
-        Ok(self.special_value(name))
+        Ok(self.special_value(&name))
     }
 
     fn tilde_expand(&self, raw: &str) -> String {
