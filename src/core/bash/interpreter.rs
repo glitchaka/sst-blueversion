@@ -400,19 +400,34 @@ impl Interpreter {
         scalars.sort();
         for name in scalars {
             if self.env.exported.contains_key(&name)
-                || self.env.readonly.contains(&name)
                 || name.starts_with("BASH_")
                 || name.starts_with("NWASH_")
                 || matches!(
                     name.as_str(),
-                    "RANDOM" | "SRANDOM" | "SECONDS" | "EPOCHSECONDS" | "EPOCHREALTIME"
-                        | "LINENO" | "SHLVL" | "PPID" | "BASHPID"
+                    "SHELLOPTS" | "BASHOPTS" | "RANDOM" | "SRANDOM" | "SECONDS"
+                        | "EPOCHSECONDS" | "EPOCHREALTIME" | "LINENO" | "SHLVL"
+                        | "PPID" | "BASHPID"
                 )
             {
                 continue;
             }
+
             let value = self.env.get(&name);
-            source.push_str(&format!("{name}={}; ", shell_quote(&value)));
+            let mut attributes = String::new();
+            if self.env.readonly.contains(&name) { attributes.push('r'); }
+            if self.env.integer_vars.contains(&name) { attributes.push('i'); }
+            if self.env.lowercase_vars.contains(&name) { attributes.push('l'); }
+            if self.env.uppercase_vars.contains(&name) { attributes.push('u'); }
+            if self.env.trace_vars.contains(&name) { attributes.push('t'); }
+
+            if attributes.is_empty() {
+                source.push_str(&format!("{name}={}; ", shell_quote(&value)));
+            } else {
+                source.push_str(&format!(
+                    "declare -{attributes} {name}={}; ",
+                    shell_quote(&value)
+                ));
+            }
         }
 
         let mut indexed = self.env.arrays.keys().cloned().collect::<Vec<_>>();
