@@ -10452,6 +10452,65 @@ mod tests {
         assert_eq!(result.status, 0);
     }
 
+    #[test]
+    fn core_bash_language_contract_executes_end_to_end() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let source = r#"
+banner() { printf "== %s ==\n" "$1"; }
+
+targets=("localhost" "127.0.0.1" "example.com")
+for ((i=0; i<${#targets[@]}; i++)); do
+    printf "[%d] %s\n" "$i" "${targets[$i]}"
+done
+
+declare -A capability
+capability[language]="Bash-compatible"
+capability[platform]="Windows"
+
+score() {
+    local base="$1"
+    local bonus="${2:-0}"
+    local total=$((base + bonus))
+    printf "%d" "$total"
+}
+
+for value in 2 4 8; do
+    result="$(score "$value" 3)"
+    if (( result >= 10 )); then
+        echo high
+    elif (( result >= 6 )); then
+        echo medium
+    else
+        echo low
+    fi
+done
+
+mode=demo
+case "$mode" in
+    demo|showcase) echo demo ;;
+    quiet) echo quiet ;;
+    *) echo other ;;
+esac
+
+sample="informe.txt"
+if [[ "$sample" == *.txt && -n "$sample" ]]; then
+    echo text
+fi
+
+cat <<EOF
+hello ${USERNAME:-unknown}
+EOF
+"#;
+
+        let result = shell.execute_text(source).unwrap();
+        assert_eq!(result.status, 0);
+        assert_eq!(shell.env.get("capability[language]"), "Bash-compatible");
+        assert!(result.stdout.contains("medium"));
+        assert!(result.stdout.contains("high"));
+        assert!(result.stdout.contains("demo"));
+        assert!(result.stdout.contains("text"));
+    }
+
 }
 ) {
             self.expand_scalar(subscript)?
