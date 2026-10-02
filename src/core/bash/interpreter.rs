@@ -6737,9 +6737,10 @@ impl Interpreter {
         for suffix in ["++", "--"] {
             if let Some(name) = expression.strip_suffix(suffix).map(str::trim) {
                 if is_arithmetic_lvalue(name) {
-                    let current = self.env.get(name).parse::<i64>().unwrap_or(0);
+                    let name = self.resolve_parameter_reference(name)?;
+                    let current = self.env.get(&name).parse::<i64>().unwrap_or(0);
                     let next = if suffix == "++" { current.wrapping_add(1) } else { current.wrapping_sub(1) };
-                    if !self.env.set(name.to_owned(), next.to_string()) {
+                    if !self.env.set(name.clone(), next.to_string()) {
                         bail!("{name}: variable de solo lectura");
                     }
                     return Ok(current);
@@ -6750,9 +6751,10 @@ impl Interpreter {
         for prefix in ["++", "--"] {
             if let Some(name) = expression.strip_prefix(prefix).map(str::trim) {
                 if is_arithmetic_lvalue(name) {
-                    let current = self.env.get(name).parse::<i64>().unwrap_or(0);
+                    let name = self.resolve_parameter_reference(name)?;
+                    let current = self.env.get(&name).parse::<i64>().unwrap_or(0);
                     let next = if prefix == "++" { current.wrapping_add(1) } else { current.wrapping_sub(1) };
-                    if !self.env.set(name.to_owned(), next.to_string()) {
+                    if !self.env.set(name.clone(), next.to_string()) {
                         bail!("{name}: variable de solo lectura");
                     }
                     return Ok(next);
@@ -6761,8 +6763,9 @@ impl Interpreter {
         }
 
         if let Some((name, operator, rhs)) = find_arithmetic_assignment(expression) {
+            let name = self.resolve_parameter_reference(name)?;
             let right = self.evaluate_arithmetic_command(rhs)?;
-            let current = self.env.get(name).parse::<i64>().unwrap_or(0);
+            let current = self.env.get(&name).parse::<i64>().unwrap_or(0);
             let value = match operator {
                 "=" => right,
                 "+=" => current.wrapping_add(right),
@@ -6786,7 +6789,7 @@ impl Interpreter {
                 }
                 _ => right,
             };
-            if !self.env.set(name.to_owned(), value.to_string()) {
+            if !self.env.set(name.clone(), value.to_string()) {
                 bail!("{name}: variable de solo lectura");
             }
             return Ok(value);
