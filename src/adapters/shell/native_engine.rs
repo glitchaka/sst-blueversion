@@ -567,6 +567,11 @@ impl ShellCommandHost for WindowsShellHost {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
+            #[cfg(windows)]
+            {
+                command.creation_flags(CREATE_NO_WINDOW);
+            }
+
             let mut child = match command.spawn() {
                 Ok(child) => child,
                 Err(error) => {
@@ -901,6 +906,11 @@ impl ShellCommandHost for WindowsShellHost {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
 
+            #[cfg(windows)]
+            {
+                command.creation_flags(CREATE_NO_WINDOW);
+            }
+
             if index == 0 {
                 if stdin.is_some() {
                     command.stdin(Stdio::piped());
@@ -1011,6 +1021,11 @@ impl ShellCommandHost for WindowsShellHost {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
+
+        #[cfg(windows)]
+        {
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
 
         let mut child = command.spawn().context("no se pudo iniciar coproc Bash")?;
         let stdin = child.stdin.take().context("coproc sin stdin")?;
@@ -1194,6 +1209,11 @@ impl ShellCommandHost for WindowsShellHost {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
         let child = command.spawn().context("no se pudo lanzar job Bash en background")?;
         let pid = child.id();
         self.jobs.lock().unwrap_or_else(|e| e.into_inner()).insert(
