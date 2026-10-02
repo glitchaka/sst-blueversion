@@ -308,8 +308,12 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new(host: Box<dyn ShellCommandHost>) -> Self {
+        let mut environment = ShellEnvironment::new();
+        let inherited_streaming = environment.get("__SST_NWASH_STREAM_CHILD") == "1";
+        environment.unset("__SST_NWASH_STREAM_CHILD");
+
         let mut interpreter = Self {
-            env: ShellEnvironment::new(),
+            env: environment,
             host: Arc::from(host),
             loop_depth: 0,
             source_depth: 0,
@@ -332,7 +336,7 @@ impl Interpreter {
             mail_state: HashMap::new(),
             managed_input_fds: HashMap::new(),
             next_variable_fd: 10,
-            stream_script_output: false,
+            stream_script_output: inherited_streaming,
             capture_output_depth: 0,
         };
         interpreter.import_exported_functions();
@@ -378,6 +382,7 @@ impl Interpreter {
         let mut env = self.execution_environment();
         env.insert("SHELLOPTS".to_owned(), self.env.get("SHELLOPTS"));
         env.insert("BASHOPTS".to_owned(), self.env.get("BASHOPTS"));
+        env.insert("__SST_NWASH_STREAM_CHILD".to_owned(), "1".to_owned());
         for (name, body) in &self.env.functions {
             env.insert(
                 format!("BASH_FUNC_{name}%%"),
