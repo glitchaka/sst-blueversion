@@ -8847,14 +8847,30 @@ fn matching(chars: &[char], start: usize, open: char, close: char) -> Option<usi
     let mut depth = 0usize;
     let mut single = false;
     let mut double = false;
+    let mut escaped = false;
+
     for (index, ch) in chars.iter().copied().enumerate().skip(start) {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && !single {
+            escaped = true;
+            continue;
+        }
+
         match ch {
             '\'' if !double => single = !single,
             '"' if !single => double = !double,
             ch if !single && !double && ch == open => depth += 1,
             ch if !single && !double && ch == close => {
+                if depth == 0 {
+                    return None;
+                }
                 depth -= 1;
-                if depth == 0 { return Some(index); }
+                if depth == 0 {
+                    return Some(index);
+                }
             }
             _ => {}
         }
