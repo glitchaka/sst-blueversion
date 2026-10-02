@@ -399,6 +399,18 @@ mod tests {
         assert!(tokens.contains(&Token::Redirect { fd: 2, variable: None, op: RedirectOp::DupOutput }));
         assert!(tokens.contains(&Token::Word("\"a b\"".into())));
     }
+
+    #[test]
+    fn keeps_nested_quotes_inside_command_substitution() {
+        let tokens = lex("value=\"$(printf '%s' \"a b\")\"").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Word("value=\"$(printf '%s' \"a b\")\"".into()),
+                Token::Eof,
+            ]
+        );
+    }
 }
  && matches!(chars.get(i + 1), Some('(' | '{')) {
                 let open = chars[i + 1];
