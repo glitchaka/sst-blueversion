@@ -490,6 +490,12 @@ impl Interpreter {
             source.push_str(&format!("declare -n {name}={}; ", shell_quote(target)));
         }
 
+        let mut aliases = self.env.aliases.iter().collect::<Vec<_>>();
+        aliases.sort_by_key(|(name, _)| *name);
+        for (name, value) in aliases {
+            source.push_str(&format!("alias {name}={}; ", shell_quote(value)));
+        }
+
         source
     }
 
