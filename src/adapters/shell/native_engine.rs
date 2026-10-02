@@ -1172,6 +1172,9 @@ impl ShellCommandHost for WindowsShellHost {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if script.is_some() {
+            command.env("__SST_NWASH_STREAM_CHILD", "1");
+        }
 
         #[cfg(windows)]
         {
