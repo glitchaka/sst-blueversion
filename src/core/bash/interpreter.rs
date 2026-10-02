@@ -318,9 +318,14 @@ impl Interpreter {
             &environment.get("__SST_NWASH_ALIASES"),
         )
         .unwrap_or_default();
+        let inherited_functions = serde_json::from_str::<HashMap<String, String>>(
+            &environment.get("__SST_NWASH_FUNCTIONS"),
+        )
+        .unwrap_or_default();
         environment.unset("__SST_NWASH_STREAM_CHILD");
         environment.unset("__SST_NWASH_PARENT_STATUS");
         environment.unset("__SST_NWASH_ALIASES");
+        environment.unset("__SST_NWASH_FUNCTIONS");
         environment.last_status = inherited_status;
         for (name, value) in inherited_aliases {
             environment.define_alias(name, value);
@@ -354,6 +359,15 @@ impl Interpreter {
             capture_output_depth: 0,
         };
         interpreter.import_exported_functions();
+        for (name, source) in inherited_functions {
+            if interpreter.env.functions.contains_key(&name) {
+                continue;
+            }
+            if let Ok(body) = parse(&source) {
+                interpreter.env.functions.insert(name.clone(), body);
+                interpreter.function_sources.insert(name, "subshell".to_owned());
+            }
+        }
         interpreter
     }
 
@@ -405,12 +419,15 @@ impl Interpreter {
             "__SST_NWASH_ALIASES".to_owned(),
             serde_json::to_string(&self.env.aliases).unwrap_or_else(|_| "{}".to_owned()),
         );
-        for (name, body) in &self.env.functions {
-            env.insert(
-                format!("BASH_FUNC_{name}%%"),
-                format!("() {{ {}; }}", render_ast(body)),
-            );
-        }
+        let local_functions = self.env.functions
+            .iter()
+            .filter(|(name, _)| !self.env.exported_functions.contains(*name))
+            .map(|(name, body)| (name.clone(), render_ast(body)))
+            .collect::<HashMap<_, _>>();
+        env.insert(
+            "__SST_NWASH_FUNCTIONS".to_owned(),
+            serde_json::to_string(&local_functions).unwrap_or_else(|_| "{}".to_owned()),
+        );
         env
     }
 
