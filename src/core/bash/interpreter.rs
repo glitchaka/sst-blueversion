@@ -8271,8 +8271,8 @@ fn is_shell_quoted(value: &str) -> bool {
 }
 
 fn quoted_array_expansion(raw: &str, suffix: &str) -> Option<String> {
-    const PREFIX: &str = "\\\"${";
-    if !raw.starts_with(PREFIX) || !raw.ends_with("}\\\"") {
+    const PREFIX: &str = "\"${";
+    if !raw.starts_with(PREFIX) || !raw.ends_with("}\"") {
         return None;
     }
     let inner = &raw[PREFIX.len()..raw.len() - 2];
