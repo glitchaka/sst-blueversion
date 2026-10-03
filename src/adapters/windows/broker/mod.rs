@@ -128,8 +128,19 @@ fn change_suspension(process: windows_sys::Win32::Foundation::HANDLE, suspend: b
         anyhow::anyhow!("native suspend/resume unavailable on this Windows version")
     })?;
     // Only these two constant, already-loaded system exports are callable.
-    let action: unsafe extern "system" fn(windows_sys::Win32::Foundation::HANDLE) -> i32 =
-        unsafe { std::mem::transmute(address) };
+    type NtProcessAction =
+        unsafe extern "system" fn(windows_sys::Win32::Foundation::HANDLE) -> i32;
+
+    // SAFETY:
+    // - GetProcAddress is restricted above to the already-loaded system ntdll.dll.
+    // - name is one of the two constant exports NtSuspendProcess/NtResumeProcess.
+    // - Both exports use the NTAPI/system calling convention and the signature
+    //   NTSTATUS Fn(HANDLE) on supported Windows versions.
+    // - address was checked for null before this conversion.
+    //
+    // Keep this signature synchronized with the native Windows declaration if
+    // this code is ever moved to a different API or architecture.
+    let action: NtProcessAction = unsafe { std::mem::transmute(address) };
     ensure!(
         unsafe { action(process) } >= 0,
         "native suspend/resume failed"
