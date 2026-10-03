@@ -18,7 +18,7 @@ use crate::{
     core::ports::TextEditor,
 };
 
-pub const HELIX_SST_VERSION: &str = "0.2.1";
+pub const HELIX_SST_VERSION: &str = "0.2.2";
 pub const HELIX_UPSTREAM_VERSION: &str = "25.07.1";
 pub const HELP: &str = include_str!("../../docs/helix-sst.txt");
 
@@ -57,7 +57,7 @@ select = "SELECCIÓN · Esc: normal"
 const THEME_TOML: &str = r#"inherits = "gruvbox"
 "#;
 
-const NOTICE: &str = r#"helix-sst 0.2.1
+const NOTICE: &str = r#"helix-sst 0.2.2
 
 This integration bundles Helix 25.07.1.
 Upstream project: https://github.com/helix-editor/helix
@@ -374,6 +374,45 @@ fn find_named(root: &Path, name: &str, directory: bool) -> Option<PathBuf> {
 
 /// Disposable overlay leaves the user's persistent configuration intact.
 struct SessionFiles { config: PathBuf, paste: PathBuf }
+
+/// Bridges ConPTY output into SST's embedded VT screen.
+///
+/// Helix occasionally emits bare LF while repainting virtual diagnostic lines.
+/// A real console can apply line-feed/new-line modes internally, but SST's outer
+/// vt100 parser treats LF strictly as "move down, keep column". The result is a
+/// staircase repaint: every following line starts farther to the right until it
+/// wraps around the screen. Preserve Helix's VT stream byte-for-byte except for
+/// bare LF in the embedded terminal, where LF must become CRLF.
+struct HelixOutputBridge {
+    normalize_bare_lf: bool,
+    previous_was_cr: bool,
+}
+
+impl HelixOutputBridge {
+    fn new(normalize_bare_lf: bool) -> Self {
+        Self {
+            normalize_bare_lf,
+            previous_was_cr: false,
+        }
+    }
+
+    fn write(&mut self, bytes: &[u8]) -> Result<()> {
+        if !self.normalize_bare_lf || bytes.is_empty() {
+            return terminal_io::write_raw(bytes);
+        }
+
+        let extra = bytes.iter().filter(|&&byte| byte == b'\n').count();
+        let mut normalized = Vec::with_capacity(bytes.len() + extra);
+        for &byte in bytes {
+            if byte == b'\n' && !self.previous_was_cr {
+                normalized.push(b'\r');
+            }
+            normalized.push(byte);
+            self.previous_was_cr = byte == b'\r';
+        }
+        terminal_io::write_raw(&normalized)
+    }
+}
 impl Drop for SessionFiles {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.config);
@@ -477,6 +516,8 @@ fn run_helix(install: &Install, args: &[String], cwd: &Path) -> Result<i32> {
     let reply_writer = writer.clone();
     let reply_protocol = protocol.clone();
     let (output_tx, output_rx) = mpsc::channel::<std::io::Result<Vec<u8>>>();
+    let mut terminal_output =
+        HelixOutputBridge::new(terminal_io::output_sender().is_some());
 
     // Start the reader BEFORE spawning Helix. INHERIT_CURSOR can ask for a
     // cursor report during process creation, and waits on its input pipe.
@@ -514,7 +555,9 @@ fn run_helix(install: &Install, args: &[String], cwd: &Path) -> Result<i32> {
                     let _ = child.kill();
                     return Ok(130);
                 }
-                while let Ok(bytes) = output_rx.try_recv() { terminal_io::write_raw(&bytes?)?; }
+                while let Ok(bytes) = output_rx.try_recv() {
+                    terminal_output.write(&bytes?)?;
+                }
                 if let Some(status) = child.try_wait()? { return Ok(status.exit_code() as i32); }
                 // The helper removes a transfer file when Helix has consumed it.
                 // Queue rapid paste operations instead of overwriting pending text.
@@ -563,7 +606,9 @@ fn run_helix(install: &Install, args: &[String], cwd: &Path) -> Result<i32> {
     drop(pair.master);
     let _ = reader_thread.join();
     for bytes in output_rx {
-        if let Ok(bytes) = bytes { terminal_io::write_raw(&bytes)?; }
+        if let Ok(bytes) = bytes {
+            terminal_output.write(&bytes)?;
+        }
     }
     result
 }
