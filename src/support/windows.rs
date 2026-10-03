@@ -252,3 +252,21 @@ pub fn enable_all_token_privileges() -> Result<usize> {
 pub fn enable_all_token_privileges() -> anyhow::Result<usize> {
     Ok(0)
 }
+
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::system_executable;
+
+    #[test]
+    fn system_executable_rejects_path_traversal() {
+        assert!(system_executable(r"..\curl.exe").is_err());
+        assert!(system_executable(r"subdir\..\curl.exe").is_err());
+    }
+
+    #[test]
+    fn system_executable_rejects_absolute_paths() {
+        assert!(system_executable(r"C:\Windows\System32\curl.exe").is_err());
+        assert!(system_executable(r"\\server\share\tool.exe").is_err());
+    }
+}
