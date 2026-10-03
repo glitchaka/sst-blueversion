@@ -10601,6 +10601,56 @@ esac"#,
     }
 
     #[test]
+    fn pipefail_uses_the_failing_pipeline_status() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell.execute_text("set -o pipefail; false | true").unwrap();
+        assert_eq!(result.status, 1);
+        assert_eq!(shell.env.array_values("PIPESTATUS"), vec!["1", "0"]);
+    }
+
+    #[test]
+    fn nested_command_substitution_preserves_quoted_value() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text(r#"x="$(printf "%s" "$(printf nested)")"; printf "<%s>\n" "$x""#)
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "<nested>\n");
+    }
+
+    #[test]
+    fn subshell_changes_do_not_leak_to_parent_environment() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text("x=before; (x=inside; printf \"%s\\n\" \"$x\"); printf \"%s\\n\" \"$x\"")
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "inside\nbefore\n");
+        assert_eq!(shell.env.get("x"), "before");
+    }
+
+    #[test]
+    fn redirected_builtin_output_is_not_echoed_to_stdout() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let path = std::env::temp_dir().join(format!(
+            "sst-nwash-redirection-{}-{}.txt",
+            std::process::id(),
+            shell.env.get("RANDOM"),
+        ));
+        let quoted = shell_quote(&path.to_string_lossy());
+        let result = shell
+            .execute_text(&format!("printf \"hello\\n\" > {quoted}"))
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert!(result.stdout.is_empty());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn language_tour_is_an_acceptance_fixture_for_nwash() {
         let mut shell = Interpreter::new(Box::new(NullHost));
         let source = include_str!("../../../examples/01-language-tour.sh");
