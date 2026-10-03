@@ -633,6 +633,15 @@ mod tests {
     use crate::core::bash::lexer::lex;
 
     #[test]
+    fn parses_if_elif_else_with_one_final_fi() {
+        let source = "if (( n >= 10 )); then echo high; elif (( n >= 6 )); then echo mid; else echo low; fi";
+        assert!(matches!(
+            Parser::new(lex(source).unwrap()).parse().unwrap(),
+            AstNode::If { .. }
+        ));
+    }
+
+    #[test]
     fn parses_extended_control_flow() {
         assert!(matches!(Parser::new(lex("if true; then echo ok; fi").unwrap()).parse().unwrap(), AstNode::If { .. }));
         assert!(matches!(Parser::new(lex("if false; then echo no; elif true; then echo yes; else echo fallback; fi").unwrap()).parse().unwrap(), AstNode::If { .. }));
