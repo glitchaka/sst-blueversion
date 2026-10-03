@@ -1,4 +1,13 @@
-use std::{env, process::Command, sync::Arc};
+use std::{
+    env,
+    io::Write,
+    path::PathBuf,
+    process::{Command, Stdio},
+    sync::Arc,
+};
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 use anyhow::Result;
 
@@ -267,21 +276,99 @@ impl NetworkProviderService {
     }
 }
 
-fn http_json(p:&NetworkProvider,suffix:&str)->Result<String>{
-    let url=format!("{}{}",p.host.trim_end_matches('/'),suffix);
-    let mut cmd=Command::new("curl.exe");
-    cmd.args(["-fsS","--connect-timeout","5","--max-time","15","-H","Accept: application/json"]);
-    if let Some(user_var)=&p.user_env {
-        let user=env::var(user_var).map_err(|_|anyhow::anyhow!("falta variable de entorno {}",user_var))?;
-        let secret=p.secret_env.as_ref().map(|v|env::var(v)).transpose()?.unwrap_or_default();
-        cmd.args(["-u",&format!("{user}:{secret}")]);
-    } else if let Some(secret_var)=&p.secret_env {
-        let token=env::var(secret_var).map_err(|_|anyhow::anyhow!("falta variable de entorno {}",secret_var))?;
-        cmd.args(["-H",&format!("Authorization: Bearer {token}")]);
+fn http_json(p: &NetworkProvider, suffix: &str) -> Result<String> {
+    let url = format!("{}{}", p.host.trim_end_matches('/'), suffix);
+    let curl = system_curl_path()?;
+
+    // Credentials are deliberately supplied through curl's stdin config.
+    // Putting -u USER:SECRET or Authorization: Bearer TOKEN on the command
+    // line exposes the secret to local process inspection tools.
+    let mut config = String::from("header = \"Accept: application/json\"\n");
+    if let Some(user_var) = &p.user_env {
+        let user = env::var(user_var)
+            .map_err(|_| anyhow::anyhow!("falta variable de entorno {user_var}"))?;
+        let secret = p
+            .secret_env
+            .as_ref()
+            .map(|name| env::var(name))
+            .transpose()?
+            .unwrap_or_default();
+        let credentials = curl_config_value(&format!("{user}:{secret}"))?;
+        config.push_str(&format!("user = \"{credentials}\"\n"));
+    } else if let Some(secret_var) = &p.secret_env {
+        let token = env::var(secret_var)
+            .map_err(|_| anyhow::anyhow!("falta variable de entorno {secret_var}"))?;
+        let header = curl_config_value(&format!("Authorization: Bearer {token}"))?;
+        config.push_str(&format!("header = \"{header}\"\n"));
     }
-    let out=cmd.arg(url).output().map_err(|e|anyhow::anyhow!("curl: {e}"))?;
-    if !out.status.success(){anyhow::bail!("proveedor HTTP respondió con error: {}",String::from_utf8_lossy(&out.stderr).trim());}
+
+    let mut cmd = Command::new(&curl);
+    cmd.args([
+        "--disable",
+        "--config",
+        "-",
+        "-fsS",
+        "--connect-timeout",
+        "5",
+        "--max-time",
+        "15",
+        "--proto",
+        "=http,https",
+    ])
+    .arg(&url)
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|error| anyhow::anyhow!("{}: {error}", curl.display()))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(config.as_bytes())?;
+    }
+
+    let out = child.wait_with_output()?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "proveedor HTTP respondió con error: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn system_curl_path() -> Result<PathBuf> {
+    #[cfg(windows)]
+    {
+        let root = env::var_os("SystemRoot")
+            .or_else(|| env::var_os("WINDIR"))
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        let path = root.join("System32").join("curl.exe");
+        if path.is_file() {
+            return Ok(path);
+        }
+        anyhow::bail!("curl del sistema no encontrado en {}", path.display());
+    }
+
+    #[cfg(not(windows))]
+    {
+        anyhow::bail!("net provider HTTP requiere Windows curl.exe del sistema");
+    }
+}
+
+fn curl_config_value(value: &str) -> Result<String> {
+    if value.chars().any(|ch| matches!(ch, '\r' | '\n' | '\0')) {
+        anyhow::bail!("credencial HTTP contiene caracteres de control no permitidos");
+    }
+    Ok(value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn parse_usage_json(text:&str)->Result<Vec<LanUsageRow>>{
