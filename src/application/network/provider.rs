@@ -1,7 +1,6 @@
 use std::{
     env,
     io::Write,
-    path::PathBuf,
     process::{Command, Stdio},
     sync::Arc,
 };
@@ -278,7 +277,7 @@ impl NetworkProviderService {
 
 fn http_json(p: &NetworkProvider, suffix: &str) -> Result<String> {
     let url = format!("{}{}", p.host.trim_end_matches('/'), suffix);
-    let curl = system_curl_path()?;
+    let curl = crate::support::windows::system32_executable("curl.exe")?;
 
     // Credentials are deliberately supplied through curl's stdin config.
     // Putting -u USER:SECRET or Authorization: Bearer TOKEN on the command
@@ -342,26 +341,6 @@ fn http_json(p: &NetworkProvider, suffix: &str) -> Result<String> {
         );
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-}
-
-fn system_curl_path() -> Result<PathBuf> {
-    #[cfg(windows)]
-    {
-        let root = env::var_os("SystemRoot")
-            .or_else(|| env::var_os("WINDIR"))
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-        let path = root.join("System32").join("curl.exe");
-        if path.is_file() {
-            return Ok(path);
-        }
-        anyhow::bail!("curl del sistema no encontrado en {}", path.display());
-    }
-
-    #[cfg(not(windows))]
-    {
-        anyhow::bail!("net provider HTTP requiere Windows curl.exe del sistema");
-    }
 }
 
 fn curl_config_value(value: &str) -> Result<String> {
