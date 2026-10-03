@@ -2102,6 +2102,7 @@ fn curl_json_post(
     endpoint: &str,
     auth: Option<(&str, &str)>,
     fields: &[(&str, &str)],
+    secret_env: Option<&str>,
 ) -> Result<serde_json::Value> {
     let curl = crate::support::windows::system32_executable("curl.exe")?;
 
@@ -2138,6 +2139,10 @@ fn curl_json_post(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    if let Some(name) = secret_env {
+        command.env_remove(name);
+    }
 
     #[cfg(windows)]
     {
@@ -2207,6 +2212,7 @@ fn query_abusech_hash(
         &source.endpoint,
         auth.as_deref().map(|key| ("Auth-Key", key)),
         &[("query", "get_info"), ("hash", indicator)],
+        source.auth_env.as_deref(),
     )?;
     match json.get("query_status").and_then(|v| v.as_str()).unwrap_or("") {
         "ok" => {
@@ -2232,6 +2238,7 @@ fn query_abusech_ioc(
         &source.endpoint,
         auth.as_deref().map(|key| ("Auth-Key", key)),
         &[("query", "search_ioc"), ("search_term", indicator), ("exact_match", "true")],
+        source.auth_env.as_deref(),
     )?;
     match json.get("query_status").and_then(|v| v.as_str()).unwrap_or("") {
         "ok" => {
@@ -2266,6 +2273,7 @@ fn query_abusech_url(
         &endpoint,
         auth.as_deref().map(|key| ("Auth-Key", key)),
         &[(field, indicator)],
+        source.auth_env.as_deref(),
     )?;
     match json.get("query_status").and_then(|v| v.as_str()).unwrap_or("") {
         "ok" => {
