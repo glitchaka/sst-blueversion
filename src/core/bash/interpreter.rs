@@ -10427,6 +10427,45 @@ mod tests {
         assert_eq!(shell.env.get("count"), "3");
     }
 
+    #[test]
+    fn tour_language_contract_covers_arrays_functions_and_elif() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let source = r#"
+targets=("localhost" "127.0.0.1" "example.com")
+declare -A capability
+capability[language]="Bash-compatible"
+capability[platform]="Windows"
+
+score() {
+    local base="$1"
+    local bonus="${2:-0}"
+    local total=$((base + bonus))
+    printf "%d" "$total"
+}
+
+result="$(score 8 3)"
+if (( result >= 10 )); then
+    bucket=alto
+elif (( result >= 6 )); then
+    bucket=medio
+else
+    bucket=bajo
+fi
+"#;
+
+        let result = shell.execute_text(source).unwrap();
+        assert_eq!(result.status, 0);
+        assert_eq!(shell.env.array_values("targets"), vec![
+            "localhost".to_owned(),
+            "127.0.0.1".to_owned(),
+            "example.com".to_owned(),
+        ]);
+        assert_eq!(shell.env.get("capability[language]"), "Bash-compatible");
+        assert_eq!(shell.env.get("capability[platform]"), "Windows");
+        assert_eq!(shell.env.get("result"), "11");
+        assert_eq!(shell.env.get("bucket"), "alto");
+    }
+
     struct XargsHost;
 
     impl ShellCommandHost for XargsHost {
