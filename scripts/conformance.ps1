@@ -29,7 +29,7 @@ $cases = @(
     @{ Name="assoc-array"; Script='declare -A a; a[language]=Bash; a[platform]=Windows; printf "%s|%s\n" "${a[language]}" "${a[platform]}"' },
     @{ Name="pipeline"; Script='printf "c\na\nb\n" | sort' },
     @{ Name="pipeline-status"; Script='set -o pipefail; false | true; printf "%s\n" "$?"' },
-    @{ Name="redirection"; Script='f=$(mktemp); printf "hola\n" > "$f"; cat "$f"; rm -f "$f"' },
+    @{ Name="redirection"; Script='f=.sst-conformance-redirection.tmp; printf "hola\n" > "$f"; cat "$f"; rm -f "$f"' },
     @{ Name="subshell"; Script='x=before; (x=inside; echo "$x"); echo "$x"' },
     @{ Name="command-substitution"; Script='x=$(printf hello); echo "$x"' },
     @{ Name="nested-command-substitution"; Script='printf "%s\n" "$(printf "%s" "$(printf nested)")"' },
