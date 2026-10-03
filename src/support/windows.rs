@@ -3,6 +3,7 @@ use std::{
     ffi::OsStr,
     mem::zeroed,
     os::windows::ffi::OsStrExt,
+    path::{Path, PathBuf},
     ptr::null_mut,
     sync::atomic::{AtomicBool, Ordering},
 };
@@ -47,6 +48,29 @@ fn wide(value: impl AsRef<OsStr>) -> Vec<u16> {
 
 /// Tries to enable a privilege already present in the current process token.
 /// Returns false when the token does not contain that privilege.
+#[cfg(windows)]
+pub fn system32_executable(name: &str) -> Result<PathBuf> {
+    let candidate = Path::new(name);
+    if candidate.components().count() != 1 {
+        anyhow::bail!("nombre de ejecutable del sistema inválido: {name}");
+    }
+
+    let root = std::env::var_os("SystemRoot")
+        .or_else(|| std::env::var_os("WINDIR"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let path = root.join("System32").join(name);
+    if !path.is_file() {
+        anyhow::bail!("ejecutable del sistema no encontrado: {}", path.display());
+    }
+    Ok(path)
+}
+
+#[cfg(not(windows))]
+pub fn system32_executable(name: &str) -> anyhow::Result<std::path::PathBuf> {
+    anyhow::bail!("{name}: sólo disponible en Windows")
+}
+
 #[cfg(windows)]
 pub fn enable_privilege(name: &str) -> Result<bool> {
     unsafe {
