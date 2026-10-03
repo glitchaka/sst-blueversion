@@ -319,6 +319,16 @@ fn http_json(p: &NetworkProvider, suffix: &str) -> Result<String> {
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
 
+    if let Some(name) = p.user_env.as_deref() {
+        cmd.env_remove(name);
+    }
+    if let Some(name) = p.secret_env.as_deref() {
+        cmd.env_remove(name);
+    }
+    if let Some(name) = p.community_env.as_deref() {
+        cmd.env_remove(name);
+    }
+
     #[cfg(windows)]
     {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
