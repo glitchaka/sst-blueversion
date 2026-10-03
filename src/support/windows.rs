@@ -49,17 +49,21 @@ fn wide(value: impl AsRef<OsStr>) -> Vec<u16> {
 /// Tries to enable a privilege already present in the current process token.
 /// Returns false when the token does not contain that privilege.
 #[cfg(windows)]
-pub fn system32_executable(name: &str) -> Result<PathBuf> {
-    let candidate = Path::new(name);
-    if candidate.components().count() != 1 {
-        anyhow::bail!("nombre de ejecutable del sistema inválido: {name}");
+pub fn system_executable(relative: &str) -> Result<PathBuf> {
+    let candidate = Path::new(relative);
+    if candidate.is_absolute()
+        || candidate.components().any(|component| {
+            !matches!(component, std::path::Component::Normal(_))
+        })
+    {
+        anyhow::bail!("ruta de ejecutable del sistema inválida: {relative}");
     }
 
     let root = std::env::var_os("SystemRoot")
         .or_else(|| std::env::var_os("WINDIR"))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-    let path = root.join("System32").join(name);
+    let path = root.join("System32").join(candidate);
     if !path.is_file() {
         anyhow::bail!("ejecutable del sistema no encontrado: {}", path.display());
     }
@@ -67,8 +71,12 @@ pub fn system32_executable(name: &str) -> Result<PathBuf> {
 }
 
 #[cfg(not(windows))]
+pub fn system_executable(relative: &str) -> anyhow::Result<std::path::PathBuf> {
+    anyhow::bail!("{relative}: sólo disponible en Windows")
+}
+
 pub fn system32_executable(name: &str) -> anyhow::Result<std::path::PathBuf> {
-    anyhow::bail!("{name}: sólo disponible en Windows")
+    system_executable(name)
 }
 
 #[cfg(windows)]
