@@ -1,5 +1,7 @@
 name: build
 
+# Deliberately user-triggered: SST's development policy keeps compilation and
+# test execution under explicit operator control instead of running on every push.
 on:
   workflow_dispatch:
 
