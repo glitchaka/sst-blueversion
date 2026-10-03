@@ -16,20 +16,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Publish pending releases
+
+      - name: Publish changed release notes
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
-          shopt -s nullglob
-          for notes in .release/v*.md; do
+          set -euo pipefail
+
+          if [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+            mapfile -t notes_files < <(
+              git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- '.release/v*.md'
+            )
+          else
+            mapfile -t notes_files < <(
+              git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" -- '.release/v*.md'
+            )
+          fi
+
+          if ((${#notes_files[@]} == 0)); then
+            echo "No changed release notes."
+            exit 0
+          fi
+
+          for notes in "${notes_files[@]}"; do
+            [[ -f "$notes" ]] || continue
+
             tag="$(basename "$notes" .md)"
             if gh release view "$tag" >/dev/null 2>&1; then
               gh release edit "$tag" --notes-file "$notes"
             else
-              gh release create "$tag" \
-                --target "$GITHUB_SHA" \
-                --title "Shell Shock Tool ${tag#v}" \
-                --notes-file "$notes"
+              gh release create "$tag"                 --target "$GITHUB_SHA"                 --title "Shell Shock Tool ${tag#v}"                 --notes-file "$notes"
             fi
           done
