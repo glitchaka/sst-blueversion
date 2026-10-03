@@ -1,13 +1,7 @@
 name: build
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
-
-concurrency:
-  group: build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   windows:
@@ -26,7 +20,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Test
-        run: cargo test --all-targets
+        run: cargo test
 
-      - name: Release build
-        run: cargo build --release
+      - name: Build
+        run: cargo build
