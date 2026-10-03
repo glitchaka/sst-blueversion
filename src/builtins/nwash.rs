@@ -11,7 +11,12 @@ use crate::core::{CommandContext, CommandOutput};
 use super::BuiltinCommand;
 
 fn run(program: &str, args: &[String]) -> Result<CommandOutput> {
-    let mut command = Command::new(program);
+    #[cfg(windows)]
+    let executable = crate::support::windows::system32_executable(program)?;
+    #[cfg(not(windows))]
+    let executable = std::path::PathBuf::from(program);
+
+    let mut command = Command::new(&executable);
     command.args(args);
 
     #[cfg(windows)]
@@ -22,7 +27,7 @@ fn run(program: &str, args: &[String]) -> Result<CommandOutput> {
 
     let output = command
         .output()
-        .map_err(|e| anyhow::anyhow!("{program}: no se pudo ejecutar: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("{}: no se pudo ejecutar: {e}", executable.display()))?;
     Ok(CommandOutput {
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
