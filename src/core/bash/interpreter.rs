@@ -10504,4 +10504,107 @@ fi
         assert_eq!(result.status, 0);
     }
 
+    #[test]
+    fn elif_chain_uses_one_final_fi() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text(
+                "x=7; if (( x >= 10 )); then echo high; elif (( x >= 6 )); then echo medium; else echo low; fi",
+            )
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "medium\n");
+    }
+
+    #[test]
+    fn indexed_and_associative_arrays_follow_bash_expansion() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text(
+                r#"targets=("localhost" "127.0.0.1" "example.com")
+declare -A capability
+capability[language]="Bash-compatible"
+capability[platform]="Windows"
+printf "%s|%s|%s|%s\n" "${targets[0]}" "${targets[2]}" "${capability[language]}" "${capability[platform]}""#,
+            )
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(
+            result.stdout,
+            "localhost|example.com|Bash-compatible|Windows\n"
+        );
+    }
+
+    #[test]
+    fn local_command_substitution_and_arithmetic_are_composable() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text(
+                r#"score() {
+    local base="$1"
+    local bonus="${2:-0}"
+    local total=$((base + bonus))
+    printf "%d" "$total"
+}
+result="$(score 8 3)"
+printf "%s\n" "$result""#,
+            )
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "11\n");
+    }
+
+    #[test]
+    fn conditional_patterns_and_case_are_native() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text(
+                r#"sample="informe.txt"
+if [[ "$sample" == *.txt && -n "$sample" ]]; then
+    echo text
+fi
+mode=demo
+case "$mode" in
+    demo|showcase) echo demo ;;
+    quiet) echo quiet ;;
+    *) echo other ;;
+esac"#,
+            )
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "text\ndemo\n");
+    }
+
+    #[test]
+    fn heredoc_expands_shell_variables() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        shell.env.set("USER_FOR_TEST", "tester");
+        let result = shell
+            .execute_text(
+                "cat <<EOF\nuser=$USER_FOR_TEST\nvalue=$((40+2))\nEOF\n",
+            )
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "user=tester\nvalue=42\n");
+    }
+
+    #[test]
+    fn language_tour_is_an_acceptance_fixture_for_nwash() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let source = include_str!("../../../examples/01-language-tour.sh");
+        let result = shell.execute_text(source).unwrap();
+
+        assert_eq!(result.status, 0);
+        assert!(result.stdout.contains("=== Identidad de la shell ==="));
+        assert!(result.stdout.contains("=== Arrays indexados ==="));
+        assert!(result.stdout.contains("=== Array asociativo ==="));
+        assert!(result.stdout.contains("=== Here-document ==="));
+        assert!(result.stdout.contains("Fin de 01-language-tour.sh"));
+    }
+
 }
