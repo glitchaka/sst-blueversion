@@ -60,6 +60,26 @@ fn main() {
     }
 }
 
+fn curl_program() -> PathBuf {
+    #[cfg(windows)]
+    {
+        let root = env::var_os("SystemRoot")
+            .or_else(|| env::var_os("WINDIR"))
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        let path = root.join("System32").join("curl.exe");
+        if !path.is_file() {
+            panic!("No se encontró curl.exe del sistema en {}", path.display());
+        }
+        return path;
+    }
+
+    #[cfg(not(windows))]
+    {
+        PathBuf::from("curl")
+    }
+}
+
 fn ensure_nerd_font(out_dir: &Path) {
     let destination = out_dir.join(FONT_NAME);
 
@@ -67,7 +87,7 @@ fn ensure_nerd_font(out_dir: &Path) {
         fs::copy(Path::new(&source), &destination)
             .expect("No se pudo copiar SST_NERD_FONT_FILE");
     } else if !destination.is_file() {
-        let status = Command::new("curl")
+        let status = Command::new(curl_program())
             .args([
                 "-L",
                 "--fail",
@@ -103,7 +123,7 @@ fn ensure_spell_dictionary(out_dir: &Path) {
     ] {
         let destination = out_dir.join(name);
         if !destination.is_file() {
-            let status = Command::new("curl")
+            let status = Command::new(curl_program())
                 .args(["-L", "--fail", "--silent", "--show-error", url, "-o"])
                 .arg(&destination)
                 .status()
@@ -134,7 +154,7 @@ fn ensure_ieee_registry(out_dir: &Path) {
             fs::copy(Path::new(&source), &destination)
                 .unwrap_or_else(|_| panic!("No se pudo copiar {override_var}"));
         } else if !destination.is_file() {
-            let status = Command::new("curl")
+            let status = Command::new(curl_program())
                 .args(["-L", "--fail", "--silent", "--show-error", url, "-o"])
                 .arg(&destination)
                 .status()
@@ -163,7 +183,7 @@ fn ensure_helix_archive(out_dir: &Path) {
         fs::copy(Path::new(&source), &destination)
             .expect("No se pudo copiar SST_HELIX_ARCHIVE");
     } else if !destination.is_file() {
-        let status = Command::new("curl")
+        let status = Command::new(curl_program())
             .args([
                 "-L",
                 "--fail",
