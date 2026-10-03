@@ -9,6 +9,9 @@ use std::{
     time::Duration,
 };
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use sysinfo::{Disks, Pid, System};
 
 #[cfg(windows)]
@@ -826,8 +829,25 @@ fn scheduled_tasks(args: &[String]) -> anyhow::Result<CommandOutput> {
 }
 
 fn run_windows_tool(program: &str, args: &[String]) -> anyhow::Result<CommandOutput> {
-    let output = Command::new(program).args(args).output().map_err(|error| {
-        anyhow::anyhow!("{program}: no se pudo ejecutar la utilidad nativa de Windows: {error}")
+    #[cfg(windows)]
+    let executable = crate::support::windows::system32_executable(program)?;
+    #[cfg(not(windows))]
+    let executable = std::path::PathBuf::from(program);
+
+    let mut command = Command::new(&executable);
+    command.args(args);
+
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = command.output().map_err(|error| {
+        anyhow::anyhow!(
+            "{}: no se pudo ejecutar la utilidad nativa de Windows: {error}",
+            executable.display()
+        )
     })?;
 
     Ok(CommandOutput {
