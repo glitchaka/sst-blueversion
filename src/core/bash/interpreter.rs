@@ -10367,8 +10367,15 @@ mod tests {
 
         fn execute_external(
             &self, program: &str, _args: &[String], _cwd: &Path,
-            _env: &HashMap<String, String>, _stdin: Option<&[u8]>,
+            _env: &HashMap<String, String>, stdin: Option<&[u8]>,
         ) -> Result<ExecutionResult> {
+            if program == "cat" {
+                return Ok(ExecutionResult::from_parts(
+                    String::from_utf8_lossy(stdin.unwrap_or_default()).into_owned(),
+                    String::new(),
+                    0,
+                ));
+            }
             Ok(ExecutionResult::from_parts(format!("external:{program}\n"), String::new(), 0))
         }
     }
