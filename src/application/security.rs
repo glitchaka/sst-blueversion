@@ -1,12 +1,16 @@
 use std::{
     collections::{HashMap, HashSet},
     env, fs,
+    io::Write,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     sync::{Arc, Mutex, OnceLock},
     thread,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 use anyhow::{Context, Result};
 use rusqlite::{Connection, params};
@@ -2099,18 +2103,56 @@ fn curl_json_post(
     auth: Option<(&str, &str)>,
     fields: &[(&str, &str)],
 ) -> Result<serde_json::Value> {
-    let mut command = Command::new("curl.exe");
-    command.args(["-fsS", "--connect-timeout", "5", "--max-time", "15", "-X", "POST"]);
-    command.args(["-H", "Accept: application/json"]);
+    let curl = crate::support::windows::system32_executable("curl.exe")?;
+
+    // Feed headers and form values through stdin instead of the process command
+    // line. In particular, API keys must never appear in Win32 process
+    // inspection output.
+    let mut config = String::from("header = \"Accept: application/json\"\n");
     if let Some((header, value)) = auth {
-        let auth_header = format!("{header}: {value}");
-        command.args(["-H", auth_header.as_str()]);
+        let header = curl_config_value(&format!("{header}: {value}"))?;
+        config.push_str(&format!("header = \"{header}\"\n"));
     }
     for (key, value) in fields {
-        command.args(["--data-urlencode", &format!("{key}={value}")]);
+        let field = curl_config_value(&format!("{key}={value}"))?;
+        config.push_str(&format!("data-urlencode = \"{field}\"\n"));
     }
-    command.arg(endpoint);
-    let output = command.output().context("no se pudo ejecutar curl.exe")?;
+
+    let mut command = Command::new(&curl);
+    command
+        .args([
+            "--disable",
+            "--config",
+            "-",
+            "-fsS",
+            "--connect-timeout",
+            "5",
+            "--max-time",
+            "15",
+            "--proto",
+            "=https",
+            "-X",
+            "POST",
+        ])
+        .arg(endpoint)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("no se pudo ejecutar {}", curl.display()))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(config.as_bytes())?;
+    }
+
+    let output = child.wait_with_output()?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
         anyhow::bail!(
@@ -2120,6 +2162,13 @@ fn curl_json_post(
         );
     }
     serde_json::from_slice(&output.stdout).context("respuesta JSON inválida")
+}
+
+fn curl_config_value(value: &str) -> Result<String> {
+    if value.chars().any(|ch| matches!(ch, '\r' | '\n' | '\0')) {
+        anyhow::bail!("valor HTTP contiene caracteres de control no permitidos");
+    }
+    Ok(value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn source_auth(source: &SecuritySource, paths: &AppPaths) -> Result<Option<String>> {
