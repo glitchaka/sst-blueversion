@@ -378,3 +378,24 @@ fn rate(v:u64)->String{
     else if v>=1_000{format!("{:.1} Kbps",v as f64/1_000.0)}
     else{format!("{v} bps")}
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::curl_config_value;
+
+    #[test]
+    fn curl_config_escapes_quotes_and_backslashes() {
+        assert_eq!(
+            curl_config_value(r#"user\name"token"#).unwrap(),
+            r#"user\\name\"token"#
+        );
+    }
+
+    #[test]
+    fn curl_config_rejects_line_injection() {
+        assert!(curl_config_value("token\nheader = \"X-Evil: yes\"").is_err());
+        assert!(curl_config_value("token\rnext").is_err());
+        assert!(curl_config_value("token\0next").is_err());
+    }
+}
