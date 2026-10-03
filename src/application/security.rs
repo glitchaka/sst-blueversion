@@ -2286,7 +2286,21 @@ fn is_hash_indicator(value: &str) -> bool {
 }
 
 fn capture(program: &str, args: &[&str]) -> Result<String> {
-    let output = Command::new(program).args(args).output()?;
+    #[cfg(windows)]
+    let executable = crate::support::windows::system32_executable(program)?;
+    #[cfg(not(windows))]
+    let executable = std::path::PathBuf::from(program);
+
+    let mut command = Command::new(&executable);
+    command.args(args);
+
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = command.output()?;
     let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
     if !output.stderr.is_empty() {
         text.push_str(&String::from_utf8_lossy(&output.stderr));
