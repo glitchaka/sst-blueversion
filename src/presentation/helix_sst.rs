@@ -18,7 +18,7 @@ use crate::{
     core::ports::TextEditor,
 };
 
-pub const HELIX_SST_VERSION: &str = "0.2.2";
+pub const HELIX_SST_VERSION: &str = "0.2.3";
 pub const HELIX_UPSTREAM_VERSION: &str = "25.07.1";
 pub const HELP: &str = include_str!("../../docs/helix-sst.txt");
 
@@ -37,7 +37,7 @@ true-color = true
 cursorline = true
 bufferline = "multiple"
 color-modes = true
-end-of-line-diagnostics = "warning"
+end-of-line-diagnostics = "disable"
 
 [editor.inline-diagnostics]
 cursor-line = "warning"
@@ -57,7 +57,7 @@ select = "SELECCIÓN · Esc: normal"
 const THEME_TOML: &str = r#"inherits = "gruvbox"
 "#;
 
-const NOTICE: &str = r#"helix-sst 0.2.2
+const NOTICE: &str = r#"helix-sst 0.2.3
 
 This integration bundles Helix 25.07.1.
 Upstream project: https://github.com/helix-editor/helix
@@ -285,7 +285,7 @@ fn apply_managed_config(config: &mut toml::Value) -> Result<()> {
     editor.insert("true-color".into(), toml::Value::Boolean(true));
     editor.insert(
         "end-of-line-diagnostics".into(),
-        toml::Value::String("warning".into()),
+        toml::Value::String("disable".into()),
     );
     editor.insert(
         "gutters".into(),
