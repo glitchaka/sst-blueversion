@@ -8,6 +8,10 @@ if (-not (Test-Path $Exe)) {
     throw "No existe $Exe. Ejecuta cargo build primero."
 }
 
+if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+    throw "No se encontró wsl.exe; esta prueba compara Nwash contra Bash dentro de WSL."
+}
+
 $cases = @(
     @{ Name="quotes"; Script='x="a b"; printf "%s\n" "$x"' },
     @{ Name="parameter-default"; Script='unset x; printf "%s\n" "${x:-fallback}"' },
