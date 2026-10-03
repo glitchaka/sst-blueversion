@@ -3,7 +3,7 @@ use std::{
     ffi::OsStr,
     fs,
     mem::{size_of, zeroed},
-    os::windows::ffi::OsStrExt,
+    os::windows::{ffi::OsStrExt, process::CommandExt},
     path::Path,
     process::Command,
     ptr::{null, null_mut},
@@ -389,9 +389,13 @@ fn launch_system_shell(cwd: &Path) -> Result<()> {
 }
 
 fn trustedinstaller_pid() -> Result<u32> {
-    let _ = Command::new("sc.exe")
-        .args(["start", "TrustedInstaller"])
-        .output();
+    if let Ok(sc) = crate::support::windows::system32_executable("sc.exe") {
+        let mut command = Command::new(sc);
+        command
+            .args(["start", "TrustedInstaller"])
+            .creation_flags(CREATE_NO_WINDOW);
+        let _ = command.output();
+    }
 
     for _ in 0..40 {
         let mut system = System::new_all();
@@ -734,24 +738,34 @@ const TRUSTEDINSTALLER_SERVICE_SID: &str =
     "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464";
 
 fn current_identity() -> String {
-    Command::new("whoami.exe")
-        .output()
+    let identity = crate::support::windows::system32_executable("whoami.exe")
         .ok()
+        .and_then(|whoami| {
+            let mut command = Command::new(whoami);
+            command.creation_flags(CREATE_NO_WINDOW);
+            command.output().ok()
+        })
         .filter(|output| output.status.success())
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| {
-            let user = env::var("USERNAME").unwrap_or_else(|_| "desconocido".to_owned());
-            let domain = env::var("USERDOMAIN").unwrap_or_default();
-            if domain.is_empty() { user } else { format!("{domain}\\{user}") }
-        })
+        .filter(|value| !value.is_empty());
+
+    identity.unwrap_or_else(|| {
+        let user = env::var("USERNAME").unwrap_or_else(|_| "desconocido".to_owned());
+        let domain = env::var("USERDOMAIN").unwrap_or_default();
+        if domain.is_empty() { user } else { format!("{domain}\\{user}") }
+    })
 }
 
 fn token_has_trustedinstaller_sid() -> bool {
-    Command::new("whoami.exe")
-        .args(["/groups", "/fo", "csv", "/nh"])
-        .output()
+    crate::support::windows::system32_executable("whoami.exe")
         .ok()
+        .and_then(|whoami| {
+            let mut command = Command::new(whoami);
+            command
+                .args(["/groups", "/fo", "csv", "/nh"])
+                .creation_flags(CREATE_NO_WINDOW);
+            command.output().ok()
+        })
         .filter(|output| output.status.success())
         .is_some_and(|output| {
             String::from_utf8_lossy(&output.stdout)
