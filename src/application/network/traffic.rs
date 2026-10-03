@@ -4,6 +4,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use anyhow::Result;
 use sysinfo::System;
 
@@ -423,16 +426,37 @@ fn truncate_text(value: &str, width: usize) -> String {
 }
 
 fn authenticode_status(path: &str) -> String {
-    if path.is_empty() { return "unknown".to_owned(); }
+    if path.is_empty() {
+        return "unknown".to_owned();
+    }
+    let Ok(powershell) = crate::support::windows::system_executable(
+        r"WindowsPowerShell\v1.0\powershell.exe",
+    ) else {
+        return "unknown".to_owned();
+    };
+
     let escaped = path.replace('\'', "''");
-    let script = format!("$s=Get-AuthenticodeSignature -LiteralPath '{}'; if($s.Status -eq 'Valid'){{'valid'}}elseif($s.Status -eq 'NotSigned'){{'unsigned'}}else{{$s.Status.ToString().ToLowerInvariant()}}", escaped);
-    match std::process::Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
+    let script = format!(
+        "$s=Get-AuthenticodeSignature -LiteralPath '{}'; if($s.Status -eq 'Valid'){{'valid'}}elseif($s.Status -eq 'NotSigned'){{'unsigned'}}else{{$s.Status.ToString().ToLowerInvariant()}}",
+        escaped
+    );
+    let mut command = std::process::Command::new(powershell);
+    command.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
+
+    #[cfg(windows)]
     {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    match command.output() {
         Ok(output) if output.status.success() => {
-            let value=String::from_utf8_lossy(&output.stdout).trim().to_owned();
-            if value.is_empty() {"unknown".to_owned()} else {value}
+            let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if value.is_empty() {
+                "unknown".to_owned()
+            } else {
+                value
+            }
         }
         _ => "unknown".to_owned(),
     }
