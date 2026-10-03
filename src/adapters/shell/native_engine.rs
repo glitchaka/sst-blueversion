@@ -1614,7 +1614,12 @@ fn signal_number_windows(signal: &str) -> u32 {
 fn windows_net_list(kind: &str) -> Vec<String> {
     #[cfg(windows)]
     {
-        let Ok(output) = Command::new("net.exe").arg(kind).output() else {
+        let Ok(net) = crate::support::windows::system32_executable("net.exe") else {
+            return Vec::new();
+        };
+        let mut command = Command::new(net);
+        command.arg(kind).creation_flags(CREATE_NO_WINDOW);
+        let Ok(output) = command.output() else {
             return Vec::new();
         };
         if !output.status.success() {
