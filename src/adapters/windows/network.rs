@@ -20,6 +20,50 @@ fn address(value: &SOCKADDR_INET) -> String {
     unsafe { if value.si_family == AF_INET { ipv4(value.Ipv4.sin_addr.S_un.S_addr).to_string() }
         else { Ipv6Addr::from(value.Ipv6.sin6_addr.u.Byte).to_string() } }
 }
+fn wide(value: &[u16]) -> String {
+    let end = value.iter().position(|ch| *ch == 0).unwrap_or(value.len());
+    String::from_utf16_lossy(&value[..end])
+}
+fn admin_status(value: u32) -> &'static str {
+    match value { 1 => "UP", 2 => "DOWN", 3 => "TESTING", _ => "UNKNOWN" }
+}
+fn oper_status(value: u32) -> &'static str {
+    match value {
+        1 => "UP",
+        2 => "DOWN",
+        3 => "TESTING",
+        4 => "UNKNOWN",
+        5 => "DORMANT",
+        6 => "NOT_PRESENT",
+        7 => "LOWER_LAYER_DOWN",
+        _ => "UNKNOWN",
+    }
+}
+fn media_status(value: u32) -> &'static str {
+    match value { 1 => "UP", 2 => "DOWN", _ => "UNKNOWN" }
+}
+fn interface_type(value: u32) -> &'static str {
+    match value {
+        6 => "Ethernet",
+        23 => "PPP",
+        24 => "Loopback",
+        71 => "Wi-Fi",
+        131 => "Tunnel",
+        _ => "Other",
+    }
+}
+fn link_speed(bits_per_second: u64) -> String {
+    if bits_per_second == 0 { return "-".to_owned(); }
+    if bits_per_second >= 1_000_000_000 {
+        let gbps = bits_per_second as f64 / 1_000_000_000.0;
+        return if gbps.fract() == 0.0 { format!("{gbps:.0} Gbps") } else { format!("{gbps:.1} Gbps") };
+    }
+    if bits_per_second >= 1_000_000 {
+        let mbps = bits_per_second as f64 / 1_000_000.0;
+        return if mbps.fract() == 0.0 { format!("{mbps:.0} Mbps") } else { format!("{mbps:.1} Mbps") };
+    }
+    format!("{} Kbps", bits_per_second / 1_000)
+}
 
 // Both OWNER_PID row layouts contain only 32-bit fields and byte arrays.
 fn table<T: Copy>(tcp: bool, family: u16) -> Result<Vec<T>> {
@@ -47,15 +91,72 @@ fn table<T: Copy>(tcp: bool, family: u16) -> Result<Vec<T>> {
 impl NetworkProbe for WindowsNetworkProbe {
     fn interfaces(&self) -> Result<String> {
         let networks = sysinfo::Networks::new_with_refreshed_list();
-        let mut entries = networks.iter().collect::<Vec<_>>();
-        entries.sort_by_key(|(name, _)| *name);
-        let mut output = String::new();
-        for (name, data) in entries {
-            output.push_str(&format!("{name}\n  MAC: {}\n", data.mac_address()));
-            for address in data.ip_networks() { output.push_str(&format!("  IP: {address}\n")); }
-            output.push('\n');
+        let ip_by_name = networks.iter().map(|(name, data)| {
+            (
+                name.to_lowercase(),
+                data.ip_networks().iter().map(ToString::to_string).collect::<Vec<_>>(),
+            )
+        }).collect::<HashMap<_, _>>();
+
+        unsafe {
+            let mut table = std::ptr::null_mut();
+            check(GetIfTable2(&mut table))?;
+            if table.is_null() { return Ok(String::new()); }
+
+            let rows = std::slice::from_raw_parts(
+                std::ptr::addr_of!((*table).Table).cast::<MIB_IF_ROW2>(),
+                (*table).NumEntries as usize,
+            );
+            let mut output = String::new();
+
+            for row in rows {
+                let alias = wide(&row.Alias);
+                let description = wide(&row.Description);
+                let physical_len = (row.PhysicalAddressLength as usize).min(row.PhysicalAddress.len());
+                let mac = if physical_len == 0 {
+                    "-".to_owned()
+                } else {
+                    row.PhysicalAddress[..physical_len]
+                        .iter()
+                        .map(|byte| format!("{byte:02X}"))
+                        .collect::<Vec<_>>()
+                        .join(":")
+                };
+                let media = media_status(row.MediaConnectState as u32);
+                let ips = ip_by_name.get(&alias.to_lowercase());
+
+                output.push_str(&format!("{}\n", if alias.is_empty() { &description } else { &alias }));
+                output.push_str(&format!("  Tipo: {}\n", interface_type(row.Type)));
+                if !description.is_empty() && description != alias {
+                    output.push_str(&format!("  Adaptador: {description}\n"));
+                }
+                output.push_str(&format!("  Admin: {}\n", admin_status(row.AdminStatus as u32)));
+                output.push_str(&format!("  Enlace: {media}\n"));
+                output.push_str(&format!("  Operativo: {}\n", oper_status(row.OperStatus as u32)));
+                output.push_str(&format!("  Velocidad: {}\n", if media == "UP" { link_speed(row.ReceiveLinkSpeed) } else { "-".to_owned() }));
+                output.push_str(&format!("  MAC: {mac}\n"));
+                match ips {
+                    Some(addresses) if !addresses.is_empty() => {
+                        for address in addresses { output.push_str(&format!("  IP: {address}\n")); }
+                    }
+                    _ => output.push_str("  IP: -\n"),
+                }
+
+                if row.Type == 6 {
+                    if row.AdminStatus as u32 == 2 {
+                        output.push_str("  Diagnostico: adaptador Ethernet deshabilitado.\n");
+                    } else if row.MediaConnectState as u32 == 2 {
+                        output.push_str("  Diagnostico: sin enlace fisico; revisar cable, punto, patchera o puerto de switch.\n");
+                    } else if row.MediaConnectState as u32 == 1 {
+                        output.push_str("  Diagnostico: enlace fisico presente.\n");
+                    }
+                }
+                output.push('\n');
+            }
+
+            FreeMibTable(table.cast());
+            Ok(output)
         }
-        Ok(output)
     }
     fn connections(&self) -> Result<Vec<ConnectionRow>> {
         let mut rows = Vec::new();
