@@ -14,19 +14,19 @@ use std::{
 use windows_sys::Win32::{
     Foundation::{BOOL, HWND, LPARAM, LRESULT, RECT, TRUE, WPARAM},
     Graphics::Gdi::{
-        BeginPaint, CreateSolidBrush, DeleteObject, DrawTextW, Ellipse, EndPaint, GetClientRect,
+        BeginPaint, CreateSolidBrush, DeleteObject, DrawTextW, Ellipse, EndPaint,
         GetStockObject, PAINTSTRUCT, Rectangle, SelectObject, SetBkMode, SetTextColor,
         DEFAULT_GUI_FONT, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, TRANSPARENT,
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumWindows,
-        GetWindowRect, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
-        InvalidateRect, IsIconic, IsWindowVisible, MSG, PM_REMOVE, PeekMessageW, PostQuitMessage,
-        RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER,
-        SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, WNDCLASSW, GWLP_USERDATA,
-        HWND_TOP, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT, WS_EX_NOACTIVATE,
-        WS_EX_TOOLWINDOW, WS_POPUP,
+        GetClientRect, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
+        GetWindowThreadProcessId, InvalidateRect, IsIconic, IsWindowVisible, MSG, PM_REMOVE,
+        PeekMessageW, PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE,
+        SWP_NOACTIVATE, SWP_NOOWNERZORDER, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+        TranslateMessage, WNDCLASSW, GWLP_USERDATA, HWND_TOP, WM_DESTROY, WM_ERASEBKGND,
+        WM_LBUTTONUP, WM_PAINT, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
     },
 };
 
@@ -328,8 +328,9 @@ unsafe extern "system" fn window_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    let state_ptr = unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWLP_USERDATA) }
-        as *mut OverlayState;
+    let state_ptr = unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWLP_USERDATA)
+    } as *mut OverlayState;
 
     match message {
         WM_ERASEBKGND => 1,
