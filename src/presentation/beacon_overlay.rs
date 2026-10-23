@@ -15,18 +15,19 @@ use windows_sys::Win32::{
     Foundation::{BOOL, HWND, LPARAM, LRESULT, RECT, TRUE, WPARAM},
     Graphics::Gdi::{
         BeginPaint, CreateSolidBrush, DeleteObject, DrawTextW, Ellipse, EndPaint,
-        GetStockObject, PAINTSTRUCT, Rectangle, SelectObject, SetBkMode, SetTextColor,
-        DEFAULT_GUI_FONT, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, TRANSPARENT,
+        GetStockObject, InvalidateRect, PAINTSTRUCT, Rectangle, SelectObject, SetBkMode,
+        SetTextColor, DEFAULT_GUI_FONT, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
+        TRANSPARENT,
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumWindows,
         GetClientRect, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
-        GetWindowThreadProcessId, InvalidateRect, IsIconic, IsWindowVisible, MSG, PM_REMOVE,
-        PeekMessageW, PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE,
-        SWP_NOACTIVATE, SWP_NOOWNERZORDER, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-        TranslateMessage, WNDCLASSW, GWLP_USERDATA, HWND_TOP, WM_DESTROY, WM_ERASEBKGND,
-        WM_LBUTTONUP, WM_PAINT, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, MSG, PM_REMOVE, PeekMessageW,
+        PostQuitMessage, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE,
+        SWP_NOOWNERZORDER, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage,
+        WNDCLASSW, GWLP_USERDATA, HWND_TOP, WM_DESTROY, WM_ERASEBKGND, WM_LBUTTONUP,
+        WM_PAINT, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
     },
 };
 
