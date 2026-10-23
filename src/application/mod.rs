@@ -2,6 +2,7 @@ pub mod device;
 pub mod diagnostics;
 pub mod domain;
 pub mod network;
+pub mod packages;
 pub mod security;
 pub mod switch;
 pub mod system;
