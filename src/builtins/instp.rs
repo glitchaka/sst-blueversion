@@ -4,22 +4,28 @@ use anyhow::{Context, Result};
 
 use crate::{
     application::packages::PackageService,
-    core::{CommandContext, CommandOutput},
+    core::{
+        CommandContext, CommandOutput,
+        ports::TerminalFactory,
+    },
 };
 
-use super::BuiltinCommand;
+use super::{instp_ui, BuiltinCommand};
 
 pub struct InstpBuiltin {
     service: Arc<PackageService>,
+    terminal: Arc<dyn TerminalFactory>,
 }
 
 impl InstpBuiltin {
-    pub fn new(service: Arc<PackageService>) -> Self {
-        Self { service }
+    pub fn new(service: Arc<PackageService>, terminal: Arc<dyn TerminalFactory>) -> Self {
+        Self { service, terminal }
     }
 
     fn usage() -> &'static str {
         "Uso:\n\
+         instp                       abre el catálogo interactivo\n\
+         instp browse                abre el catálogo interactivo\n\
          instp search [TEXTO]\n\
          instp info PAQUETE\n\
          instp install PAQUETE\n\
@@ -33,6 +39,10 @@ impl InstpBuiltin {
          instp repo update\n\
          instp cache clean\n\
          instp doctor\n"
+    }
+
+    fn browse(&self) -> Result<CommandOutput> {
+        instp_ui::run_catalog(self.service.as_ref(), self.terminal.as_ref())
     }
 
     fn search(&self, args: &[String]) -> Result<CommandOutput> {
@@ -302,7 +312,7 @@ impl BuiltinCommand for InstpBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "instp — gestor de paquetes portables y aislados de SST"
+        "instp — catálogo y gestor de paquetes portables y aislados de SST"
     }
 
     fn execute(
@@ -312,7 +322,9 @@ impl BuiltinCommand for InstpBuiltin {
         _context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
         match args.first().map(String::as_str) {
-            None | Some("help") | Some("--help") | Some("-h") => {
+            None => self.browse(),
+            Some("browse") | Some("catalog") => self.browse(),
+            Some("help") | Some("--help") | Some("-h") => {
                 Ok(CommandOutput::ok(Self::usage()))
             }
             Some("search") => self.search(args.get(1..).unwrap_or_default()),
