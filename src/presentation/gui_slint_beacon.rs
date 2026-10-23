@@ -5,6 +5,10 @@ macro_rules! sst_blue_slint {
                 in property <bool> beacon-enabled: true;
                 in property <string> beacon-status-text: "● LAN 0";
                 in property <string> beacon-alert-text: "";
+                in property <bool> peer-island-active: false;
+                in property <string> peer-island-title: "";
+                in property <string> peer-island-detail: "";
+                in property <string> peer-island-extra: "";
                 callback beacon-toggle();
 
                 $($body)*
@@ -64,6 +68,76 @@ macro_rules! sst_blue_slint {
                         overflow: elide;
                     }
                 }
+
+                peer-island := Rectangle {
+                    width: root.peer-island-active ? 286px : 18px;
+                    height: root.peer-island-active ? 58px : 18px;
+                    x: root.width - self.width - 12px;
+                    y: root.height - self.height - 12px;
+                    border-radius: root.peer-island-active ? 12px : 9px;
+                    background: root.peer-island-active
+                        ? rgba(10, 13, 20, 0.96)
+                        : rgba(10, 13, 20, 0.90);
+                    border-width: 1px;
+                    border-color: root.peer-island-active
+                        ? #ef5d68
+                        : (root.beacon-enabled ? #4f9cff : #6d7480);
+
+                    Rectangle {
+                        x: root.peer-island-active ? 11px : 4px;
+                        y: root.peer-island-active ? 12px : 4px;
+                        width: 10px;
+                        height: 10px;
+                        border-radius: 5px;
+                        background: root.peer-island-active
+                            ? #ef5d68
+                            : (root.beacon-enabled ? #4f9cff : #6d7480);
+                    }
+
+                    Text {
+                        visible: root.peer-island-active;
+                        x: 31px;
+                        y: 7px;
+                        width: parent.width - 42px;
+                        height: 20px;
+                        text: root.peer-island-title;
+                        color: #f3f6fa;
+                        font-family: "Segoe UI Variable";
+                        font-size: 12px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        visible: root.peer-island-active;
+                        x: 31px;
+                        y: 27px;
+                        width: parent.width - 76px;
+                        height: 20px;
+                        text: root.peer-island-detail;
+                        color: #aeb9c8;
+                        font-family: "Segoe UI Variable";
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        visible: root.peer-island-active && root.peer-island-extra != "";
+                        x: parent.width - 50px;
+                        y: 27px;
+                        width: 38px;
+                        height: 20px;
+                        text: root.peer-island-extra;
+                        color: #ef9aa1;
+                        font-family: "Segoe UI Variable";
+                        font-size: 11px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                }
             }
         }
 
@@ -73,6 +147,48 @@ macro_rules! sst_blue_slint {
             _enabled: std::rc::Rc<std::cell::Cell<bool>>,
             _peer_count: std::rc::Rc<std::cell::Cell<usize>>,
             _alert_until: std::rc::Rc<std::cell::RefCell<Option<std::time::Instant>>>,
+            _peers: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, super::lan_beacon::BeaconPeer>>>,
+            _visible_peer: std::rc::Rc<std::cell::RefCell<Option<String>>>,
+        }
+
+        fn refresh_peer_island(
+            ui: &BaseSstBlueWindow,
+            peers: &std::collections::HashMap<String, super::lan_beacon::BeaconPeer>,
+            visible_peer: &mut Option<String>,
+        ) {
+            if peers.is_empty() {
+                *visible_peer = None;
+                ui.set_peer_island_active(false);
+                ui.set_peer_island_title("".into());
+                ui.set_peer_island_detail("".into());
+                ui.set_peer_island_extra("".into());
+                return;
+            }
+
+            if visible_peer
+                .as_ref()
+                .is_none_or(|id| !peers.contains_key(id))
+            {
+                *visible_peer = peers.keys().next().cloned();
+            }
+
+            let Some(peer) = visible_peer.as_ref().and_then(|id| peers.get(id)) else {
+                return;
+            };
+
+            ui.set_peer_island_active(true);
+            ui.set_peer_island_title(peer.host.clone().into());
+            ui.set_peer_island_detail(
+                format!("{} · SST {}", peer.address, peer.version).into(),
+            );
+            ui.set_peer_island_extra(
+                if peers.len() > 1 {
+                    format!("+{}", peers.len() - 1)
+                } else {
+                    String::new()
+                }
+                .into(),
+            );
         }
 
         impl BeaconUiController {
@@ -85,11 +201,16 @@ macro_rules! sst_blue_slint {
                 let alert_until = std::rc::Rc::new(std::cell::RefCell::new(
                     None::<std::time::Instant>,
                 ));
+                let peers = std::rc::Rc::new(std::cell::RefCell::new(
+                    std::collections::HashMap::<String, super::lan_beacon::BeaconPeer>::new(),
+                ));
+                let visible_peer = std::rc::Rc::new(std::cell::RefCell::new(None::<String>));
 
                 ui.set_beacon_enabled(available);
                 ui.set_beacon_status_text(
                     if available { "● LAN 0" } else { "○ LAN !" }.into(),
                 );
+                ui.set_peer_island_active(false);
                 if !available {
                     ui.set_beacon_alert_text("Baliza SST LAN no disponible".into());
                     *alert_until.borrow_mut() = Some(
@@ -103,6 +224,8 @@ macro_rules! sst_blue_slint {
                     let enabled = enabled.clone();
                     let peer_count = peer_count.clone();
                     let alert_until = alert_until.clone();
+                    let peers = peers.clone();
+                    let visible_peer = visible_peer.clone();
                     ui.on_beacon_toggle(move || {
                         let Some(ui) = weak.upgrade() else {
                             return;
@@ -123,6 +246,12 @@ macro_rules! sst_blue_slint {
                         beacon.set_enabled(next);
                         enabled.set(next);
                         peer_count.set(0);
+                        peers.borrow_mut().clear();
+                        refresh_peer_island(
+                            &ui,
+                            &peers.borrow(),
+                            &mut visible_peer.borrow_mut(),
+                        );
                         ui.set_beacon_enabled(next);
                         ui.set_beacon_status_text(
                             if next { "● LAN 0" } else { "○ LAN OFF" }.into(),
@@ -148,6 +277,8 @@ macro_rules! sst_blue_slint {
                     let enabled = enabled.clone();
                     let peer_count = peer_count.clone();
                     let alert_until = alert_until.clone();
+                    let peers = peers.clone();
+                    let visible_peer = visible_peer.clone();
 
                     timer.start(
                         ::slint::TimerMode::Repeated,
@@ -166,6 +297,14 @@ macro_rules! sst_blue_slint {
                                         } => {
                                             enabled.set(true);
                                             peer_count.set(count);
+                                            let peer_id = peer.id.clone();
+                                            peers.borrow_mut().insert(peer_id.clone(), peer.clone());
+                                            *visible_peer.borrow_mut() = Some(peer_id);
+                                            refresh_peer_island(
+                                                &ui,
+                                                &peers.borrow(),
+                                                &mut visible_peer.borrow_mut(),
+                                            );
                                             ui.set_beacon_enabled(true);
                                             ui.set_beacon_status_text(
                                                 format!("● LAN {count}").into(),
@@ -187,6 +326,12 @@ macro_rules! sst_blue_slint {
                                             peer_count: count,
                                         } => {
                                             peer_count.set(count);
+                                            peers.borrow_mut().remove(&peer.id);
+                                            refresh_peer_island(
+                                                &ui,
+                                                &peers.borrow(),
+                                                &mut visible_peer.borrow_mut(),
+                                            );
                                             ui.set_beacon_status_text(
                                                 if enabled.get() {
                                                     format!("● LAN {count}")
@@ -215,6 +360,14 @@ macro_rules! sst_blue_slint {
                                         } => {
                                             enabled.set(worker_enabled);
                                             peer_count.set(count);
+                                            if !worker_enabled || count == 0 {
+                                                peers.borrow_mut().clear();
+                                                refresh_peer_island(
+                                                    &ui,
+                                                    &peers.borrow(),
+                                                    &mut visible_peer.borrow_mut(),
+                                                );
+                                            }
                                             ui.set_beacon_enabled(worker_enabled);
                                             ui.set_beacon_status_text(
                                                 if worker_enabled {
@@ -246,6 +399,8 @@ macro_rules! sst_blue_slint {
                     _enabled: enabled,
                     _peer_count: peer_count,
                     _alert_until: alert_until,
+                    _peers: peers,
+                    _visible_peer: visible_peer,
                 }
             }
         }
