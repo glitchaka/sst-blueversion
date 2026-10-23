@@ -14,10 +14,10 @@ use std::{
 use windows_sys::Win32::{
     Foundation::{BOOL, HWND, LPARAM, LRESULT, RECT, TRUE, WPARAM},
     Graphics::Gdi::{
-        BeginPaint, CreateSolidBrush, DeleteObject, DrawTextW, Ellipse, EndPaint,
-        GetStockObject, InvalidateRect, PAINTSTRUCT, Rectangle, SelectObject, SetBkMode,
-        SetTextColor, DEFAULT_GUI_FONT, DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
-        TRANSPARENT,
+        BeginPaint, CreateEllipticRgn, CreateRoundRectRgn, CreateSolidBrush, DeleteObject,
+        DrawTextW, Ellipse, EndPaint, GetStockObject, InvalidateRect, PAINTSTRUCT, RoundRect,
+        SelectObject, SetBkMode, SetTextColor, SetWindowRgn, DEFAULT_GUI_FONT,
+        DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, TRANSPARENT,
     },
     System::LibraryLoader::GetModuleHandleW,
     UI::WindowsAndMessaging::{
@@ -33,10 +33,10 @@ use windows_sys::Win32::{
 
 use super::lan_beacon::{BeaconEvent, BeaconPeer, SstBeaconHandle};
 
-const COLLAPSED_SIZE: i32 = 24;
+const COLLAPSED_SIZE: i32 = 14;
 const EXPANDED_WIDTH: i32 = 350;
 const EXPANDED_HEIGHT: i32 = 54;
-const EDGE_MARGIN: i32 = 16;
+const EDGE_MARGIN: i32 = 18;
 const CLASS_NAME: &[u16] = &[
     b'S' as u16, b'S' as u16, b'T' as u16, b'B' as u16, b'e' as u16, b'a' as u16,
     b'c' as u16, b'o' as u16, b'n' as u16, b'I' as u16, b's' as u16, b'l' as u16,
@@ -181,8 +181,12 @@ fn run_overlay(stop: Arc<AtomicBool>) {
     while !stop.load(Ordering::Acquire) {
         let changed = state.process_events();
         let size = state.size();
-        if changed || size != last_size {
+        let size_changed = size != last_size;
+        if size_changed {
             last_size = size;
+            unsafe { update_window_region(hwnd, size.0, size.1, state.expanded()) };
+        }
+        if changed || size_changed {
             unsafe {
                 InvalidateRect(hwnd, null(), TRUE);
             }
@@ -294,6 +298,20 @@ unsafe fn create_overlay_window(owner: HWND) -> HWND {
     }
 }
 
+unsafe fn update_window_region(hwnd: HWND, width: i32, height: i32, expanded: bool) {
+    let region = if expanded {
+        unsafe { CreateRoundRectRgn(0, 0, width + 1, height + 1, 18, 18) }
+    } else {
+        unsafe { CreateEllipticRgn(0, 0, width + 1, height + 1) }
+    };
+    if region.is_null() {
+        return;
+    }
+    if unsafe { SetWindowRgn(hwnd, region, TRUE) } == 0 {
+        unsafe { DeleteObject(region) };
+    }
+}
+
 unsafe fn position_overlay(state: &OverlayState) {
     if unsafe { IsWindowVisible(state.owner) } == 0 || unsafe { IsIconic(state.owner) } != 0 {
         unsafe {
@@ -367,14 +385,6 @@ unsafe fn paint(hwnd: HWND, state: &OverlayState) {
     let mut rect: RECT = unsafe { zeroed() };
     unsafe { GetClientRect(hwnd, &mut rect) };
 
-    let bg = unsafe { CreateSolidBrush(rgb(10, 13, 20)) };
-    let old_brush = unsafe { SelectObject(hdc, bg) };
-    unsafe {
-        Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
-        SelectObject(hdc, old_brush);
-        DeleteObject(bg);
-    }
-
     let dot_color = if !state.enabled {
         rgb(105, 115, 130)
     } else if state.peers.is_empty() {
@@ -382,53 +392,67 @@ unsafe fn paint(hwnd: HWND, state: &OverlayState) {
     } else {
         rgb(255, 82, 92)
     };
+
+    if !state.expanded() {
+        let dot = unsafe { CreateSolidBrush(dot_color) };
+        let old_dot = unsafe { SelectObject(hdc, dot) };
+        unsafe {
+            Ellipse(hdc, 0, 0, rect.right, rect.bottom);
+            SelectObject(hdc, old_dot);
+            DeleteObject(dot);
+            EndPaint(hwnd, &paint);
+        }
+        return;
+    }
+
+    let bg = unsafe { CreateSolidBrush(rgb(10, 13, 20)) };
+    let old_brush = unsafe { SelectObject(hdc, bg) };
+    unsafe {
+        RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, 18, 18);
+        SelectObject(hdc, old_brush);
+        DeleteObject(bg);
+    }
+
     let dot = unsafe { CreateSolidBrush(dot_color) };
     let old_dot = unsafe { SelectObject(hdc, dot) };
-    let (dot_left, dot_top, dot_right, dot_bottom) = if state.expanded() {
-        (13, 18, 31, 36)
-    } else {
-        (5, 5, 19, 19)
-    };
     unsafe {
-        Ellipse(hdc, dot_left, dot_top, dot_right, dot_bottom);
+        Ellipse(hdc, 13, 18, 31, 36);
         SelectObject(hdc, old_dot);
         DeleteObject(dot);
     }
 
-    if state.expanded() {
-        if let Some(peer) = state.selected_peer() {
-            let extra = state.peers.len().saturating_sub(1);
-            let label = if extra == 0 {
-                format!("{}  ·  {}  ·  SST {}", peer.host, peer.address, peer.version)
-            } else {
-                format!(
-                    "{}  ·  {}  ·  SST {}   +{}",
-                    peer.host, peer.address, peer.version, extra
-                )
-            };
-            let wide = label.encode_utf16().collect::<Vec<_>>();
-            let font = unsafe { GetStockObject(DEFAULT_GUI_FONT) };
-            let old_font = unsafe { SelectObject(hdc, font) };
-            unsafe {
-                SetBkMode(hdc, TRANSPARENT as i32);
-                SetTextColor(hdc, rgb(223, 232, 239));
-            }
-            let mut text_rect = RECT {
-                left: 42,
-                top: 0,
-                right: rect.right - 10,
-                bottom: rect.bottom,
-            };
-            unsafe {
-                DrawTextW(
-                    hdc,
-                    wide.as_ptr(),
-                    wide.len() as i32,
-                    &mut text_rect,
-                    DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
-                );
-                SelectObject(hdc, old_font);
-            }
+    if let Some(peer) = state.selected_peer() {
+        let extra = state.peers.len().saturating_sub(1);
+        let label = if extra == 0 {
+            format!("{}  ·  {}  ·  SST {}", peer.host, peer.address, peer.version)
+        } else {
+            format!(
+                "{}  ·  {}  ·  SST {}   +{}",
+                peer.host, peer.address, peer.version, extra
+            )
+        };
+        let wide = label.encode_utf16().collect::<Vec<_>>();
+        let font = unsafe { GetStockObject(DEFAULT_GUI_FONT) };
+        let old_font = unsafe { SelectObject(hdc, font) };
+        unsafe {
+            SetBkMode(hdc, TRANSPARENT as i32);
+            SetTextColor(hdc, rgb(223, 232, 239));
+        }
+        let mut text_rect = RECT {
+            left: 42,
+            top: 0,
+            right: rect.right - 10,
+            bottom: rect.bottom,
+        };
+        unsafe {
+            DrawTextW(
+                hdc,
+                wide.as_ptr(),
+                wide.len() as i32,
+                &mut text_rect,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS,
+            );
+            SelectObject(hdc, old_font);
         }
     }
 
