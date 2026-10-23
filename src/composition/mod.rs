@@ -32,6 +32,7 @@ use crate::{
             NetworkService,
             NetworkTrafficService,
         },
+        packages::PackageService,
         security::shared_security_service,
         switch::SwitchService,
         system::SystemService,
@@ -45,6 +46,7 @@ use crate::{
         DiagnosticsBuiltin,
         DomainBuiltin,
         EditorBuiltin,
+        InstpBuiltin,
         NetworkBuiltin,
         PathBuiltin,
         SwitchBuiltin,
@@ -87,6 +89,14 @@ pub fn build_shell() -> Result<ShellSession> {
 pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<String>, AppPaths)> {
     let paths = AppPaths::detect();
     paths.ensure_layout()?;
+
+    // instp is deliberately activated before NativeShellEngine is created.
+    // ShellEnvironment snapshots the current process environment on startup, so
+    // this makes installed tools visible only inside SST without changing the
+    // Windows user/system PATH.
+    let package_service = Arc::new(PackageService::new(paths.clone()));
+    package_service.ensure_layout()?;
+    package_service.activate_process_environment()?;
 
     let network_probe: Arc<dyn NetworkProbe> = Arc::new(WindowsNetworkProbe);
     let terminal: Arc<dyn TerminalFactory> = Arc::new(CrosstermTerminalFactory);
@@ -169,6 +179,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(SystemBuiltin::new(system_service)))?;
     registry.register(Arc::new(TriageBuiltin::new(Arc::clone(&security_service))))?;
     registry.register(Arc::new(IntelBuiltin::new(security_service)))?;
+    registry.register(Arc::new(InstpBuiltin::new(Arc::clone(&package_service))))?;
     registry.register(Arc::new(SudoBuiltin))?;
     registry.register(Arc::new(EventLogBuiltin))?;
     registry.register(Arc::new(ServiceBuiltin))?;
