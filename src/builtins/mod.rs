@@ -29,3 +29,4 @@ pub use tour::TourBuiltin;
 pub use sudo::SudoBuiltin;
 pub use unix::{UNIX_COMMANDS, UnixBuiltin};
 pub use guide::GuideBuiltin;
+pub use guide::GuideBuiltin as WikiBuiltin;
