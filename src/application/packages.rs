@@ -20,8 +20,7 @@ pub use model::{InstallReport, InstalledPackage, PackageManifest, RepoSource};
 
 use installer::{command_name_from_exposed, find_file, install_payload};
 use model::{
-    InstalledCommand, PackageIndex, RepoConfig, validate_identifier, validate_index,
-    validate_https,
+    InstalledCommand, PackageIndex, validate_identifier, validate_index, validate_https,
 };
 use store::PackageStore;
 use transport::{ResolvedSource, download, get, resolve_source};
