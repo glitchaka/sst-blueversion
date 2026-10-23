@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize)]
 pub struct RepositoryInfo {
     pub name: String,
-    #[serde(default)]
-    pub description: String,
+    #[serde(default, rename = "description")]
+    pub _description: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -37,8 +37,6 @@ pub struct PackageSource {
     pub url: Option<String>,
     #[serde(default)]
     pub repository: Option<String>,
-    #[serde(default)]
-    pub package: Option<String>,
     #[serde(default)]
     pub asset_contains: Vec<String>,
     #[serde(default)]
@@ -139,17 +137,14 @@ pub(super) fn validate_https(url: &str) -> Result<()> {
 }
 
 fn validate_portability(value: &str) -> Result<()> {
-    if !matches!(value, "pure" | "isolated" | "runtime" | "system" | "driver") {
+    if !matches!(value, "pure" | "isolated" | "system" | "driver") {
         anyhow::bail!("instp: clase de portabilidad desconocida: {value}");
     }
     Ok(())
 }
 
 fn validate_install_kind(value: &str) -> Result<()> {
-    if !matches!(
-        value,
-        "single" | "zip" | "archive" | "python_tool" | "gem" | "system"
-    ) {
+    if !matches!(value, "single" | "zip" | "archive" | "system") {
         anyhow::bail!("instp: tipo de instalación desconocido: {value}");
     }
     Ok(())
