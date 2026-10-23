@@ -3,6 +3,7 @@ mod command;
 mod config;
 mod editor;
 mod instp;
+mod instp_ui;
 mod registry;
 mod nwash;
 mod security;
