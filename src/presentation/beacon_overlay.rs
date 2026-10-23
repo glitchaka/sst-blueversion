@@ -12,7 +12,7 @@ use std::{
 };
 
 use windows_sys::Win32::{
-    Foundation::{BOOL, HWND, LPARAM, LRESULT, RECT, TRUE, WPARAM},
+    Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
     Graphics::Gdi::{
         BeginPaint, CreateEllipticRgn, CreateRoundRectRgn, CreateSolidBrush, DeleteObject,
         DrawTextW, Ellipse, EndPaint, GetStockObject, InvalidateRect, PAINTSTRUCT, RoundRect,
@@ -188,7 +188,7 @@ fn run_overlay(stop: Arc<AtomicBool>) {
         }
         if changed || size_changed {
             unsafe {
-                InvalidateRect(hwnd, null(), TRUE);
+                InvalidateRect(hwnd, null(), 1);
             }
         }
         unsafe {
@@ -227,29 +227,29 @@ fn find_sst_window() -> Option<HWND> {
         hwnd: HWND,
     }
 
-    unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    unsafe extern "system" fn callback(hwnd: HWND, lparam: LPARAM) -> i32 {
         let state = unsafe { &mut *(lparam as *mut Search) };
         let mut pid = 0u32;
         unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
         if pid != state.pid || unsafe { IsWindowVisible(hwnd) } == 0 {
-            return TRUE;
+            return 1;
         }
 
         let length = unsafe { GetWindowTextLengthW(hwnd) };
         if length <= 0 {
-            return TRUE;
+            return 1;
         }
         let mut title = vec![0u16; length as usize + 1];
         let copied = unsafe { GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32) };
         if copied <= 0 {
-            return TRUE;
+            return 1;
         }
         let title = String::from_utf16_lossy(&title[..copied as usize]);
         if title == "Shell Shock Tool" {
             state.hwnd = hwnd;
             return 0;
         }
-        TRUE
+        1
     }
 
     let mut search = Search {
@@ -307,7 +307,7 @@ unsafe fn update_window_region(hwnd: HWND, width: i32, height: i32, expanded: bo
     if region.is_null() {
         return;
     }
-    if unsafe { SetWindowRgn(hwnd, region, TRUE) } == 0 {
+    if unsafe { SetWindowRgn(hwnd, region, 1) } == 0 {
         unsafe { DeleteObject(region) };
     }
 }
@@ -357,7 +357,7 @@ unsafe extern "system" fn window_proc(
             if !state_ptr.is_null() {
                 let state = unsafe { &mut *state_ptr };
                 state.toggle();
-                unsafe { InvalidateRect(hwnd, null(), TRUE) };
+                unsafe { InvalidateRect(hwnd, null(), 1) };
             }
             0
         }
