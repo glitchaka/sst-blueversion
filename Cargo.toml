@@ -37,6 +37,7 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 raw-window-handle = "0.6.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif", "ico", "tiff"] }
+socket2 = "0.6"
 
 [profile.release]
 lto = "thin"
