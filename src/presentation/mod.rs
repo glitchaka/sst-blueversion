@@ -9,6 +9,5 @@ pub mod terminal_verify;
 #[cfg(windows)]
 mod lan_beacon;
 #[cfg(windows)]
-#[path = "gui_slint_beacon.rs"]
 pub mod gui_slint;
 pub mod shell;
