@@ -1,11 +1,11 @@
 include!("wiki.rs");
 
-const GUIDE_SCREEN: &str = "\x1b[44;37m";
-const GUIDE_PANEL: &str = "\x1b[47;30m";
-const GUIDE_YELLOW: &str = "\x1b[47;93m";
-const GUIDE_RED: &str = "\x1b[47;91m";
-const GUIDE_SELECTED: &str = "\x1b[44;97m";
-const GUIDE_RESET: &str = "\x1b[0m";
+const G_SCREEN: &str = "\x1b[44;37m";
+const G_PANEL: &str = "\x1b[47;30m";
+const G_YELLOW: &str = "\x1b[47;93m";
+const G_RED: &str = "\x1b[47;91m";
+const G_SELECTED: &str = "\x1b[44;97m";
+const G_RESET: &str = "\x1b[0m";
 
 pub struct GuideBuiltin {
     terminal: Arc<dyn TerminalFactory>,
@@ -47,11 +47,9 @@ impl GuideBuiltin {
         let mut search_mode = false;
         let mut category_index = 0usize;
         let mut selected = 0usize;
-        let mut detail_name = if open_detail {
-            find_entry(&entries, initial_query).map(|entry| entry.name.clone())
-        } else {
-            None
-        };
+        let mut detail_name = open_detail
+            .then(|| find_entry(&entries, initial_query).map(|entry| entry.name.clone()))
+            .flatten();
         let mut detail_scroll = 0usize;
 
         loop {
@@ -60,13 +58,8 @@ impl GuideBuiltin {
                     detail_name = None;
                     continue;
                 };
-                let max_scroll = render_guide_detail(
-                    terminal.as_mut(),
-                    entry,
-                    detail_scroll,
-                )?;
+                let max_scroll = render_detail(terminal.as_mut(), entry, detail_scroll)?;
                 detail_scroll = detail_scroll.min(max_scroll);
-
                 let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
                     continue;
                 };
@@ -103,7 +96,7 @@ impl GuideBuiltin {
                 selected = visible.len() - 1;
             }
 
-            render_guide_menu(
+            render_menu(
                 terminal.as_mut(),
                 &visible,
                 selected,
@@ -115,7 +108,6 @@ impl GuideBuiltin {
             let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
                 continue;
             };
-
             if search_mode {
                 match key {
                     TerminalKey::Escape | TerminalKey::Enter => search_mode = false,
@@ -173,11 +165,7 @@ impl GuideBuiltin {
                     let needle = ch.to_ascii_lowercase();
                     for offset in 1..=visible.len() {
                         let index = (selected + offset) % visible.len();
-                        if visible[index]
-                            .name
-                            .to_ascii_lowercase()
-                            .starts_with(needle)
-                        {
+                        if visible[index].name.to_ascii_lowercase().starts_with(needle) {
                             selected = index;
                             break;
                         }
@@ -208,16 +196,13 @@ impl BuiltinCommand for GuideBuiltin {
     ) -> Result<CommandOutput> {
         match args.first().map(String::as_str) {
             None | Some("--help") | Some("-h") => self.run_ui("", false),
-            Some("search") => {
-                let query = args.get(1..).unwrap_or_default().join(" ");
-                self.run_ui(&query, false)
-            }
+            Some("search") => self.run_ui(&args.get(1..).unwrap_or_default().join(" "), false),
             Some(name) => self.run_ui(name, true),
         }
     }
 }
 
-fn render_guide_menu(
+fn render_menu(
     terminal: &mut dyn TerminalSession,
     entries: &[&WikiEntry],
     selected: usize,
@@ -225,39 +210,29 @@ fn render_guide_menu(
     query: &str,
     search_mode: bool,
 ) -> Result<()> {
-    let (terminal_width, terminal_height) = terminal.size()?;
-    let terminal_width = usize::from(terminal_width.max(40));
-    let terminal_height = usize::from(terminal_height.max(18));
-    let window_width = guide_window_width(terminal_width);
-    let outer_inner = window_width.saturating_sub(2);
-    let menu_width = window_width.saturating_sub(6);
+    let (tw, th) = terminal.size()?;
+    let tw = usize::from(tw.max(40));
+    let th = usize::from(th.max(18));
+    let ww = window_width(tw);
+    let outer_inner = ww.saturating_sub(2);
+    let menu_width = ww.saturating_sub(6);
     let menu_inner = menu_width.saturating_sub(2);
     let command_width = 18usize.min(menu_inner.saturating_sub(18));
     let description_width = menu_inner.saturating_sub(command_width + 2);
-    let list_rows = terminal_height.saturating_sub(14).clamp(5, 14);
-    let start = if selected >= list_rows {
-        selected + 1 - list_rows
-    } else {
-        0
-    };
-    let end = (start + list_rows).min(entries.len());
-    let window_lines = list_rows + 13;
-    let top_padding = terminal_height.saturating_sub(window_lines) / 2;
+    let rows = th.saturating_sub(14).clamp(5, 14);
+    let start = selected.saturating_sub(rows.saturating_sub(1));
+    let end = (start + rows).min(entries.len());
+    let top_padding = th.saturating_sub(rows + 13) / 2;
 
-    terminal.clear()?;
+    begin_screen(terminal, &mut String::new())?;
     let mut out = String::new();
-    out.push_str(GUIDE_SCREEN);
+    out.push_str(G_SCREEN);
     out.push_str("\x1b[2J\x1b[H");
     for _ in 0..top_padding {
         out.push('\n');
     }
 
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_title_border(window_width, "Shell Shock Tool - Command Guide"),
-    );
+    push_window(&mut out, tw, ww, &title_border(ww, "Shell Shock Tool - Command Guide"));
 
     let intro = "Welcome to the Shell Shock Tool command guide. Select a command below using the arrow keys or type the first character of its name. Press [ENTER] to open its documentation; press [X] to exit.";
     let mut intro_lines = wrap(intro, outer_inner.saturating_sub(4));
@@ -266,12 +241,7 @@ fn render_guide_menu(
         intro_lines.push(String::new());
     }
     for line in intro_lines {
-        guide_push_window_line(
-            &mut out,
-            terminal_width,
-            window_width,
-            &guide_outer_line(window_width, &format!("  {line}")),
-        );
+        push_window(&mut out, tw, ww, &outer_line(ww, &format!("  {line}")));
     }
 
     let filter = format!(
@@ -280,65 +250,31 @@ fn render_guide_menu(
         if search_mode { "> " } else { "" },
         if query.is_empty() { "(none)" } else { query }
     );
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_outer_line(window_width, &filter),
-    );
-
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_inner_top(window_width),
-    );
+    push_window(&mut out, tw, ww, &outer_line(ww, &filter));
+    push_window(&mut out, tw, ww, &inner_top(ww));
 
     let header = format!(
         "  │{}{:command_width$}{}  {:description_width$}│",
-        GUIDE_YELLOW,
+        G_YELLOW,
         "Command",
-        GUIDE_PANEL,
+        G_PANEL,
         "Quick reference - what this command does",
         command_width = command_width,
         description_width = description_width,
     );
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_outer_line_ansi(window_width, &header),
-    );
+    push_window(&mut out, tw, ww, &outer_ansi_line(ww, &header));
+    push_window(&mut out, tw, ww, &inner_separator(ww));
 
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_inner_separator(window_width),
-    );
-
-    for row in 0..list_rows {
+    for row in 0..rows {
         let index = start + row;
         let content = if index < end {
             let entry = entries[index];
             let name = clip(&entry.name, command_width);
             let description = clip(&entry.summary, description_width);
             let name_cell = if index == selected {
-                format!(
-                    "{}{:command_width$}{}",
-                    GUIDE_SELECTED,
-                    name,
-                    GUIDE_PANEL,
-                    command_width = command_width,
-                )
+                format!("{}{:command_width$}{}", G_SELECTED, name, G_PANEL, command_width = command_width)
             } else {
-                format!(
-                    "{}{:command_width$}{}",
-                    GUIDE_YELLOW,
-                    name,
-                    GUIDE_PANEL,
-                    command_width = command_width,
-                )
+                format!("{}{:command_width$}{}", G_YELLOW, name, G_PANEL, command_width = command_width)
             };
             format!(
                 "  │{name_cell}  {:description_width$}│",
@@ -348,172 +284,83 @@ fn render_guide_menu(
         } else {
             format!("  │{}│", " ".repeat(menu_inner))
         };
-        guide_push_window_line(
-            &mut out,
-            terminal_width,
-            window_width,
-            &guide_outer_line_ansi(window_width, &content),
-        );
+        push_window(&mut out, tw, ww, &outer_ansi_line(ww, &content));
     }
 
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_inner_bottom(window_width),
-    );
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_outer_separator(window_width),
-    );
-
+    push_window(&mut out, tw, ww, &inner_bottom(ww));
+    push_window(&mut out, tw, ww, &outer_separator(ww));
     let buttons = format!(
         "{}[ Select ]{}    {}X{} Exit Guide    {}C{} Category    / Search",
-        GUIDE_SELECTED,
-        GUIDE_PANEL,
-        GUIDE_RED,
-        GUIDE_PANEL,
-        GUIDE_YELLOW,
-        GUIDE_PANEL,
+        G_SELECTED, G_PANEL, G_RED, G_PANEL, G_YELLOW, G_PANEL,
     );
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_centered_outer_line_ansi(window_width, &buttons, 53),
-    );
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_bottom_border(window_width),
-    );
-    out.push_str(GUIDE_RESET);
+    push_window(&mut out, tw, ww, &centered_ansi_line(ww, &buttons));
+    push_window(&mut out, tw, ww, &bottom_border(ww));
+    out.push_str(G_RESET);
 
     terminal.write(&out)?;
     terminal.flush()
 }
 
-fn render_guide_detail(
+fn render_detail(
     terminal: &mut dyn TerminalSession,
     entry: &WikiEntry,
     scroll: usize,
 ) -> Result<usize> {
-    let (terminal_width, terminal_height) = terminal.size()?;
-    let terminal_width = usize::from(terminal_width.max(40));
-    let terminal_height = usize::from(terminal_height.max(18));
-    let window_width = guide_window_width(terminal_width);
-    let outer_inner = window_width.saturating_sub(2);
+    let (tw, th) = terminal.size()?;
+    let tw = usize::from(tw.max(40));
+    let th = usize::from(th.max(18));
+    let ww = window_width(tw);
+    let outer_inner = ww.saturating_sub(2);
     let body_width = outer_inner.saturating_sub(6);
-    let body_rows = terminal_height.saturating_sub(9).clamp(8, 20);
+    let rows = th.saturating_sub(9).clamp(8, 20);
+    let aliases = if entry.aliases.is_empty() { "-".to_owned() } else { entry.aliases.join(", ") };
 
-    let aliases = if entry.aliases.is_empty() {
-        "-".to_owned()
-    } else {
-        entry.aliases.join(", ")
-    };
     let mut body = Vec::new();
-    guide_detail_section(&mut body, "Command", &entry.name, body_width);
-    guide_detail_section(&mut body, "Category", &entry.category, body_width);
-    guide_detail_section(&mut body, "Aliases", &aliases, body_width);
-    guide_detail_section(&mut body, "What it does", &entry.summary, body_width);
-    guide_detail_section(&mut body, "When to use it", &entry.use_case, body_width);
-    guide_detail_section(&mut body, "Syntax", &entry.syntax.replace('\n', "  |  "), body_width);
-    guide_detail_section(&mut body, "Origin / inheritance", &entry.origin, body_width);
-    guide_detail_section(&mut body, "Compatibility / notes", &entry.compatibility, body_width);
+    detail_section(&mut body, "Command", &entry.name, body_width);
+    detail_section(&mut body, "Category", &entry.category, body_width);
+    detail_section(&mut body, "Aliases", &aliases, body_width);
+    detail_section(&mut body, "What it does", &entry.summary, body_width);
+    detail_section(&mut body, "When to use it", &entry.use_case, body_width);
+    detail_section(&mut body, "Syntax", &entry.syntax.replace('\n', "  |  "), body_width);
+    detail_section(&mut body, "Origin / inheritance", &entry.origin, body_width);
+    detail_section(&mut body, "Compatibility / notes", &entry.compatibility, body_width);
 
-    let max_scroll = body.len().saturating_sub(body_rows);
+    let max_scroll = body.len().saturating_sub(rows);
     let scroll = scroll.min(max_scroll);
-    let window_lines = body_rows + 8;
-    let top_padding = terminal_height.saturating_sub(window_lines) / 2;
+    let top_padding = th.saturating_sub(rows + 8) / 2;
 
-    terminal.clear()?;
     let mut out = String::new();
-    out.push_str(GUIDE_SCREEN);
+    out.push_str(G_SCREEN);
     out.push_str("\x1b[2J\x1b[H");
     for _ in 0..top_padding {
         out.push('\n');
     }
+    push_window(&mut out, tw, ww, &title_border(ww, &format!("SST Guide - {}", entry.name)));
+    push_window(&mut out, tw, ww, &outer_line(ww, "  Command reference. Use Up/Down or PgUp/PgDn to scroll."));
+    push_window(&mut out, tw, ww, &inner_top(ww));
 
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_title_border(window_width, &format!("SST Guide - {}", entry.name)),
-    );
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_outer_line(window_width, "  Command reference. Use Up/Down or PgUp/PgDn to scroll."),
-    );
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_inner_top(window_width),
-    );
-
-    for line in body.iter().skip(scroll).take(body_rows) {
-        let content = format!("  │ {:<width$} │", clip(line, body_width), width = body_width);
-        guide_push_window_line(
-            &mut out,
-            terminal_width,
-            window_width,
-            &guide_outer_line_ansi(window_width, &content),
-        );
+    for line in body.iter().skip(scroll).take(rows) {
+        let content = format!("  │ {:<body_width$} │", clip(line, body_width), body_width = body_width);
+        push_window(&mut out, tw, ww, &outer_ansi_line(ww, &content));
     }
-    for _ in body.len().saturating_sub(scroll).min(body_rows)..body_rows {
-        let content = format!("  │ {:<width$} │", "", width = body_width);
-        guide_push_window_line(
-            &mut out,
-            terminal_width,
-            window_width,
-            &guide_outer_line_ansi(window_width, &content),
-        );
+    for _ in body.len().saturating_sub(scroll).min(rows)..rows {
+        let content = format!("  │ {:<body_width$} │", "", body_width = body_width);
+        push_window(&mut out, tw, ww, &outer_ansi_line(ww, &content));
     }
 
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_inner_bottom(window_width),
-    );
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_outer_separator(window_width),
-    );
-    let buttons = format!(
-        "{}[ Back ]{}    {}X{} Exit Guide    PgUp/PgDn Scroll",
-        GUIDE_SELECTED,
-        GUIDE_PANEL,
-        GUIDE_RED,
-        GUIDE_PANEL,
-    );
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_centered_outer_line_ansi(window_width, &buttons, 46),
-    );
-    guide_push_window_line(
-        &mut out,
-        terminal_width,
-        window_width,
-        &guide_bottom_border(window_width),
-    );
-    out.push_str(GUIDE_RESET);
+    push_window(&mut out, tw, ww, &inner_bottom(ww));
+    push_window(&mut out, tw, ww, &outer_separator(ww));
+    let buttons = format!("{}[ Back ]{}    {}X{} Exit Guide    PgUp/PgDn Scroll", G_SELECTED, G_PANEL, G_RED, G_PANEL);
+    push_window(&mut out, tw, ww, &centered_ansi_line(ww, &buttons));
+    push_window(&mut out, tw, ww, &bottom_border(ww));
+    out.push_str(G_RESET);
 
     terminal.write(&out)?;
     terminal.flush()?;
     Ok(max_scroll)
 }
 
-fn guide_detail_section(lines: &mut Vec<String>, label: &str, value: &str, width: usize) {
+fn detail_section(lines: &mut Vec<String>, label: &str, value: &str, width: usize) {
     if !lines.is_empty() {
         lines.push(String::new());
     }
@@ -523,7 +370,11 @@ fn guide_detail_section(lines: &mut Vec<String>, label: &str, value: &str, width
     }
 }
 
-fn guide_window_width(terminal_width: usize) -> usize {
+fn begin_screen(terminal: &mut dyn TerminalSession, _out: &mut String) -> Result<()> {
+    terminal.clear()
+}
+
+fn window_width(terminal_width: usize) -> usize {
     if terminal_width >= 68 {
         terminal_width.saturating_sub(4).min(96)
     } else {
@@ -531,76 +382,82 @@ fn guide_window_width(terminal_width: usize) -> usize {
     }
 }
 
-fn guide_push_window_line(
-    out: &mut String,
-    terminal_width: usize,
-    window_width: usize,
-    line: &str,
-) {
+fn push_window(out: &mut String, terminal_width: usize, window_width: usize, line: &str) {
     let margin = terminal_width.saturating_sub(window_width) / 2;
-    out.push_str(GUIDE_SCREEN);
+    out.push_str(G_SCREEN);
     out.push_str(&" ".repeat(margin));
-    out.push_str(GUIDE_PANEL);
+    out.push_str(G_PANEL);
     out.push_str(line);
-    out.push_str(GUIDE_SCREEN);
+    out.push_str(G_SCREEN);
     out.push('\n');
 }
 
-fn guide_title_border(width: usize, title: &str) -> String {
+fn title_border(width: usize, title: &str) -> String {
     let inner = width.saturating_sub(2);
-    let title = format!(" {title} ");
-    let title_width = title.chars().count().min(inner);
-    let title = clip(&title, inner);
-    let remaining = inner.saturating_sub(title_width);
+    let title = clip(&format!(" {title} "), inner);
+    let remaining = inner.saturating_sub(title.chars().count());
     let left = remaining / 2;
     let right = remaining.saturating_sub(left);
-    format!(
-        "┌{}{}{}{}{}┐",
-        "─".repeat(left),
-        GUIDE_YELLOW,
-        title,
-        GUIDE_PANEL,
-        "─".repeat(right),
-    )
+    format!("┌{}{}{}{}{}┐", "─".repeat(left), G_YELLOW, title, G_PANEL, "─".repeat(right))
 }
 
-fn guide_bottom_border(width: usize) -> String {
+fn bottom_border(width: usize) -> String {
     format!("└{}┘", "─".repeat(width.saturating_sub(2)))
 }
 
-fn guide_outer_separator(width: usize) -> String {
+fn outer_separator(width: usize) -> String {
     format!("├{}┤", "─".repeat(width.saturating_sub(2)))
 }
 
-fn guide_outer_line(width: usize, text: &str) -> String {
+fn outer_line(width: usize, text: &str) -> String {
     let inner = width.saturating_sub(2);
     let text = clip(text, inner);
     format!("│{:<inner$}│", text, inner = inner)
 }
 
-fn guide_outer_line_ansi(width: usize, content: &str) -> String {
-    format!("│{content}{}│", "  ".repeat(0)).replace("││", &format!("│{}│", " ".repeat(width.saturating_sub(2))))
-}
-
-fn guide_inner_top(width: usize) -> String {
-    let menu_width = width.saturating_sub(6);
-    guide_outer_line(width, &format!("  ┌{}┐", "─".repeat(menu_width.saturating_sub(2))))
-}
-
-fn guide_inner_separator(width: usize) -> String {
-    let menu_width = width.saturating_sub(6);
-    guide_outer_line(width, &format!("  ├{}┤", "─".repeat(menu_width.saturating_sub(2))))
-}
-
-fn guide_inner_bottom(width: usize) -> String {
-    let menu_width = width.saturating_sub(6);
-    guide_outer_line(width, &format!("  └{}┘", "─".repeat(menu_width.saturating_sub(2))))
-}
-
-fn guide_centered_outer_line_ansi(width: usize, text: &str, visible_width: usize) -> String {
+fn outer_ansi_line(width: usize, content: &str) -> String {
     let inner = width.saturating_sub(2);
-    let visible_width = visible_width.min(inner);
-    let left = inner.saturating_sub(visible_width) / 2;
-    let right = inner.saturating_sub(visible_width + left);
-    format!("│{}{}{}│", " ".repeat(left), text, " ".repeat(right))
+    let visible = ansi_visible_width(content).min(inner);
+    format!("│{content}{}│", " ".repeat(inner.saturating_sub(visible)))
+}
+
+fn centered_ansi_line(width: usize, content: &str) -> String {
+    let inner = width.saturating_sub(2);
+    let visible = ansi_visible_width(content).min(inner);
+    let left = inner.saturating_sub(visible) / 2;
+    let right = inner.saturating_sub(visible + left);
+    format!("│{}{}{}│", " ".repeat(left), content, " ".repeat(right))
+}
+
+fn ansi_visible_width(value: &str) -> usize {
+    let mut count = 0usize;
+    let mut chars = value.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' && chars.peek().is_some_and(|next| *next == '[') {
+            chars.next();
+            for code in chars.by_ref() {
+                if code == 'm' {
+                    break;
+                }
+            }
+        } else {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn inner_top(width: usize) -> String {
+    let menu_width = width.saturating_sub(6);
+    outer_line(width, &format!("  ┌{}┐", "─".repeat(menu_width.saturating_sub(2))))
+}
+
+fn inner_separator(width: usize) -> String {
+    let menu_width = width.saturating_sub(6);
+    outer_line(width, &format!("  ├{}┤", "─".repeat(menu_width.saturating_sub(2))))
+}
+
+fn inner_bottom(width: usize) -> String {
+    let menu_width = width.saturating_sub(6);
+    outer_line(width, &format!("  └{}┘", "─".repeat(menu_width.saturating_sub(2))))
 }
