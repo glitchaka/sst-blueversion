@@ -256,7 +256,7 @@ fn run_worker(
                                 // waiting for the next periodic broadcast.
                                 let _ = send_frame(
                                     &socket,
-                                    *source,
+                                    source,
                                     "hello",
                                     &instance,
                                     &host,
