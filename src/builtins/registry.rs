@@ -79,7 +79,7 @@ impl CommandRegistry {
         }
 
         let mut out = String::from(
-            "Shell Shock Tool\n\nConsola con comandos administrativos nativos.\nEditor de scripts: helix archivo.sh. Primeros pasos: help helix.\nWiki de comandos: wiki.\n\nComandos:\n",
+            "Shell Shock Tool\n\nConsola con comandos administrativos nativos.\nEditor de scripts: helix archivo.sh. Primeros pasos: help helix.\nGuía interactiva de comandos: guide.\n\nComandos:\n",
         );
 
         for name in &self.primary_names {
@@ -89,7 +89,7 @@ impl CommandRegistry {
             }
         }
 
-        out.push_str("\nUsa 'help COMANDO' para ayuda corta o 'wiki [COMANDO]' para el manual completo.\n");
+        out.push_str("\nUsa 'guide' para explorar comandos o 'guide COMANDO' para abrir directamente su ficha.\n");
         CommandOutput::ok(out)
     }
 
