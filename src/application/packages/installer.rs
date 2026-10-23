@@ -107,23 +107,7 @@ fn extract_archive(source: &Path, destination: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn flatten_single_directory(root: &Path) -> Result<()> {
-    let entries = fs::read_dir(root)?.collect::<std::io::Result<Vec<_>>>()?;
-    if entries.len() != 1 || !entries[0].path().is_dir() {
-        return Ok(());
-    }
-
-    let nested = entries[0].path();
-    let nested_entries = fs::read_dir(&nested)?.collect::<std::io::Result<Vec<_>>>()?;
-    for entry in nested_entries {
-        let target = root.join(entry.file_name());
-        fs::rename(entry.path(), target)?;
-    }
-    fs::remove_dir(nested)?;
-    Ok(())
-}
-
-fn tar_program() -> Result<PathBuf> {
+pub(super) fn tar_program() -> Result<PathBuf> {
     #[cfg(windows)]
     {
         crate::support::windows::system32_executable("tar.exe")
