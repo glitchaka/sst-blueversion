@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Duration};
+use std::{collections::HashSet, path::Path, time::Duration};
 
 use anyhow::Result;
 
@@ -105,7 +105,11 @@ pub fn run_catalog(
                     continue;
                 };
                 if installed.contains(&package.id.to_ascii_lowercase()) {
-                    message = format!("{} ya está instalado.", package.name);
+                    message = format!(
+                        "{} ya está instalado. Comandos: {}",
+                        package.name,
+                        exposed_command_names(package)
+                    );
                     continue;
                 }
                 if matches!(package.portability.as_str(), "system" | "driver")
@@ -132,10 +136,27 @@ pub fn run_catalog(
                 match service.install(&package.id) {
                     Ok(report) => {
                         installed.insert(report.package.id.to_ascii_lowercase());
+                        let commands = if report.package.commands.is_empty() {
+                            "(ninguno)".to_owned()
+                        } else {
+                            report
+                                .package
+                                .commands
+                                .iter()
+                                .map(|entry| entry.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        };
                         message = format!(
-                            "Instalado {} {}. Reinicia SST para incorporar sus comandos al PATH actual.",
-                            report.package.name, report.package.version
+                            "Instalado {} {}. Comandos: {}. Reinicia SST para incorporarlos al PATH actual.",
+                            report.package.name, report.package.version, commands
                         );
+                        if !report.missing_exposed_commands.is_empty() {
+                            message.push_str(&format!(
+                                " No encontrados: {}.",
+                                report.missing_exposed_commands.join(", ")
+                            ));
+                        }
                     }
                     Err(error) => message = format!("Error al instalar {}: {error:#}", package.id),
                 }
@@ -229,6 +250,26 @@ fn visible_packages<'a>(
     rows
 }
 
+fn exposed_command_names(package: &PackageManifest) -> String {
+    if package.install.expose.is_empty() {
+        return "(ninguno)".to_owned();
+    }
+
+    package
+        .install
+        .expose
+        .iter()
+        .map(|exposed| {
+            Path::new(exposed)
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or(exposed)
+                .to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn render(
     terminal: &mut dyn TerminalSession,
     packages: &[&PackageManifest],
@@ -242,7 +283,17 @@ fn render(
     let (width, height) = terminal.size()?;
     let width = usize::from(width.max(40));
     let height = usize::from(height.max(14));
-    let list_rows = height.saturating_sub(11).max(3);
+
+    let command_lines = packages
+        .get(selected)
+        .copied()
+        .map(|package| wrap_text(&format!("Comandos: {}", exposed_command_names(package)), width))
+        .unwrap_or_default();
+    let message_lines = wrap_text(message, width);
+    let fixed_rows = 9usize
+        .saturating_add(command_lines.len())
+        .saturating_add(message_lines.len());
+    let list_rows = height.saturating_sub(fixed_rows).max(3);
     let start = if selected >= list_rows {
         selected + 1 - list_rows
     } else {
@@ -312,11 +363,17 @@ fn render(
         out.push('\n');
         out.push_str(&clip(&package.description, width));
         out.push('\n');
+        for line in &command_lines {
+            out.push_str(line);
+            out.push('\n');
+        }
     } else {
         out.push_str("Sin selección.\n\n");
     }
-    out.push_str(&clip(message, width));
-    out.push('\n');
+    for line in &message_lines {
+        out.push_str(line);
+        out.push('\n');
+    }
     out.push_str(&clip(
         "↑↓ navegar · / buscar · c categoría · i instalar · r quitar · u actualizar · q/Esc salir",
         width,
@@ -325,6 +382,55 @@ fn render(
 
     terminal.write(&out)?;
     terminal.flush()
+}
+
+fn wrap_text(value: &str, width: usize) -> Vec<String> {
+    if value.is_empty() {
+        return vec![String::new()];
+    }
+    if width == 0 {
+        return Vec::new();
+    }
+
+    let mut lines = Vec::new();
+    for source_line in value.lines() {
+        let mut current = String::new();
+        for word in source_line.split_whitespace() {
+            let separator = usize::from(!current.is_empty());
+            if current.chars().count() + separator + word.chars().count() <= width {
+                if !current.is_empty() {
+                    current.push(' ');
+                }
+                current.push_str(word);
+                continue;
+            }
+
+            if !current.is_empty() {
+                lines.push(current);
+                current = String::new();
+            }
+
+            if word.chars().count() <= width {
+                current.push_str(word);
+            } else {
+                let mut chunk = String::new();
+                for ch in word.chars() {
+                    if chunk.chars().count() == width {
+                        lines.push(chunk);
+                        chunk = String::new();
+                    }
+                    chunk.push(ch);
+                }
+                current = chunk;
+            }
+        }
+        if !current.is_empty() {
+            lines.push(current);
+        } else if source_line.is_empty() {
+            lines.push(String::new());
+        }
+    }
+    lines
 }
 
 fn clip(value: &str, width: usize) -> String {
