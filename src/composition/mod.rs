@@ -48,7 +48,6 @@ use crate::{
         EditorBuiltin,
         InstpBuiltin,
         NetworkBuiltin,
-        NotshBuiltin,
         PathBuiltin,
         SwitchBuiltin,
         SudoBuiltin,
@@ -172,7 +171,6 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
 
     let mut registry = CommandRegistry::new();
     registry.register(Arc::new(NetworkBuiltin::new(Arc::clone(&network_service))))?;
-    registry.register(Arc::new(NotshBuiltin::new(Arc::clone(&network_service))))?;
     registry.register(Arc::new(DeviceBuiltin::new(device_service)))?;
     registry.register(Arc::new(DomainBuiltin::new(domain_service)))?;
     registry.register(Arc::new(SwitchBuiltin::new(switch_service)))?;
