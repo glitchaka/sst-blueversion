@@ -59,11 +59,12 @@ impl GuideBuiltin {
 
             render_guide(
                 terminal.as_mut(),
+                &categories,
+                category_index,
                 &visible,
                 selected,
                 &query,
                 search_mode,
-                category,
             )?;
 
             let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
@@ -151,16 +152,21 @@ impl BuiltinCommand for GuideBuiltin {
 
 fn render_guide(
     terminal: &mut dyn TerminalSession,
+    categories: &[String],
+    category_index: usize,
     entries: &[&WikiEntry],
     selected: usize,
     query: &str,
     search_mode: bool,
-    category: &str,
 ) -> Result<()> {
-    let (width, height) = terminal.size()?;
-    let width = usize::from(width.max(60));
-    let height = usize::from(height.max(18));
-    let list_rows = (height / 3).clamp(5, 12);
+    let (terminal_width, terminal_height) = terminal.size()?;
+    let width = usize::from(terminal_width.max(72)).min(120);
+    let height = usize::from(terminal_height.max(22));
+    let inner = width.saturating_sub(2);
+    let left_width = 20usize.min(inner.saturating_sub(36));
+    let right_width = inner.saturating_sub(left_width + 1);
+    let list_rows = height.saturating_sub(15).clamp(6, 14);
+
     let start = if selected >= list_rows {
         selected + 1 - list_rows
     } else {
@@ -170,65 +176,145 @@ fn render_guide(
 
     terminal.clear()?;
     let mut out = String::new();
-    out.push_str("SST GUIDE · comandos de la consola\n");
-    out.push_str(&format!(
-        "Categoría: {:<14} Comandos: {:<3} Buscar: {}{}\n",
-        category,
-        entries.len(),
-        if search_mode { "> " } else { "" },
-        if query.is_empty() { "-" } else { query }
-    ));
-    out.push_str(&format!("{}\n", "─".repeat(width.min(120))));
 
-    if entries.is_empty() {
-        out.push_str("  No hay comandos que coincidan con el filtro.\n");
-        for _ in 1..list_rows {
-            out.push('\n');
-        }
-    } else {
-        for index in start..end {
+    // Classic DOS/ncurses installer frame.
+    out.push_str(&top_border(width, " SST COMMAND GUIDE "));
+    out.push('\n');
+    out.push_str(&boxed_line(
+        width,
+        &format!(
+            "  Navegación: ↑↓   Categoría: C   Buscar: /   Salir: Esc/Q{}",
+            if search_mode { "   [MODO BÚSQUEDA]" } else { "" }
+        ),
+    ));
+    out.push('\n');
+    out.push_str(&boxed_line(
+        width,
+        &format!(
+            "  Filtro: {}{}",
+            if search_mode { "> " } else { "" },
+            if query.is_empty() { "(ninguno)" } else { query }
+        ),
+    ));
+    out.push('\n');
+    out.push_str(&middle_border(width));
+    out.push('\n');
+
+    out.push_str(&format!(
+        "║{:<left$}│{:<right$}║\n",
+        " CATEGORÍAS",
+        " COMANDOS",
+        left = left_width,
+        right = right_width,
+    ));
+    out.push_str(&format!(
+        "║{}┼{}║\n",
+        "─".repeat(left_width),
+        "─".repeat(right_width),
+    ));
+
+    for row in 0..list_rows {
+        let category_cell = categories
+            .get(row)
+            .map(|value| {
+                let label = clip(value, left_width.saturating_sub(2));
+                if row == category_index {
+                    format!("\x1b[7m {:<w$} \x1b[0m", label, w = left_width.saturating_sub(2))
+                } else {
+                    format!(" {:<w$} ", label, w = left_width.saturating_sub(2))
+                }
+            })
+            .unwrap_or_else(|| " ".repeat(left_width));
+
+        let command_cell = if let Some(index) = (start + row < end).then_some(start + row) {
             let entry = entries[index];
-            let marker = if index == selected { '>' } else { ' ' };
-            let line = format!(
-                "{} {:<18} {:<14} {}",
-                marker,
-                clip(&entry.name, 18),
-                clip(&entry.category, 14),
-                entry.summary
+            let name_width = 17usize.min(right_width.saturating_sub(6));
+            let summary_width = right_width.saturating_sub(name_width + 4);
+            let plain = format!(
+                " {:<namew$}  {}",
+                clip(&entry.name, name_width),
+                clip(&entry.summary, summary_width),
+                namew = name_width,
             );
-            out.push_str(&clip(&line, width));
-            out.push('\n');
-        }
-        for _ in end - start..list_rows {
-            out.push('\n');
-        }
+            let padded = format!("{:<w$}", clip(&plain, right_width), w = right_width);
+            if index == selected {
+                format!("\x1b[7m{padded}\x1b[0m")
+            } else {
+                padded
+            }
+        } else {
+            " ".repeat(right_width)
+        };
+
+        out.push_str(&format!("║{category_cell}│{command_cell}║\n"));
     }
 
-    out.push_str(&format!("{}\n", "─".repeat(width.min(120))));
+    out.push_str(&middle_border(width));
+    out.push('\n');
+
     if let Some(entry) = entries.get(selected).copied() {
         let aliases = if entry.aliases.is_empty() {
             "-".to_owned()
         } else {
             entry.aliases.join(", ")
         };
-        push_wrapped(&mut out, &format!("{}  [{}]  aliases: {}", entry.name, entry.category, aliases), width, 2);
-        push_wrapped(&mut out, &format!("Qué hace: {}", entry.summary), width, 2);
-        push_wrapped(&mut out, &format!("Cuándo: {}", entry.use_case), width, 2);
-        let syntax = entry.syntax.replace('\n', "  ·  ");
-        push_wrapped(&mut out, &format!("Sintaxis: {syntax}"), width, 3);
-        push_wrapped(&mut out, &format!("Origen: {}", entry.origin), width, 2);
-        push_wrapped(&mut out, &format!("Notas: {}", entry.compatibility), width, 2);
+        let detail_lines = [
+            format!(" {}  [{}]  aliases: {}", entry.name, entry.category, aliases),
+            format!(" Qué hace: {}", entry.summary),
+            format!(" Cuándo usarlo: {}", entry.use_case),
+            format!(" Sintaxis: {}", entry.syntax.replace('\n', "  |  ")),
+            format!(" Origen: {}", entry.origin),
+            format!(" Notas: {}", entry.compatibility),
+        ];
+
+        for line in detail_lines {
+            for wrapped in wrap(&line, inner.saturating_sub(2)).into_iter().take(2) {
+                out.push_str(&boxed_line(width, &wrapped));
+                out.push('\n');
+            }
+        }
     } else {
-        out.push_str("Sin selección.\n");
+        out.push_str(&boxed_line(width, "  No hay comandos que coincidan con el filtro."));
+        out.push('\n');
+        for _ in 0..5 {
+            out.push_str(&boxed_line(width, ""));
+            out.push('\n');
+        }
     }
 
-    out.push_str(&format!("{}\n", "─".repeat(width.min(120))));
-    out.push_str(&clip(
-        "↑↓ navegar · PgUp/PgDn · / buscar · c categoría · q/Esc salir · guide COMANDO abre su ficha",
+    out.push_str(&middle_border(width));
+    out.push('\n');
+    out.push_str(&boxed_line(
         width,
+        "  [↑/↓] Seleccionar   [PgUp/PgDn] Página   [C] Categoría   [/] Buscar   [Esc/Q] Salir",
     ));
+    out.push('\n');
+    out.push_str(&bottom_border(width));
     out.push('\n');
 
     terminal.write(&out)?;
     terminal.flush()
+}
+
+fn top_border(width: usize, title: &str) -> String {
+    let inner = width.saturating_sub(2);
+    let title = clip(title, inner);
+    let remaining = inner.saturating_sub(title.chars().count());
+    let left = remaining / 2;
+    let right = remaining.saturating_sub(left);
+    format!("╔{}{}{}╗", "═".repeat(left), title, "═".repeat(right))
+}
+
+fn middle_border(width: usize) -> String {
+    format!("╠{}╣", "═".repeat(width.saturating_sub(2)))
+}
+
+fn bottom_border(width: usize) -> String {
+    format!("╚{}╝", "═".repeat(width.saturating_sub(2)))
+}
+
+fn boxed_line(width: usize, value: &str) -> String {
+    let inner = width.saturating_sub(2);
+    let clipped = clip(value, inner);
+    format!("║{:<inner$}║", clipped, inner = inner)
 }
