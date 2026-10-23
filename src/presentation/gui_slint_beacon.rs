@@ -1,7 +1,3 @@
-use std::{cell::{Cell, RefCell}, rc::Rc, time::{Duration, Instant}};
-
-use super::lan_beacon::{BeaconEvent, SstBeaconHandle};
-
 macro_rules! sst_blue_slint {
     (export component SstBlueWindow inherits Window { $($body:tt)* }) => {
         ::slint::slint! {
@@ -73,20 +69,22 @@ macro_rules! sst_blue_slint {
 
         struct BeaconUiController {
             _timer: ::slint::Timer,
-            _handle: Rc<RefCell<Option<SstBeaconHandle>>>,
-            _enabled: Rc<Cell<bool>>,
-            _peer_count: Rc<Cell<usize>>,
-            _alert_until: Rc<RefCell<Option<Instant>>>,
+            _handle: std::rc::Rc<std::cell::RefCell<Option<super::lan_beacon::SstBeaconHandle>>>,
+            _enabled: std::rc::Rc<std::cell::Cell<bool>>,
+            _peer_count: std::rc::Rc<std::cell::Cell<usize>>,
+            _alert_until: std::rc::Rc<std::cell::RefCell<Option<std::time::Instant>>>,
         }
 
         impl BeaconUiController {
             fn attach(ui: &BaseSstBlueWindow) -> Self {
-                let handle = SstBeaconHandle::start().ok();
+                let handle = super::lan_beacon::SstBeaconHandle::start().ok();
                 let available = handle.is_some();
-                let handle = Rc::new(RefCell::new(handle));
-                let enabled = Rc::new(Cell::new(available));
-                let peer_count = Rc::new(Cell::new(0usize));
-                let alert_until = Rc::new(RefCell::new(None::<Instant>));
+                let handle = std::rc::Rc::new(std::cell::RefCell::new(handle));
+                let enabled = std::rc::Rc::new(std::cell::Cell::new(available));
+                let peer_count = std::rc::Rc::new(std::cell::Cell::new(0usize));
+                let alert_until = std::rc::Rc::new(std::cell::RefCell::new(
+                    None::<std::time::Instant>,
+                ));
 
                 ui.set_beacon_enabled(available);
                 ui.set_beacon_status_text(
@@ -94,7 +92,9 @@ macro_rules! sst_blue_slint {
                 );
                 if !available {
                     ui.set_beacon_alert_text("Baliza SST LAN no disponible".into());
-                    *alert_until.borrow_mut() = Some(Instant::now() + Duration::from_secs(5));
+                    *alert_until.borrow_mut() = Some(
+                        std::time::Instant::now() + std::time::Duration::from_secs(5),
+                    );
                 }
 
                 {
@@ -107,12 +107,15 @@ macro_rules! sst_blue_slint {
                         let Some(ui) = weak.upgrade() else {
                             return;
                         };
-                        let Some(beacon) = handle.borrow().as_ref() else {
+                        let handle_ref = handle.borrow();
+                        let Some(beacon) = handle_ref.as_ref() else {
                             ui.set_beacon_enabled(false);
                             ui.set_beacon_status_text("○ LAN !".into());
                             ui.set_beacon_alert_text("Baliza SST LAN no disponible".into());
-                            *alert_until.borrow_mut() =
-                                Some(Instant::now() + Duration::from_secs(3));
+                            *alert_until.borrow_mut() = Some(
+                                std::time::Instant::now()
+                                    + std::time::Duration::from_secs(3),
+                            );
                             return;
                         };
 
@@ -132,8 +135,9 @@ macro_rules! sst_blue_slint {
                             }
                             .into(),
                         );
-                        *alert_until.borrow_mut() =
-                            Some(Instant::now() + Duration::from_secs(2));
+                        *alert_until.borrow_mut() = Some(
+                            std::time::Instant::now() + std::time::Duration::from_secs(2),
+                        );
                     });
                 }
 
@@ -147,7 +151,7 @@ macro_rules! sst_blue_slint {
 
                     timer.start(
                         ::slint::TimerMode::Repeated,
-                        Duration::from_millis(150),
+                        std::time::Duration::from_millis(150),
                         move || {
                             let Some(ui) = weak.upgrade() else {
                                 return;
@@ -156,7 +160,10 @@ macro_rules! sst_blue_slint {
                             if let Some(beacon) = handle.borrow().as_ref() {
                                 while let Some(event) = beacon.try_event() {
                                     match event {
-                                        BeaconEvent::PeerJoined { peer, peer_count: count } => {
+                                        super::lan_beacon::BeaconEvent::PeerJoined {
+                                            peer,
+                                            peer_count: count,
+                                        } => {
                                             enabled.set(true);
                                             peer_count.set(count);
                                             ui.set_beacon_enabled(true);
@@ -171,10 +178,14 @@ macro_rules! sst_blue_slint {
                                                 .into(),
                                             );
                                             *alert_until.borrow_mut() = Some(
-                                                Instant::now() + Duration::from_secs(4),
+                                                std::time::Instant::now()
+                                                    + std::time::Duration::from_secs(4),
                                             );
                                         }
-                                        BeaconEvent::PeerLeft { peer, peer_count: count } => {
+                                        super::lan_beacon::BeaconEvent::PeerLeft {
+                                            peer,
+                                            peer_count: count,
+                                        } => {
                                             peer_count.set(count);
                                             ui.set_beacon_status_text(
                                                 if enabled.get() {
@@ -193,11 +204,12 @@ macro_rules! sst_blue_slint {
                                                     .into(),
                                                 );
                                                 *alert_until.borrow_mut() = Some(
-                                                    Instant::now() + Duration::from_secs(3),
+                                                    std::time::Instant::now()
+                                                        + std::time::Duration::from_secs(3),
                                                 );
                                             }
                                         }
-                                        BeaconEvent::Status {
+                                        super::lan_beacon::BeaconEvent::Status {
                                             enabled: worker_enabled,
                                             peer_count: count,
                                         } => {
@@ -219,7 +231,7 @@ macro_rules! sst_blue_slint {
 
                             let should_clear = alert_until
                                 .borrow()
-                                .is_some_and(|deadline| Instant::now() >= deadline);
+                                .is_some_and(|deadline| std::time::Instant::now() >= deadline);
                             if should_clear {
                                 *alert_until.borrow_mut() = None;
                                 ui.set_beacon_alert_text("".into());
@@ -240,13 +252,13 @@ macro_rules! sst_blue_slint {
 
         struct SstBlueWindow {
             inner: BaseSstBlueWindow,
-            beacon: Rc<BeaconUiController>,
+            beacon: std::rc::Rc<BeaconUiController>,
         }
 
         impl SstBlueWindow {
             fn new() -> Result<Self, ::slint::PlatformError> {
                 let inner = BaseSstBlueWindow::new()?;
-                let beacon = Rc::new(BeaconUiController::attach(&inner));
+                let beacon = std::rc::Rc::new(BeaconUiController::attach(&inner));
                 Ok(Self { inner, beacon })
             }
 
@@ -269,7 +281,7 @@ macro_rules! sst_blue_slint {
         #[derive(Clone)]
         struct SstBlueWeak {
             inner: ::slint::Weak<BaseSstBlueWindow>,
-            beacon: Rc<BeaconUiController>,
+            beacon: std::rc::Rc<BeaconUiController>,
         }
 
         impl SstBlueWeak {
@@ -291,7 +303,5 @@ mod slint {
     pub use ::slint::platform;
     pub(crate) use super::sst_blue_slint as slint;
 }
-
-pub(crate) use sst_blue_slint;
 
 include!("gui_slint.rs");
