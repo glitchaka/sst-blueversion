@@ -10,6 +10,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use socket2::{Domain, Protocol, Socket, Type};
 
 pub const SST_BEACON_PORT: u16 = 43838;
 
@@ -71,15 +72,7 @@ pub struct SstBeaconHandle {
 
 impl SstBeaconHandle {
     pub fn start() -> Result<Self> {
-        let socket = UdpSocket::bind(SocketAddrV4::new(
-            Ipv4Addr::UNSPECIFIED,
-            SST_BEACON_PORT,
-        ))
-        .with_context(|| {
-            format!(
-                "no se pudo abrir UDP/{SST_BEACON_PORT} para la baliza LAN de SST"
-            )
-        })?;
+        let socket = shared_udp_socket()?;
         socket
             .set_broadcast(true)
             .context("no se pudo habilitar broadcast para la baliza SST")?;
@@ -133,6 +126,22 @@ impl Drop for SstBeaconHandle {
             let _ = worker.join();
         }
     }
+}
+
+fn shared_udp_socket() -> Result<UdpSocket> {
+    let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))
+        .context("no se pudo crear el socket UDP de la baliza SST")?;
+    socket
+        .set_reuse_address(true)
+        .context("no se pudo habilitar SO_REUSEADDR para la baliza SST")?;
+    socket
+        .bind(&SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, SST_BEACON_PORT).into())
+        .with_context(|| {
+            format!(
+                "no se pudo abrir UDP/{SST_BEACON_PORT} para la baliza LAN de SST"
+            )
+        })?;
+    Ok(socket.into())
 }
 
 fn run_worker(
