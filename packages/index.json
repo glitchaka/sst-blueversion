@@ -1,0 +1,404 @@
+{
+  "schema": 1,
+  "repository": {
+    "name": "sst-main",
+    "description": "Curated portable package catalog for Shell Shock Tool"
+  },
+  "packages": [
+    {
+      "id": "ruby",
+      "name": "Ruby",
+      "version": "latest",
+      "description": "Ruby runtime portable para SST",
+      "category": "runtime",
+      "portability": "isolated",
+      "source": {
+        "type": "github_release",
+        "repository": "oneclick/rubyinstaller2",
+        "asset_contains": ["x64.7z"],
+        "asset_excludes": ["arm", "devkit", ".asc"]
+      },
+      "install": {
+        "type": "archive",
+        "expose": ["ruby.exe", "gem.cmd", "irb.cmd", "bundle.cmd", "bundler.cmd"]
+      }
+    },
+    {
+      "id": "python",
+      "name": "Python",
+      "version": "latest",
+      "description": "Python standalone para SST",
+      "category": "runtime",
+      "portability": "isolated",
+      "source": {
+        "type": "github_release",
+        "repository": "astral-sh/python-build-standalone",
+        "asset_contains": ["x86_64-pc-windows-msvc", "install_only", ".tar.gz"],
+        "asset_excludes": ["freethreaded", "pgo+lto"]
+      },
+      "install": {
+        "type": "archive",
+        "expose": ["python.exe", "python3.exe", "pip.exe", "pip3.exe"]
+      }
+    },
+    {
+      "id": "uv",
+      "name": "uv",
+      "version": "latest",
+      "description": "Python package and tool manager",
+      "category": "development",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "astral-sh/uv",
+        "asset_contains": ["x86_64-pc-windows-msvc", ".zip"],
+        "asset_excludes": ["sha256"]
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["uv.exe", "uvx.exe"]
+      }
+    },
+    {
+      "id": "ripgrep",
+      "name": "ripgrep",
+      "version": "latest",
+      "description": "Fast recursive text search",
+      "category": "cli",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "BurntSushi/ripgrep",
+        "asset_contains": ["x86_64-pc-windows-msvc", ".zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["rg.exe"]
+      }
+    },
+    {
+      "id": "fd",
+      "name": "fd",
+      "version": "latest",
+      "description": "Fast find alternative",
+      "category": "cli",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "sharkdp/fd",
+        "asset_contains": ["x86_64-pc-windows-msvc", ".zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["fd.exe"]
+      }
+    },
+    {
+      "id": "bat",
+      "name": "bat",
+      "version": "latest",
+      "description": "cat con resaltado y paginación",
+      "category": "cli",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "sharkdp/bat",
+        "asset_contains": ["x86_64-pc-windows-msvc", ".zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["bat.exe"]
+      }
+    },
+    {
+      "id": "fzf",
+      "name": "fzf",
+      "version": "latest",
+      "description": "Fuzzy finder",
+      "category": "cli",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "junegunn/fzf",
+        "asset_contains": ["windows_amd64", ".zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["fzf.exe"]
+      }
+    },
+    {
+      "id": "jq",
+      "name": "jq",
+      "version": "latest",
+      "description": "Procesador JSON de línea de comandos",
+      "category": "cli",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "jqlang/jq",
+        "asset_contains": ["jq-windows-amd64.exe"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "single",
+        "rename": "jq.exe",
+        "expose": ["jq.exe"]
+      }
+    },
+    {
+      "id": "yq",
+      "name": "yq",
+      "version": "latest",
+      "description": "Procesador YAML/JSON/XML",
+      "category": "cli",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "mikefarah/yq",
+        "asset_contains": ["yq_windows_amd64.exe"],
+        "asset_excludes": ["tar.gz"]
+      },
+      "install": {
+        "type": "single",
+        "rename": "yq.exe",
+        "expose": ["yq.exe"]
+      }
+    },
+    {
+      "id": "delta",
+      "name": "delta",
+      "version": "latest",
+      "description": "Syntax-highlighting pager for git and diff",
+      "category": "cli",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "dandavison/delta",
+        "asset_contains": ["x86_64-pc-windows-msvc", ".zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["delta.exe"]
+      }
+    },
+    {
+      "id": "hyperfine",
+      "name": "hyperfine",
+      "version": "latest",
+      "description": "Command-line benchmarking tool",
+      "category": "development",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "sharkdp/hyperfine",
+        "asset_contains": ["x86_64-pc-windows-msvc", ".zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["hyperfine.exe"]
+      }
+    },
+    {
+      "id": "tokei",
+      "name": "tokei",
+      "version": "latest",
+      "description": "Code statistics tool",
+      "category": "development",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "XAMPPRocky/tokei",
+        "asset_contains": ["x86_64-pc-windows-msvc", ".exe"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "single",
+        "rename": "tokei.exe",
+        "expose": ["tokei.exe"]
+      }
+    },
+    {
+      "id": "bottom",
+      "name": "bottom",
+      "version": "latest",
+      "description": "Cross-platform system monitor",
+      "category": "system",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "ClementTsang/bottom",
+        "asset_contains": ["x86_64-pc-windows-msvc", ".zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["btm.exe"]
+      }
+    },
+    {
+      "id": "deno",
+      "name": "Deno",
+      "version": "latest",
+      "description": "JavaScript/TypeScript runtime",
+      "category": "runtime",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "denoland/deno",
+        "asset_contains": ["x86_64-pc-windows-msvc.zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["deno.exe"]
+      }
+    },
+    {
+      "id": "bun",
+      "name": "Bun",
+      "version": "latest",
+      "description": "JavaScript runtime and toolkit",
+      "category": "runtime",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "oven-sh/bun",
+        "asset_contains": ["bun-windows-x64.zip"],
+        "asset_excludes": ["baseline", "profile"]
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["bun.exe"]
+      }
+    },
+    {
+      "id": "powershell",
+      "name": "PowerShell",
+      "version": "latest",
+      "description": "PowerShell portable runtime",
+      "category": "runtime",
+      "portability": "isolated",
+      "source": {
+        "type": "github_release",
+        "repository": "PowerShell/PowerShell",
+        "asset_contains": ["win-x64.zip"],
+        "asset_excludes": ["symbols"]
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["pwsh.exe"]
+      }
+    },
+    {
+      "id": "gh",
+      "name": "GitHub CLI",
+      "version": "latest",
+      "description": "GitHub command-line client",
+      "category": "development",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "cli/cli",
+        "asset_contains": ["windows_amd64.zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["gh.exe"]
+      }
+    },
+    {
+      "id": "starship",
+      "name": "Starship",
+      "version": "latest",
+      "description": "Cross-shell prompt",
+      "category": "cli",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "starship/starship",
+        "asset_contains": ["x86_64-pc-windows-msvc.zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["starship.exe"]
+      }
+    },
+    {
+      "id": "zoxide",
+      "name": "zoxide",
+      "version": "latest",
+      "description": "Smarter cd command",
+      "category": "cli",
+      "portability": "pure",
+      "source": {
+        "type": "github_release",
+        "repository": "ajeetdsouza/zoxide",
+        "asset_contains": ["x86_64-pc-windows-msvc.zip"],
+        "asset_excludes": []
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["zoxide.exe"]
+      }
+    },
+    {
+      "id": "neovim",
+      "name": "Neovim",
+      "version": "latest",
+      "description": "Extensible terminal editor",
+      "category": "editor",
+      "portability": "isolated",
+      "source": {
+        "type": "github_release",
+        "repository": "neovim/neovim",
+        "asset_contains": ["nvim-win64.zip"],
+        "asset_excludes": ["sha256"]
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["nvim.exe"]
+      }
+    },
+    {
+      "id": "sysinternals",
+      "name": "Sysinternals Suite",
+      "version": "latest",
+      "description": "Microsoft Sysinternals portable administration tools",
+      "category": "admin",
+      "portability": "isolated",
+      "source": {
+        "type": "url",
+        "url": "https://download.sysinternals.com/files/SysinternalsSuite.zip"
+      },
+      "install": {
+        "type": "zip",
+        "expose": ["procexp.exe", "procmon.exe", "autoruns.exe", "tcpview.exe", "psping.exe", "pslist.exe", "psservice.exe", "pssuspend.exe", "sigcheck.exe", "handle.exe", "procdump.exe", "strings.exe"]
+      }
+    },
+    {
+      "id": "metasploit",
+      "name": "Metasploit Framework",
+      "version": "latest",
+      "description": "Security auditing framework; modifies the Windows system",
+      "category": "audit",
+      "portability": "system",
+      "source": {
+        "type": "url",
+        "url": "https://windows.metasploit.com/metasploitframework-latest.msi"
+      },
+      "install": {
+        "type": "system",
+        "expose": []
+      }
+    }
+  ]
+}
