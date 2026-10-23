@@ -20,6 +20,7 @@ const LOOP_INTERVAL: Duration = Duration::from_millis(80);
 
 #[derive(Debug, Clone)]
 pub struct BeaconPeer {
+    pub id: String,
     pub host: String,
     pub address: Ipv4Addr,
     pub version: String,
@@ -229,6 +230,7 @@ fn run_worker(
                     }
 
                     let peer = BeaconPeer {
+                        id: frame.instance.clone(),
                         host: sanitize_host(&frame.host),
                         address: *source.ip(),
                         version: frame.version,
