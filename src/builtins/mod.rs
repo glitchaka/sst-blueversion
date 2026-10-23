@@ -2,6 +2,7 @@ mod admin;
 mod command;
 mod config;
 mod editor;
+mod instp;
 mod registry;
 mod nwash;
 mod security;
@@ -17,6 +18,7 @@ pub use admin::{
 pub use command::BuiltinCommand;
 pub use config::{ConfigBuiltin, PathBuiltin};
 pub use editor::EditorBuiltin;
+pub use instp::InstpBuiltin;
 pub use registry::CommandRegistry;
 pub use nwash::{AclBuiltin, EventLogBuiltin, FirewallBuiltin, PnpBuiltin, PowerBuiltin, ProcessBuiltin, RegistryBuiltin, ServiceBuiltin, SessionBuiltin, ShareBuiltin, TaskBuiltin};
 pub use security::{IntelBuiltin, TriageBuiltin};
