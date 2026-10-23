@@ -2,9 +2,10 @@ include!("wiki.rs");
 
 const G_SCREEN: &str = "\x1b[44;37m";
 const G_PANEL: &str = "\x1b[47;30m";
-const G_YELLOW: &str = "\x1b[47;93m";
-const G_RED: &str = "\x1b[47;91m";
-const G_SELECTED: &str = "\x1b[44;97m";
+const G_PANEL_BOLD: &str = "\x1b[47;30;1m";
+const G_TITLE: &str = "\x1b[44;93;1m";
+const G_RED: &str = "\x1b[47;31;1m";
+const G_SELECTED: &str = "\x1b[44;97;1m";
 const G_RESET: &str = "\x1b[0m";
 
 pub struct GuideBuiltin {
@@ -108,6 +109,7 @@ impl GuideBuiltin {
             let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
                 continue;
             };
+
             if search_mode {
                 match key {
                     TerminalKey::Escape | TerminalKey::Enter => search_mode = false,
@@ -224,7 +226,7 @@ fn render_menu(
     let end = (start + rows).min(entries.len());
     let top_padding = th.saturating_sub(rows + 13) / 2;
 
-    begin_screen(terminal, &mut String::new())?;
+    terminal.clear()?;
     let mut out = String::new();
     out.push_str(G_SCREEN);
     out.push_str("\x1b[2J\x1b[H");
@@ -254,11 +256,11 @@ fn render_menu(
     push_window(&mut out, tw, ww, &inner_top(ww));
 
     let header = format!(
-        "  │{}{:command_width$}{}  {:description_width$}│",
-        G_YELLOW,
+        "  │{}{:command_width$}  {:description_width$}{}│",
+        G_PANEL_BOLD,
         "Command",
-        G_PANEL,
         "Quick reference - what this command does",
+        G_PANEL,
         command_width = command_width,
         description_width = description_width,
     );
@@ -271,16 +273,18 @@ fn render_menu(
             let entry = entries[index];
             let name = clip(&entry.name, command_width);
             let description = clip(&entry.summary, description_width);
-            let name_cell = if index == selected {
-                format!("{}{:command_width$}{}", G_SELECTED, name, G_PANEL, command_width = command_width)
-            } else {
-                format!("{}{:command_width$}{}", G_YELLOW, name, G_PANEL, command_width = command_width)
-            };
-            format!(
-                "  │{name_cell}  {:description_width$}│",
+            let row_text = format!(
+                "{:command_width$}  {:description_width$}",
+                name,
                 description,
+                command_width = command_width,
                 description_width = description_width,
-            )
+            );
+            if index == selected {
+                format!("  │{G_SELECTED}{row_text}{G_PANEL}│")
+            } else {
+                format!("  │{row_text}│")
+            }
         } else {
             format!("  │{}│", " ".repeat(menu_inner))
         };
@@ -291,7 +295,7 @@ fn render_menu(
     push_window(&mut out, tw, ww, &outer_separator(ww));
     let buttons = format!(
         "{}[ Select ]{}    {}X{} Exit Guide    {}C{} Category    / Search",
-        G_SELECTED, G_PANEL, G_RED, G_PANEL, G_YELLOW, G_PANEL,
+        G_SELECTED, G_PANEL, G_RED, G_PANEL, G_PANEL_BOLD, G_PANEL,
     );
     push_window(&mut out, tw, ww, &centered_ansi_line(ww, &buttons));
     push_window(&mut out, tw, ww, &bottom_border(ww));
@@ -313,7 +317,11 @@ fn render_detail(
     let outer_inner = ww.saturating_sub(2);
     let body_width = outer_inner.saturating_sub(6);
     let rows = th.saturating_sub(9).clamp(8, 20);
-    let aliases = if entry.aliases.is_empty() { "-".to_owned() } else { entry.aliases.join(", ") };
+    let aliases = if entry.aliases.is_empty() {
+        "-".to_owned()
+    } else {
+        entry.aliases.join(", ")
+    };
 
     let mut body = Vec::new();
     detail_section(&mut body, "Command", &entry.name, body_width);
@@ -329,18 +337,34 @@ fn render_detail(
     let scroll = scroll.min(max_scroll);
     let top_padding = th.saturating_sub(rows + 8) / 2;
 
+    terminal.clear()?;
     let mut out = String::new();
     out.push_str(G_SCREEN);
     out.push_str("\x1b[2J\x1b[H");
     for _ in 0..top_padding {
         out.push('\n');
     }
-    push_window(&mut out, tw, ww, &title_border(ww, &format!("SST Guide - {}", entry.name)));
-    push_window(&mut out, tw, ww, &outer_line(ww, "  Command reference. Use Up/Down or PgUp/PgDn to scroll."));
+
+    push_window(
+        &mut out,
+        tw,
+        ww,
+        &title_border(ww, &format!("SST Guide - {}", entry.name)),
+    );
+    push_window(
+        &mut out,
+        tw,
+        ww,
+        &outer_line(ww, "  Command reference. Use Up/Down or PgUp/PgDn to scroll."),
+    );
     push_window(&mut out, tw, ww, &inner_top(ww));
 
     for line in body.iter().skip(scroll).take(rows) {
-        let content = format!("  │ {:<body_width$} │", clip(line, body_width), body_width = body_width);
+        let content = format!(
+            "  │ {:<body_width$} │",
+            clip(line, body_width),
+            body_width = body_width
+        );
         push_window(&mut out, tw, ww, &outer_ansi_line(ww, &content));
     }
     for _ in body.len().saturating_sub(scroll).min(rows)..rows {
@@ -350,7 +374,10 @@ fn render_detail(
 
     push_window(&mut out, tw, ww, &inner_bottom(ww));
     push_window(&mut out, tw, ww, &outer_separator(ww));
-    let buttons = format!("{}[ Back ]{}    {}X{} Exit Guide    PgUp/PgDn Scroll", G_SELECTED, G_PANEL, G_RED, G_PANEL);
+    let buttons = format!(
+        "{}[ Back ]{}    {}X{} Exit Guide    PgUp/PgDn Scroll",
+        G_SELECTED, G_PANEL, G_RED, G_PANEL
+    );
     push_window(&mut out, tw, ww, &centered_ansi_line(ww, &buttons));
     push_window(&mut out, tw, ww, &bottom_border(ww));
     out.push_str(G_RESET);
@@ -368,10 +395,6 @@ fn detail_section(lines: &mut Vec<String>, label: &str, value: &str, width: usiz
     for line in wrap(value, width.saturating_sub(2)) {
         lines.push(format!("  {line}"));
     }
-}
-
-fn begin_screen(terminal: &mut dyn TerminalSession, _out: &mut String) -> Result<()> {
-    terminal.clear()
 }
 
 fn window_width(terminal_width: usize) -> usize {
@@ -398,7 +421,14 @@ fn title_border(width: usize, title: &str) -> String {
     let remaining = inner.saturating_sub(title.chars().count());
     let left = remaining / 2;
     let right = remaining.saturating_sub(left);
-    format!("┌{}{}{}{}{}┐", "─".repeat(left), G_YELLOW, title, G_PANEL, "─".repeat(right))
+    format!(
+        "┌{}{}{}{}{}┐",
+        "─".repeat(left),
+        G_TITLE,
+        title,
+        G_PANEL,
+        "─".repeat(right)
+    )
 }
 
 fn bottom_border(width: usize) -> String {
@@ -449,15 +479,24 @@ fn ansi_visible_width(value: &str) -> usize {
 
 fn inner_top(width: usize) -> String {
     let menu_width = width.saturating_sub(6);
-    outer_line(width, &format!("  ┌{}┐", "─".repeat(menu_width.saturating_sub(2))))
+    outer_line(
+        width,
+        &format!("  ┌{}┐", "─".repeat(menu_width.saturating_sub(2))),
+    )
 }
 
 fn inner_separator(width: usize) -> String {
     let menu_width = width.saturating_sub(6);
-    outer_line(width, &format!("  ├{}┤", "─".repeat(menu_width.saturating_sub(2))))
+    outer_line(
+        width,
+        &format!("  ├{}┤", "─".repeat(menu_width.saturating_sub(2))),
+    )
 }
 
 fn inner_bottom(width: usize) -> String {
     let menu_width = width.saturating_sub(6);
-    outer_line(width, &format!("  └{}┘", "─".repeat(menu_width.saturating_sub(2))))
+    outer_line(
+        width,
+        &format!("  └{}┘", "─".repeat(menu_width.saturating_sub(2))),
+    )
 }
