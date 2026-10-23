@@ -33,8 +33,14 @@ fn main() {
     println!("cargo:rerun-if-changed=assets/sst-icon.ico");
     println!("cargo:rerun-if-changed=assets/sst-icon.png");
     println!("cargo:rerun-if-changed=assets/sst-neofetch.png");
+    println!("cargo:rerun-if-changed=bg");
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR no definido"));
+    let manifest_dir = PathBuf::from(
+        env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR no definido"),
+    );
+
+    sync_background_assets(&manifest_dir, &out_dir);
     ensure_nerd_font(&out_dir);
     ensure_spell_dictionary(&out_dir);
     ensure_ieee_registry(&out_dir);
@@ -44,9 +50,6 @@ fn main() {
 
     #[cfg(windows)]
     {
-        let manifest_dir = PathBuf::from(
-            env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR no definido"),
-        );
         let icon = manifest_dir.join("assets").join("sst-icon.ico");
 
         let mut resource = winres::WindowsResource::new();
@@ -57,6 +60,41 @@ fn main() {
         resource
             .compile()
             .expect("No se pudo incrustar el icono de Shell Shock Tool");
+    }
+}
+
+fn sync_background_assets(manifest_dir: &Path, out_dir: &Path) {
+    let source = manifest_dir.join("bg");
+    if !source.is_dir() {
+        return;
+    }
+
+    // OUT_DIR is target/<profile>/build/<package-hash>/out. The executable is
+    // written to target/<profile>, and AppPaths deliberately treats that
+    // directory as SST's portable root. Keep the repository's bg/ folder next
+    // to the executable so `config bg` and SST_BACKGROUND_IMAGE resolve the
+    // same files in source builds as they do in a portable deployment.
+    let profile_dir = out_dir
+        .ancestors()
+        .nth(3)
+        .map(Path::to_path_buf)
+        .expect("No se pudo determinar target/<profile> desde OUT_DIR");
+    let destination = profile_dir.join("bg");
+    fs::create_dir_all(&destination)
+        .expect("No se pudo crear la carpeta bg junto al ejecutable de SST");
+
+    for entry in fs::read_dir(&source).expect("No se pudo leer la carpeta bg del repositorio") {
+        let entry = entry.expect("No se pudo leer una entrada de bg");
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        fs::copy(&path, destination.join(entry.file_name())).unwrap_or_else(|error| {
+            panic!(
+                "No se pudo copiar {} al bg portable: {error}",
+                path.display()
+            )
+        });
     }
 }
 
@@ -113,7 +151,6 @@ fn ensure_nerd_font(out_dir: &Path) {
         panic!("La Nerd Font embebida parece incompleta");
     }
 }
-
 
 fn ensure_spell_dictionary(out_dir: &Path) {
     for (name, url, minimum) in [
