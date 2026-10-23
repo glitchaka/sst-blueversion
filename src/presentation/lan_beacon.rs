@@ -29,18 +29,9 @@ pub struct BeaconPeer {
 
 #[derive(Debug, Clone)]
 pub enum BeaconEvent {
-    PeerJoined {
-        peer: BeaconPeer,
-        peer_count: usize,
-    },
-    PeerLeft {
-        peer: BeaconPeer,
-        peer_count: usize,
-    },
-    Status {
-        enabled: bool,
-        peer_count: usize,
-    },
+    PeerJoined { peer: BeaconPeer },
+    PeerLeft { peer: BeaconPeer },
+    Status { enabled: bool },
 }
 
 #[derive(Debug)]
@@ -84,7 +75,7 @@ impl SstBeaconHandle {
         let (event_tx, event_rx) = mpsc::channel();
         let host = local_host_name();
         let instance = make_instance_id(&host);
-        let version = env!("CARGO_PKG_VERSION").to_owned();
+        let version = public_version(env!("CARGO_PKG_VERSION"));
 
         let worker = thread::Builder::new()
             .name("sst-lan-beacon".to_owned())
@@ -158,10 +149,7 @@ fn run_worker(
     let mut next_hello = Instant::now();
     let mut buffer = [0u8; 1024];
 
-    let _ = event_tx.send(BeaconEvent::Status {
-        enabled: true,
-        peer_count: 0,
-    });
+    let _ = event_tx.send(BeaconEvent::Status { enabled: true });
 
     loop {
         let mut shutdown = false;
@@ -184,10 +172,7 @@ fn run_worker(
                     enabled = next;
                     peers.clear();
                     next_hello = Instant::now();
-                    let _ = event_tx.send(BeaconEvent::Status {
-                        enabled,
-                        peer_count: 0,
-                    });
+                    let _ = event_tx.send(BeaconEvent::Status { enabled });
                 }
                 BeaconCommand::Shutdown => {
                     if enabled {
@@ -257,11 +242,7 @@ fn run_worker(
                             );
 
                             if is_new {
-                                let count = peers.len();
-                                let _ = event_tx.send(BeaconEvent::PeerJoined {
-                                    peer,
-                                    peer_count: count,
-                                });
+                                let _ = event_tx.send(BeaconEvent::PeerJoined { peer });
 
                                 // Reply immediately so a newly opened SST sees us without
                                 // waiting for the next periodic broadcast.
@@ -277,10 +258,8 @@ fn run_worker(
                         }
                         "bye" => {
                             if let Some(state) = peers.remove(&frame.instance) {
-                                let count = peers.len();
                                 let _ = event_tx.send(BeaconEvent::PeerLeft {
                                     peer: state.peer,
-                                    peer_count: count,
                                 });
                             }
                         }
@@ -302,10 +281,8 @@ fn run_worker(
 
             for id in expired {
                 if let Some(state) = peers.remove(&id) {
-                    let count = peers.len();
                     let _ = event_tx.send(BeaconEvent::PeerLeft {
                         peer: state.peer,
-                        peer_count: count,
                     });
                 }
             }
@@ -335,6 +312,14 @@ fn send_frame(
         .send_to(&payload, destination)
         .with_context(|| format!("no se pudo enviar baliza SST a {destination}"))?;
     Ok(())
+}
+
+fn public_version(version: &str) -> String {
+    let mut parts = version.split('.');
+    match (parts.next(), parts.next()) {
+        (Some(major), Some(minor)) => format!("{major}.{minor}"),
+        _ => version.to_owned(),
+    }
 }
 
 fn local_host_name() -> String {
