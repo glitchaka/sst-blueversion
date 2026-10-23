@@ -11,7 +11,7 @@ mod system;
 mod tour;
 mod sudo;
 mod unix;
-mod wiki;
+mod guide;
 
 pub use admin::{
     DeviceBuiltin, DiagnosticsBuiltin, DomainBuiltin, NetworkBuiltin, SwitchBuiltin,
@@ -28,4 +28,4 @@ pub use system::SystemBuiltin;
 pub use tour::TourBuiltin;
 pub use sudo::SudoBuiltin;
 pub use unix::{UNIX_COMMANDS, UnixBuiltin};
-pub use wiki::WikiBuiltin;
+pub use guide::GuideBuiltin;
