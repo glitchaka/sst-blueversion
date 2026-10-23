@@ -68,6 +68,94 @@ pub fn lex(input: &str) -> Result<Vec<Token>> {
         }
 
         if double {
+            // Expansions inside double quotes have their own quoting context.
+            // Consume the whole construct so quotes inside it cannot close the
+            // surrounding double-quoted word.
+            if ch == '$' && matches!(chars.get(i + 1), Some('(' | '{')) {
+                let open = chars[i + 1];
+                let close = if open == '(' { ')' } else { '}' };
+                let start = i;
+                i += 2;
+                let mut depth = 1usize;
+                let mut quote: Option<char> = None;
+                let mut escaped_inner = false;
+
+                while i < chars.len() && depth > 0 {
+                    let current = chars[i];
+                    if escaped_inner {
+                        escaped_inner = false;
+                        i += 1;
+                        continue;
+                    }
+                    if current == '\\' {
+                        escaped_inner = true;
+                        i += 1;
+                        continue;
+                    }
+                    if let Some(active) = quote {
+                        if current == active {
+                            quote = None;
+                        }
+                        i += 1;
+                        continue;
+                    }
+                    if current == '\'' || current == '"' {
+                        quote = Some(current);
+                        i += 1;
+                        continue;
+                    }
+                    if current == open {
+                        depth += 1;
+                    } else if current == close {
+                        depth -= 1;
+                    }
+                    i += 1;
+                }
+
+                if depth != 0 {
+                    bail!(
+                        "{} sin cerrar dentro de comillas dobles",
+                        if open == '(' {
+                            "sustitución de comando"
+                        } else {
+                            "expansión de parámetro"
+                        }
+                    );
+                }
+                word.extend(&chars[start..i]);
+                continue;
+            }
+
+            if ch == '`' {
+                let start = i;
+                i += 1;
+                let mut escaped_inner = false;
+                let mut closed = false;
+                while i < chars.len() {
+                    let current = chars[i];
+                    if escaped_inner {
+                        escaped_inner = false;
+                        i += 1;
+                        continue;
+                    }
+                    if current == '\\' {
+                        escaped_inner = true;
+                        i += 1;
+                        continue;
+                    }
+                    i += 1;
+                    if current == '`' {
+                        closed = true;
+                        break;
+                    }
+                }
+                if !closed {
+                    bail!("sustitución con backticks sin cerrar");
+                }
+                word.extend(&chars[start..i]);
+                continue;
+            }
+
             word.push(ch);
             if ch == '\\' && i + 1 < chars.len() {
                 word.push(ch);
@@ -405,5 +493,17 @@ mod tests {
         assert!(tokens.contains(&Token::Amp));
         assert!(tokens.contains(&Token::Redirect { fd: 2, variable: None, op: RedirectOp::DupOutput }));
         assert!(tokens.contains(&Token::Word("\"a b\"".into())));
+    }
+
+    #[test]
+    fn keeps_nested_quotes_inside_command_substitution() {
+        let tokens = lex("value=\"$(printf '%s' \"a b\")\"").unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Word("value=\"$(printf '%s' \"a b\")\"".into()),
+                Token::Eof,
+            ]
+        );
     }
 }
