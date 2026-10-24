@@ -20,7 +20,7 @@ $lockMatch = [regex]::Match($lock, $pattern)
 if (-not $lockMatch.Success) {
     throw 'No se encontro el paquete raiz sst en Cargo.lock.'
 }
-$lockedVersion = [regex]::Match($lockMatch.Value, '(?m)^version = "([^"]+)"$').Groups[1].Value
+$lockedVersion = [regex]::Match($lockMatch.Value, 'version = "([^"]+)"').Groups[1].Value
 
 if ($lockedVersion -eq $version) {
     Write-Host "SST version OK: $version"
