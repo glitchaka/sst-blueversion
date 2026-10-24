@@ -139,21 +139,21 @@ pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
          set \"NEW={}\"\r\n\
          set \"BACKUP={}\"\r\n\
          set \"PENDING={}\"\r\n\
-         for /L %%%%I in (1,1,120) do (\r\n\
-           move /Y \"%%TARGET%%\" \"%%BACKUP%%\" >nul 2>&1 && goto replace\r\n\
+         for /L %%I in (1,1,120) do (\r\n\
+           move /Y \"%TARGET%\" \"%BACKUP%\" >nul 2>&1 && goto replace\r\n\
            timeout /t 1 /nobreak >nul\r\n\
          )\r\n\
          exit /b 10\r\n\
          :replace\r\n\
-         move /Y \"%%NEW%%\" \"%%TARGET%%\" >nul 2>&1\r\n\
+         move /Y \"%NEW%\" \"%TARGET%\" >nul 2>&1\r\n\
          if errorlevel 1 (\r\n\
-           move /Y \"%%BACKUP%%\" \"%%TARGET%%\" >nul 2>&1\r\n\
+           move /Y \"%BACKUP%\" \"%TARGET%\" >nul 2>&1\r\n\
            exit /b 11\r\n\
          )\r\n\
-         del /Q \"%%BACKUP%%\" >nul 2>&1\r\n\
-         del /Q \"%%PENDING%%\" >nul 2>&1\r\n\
-         start \"\" \"%%TARGET%%\"\r\n\
-         del /Q \"%%~f0\" >nul 2>&1\r\n",
+         del /Q \"%BACKUP%\" >nul 2>&1\r\n\
+         del /Q \"%PENDING%\" >nul 2>&1\r\n\
+         start \"\" \"%TARGET%\"\r\n\
+         del /Q \"%~f0\" >nul 2>&1\r\n",
         batch_value(&target),
         batch_value(&staged),
         batch_value(&backup),
