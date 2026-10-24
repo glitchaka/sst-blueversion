@@ -9,7 +9,7 @@ on:
         type: string
         default: ''
       publish_release:
-        description: 'Crear/actualizar también la GitHub Release privada del repositorio fuente'
+        description: 'Crear también la GitHub Release privada del repositorio fuente'
         required: true
         type: boolean
         default: true
@@ -35,14 +35,6 @@ jobs:
         shell: pwsh
         run: ./scripts/sync-version.ps1
 
-      - name: Build SST and self-extractor stub
-        shell: pwsh
-        run: cargo build --release --bin sst --bin sst_setup
-
-      - name: Package release
-        shell: pwsh
-        run: ./scripts/package-release.ps1 -UpdateManifestUrl '${{ inputs.update_manifest_url }}'
-
       - name: Read canonical version
         id: version
         shell: pwsh
@@ -52,6 +44,30 @@ jobs:
           if (-not $m.Success) { throw 'No se pudo leer la versión canónica.' }
           "version=$($m.Groups[1].Value)" >> $env:GITHUB_OUTPUT
 
+      - name: Refuse version reuse on different code
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $tag = "v$env:VERSION"
+          git fetch --tags --force
+          git rev-parse --verify --quiet "refs/tags/$tag" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            $tagCommit = (git rev-list -n 1 $tag).Trim()
+            if ($tagCommit -ne $env:GITHUB_SHA) {
+              throw "La versión $env:VERSION ya fue publicada desde $tagCommit. Aumente la versión de Cargo.toml antes de publicar código distinto."
+            }
+            Write-Host "La versión $env:VERSION ya pertenece a este mismo commit; se permite reintentar el empaquetado."
+          }
+
+      - name: Build SST and self-extractor stub
+        shell: pwsh
+        run: cargo build --release --bin sst --bin sst_setup
+
+      - name: Package release
+        shell: pwsh
+        run: ./scripts/package-release.ps1 -UpdateManifestUrl '${{ inputs.update_manifest_url }}'
+
       - name: Upload distribution artifact
         uses: actions/upload-artifact@v4
         with:
@@ -59,7 +75,7 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-      - name: Create or update private source release
+      - name: Create or refresh private source release
         if: ${{ inputs.publish_release }}
         shell: pwsh
         env:
