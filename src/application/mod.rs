@@ -7,4 +7,5 @@ pub mod security;
 pub mod switch;
 pub mod system;
 pub mod unix;
+pub mod update;
 pub mod wol;
