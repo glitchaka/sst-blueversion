@@ -52,6 +52,7 @@ use crate::{
         SwitchBuiltin,
         SudoBuiltin,
         SystemBuiltin,
+        UpdateBuiltin,
         WikiBuiltin,
         AclBuiltin, EventLogBuiltin, PnpBuiltin, ProcessBuiltin, RegistryBuiltin, ServiceBuiltin,
         TaskBuiltin, SessionBuiltin, ShareBuiltin, FirewallBuiltin, PowerBuiltin,
@@ -184,6 +185,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
         Arc::clone(&package_service),
         Arc::clone(&terminal),
     )))?;
+    registry.register(Arc::new(UpdateBuiltin::new(paths.clone())))?;
     registry.register(Arc::new(WikiBuiltin::new(Arc::clone(&terminal))))?;
     registry.register(Arc::new(SudoBuiltin))?;
     registry.register(Arc::new(EventLogBuiltin))?;
