@@ -95,11 +95,17 @@ $updateManifest = [ordered]@{
         size = $setupSize
     }
 }
-$updateManifest | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $dist 'sst-update.json')
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$manifestJson = ($updateManifest | ConvertTo-Json -Depth 5) + [Environment]::NewLine
+[System.IO.File]::WriteAllText(
+    (Join-Path $dist 'sst-update.json'),
+    $manifestJson,
+    $utf8NoBom
+)
 [System.IO.File]::WriteAllText(
     (Join-Path $dist 'version.txt'),
     $version + [Environment]::NewLine,
-    (New-Object System.Text.UTF8Encoding($false))
+    $utf8NoBom
 )
 
 Remove-Item -Recurse -Force -LiteralPath $stage
