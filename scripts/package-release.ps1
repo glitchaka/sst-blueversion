@@ -13,20 +13,22 @@ if (-not $versionMatch.Success) {
 $version = $versionMatch.Groups[1].Value
 
 & (Join-Path $PSScriptRoot 'sync-version.ps1') -Check
+if ($LASTEXITCODE -ne 0) {
+    throw 'Cargo.toml y Cargo.lock no tienen la misma version.'
+}
 
 $release = Join-Path $root 'target\release'
 $sst = Join-Path $release 'sst.exe'
 $stub = Join-Path $release 'sst_sfx_stub.exe'
-if (-not (Test-Path -LiteralPath $sst -PathType Leaf)) {
-    throw "Falta $sst. Compile primero el binario release de SST."
-}
-if (-not (Test-Path -LiteralPath $stub -PathType Leaf)) {
-    throw "Falta $stub. Compile primero el stub interno sst_sfx_stub."
+$packager = Join-Path $release 'sst_sfx_packager.exe'
+foreach ($required in @($sst, $stub, $packager)) {
+    if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+        throw "Falta $required. Compile sst, sst_sfx_stub y sst_sfx_packager en release."
+    }
 }
 
 $dist = Join-Path $root 'dist'
 $stage = Join-Path $dist '_payload'
-$payloadZip = Join-Path $dist '_payload.zip'
 if (Test-Path -LiteralPath $dist) {
     Remove-Item -Recurse -Force -LiteralPath $dist
 }
@@ -48,29 +50,39 @@ if (-not [string]::IsNullOrWhiteSpace($UpdateManifestUrl)) {
     )
 }
 
-Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $payloadZip -CompressionLevel Optimal -Force
-
 $setupName = "SST-Setup-$version.exe"
 $setup = Join-Path $dist $setupName
-$out = [System.IO.File]::Create($setup)
+& $packager $stage $stub $setup
+if ($LASTEXITCODE -ne 0) {
+    throw 'sst_sfx_packager no pudo crear el autoextraible final.'
+}
+if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) {
+    throw "No se genero $setup"
+}
+
+$stubSize = (Get-Item -LiteralPath $stub).Length
+$setupSize = (Get-Item -LiteralPath $setup).Length
+if ($setupSize -le ($stubSize + 16)) {
+    throw 'El autoextraible final no contiene payload: su tamano no supera al stub.'
+}
+
+$stream = [System.IO.File]::OpenRead($setup)
 try {
-    $stubStream = [System.IO.File]::OpenRead($stub)
-    try { $stubStream.CopyTo($out) } finally { $stubStream.Dispose() }
+    if ($stream.Length -lt 16) { throw 'Autoextraible final demasiado pequeno.' }
+    $stream.Seek(-16, [System.IO.SeekOrigin]::End) | Out-Null
+    $magicBytes = New-Object byte[] 8
+    if ($stream.Read($magicBytes, 0, 8) -ne 8) { throw 'No se pudo leer el footer SFX.' }
+    $magic = [System.Text.Encoding]::ASCII.GetString($magicBytes)
+    if ($magic -ne 'SSTSFX02') { throw "Footer SFX invalido: $magic" }
 
-    $payloadStream = [System.IO.File]::OpenRead($payloadZip)
-    try {
-        $payloadLength = $payloadStream.Length
-        $payloadStream.CopyTo($out)
-    } finally {
-        $payloadStream.Dispose()
+    $offsetBytes = New-Object byte[] 8
+    if ($stream.Read($offsetBytes, 0, 8) -ne 8) { throw 'No se pudo leer el offset del bundle.' }
+    $bundleOffset = [System.BitConverter]::ToInt64($offsetBytes, 0)
+    if ($bundleOffset -le 0 -or $bundleOffset -ge ($stream.Length - 16)) {
+        throw 'Offset del bundle fuera de rango.'
     }
-
-    $magic = [System.Text.Encoding]::ASCII.GetBytes('SSTSFX01')
-    $length = [System.BitConverter]::GetBytes([Int64]$payloadLength)
-    $out.Write($magic, 0, $magic.Length)
-    $out.Write($length, 0, $length.Length)
 } finally {
-    $out.Dispose()
+    $stream.Dispose()
 }
 
 $rawExe = Join-Path $dist 'sst.exe'
@@ -79,10 +91,6 @@ Copy-Item -LiteralPath $sst -Destination $rawExe
 $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $rawExe).Hash.ToLowerInvariant()
 $setupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash.ToLowerInvariant()
 $exeSize = (Get-Item -LiteralPath $rawExe).Length
-$setupSize = (Get-Item -LiteralPath $setup).Length
-if ($setupSize -le (Get-Item -LiteralPath $stub).Length) {
-    throw 'El autoextraible final no contiene payload; el tamaño no supera al stub interno.'
-}
 
 $updateManifest = [ordered]@{
     schema = 1
@@ -112,7 +120,6 @@ $manifestJson = ($updateManifest | ConvertTo-Json -Depth 5) + [Environment]::New
 )
 
 Remove-Item -Recurse -Force -LiteralPath $stage
-Remove-Item -Force -LiteralPath $payloadZip
 
 Write-Host "SST $version empaquetado en $dist"
 Write-Host "  $setupName ($setupSize bytes)"
