@@ -245,6 +245,9 @@ fn validate_manifest(manifest: &UpdateManifest) -> Result<()> {
     }
     parse_version(&manifest.version)
         .with_context(|| format!("versión remota inválida: {}", manifest.version))?;
+    if manifest.channel.chars().any(char::is_control) {
+        bail!("canal de actualización inválido en el manifiesto");
+    }
     ensure_https(&manifest.asset_url)?;
     let hash = manifest.sha256.trim();
     if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
