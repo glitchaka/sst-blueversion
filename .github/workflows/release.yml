@@ -77,8 +77,11 @@ jobs:
           $extract = Join-Path $env:RUNNER_TEMP 'sst-release-verify'
           if (Test-Path -LiteralPath $extract) { Remove-Item -Recurse -Force -LiteralPath $extract }
 
-          & $setup --extract-only $extract
-          if ($LASTEXITCODE -ne 0) { throw "El autoextraible terminó con código $LASTEXITCODE" }
+          $arguments = '--extract-only "' + $extract + '"'
+          $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "El autoextraible terminó con código $($process.ExitCode)"
+          }
 
           $extracted = Join-Path $extract 'sst.exe'
           if (-not (Test-Path -LiteralPath $extracted -PathType Leaf)) {
