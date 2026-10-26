@@ -102,7 +102,7 @@ fn domain_joined() -> std::result::Result<bool, u32> {
 }
 
 /// Performs the rename using the current token only. This function never prompts for UAC.
-/// It is also used by the elevated helper process launched by `rename_computer`.
+/// It is also used by the elevated SST command launched by `rename_computer`.
 #[cfg(windows)]
 pub fn rename_computer_current_token(name: &str) -> std::result::Result<(), u32> {
     if validate_name(name).is_err() {
@@ -139,7 +139,10 @@ fn run_elevated_helper(name: &str) -> Result<u32> {
     let executable = std::env::current_exe().context("no se pudo resolver sst.exe")?;
     let verb = wide("runas");
     let executable_w = wide(executable.as_os_str());
-    let params = format!("--rename-computer-internal {}", name.trim());
+    let params = format!(
+        "-c \"hostname {} --elevated-internal\"",
+        name.trim()
+    );
     let params_w = wide(params);
 
     let mut info: SHELLEXECUTEINFOW = unsafe { zeroed() };
@@ -175,7 +178,8 @@ fn run_elevated_helper(name: &str) -> Result<u32> {
 }
 
 /// Renames the local Windows computer. If the current token is not elevated, SST
-/// transparently re-runs only the rename operation through the native UAC prompt.
+/// re-runs only this operation through the native UAC prompt. Domain-joined machines
+/// use NetRenameMachineInDomain so the computer account in AD is renamed as well.
 #[cfg(windows)]
 pub fn rename_computer(name: &str) -> Result<()> {
     validate_name(name)?;
