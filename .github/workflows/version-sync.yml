@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - Cargo.toml
+      - .github/workflows/version-sync.yml
 
 permissions:
   contents: write
@@ -17,20 +18,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Sync Cargo.lock root package version
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Synchronize root version
         shell: pwsh
         run: ./scripts/sync-version.ps1
 
-      - name: Commit synchronized lockfile
+      - name: Regenerate canonical Cargo.lock
+        shell: pwsh
+        run: cargo generate-lockfile
+
+      - name: Commit canonical lockfile
         shell: pwsh
         run: |
           if (git diff --quiet -- Cargo.lock) {
-            Write-Host 'Cargo.lock already synchronized.'
+            Write-Host 'Cargo.lock already canonical.'
             exit 0
           }
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add Cargo.lock
-          git commit -m 'chore: sync Cargo.lock SST version'
+          git commit -m 'chore: synchronize canonical Cargo.lock'
           git pull --rebase origin main
           git push origin HEAD:main
