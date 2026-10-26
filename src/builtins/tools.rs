@@ -29,6 +29,8 @@ use super::BuiltinCommand;
 
 const GET_HELP_DOWNLOAD: &str = "https://aka.ms/SaRA_EnterpriseVersionFiles";
 const GET_HELP_ZIP: &str = "GetHelpCmd.zip";
+const LEGACY_SARA_DOWNLOAD: &str = "https://github.com/ServiceDeskCSI/SaRACmd/releases/download/17_01_2877_000/SaRACmd_17_01_2877_000.zip";
+const LEGACY_SARA_ZIP: &str = "SaRACmd_17_01_2877_000.zip";
 
 pub struct ToolsBuiltin;
 
@@ -74,12 +76,14 @@ fn help_output() -> CommandOutput {
            tools office verify\n\
            tools office auth repair\n\
            tools office scrub [all|m365|2024|2021|2019|2016|2013|2010|2007]\n\
-           tools office uninstall [VERSION]\n\n\
-         diagnose/verify revisa instalación, versión/build de Office, Outlook,\n\
+           tools office sara [VERSION]\n\
+           tools office scrub-current [VERSION]\n\n\
+         diagnose/verify revisa instalación, residuos, versión/build de Office, Outlook,\n\
          WebView2, WAM/AAD Broker, TokenBroker, estado Entra/PRT y cachés.\n\
          auth repair vuelve a registrar AAD BrokerPlugin para el usuario actual.\n\
-         office scrub usa la herramienta oficial GetHelpCmd de Microsoft y ejecuta\n\
-         OfficeScrubScenario. Sin VERSION elimina todas las versiones de Office.\n",
+         scrub/sara usa el SaRACmd Enterprise antiguo y verifica la firma Microsoft\n\
+         antes de ejecutar OfficeScrubScenario. scrub-current conserva GetHelpCmd\n\
+         como backend alternativo actual.\n",
     )
 }
 
@@ -102,7 +106,7 @@ fn office_tools(args: &[String]) -> Result<CommandOutput> {
             run_office_diagnose()
         }
         "auth" => office_auth_tools(&args[1..]),
-        "scrub" | "uninstall" | "remove" => {
+        "scrub" | "sara" | "uninstall" | "remove" => {
             let version = args.get(1).map(String::as_str).unwrap_or("all");
             if args.len() > 2 {
                 return Ok(CommandOutput::error(
@@ -111,7 +115,18 @@ fn office_tools(args: &[String]) -> Result<CommandOutput> {
                 ));
             }
             let version = normalize_office_version(version)?;
-            run_office_scrub(version)
+            run_legacy_sara_scrub(version)
+        }
+        "scrub-current" | "gethelp" => {
+            let version = args.get(1).map(String::as_str).unwrap_or("all");
+            if args.len() > 2 {
+                return Ok(CommandOutput::error(
+                    "tools office scrub-current: demasiados argumentos",
+                    2,
+                ));
+            }
+            let version = normalize_office_version(version)?;
+            run_gethelp_scrub(version)
         }
         _ => Ok(CommandOutput::error(
             format!("tools office: acción desconocida: {action}"),
@@ -158,12 +173,26 @@ $officeRoot = $roots | Where-Object { Test-Path -LiteralPath $_ } | Select-Objec
 $outlookPath = $roots | ForEach-Object { Join-Path $_ 'OUTLOOK.EXE' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 $outlookVersion = if ($outlookPath) { (Get-Item -LiteralPath $outlookPath).VersionInfo.FileVersion } else { $null }
 
-if (-not $c2r -and -not $c2rSvc -and -not $officeRoot) {
-    $officeState = 'ABSENT / NO CORE RESIDUALS DETECTED'
-} elseif ($c2r -and $c2rSvc -and $officeRoot) {
-    $officeState = 'INSTALLED / CORE COMPONENTS PRESENT'
+$uninstallRoots = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+)
+$registeredOffice = @(
+    Get-ItemProperty -Path $uninstallRoots -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Publisher -match '^Microsoft' -and
+            $_.DisplayName -and
+            ($_.DisplayName -match '^Microsoft 365' -or $_.DisplayName -match '^Microsoft Office')
+        }
+)
+
+$hasCoreResidue = [bool]($c2r -or $c2rSvc -or $officeRoot -or $outlookPath)
+if ($registeredOffice.Count -gt 0) {
+    $officeState = 'INSTALLED / REGISTERED PRODUCT PRESENT'
+} elseif ($hasCoreResidue) {
+    $officeState = 'REMOVED / CORE RESIDUALS PRESENT'
 } else {
-    $officeState = 'PARTIAL / RESIDUALS SUSPECTED'
+    $officeState = 'ABSENT / CLEAN'
 }
 
 $officeVersion = $null
@@ -222,6 +251,10 @@ $wvProcesses = @(Get-Process -Name msedgewebview2 -ErrorAction SilentlyContinue)
 
 Write-Output 'OFFICE'
 Write-Output ("  State ................ {0}" -f $officeState)
+Write-Output ("  Registered products .. {0}" -f $registeredOffice.Count)
+foreach ($product in $registeredOffice) {
+    Write-Output ("    - {0} {1}" -f $product.DisplayName, $product.DisplayVersion)
+}
 Write-Output ("  Click-to-Run version . {0}" -f (Value-OrUnknown $officeVersion))
 Write-Output ("  Product .............. {0}" -f (Value-OrUnknown $c2r.ProductReleaseIds))
 Write-Output ("  Platform ............. {0}" -f (Value-OrUnknown $c2r.Platform))
@@ -371,24 +404,53 @@ fn normalize_office_version(value: &str) -> Result<&'static str> {
     }
 }
 
-fn run_office_scrub(version: &str) -> Result<CommandOutput> {
-    let root = env::temp_dir().join("sst").join("tools").join("office-scrub");
+fn run_legacy_sara_scrub(version: &str) -> Result<CommandOutput> {
+    let root = env::temp_dir().join("sst").join("tools").join("office-sara-legacy");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root)
+        .with_context(|| format!("no se pudo crear {}", root.display()))?;
+
+    let zip_path = root.join(LEGACY_SARA_ZIP);
+    download_file(LEGACY_SARA_DOWNLOAD, &zip_path, "SaRACmd legacy")?;
+    extract_zip(&zip_path, &root)?;
+    let sara = find_named_executable(&root, "SaRAcmd.exe")
+        .context("el paquete legacy no contiene SaRAcmd.exe")?;
+
+    verify_microsoft_signature(&sara)?;
+    let exit_code = run_elevated_office_scrubber(&sara, version)?;
+    let _ = fs::remove_dir_all(&root);
+
+    Ok(office_result(
+        exit_code,
+        version,
+        "SaRACmd legacy / OfficeScrubScenario",
+    ))
+}
+
+fn run_gethelp_scrub(version: &str) -> Result<CommandOutput> {
+    let root = env::temp_dir().join("sst").join("tools").join("office-gethelp");
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(&root)
         .with_context(|| format!("no se pudo crear {}", root.display()))?;
 
     let zip_path = root.join(GET_HELP_ZIP);
-    download_get_help(&zip_path)?;
+    download_file(GET_HELP_DOWNLOAD, &zip_path, "GetHelpCmd")?;
     extract_zip(&zip_path, &root)?;
-    let get_help = find_get_help_cmd(&root)
+    let get_help = find_named_executable(&root, "GetHelpCmd.exe")
         .context("el paquete oficial de Microsoft no contiene GetHelpCmd.exe")?;
 
-    let exit_code = run_elevated_get_help(&get_help, version)?;
+    verify_microsoft_signature(&get_help)?;
+    let exit_code = run_elevated_office_scrubber(&get_help, version)?;
     let _ = fs::remove_dir_all(&root);
-    Ok(office_result(exit_code, version))
+
+    Ok(office_result(
+        exit_code,
+        version,
+        "GetHelpCmd / OfficeScrubScenario",
+    ))
 }
 
-fn download_get_help(destination: &Path) -> Result<()> {
+fn download_file(url: &str, destination: &Path, label: &str) -> Result<()> {
     let curl = system32_executable("curl.exe")?;
     let status = Command::new(curl)
         .args([
@@ -399,15 +461,15 @@ fn download_get_help(destination: &Path) -> Result<()> {
             "--proto",
             "=https",
             "--tlsv1.2",
-            GET_HELP_DOWNLOAD,
+            url,
             "-o",
         ])
         .arg(destination)
         .status()
-        .context("no se pudo ejecutar curl para descargar GetHelpCmd")?;
+        .with_context(|| format!("no se pudo ejecutar curl para descargar {label}"))?;
 
     if !status.success() {
-        bail!("Microsoft GetHelpCmd no pudo descargarse desde el enlace oficial");
+        bail!("{label} no pudo descargarse por HTTPS");
     }
     Ok(())
 }
@@ -415,12 +477,12 @@ fn download_get_help(destination: &Path) -> Result<()> {
 fn extract_zip(zip_path: &Path, destination: &Path) -> Result<()> {
     let file = File::open(zip_path)
         .with_context(|| format!("no se pudo abrir {}", zip_path.display()))?;
-    let mut archive = ZipArchive::new(file).context("el paquete GetHelpCmd descargado no es ZIP válido")?;
+    let mut archive = ZipArchive::new(file).context("el paquete descargado no es un ZIP válido")?;
 
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
         let Some(relative) = entry.enclosed_name().map(Path::to_path_buf) else {
-            bail!("el paquete GetHelpCmd contiene una ruta insegura");
+            bail!("el paquete contiene una ruta insegura");
         };
         let output = destination.join(relative);
 
@@ -437,18 +499,18 @@ fn extract_zip(zip_path: &Path, destination: &Path) -> Result<()> {
     Ok(())
 }
 
-fn find_get_help_cmd(root: &Path) -> Option<PathBuf> {
+fn find_named_executable(root: &Path, expected_name: &str) -> Option<PathBuf> {
     let entries = fs::read_dir(root).ok()?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if let Some(found) = find_get_help_cmd(&path) {
+            if let Some(found) = find_named_executable(&path, expected_name) {
                 return Some(found);
             }
         } else if path
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name.eq_ignore_ascii_case("GetHelpCmd.exe"))
+            .is_some_and(|name| name.eq_ignore_ascii_case(expected_name))
         {
             return Some(path);
         }
@@ -456,12 +518,35 @@ fn find_get_help_cmd(root: &Path) -> Option<PathBuf> {
     None
 }
 
-fn run_elevated_get_help(exe: &Path, version: &str) -> Result<u32> {
+fn verify_microsoft_signature(exe: &Path) -> Result<()> {
+    let path = exe.to_string_lossy().replace(''', "''");
+    let script = format!(
+        "$s=Get-AuthenticodeSignature -LiteralPath '{path}'; \
+         if($s.Status -ne 'Valid' -or $null -eq $s.SignerCertificate -or \
+         $s.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation'){{ \
+         [Console]::Error.WriteLine(('Firma no válida: ' + $s.Status + ' / ' + $s.SignerCertificate.Subject)); exit 1 }}; \
+         Write-Output $s.SignerCertificate.Subject"
+    );
+    let output = run_powershell(&script)?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        bail!(
+            "SST rechazó {} porque no pudo validar una firma Authenticode de Microsoft{}",
+            exe.display(),
+            if stderr.is_empty() {
+                String::new()
+            } else {
+                format!(": {stderr}")
+            }
+        );
+    }
+    Ok(())
+}
+
+fn run_elevated_office_scrubber(exe: &Path, version: &str) -> Result<u32> {
     let verb = wide("runas");
     let exe_w = wide(exe.as_os_str());
-    let params = format!(
-        "-S OfficeScrubScenario -AcceptEula -OfficeVersion {version}"
-    );
+    let params = format!("-S OfficeScrubScenario -AcceptEula -OfficeVersion {version}");
     let params_w = wide(params);
     let dir_w = wide(exe.parent().unwrap_or_else(|| Path::new(".")).as_os_str());
 
@@ -478,7 +563,7 @@ fn run_elevated_get_help(exe: &Path, version: &str) -> Result<u32> {
         bail!("no se pudo elevar la herramienta de desinstalación de Office mediante UAC");
     }
     if info.hProcess.is_null() {
-        bail!("Microsoft GetHelpCmd se inició sin un handle de proceso válido");
+        bail!("la herramienta de Office se inició sin un handle de proceso válido");
     }
 
     unsafe {
@@ -486,33 +571,42 @@ fn run_elevated_get_help(exe: &Path, version: &str) -> Result<u32> {
         let mut exit_code = 1u32;
         if GetExitCodeProcess(info.hProcess, &mut exit_code) == 0 {
             CloseHandle(info.hProcess);
-            bail!("no se pudo obtener el resultado de GetHelpCmd");
+            bail!("no se pudo obtener el resultado de la herramienta de Office");
         }
         CloseHandle(info.hProcess);
         Ok(exit_code)
     }
 }
 
-fn office_result(code: u32, version: &str) -> CommandOutput {
+fn office_result(code: u32, version: &str, backend: &str) -> CommandOutput {
     match code {
         0 => CommandOutput::ok(format!(
-            "OfficeScrubScenario completado para {version}. Microsoft recomienda reiniciar el equipo para finalizar la limpieza.\n"
+            "{backend} completado para {version}. Reinicie Windows y ejecute tools office diagnose para auditar residuos.\n"
         )),
         6 => CommandOutput::error(
-            "OfficeScrubScenario: hay aplicaciones de Office/Teams abiertas. Ciérrelas y vuelva a ejecutar la limpieza.",
+            format!("{backend}: hay aplicaciones de Office/Teams abiertas. Ciérrelas y vuelva a ejecutar la limpieza."),
             6,
         ),
+        7 | 68 => CommandOutput::error(
+            format!("{backend}: no se encontró una instalación de Office que coincida con la selección."),
+            code as i32,
+        ),
         8 => CommandOutput::error(
-            "OfficeScrubScenario: se detectaron varias versiones de Office y Microsoft no pudo resolver la selección.",
+            format!("{backend}: se detectaron varias versiones de Office y no se pudo resolver la selección."),
             8,
         ),
-        9 => CommandOutput::error("OfficeScrubScenario: Microsoft no pudo quitar Office.", 9),
-        10 => CommandOutput::error("OfficeScrubScenario: la herramienta no quedó elevada.", 10),
-        66 => CommandOutput::error("OfficeScrubScenario: la versión solicitada no coincide con la instalada.", 66),
-        67 => CommandOutput::error("OfficeScrubScenario: Microsoft rechazó la versión indicada.", 67),
-        68 => CommandOutput::error("OfficeScrubScenario: no se encontró Office instalado.", 68),
+        9 => CommandOutput::error(format!("{backend}: no se pudo quitar Office."), 9),
+        10 => CommandOutput::error(format!("{backend}: la herramienta no quedó elevada."), 10),
+        66 => CommandOutput::error(
+            format!("{backend}: la versión solicitada no coincide con la instalada."),
+            66,
+        ),
+        67 => CommandOutput::error(
+            format!("{backend}: se rechazó la versión indicada."),
+            67,
+        ),
         other => CommandOutput::error(
-            format!("OfficeScrubScenario terminó con código Microsoft {other}."),
+            format!("{backend} terminó con código {other}."),
             other.min(i32::MAX as u32) as i32,
         ),
     }
