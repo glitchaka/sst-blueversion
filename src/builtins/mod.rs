@@ -12,6 +12,7 @@ mod tour;
 mod sudo;
 mod unix;
 mod guide;
+mod guide_remote;
 mod update;
 mod tools;
 
