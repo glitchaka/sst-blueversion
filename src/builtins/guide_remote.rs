@@ -70,38 +70,53 @@ fn fetch_file(filename: &str) -> Option<String> {
 fn filename_for(topic: &str) -> Option<&'static str> {
     let topic = topic.trim().to_ascii_lowercase();
     Some(match topic.as_str() {
+        // Direct manual chapter names. These make the Tutoriales category independently
+        // navigable even when the reader does not know a command name yet.
         "overview" => "overview",
         "shell-invocation" => "shell-invocation",
         "guide" | "wiki" | "manual" => "guide",
-
-        "notsh" | "net" => "network",
+        "network" => "network",
         "device" => "device",
         "switch" => "switch",
         "wol" => "wol",
+        "diagnostics" => "diagnostics",
+        "domain-status" => "domain-status",
+        "sys-domain" | "domain-admin" => "domain",
+        "hostname" => "hostname",
+        "autologon" => "autologon",
+        "system" => "system",
+        "security" => "security",
+        "windows-admin" => "windows-admin",
+        "instp" => "instp",
+        "sudo" => "sudo",
+        "config" => "config",
+        "update" => "update",
+        "tools" => "tools",
+        "office-sara" => "office-sara",
+        "office-gethelp" => "office-gethelp",
+        "tour" => "tour",
+        "helix" => "helix",
+        "bash-nwash" => "bash-nwash",
+        "unix-compat" => "unix-compat",
+
+        // Command/alias -> manual chapter mappings.
+        "notsh" | "net" => "network",
         "diag" => "diagnostics",
 
         "domain" => "domain-status",
-        "sys-domain" => "domain",
-        "hostname" => "hostname",
-        "autologon" => "autologon",
-        "sys" | "ps" | "top" | "df" | "free" | "whoami" | "uname" | "uptime"
-        | "fetch" | "neofetch" | "fastfetch" => "system",
+        "ps" | "top" | "df" | "free" | "whoami" | "uname" | "uptime"
+        | "fetch" | "neofetch" | "fastfetch" | "sys" => "system",
 
         "triage" | "intel" => "security",
 
         "eventlog" | "service" | "registry" | "process" | "acl" | "pnp" | "task"
         | "session" | "share" | "firewall" | "power" => "windows-admin",
 
-        "instp" => "instp",
-        "sudo" | "runas" => "sudo",
-        "update" => "update",
-        "tools" | "tool" | "utils" => "tools",
-        "office-sara" => "office-sara",
-        "office-gethelp" => "office-gethelp",
+        "runas" => "sudo",
+        "tool" | "utils" => "tools",
 
-        "helix" | "hx" | "helix-sst" => "helix",
-        "sst-config" | "config" | "reload" | "sst-path" => "config",
-        "tour" => "tour",
+        "hx" | "helix-sst" => "helix",
+        "sst-config" | "reload" | "sst-path" => "config",
 
         ":" | "." | "[" | "alias" | "bg" | "bind" | "break" | "builtin"
         | "caller" | "cd" | "command" | "compgen" | "complete" | "compopt"
@@ -112,8 +127,8 @@ fn filename_for(topic: &str) -> Option<&'static str> {
         | "source" | "suspend" | "test" | "times" | "trap" | "typeset" | "ulimit"
         | "umask" | "unalias" | "unset" | "wait" => "bash-nwash",
 
-        // These names are both Bash builtins and Unix-like commands in SST. Guide's local
-        // command table treats them as Bash/Nwash first, so the remote chapter follows that.
+        // These names are both Bash builtins and Unix-like names. In Nwash the builtin
+        // path wins, so Guide follows the effective execution path.
         "echo" | "printf" | "pwd" | "true" | "false" | "type" => "bash-nwash",
 
         "env" | "clear" | "ls" | "cat" | "head" | "tail" | "grep" | "wc" | "sort"
