@@ -1,0 +1,86 @@
+name: Verify SST self-extractor
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - build.rs
+      - src/**
+      - bg/**
+      - scripts/package-release.ps1
+      - scripts/sync-version.ps1
+      - .github/workflows/sfx-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sfx-e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check version metadata
+        shell: pwsh
+        run: ./scripts/sync-version.ps1 -Check
+
+      - name: Build SST and SFX stub
+        shell: pwsh
+        run: cargo build --release --bin sst --bin sst_sfx_stub
+
+      - name: Build final self-extractor
+        shell: pwsh
+        run: ./scripts/package-release.ps1
+
+      - name: Execute self-extractor end to end
+        shell: pwsh
+        run: |
+          $version = (Get-Content -Raw dist/version.txt).Trim()
+          $setup = Join-Path $PWD "dist/SST-Setup-$version.exe"
+          $extract = Join-Path $env:RUNNER_TEMP 'sst-sfx-extracted'
+          if (Test-Path -LiteralPath $extract) { Remove-Item -Recurse -Force -LiteralPath $extract }
+
+          & $setup --extract-only $extract
+          if ($LASTEXITCODE -ne 0) {
+            throw "El autoextraible terminó con código $LASTEXITCODE"
+          }
+
+          $extracted = Join-Path $extract 'sst.exe'
+          if (-not (Test-Path -LiteralPath $extracted -PathType Leaf)) {
+            throw 'El autoextraible se ejecutó pero no extrajo sst.exe'
+          }
+
+          $expectedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath 'dist/sst.exe').Hash
+          $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $extracted).Hash
+          if ($expectedHash -ne $actualHash) {
+            throw "sst.exe extraído no coincide con el empaquetado: $actualHash != $expectedHash"
+          }
+
+          $setupBytes = (Get-Item -LiteralPath $setup).Length
+          $sstBytes = (Get-Item -LiteralPath $extracted).Length
+          if ($setupBytes -le 1MB -or $sstBytes -le 1MB) {
+            throw "Tamaños inesperados: setup=$setupBytes sst=$sstBytes"
+          }
+
+          Write-Host "SFX OK: $setup"
+          Write-Host "Setup bytes: $setupBytes"
+          Write-Host "Extracted sst.exe SHA-256: $actualHash"
+
+      - name: Upload verified self-extractor
+        uses: actions/upload-artifact@v4
+        with:
+          name: SST-self-extractor-${{ github.sha }}
+          path: |
+            dist/SST-Setup-*.exe
+            dist/sst-update.json
+            dist/version.txt
+          if-no-files-found: error
