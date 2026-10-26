@@ -6,7 +6,7 @@ use crate::{
     core::{CommandContext, CommandOutput},
 };
 
-use super::BuiltinCommand;
+use super::{tools::ToolsBuiltin, BuiltinCommand};
 
 pub struct UpdateBuiltin {
     paths: AppPaths,
@@ -30,16 +30,24 @@ impl BuiltinCommand for UpdateBuiltin {
         "update"
     }
 
+    fn aliases(&self) -> &'static [&'static str] {
+        &["tools", "tool", "utils"]
+    }
+
     fn help(&self) -> &'static str {
         "Comprueba, prepara y aplica actualizaciones oficiales de SST."
     }
 
     fn execute(
         &self,
-        _invoked_name: &str,
+        invoked_name: &str,
         args: &[String],
-        _context: CommandContext<'_>,
+        context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
+        if !invoked_name.eq_ignore_ascii_case("update") {
+            return ToolsBuiltin.execute(invoked_name, args, context);
+        }
+
         match args.first().map(String::as_str) {
             None | Some("status") => Ok(CommandOutput::ok(update::status(&self.paths)?)),
             Some("check") if args.len() == 1 => {
