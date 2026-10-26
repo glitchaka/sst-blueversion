@@ -13,6 +13,7 @@ mod sudo;
 mod unix;
 mod guide;
 mod update;
+mod tools;
 
 pub use admin::{
     DeviceBuiltin, DiagnosticsBuiltin, DomainBuiltin, NetworkBuiltin, SwitchBuiltin,
@@ -31,3 +32,4 @@ pub use sudo::SudoBuiltin;
 pub use unix::{UNIX_COMMANDS, UnixBuiltin};
 pub use guide::GuideBuiltin as WikiBuiltin;
 pub use update::UpdateBuiltin;
+pub use tools::ToolsBuiltin;
