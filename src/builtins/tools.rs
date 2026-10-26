@@ -519,7 +519,7 @@ fn find_named_executable(root: &Path, expected_name: &str) -> Option<PathBuf> {
 }
 
 fn verify_microsoft_signature(exe: &Path) -> Result<()> {
-    let path = exe.to_string_lossy().replace(''', "''");
+    let path = exe.to_string_lossy().replace('\'', "''");
     let script = format!(
         "$s=Get-AuthenticodeSignature -LiteralPath '{path}'; \
          if($s.Status -ne 'Valid' -or $null -eq $s.SignerCertificate -or \
