@@ -3,17 +3,20 @@
 use std::{
     ffi::OsString,
     fs::{self, File},
-    io::{Cursor, Read, Seek, SeekFrom},
-    path::{Path, PathBuf},
+    io::{Read, Seek, SeekFrom, Write},
+    path::{Component, Path, PathBuf},
     process::Command,
 };
 
 use anyhow::{Context, Result, bail};
-use zip::ZipArchive;
 
-const FOOTER_MAGIC: &[u8; 8] = b"SSTSFX01";
+const PACKAGE_MAGIC: &[u8; 8] = b"SSTPKG01";
+const SFX_MAGIC: &[u8; 8] = b"SSTSFX02";
+const PACKAGE_VERSION: u32 = 1;
 const FOOTER_LEN: u64 = 16;
 const INSTALL_DIR: &str = "SST";
+const MAX_FILES: u32 = 100_000;
+const MAX_PATH_BYTES: u32 = 1024 * 1024;
 
 fn main() {
     if let Err(error) = run() {
@@ -29,12 +32,11 @@ fn run() -> Result<()> {
         .context("el autoextraible no tiene una carpeta contenedora")?;
 
     let (destination, launch) = resolve_destination(parent)?;
-    let payload = read_appended_payload(&self_path)?;
-    extract_payload(payload, &destination)?;
+    extract_bundle(&self_path, &destination)?;
 
     let sst = destination.join("sst.exe");
     if !sst.is_file() {
-        bail!("el payload no contiene sst.exe");
+        bail!("el bundle no contiene sst.exe");
     }
 
     if launch {
@@ -68,60 +70,111 @@ fn resolve_destination(parent: &Path) -> Result<(PathBuf, bool)> {
     }
 }
 
-fn read_appended_payload(path: &Path) -> Result<Vec<u8>> {
-    let mut file = File::open(path)
-        .with_context(|| format!("no se pudo abrir {}", path.display()))?;
-    let total = file.metadata()?.len();
+fn extract_bundle(executable: &Path, destination: &Path) -> Result<()> {
+    if destination.as_os_str().is_empty() || destination == destination.ancestors().last().unwrap_or(destination) {
+        bail!("ruta de destino insegura");
+    }
+
+    let mut input = File::open(executable)
+        .with_context(|| format!("no se pudo abrir {}", executable.display()))?;
+    let total = input.metadata()?.len();
     if total < FOOTER_LEN {
         bail!("autoextraible incompleto: falta footer SST");
     }
 
-    file.seek(SeekFrom::End(-(FOOTER_LEN as i64)))?;
-    let mut magic = [0u8; 8];
-    let mut size = [0u8; 8];
-    file.read_exact(&mut magic)?;
-    file.read_exact(&mut size)?;
-    if &magic != FOOTER_MAGIC {
-        bail!("este archivo es el stub interno de SST y no contiene el payload distribuible");
+    input.seek(SeekFrom::End(-(FOOTER_LEN as i64)))?;
+    let mut footer_magic = [0u8; 8];
+    input.read_exact(&mut footer_magic)?;
+    if &footer_magic != SFX_MAGIC {
+        bail!("este archivo es el stub interno de SST y no contiene el bundle distribuible");
+    }
+    let package_offset = read_u64(&mut input)?;
+    if package_offset >= total.saturating_sub(FOOTER_LEN) {
+        bail!("autoextraible invalido: offset de bundle fuera de rango");
     }
 
-    let payload_len = u64::from_le_bytes(size);
-    if payload_len == 0 || payload_len > total.saturating_sub(FOOTER_LEN) {
-        bail!("autoextraible invalido: longitud de payload incorrecta");
+    input.seek(SeekFrom::Start(package_offset))?;
+    let mut package_magic = [0u8; 8];
+    input.read_exact(&mut package_magic)?;
+    if &package_magic != PACKAGE_MAGIC {
+        bail!("autoextraible invalido: cabecera de bundle SST ausente");
     }
-    let payload_start = total - FOOTER_LEN - payload_len;
-    file.seek(SeekFrom::Start(payload_start))?;
-    let mut payload = vec![0u8; payload_len as usize];
-    file.read_exact(&mut payload)?;
-    Ok(payload)
-}
 
-fn extract_payload(payload: Vec<u8>, destination: &Path) -> Result<()> {
+    let version = read_u32(&mut input)?;
+    if version != PACKAGE_VERSION {
+        bail!("version de bundle SST no soportada: {version}");
+    }
+    let count = read_u32(&mut input)?;
+    if count == 0 || count > MAX_FILES {
+        bail!("cantidad de archivos invalida en bundle: {count}");
+    }
+
     fs::create_dir_all(destination)
         .with_context(|| format!("no se pudo crear {}", destination.display()))?;
 
-    let mut archive = ZipArchive::new(Cursor::new(payload)).context("payload ZIP invalido")?;
-    for index in 0..archive.len() {
-        let mut entry = archive.by_index(index)?;
-        let relative: PathBuf = entry
-            .enclosed_name()
-            .map(Path::to_path_buf)
-            .context("el payload contiene una ruta insegura")?;
-        let output = destination.join(relative);
-
-        if entry.is_dir() {
-            fs::create_dir_all(&output)?;
-            continue;
+    let payload_end = total - FOOTER_LEN;
+    let mut buffer = vec![0u8; 1024 * 1024];
+    for _ in 0..count {
+        let path_len = read_u32(&mut input)?;
+        let size = read_u64(&mut input)?;
+        if path_len == 0 || path_len > MAX_PATH_BYTES {
+            bail!("ruta invalida dentro del bundle");
         }
 
+        let mut path_bytes = vec![0u8; path_len as usize];
+        input.read_exact(&mut path_bytes)?;
+        let path_text = std::str::from_utf8(&path_bytes)
+            .context("ruta UTF-8 invalida dentro del bundle")?;
+        let relative = PathBuf::from(path_text);
+        validate_relative_path(&relative)?;
+
+        let current = input.stream_position()?;
+        if size > payload_end.saturating_sub(current) {
+            bail!("bundle truncado al extraer {}", relative.display());
+        }
+
+        let output = destination.join(&relative);
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent)?;
         }
         let mut target = File::create(&output)
             .with_context(|| format!("no se pudo escribir {}", output.display()))?;
-        std::io::copy(&mut entry, &mut target)?;
+
+        let mut remaining = size;
+        while remaining > 0 {
+            let want = usize::try_from(remaining.min(buffer.len() as u64)).unwrap_or(buffer.len());
+            input.read_exact(&mut buffer[..want])?;
+            target.write_all(&buffer[..want])?;
+            remaining -= want as u64;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_relative_path(path: &Path) -> Result<()> {
+    if path.as_os_str().is_empty() || path.is_absolute() {
+        bail!("ruta insegura en bundle: {}", path.display());
+    }
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => {}
+            _ => bail!("ruta insegura en bundle: {}", path.display()),
+        }
     }
     Ok(())
+}
+
+fn read_u32(input: &mut impl Read) -> Result<u32> {
+    let mut bytes = [0u8; 4];
+    input.read_exact(&mut bytes)?;
+    Ok(u32::from_le_bytes(bytes))
+}
+
+fn read_u64(input: &mut impl Read) -> Result<u64> {
+    let mut bytes = [0u8; 8];
+    input.read_exact(&mut bytes)?;
+    Ok(u64::from_le_bytes(bytes))
 }
 
 #[cfg(windows)]
