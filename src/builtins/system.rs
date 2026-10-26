@@ -10,7 +10,7 @@ use crate::{
 use super::BuiltinCommand;
 
 const ALIASES: &[&str] = &[
-    "ps", "top", "df", "free", "hostname", "domain", "autologon", "whoami", "uname", "kill", "uptime",
+    "ps", "top", "df", "free", "hostname", "autologon", "whoami", "uname", "kill", "uptime",
     "fetch", "neofetch", "fastfetch",
 ];
 
@@ -58,8 +58,6 @@ impl BuiltinCommand for SystemBuiltin {
             self.service.execute(args)
         } else if invoked_name.eq_ignore_ascii_case("hostname") && !args.is_empty() {
             hostname_set(args)
-        } else if invoked_name.eq_ignore_ascii_case("domain") {
-            domain_tool(args)
         } else if invoked_name.eq_ignore_ascii_case("autologon") {
             autologon_tool(args)
         } else {
