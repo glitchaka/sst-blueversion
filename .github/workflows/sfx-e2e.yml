@@ -33,9 +33,9 @@ jobs:
         shell: pwsh
         run: ./scripts/sync-version.ps1 -Check
 
-      - name: Build SST and SFX stub
+      - name: Build SST, native SFX packager and stub
         shell: pwsh
-        run: cargo build --release --bin sst --bin sst_sfx_stub
+        run: cargo build --release --bin sst --bin sst_sfx_packager --bin sst_sfx_stub
 
       - name: Build final self-extractor
         shell: pwsh
