@@ -16,12 +16,12 @@ $version = $versionMatch.Groups[1].Value
 
 $release = Join-Path $root 'target\release'
 $sst = Join-Path $release 'sst.exe'
-$stub = Join-Path $release 'sst_setup.exe'
+$stub = Join-Path $release 'sst_sfx_stub.exe'
 if (-not (Test-Path -LiteralPath $sst -PathType Leaf)) {
     throw "Falta $sst. Compile primero el binario release de SST."
 }
 if (-not (Test-Path -LiteralPath $stub -PathType Leaf)) {
-    throw "Falta $stub. Compile primero el binario sst_setup."
+    throw "Falta $stub. Compile primero el stub interno sst_sfx_stub."
 }
 
 $dist = Join-Path $root 'dist'
@@ -80,6 +80,9 @@ $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $rawExe).Hash.ToLowerInv
 $setupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash.ToLowerInvariant()
 $exeSize = (Get-Item -LiteralPath $rawExe).Length
 $setupSize = (Get-Item -LiteralPath $setup).Length
+if ($setupSize -le (Get-Item -LiteralPath $stub).Length) {
+    throw 'El autoextraible final no contiene payload; el tamaño no supera al stub interno.'
+}
 
 $updateManifest = [ordered]@{
     schema = 1
@@ -112,7 +115,7 @@ Remove-Item -Recurse -Force -LiteralPath $stage
 Remove-Item -Force -LiteralPath $payloadZip
 
 Write-Host "SST $version empaquetado en $dist"
-Write-Host "  $setupName"
+Write-Host "  $setupName ($setupSize bytes)"
 Write-Host '  sst.exe'
 Write-Host '  sst-update.json'
 Write-Host '  version.txt'
