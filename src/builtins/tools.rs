@@ -7,13 +7,12 @@ use std::{
     os::windows::ffi::OsStrExt,
     path::{Path, PathBuf},
     process::Command,
-    ptr::null_mut,
 };
 
 use anyhow::{Context, Result, bail};
 use windows_sys::Win32::{
     Foundation::CloseHandle,
-    System::Threading::{GetExitCodeProcess, INFINITE, WaitForSingleObject},
+    System::Threading::{GetExitCodeProcess, WaitForSingleObject},
     UI::{
         Shell::{SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW},
         WindowsAndMessaging::SW_SHOWNORMAL,
@@ -214,7 +213,7 @@ fn run_elevated_get_help(exe: &Path, version: &str) -> Result<u32> {
         "-S OfficeScrubScenario -AcceptEula -OfficeVersion {version}"
     );
     let params_w = wide(params);
-    let dir_w = wide(exe.parent().unwrap_or_else(|| Path::new("." )).as_os_str());
+    let dir_w = wide(exe.parent().unwrap_or_else(|| Path::new(".")).as_os_str());
 
     let mut info: SHELLEXECUTEINFOW = unsafe { zeroed() };
     info.cbSize = size_of::<SHELLEXECUTEINFOW>() as u32;
@@ -233,7 +232,7 @@ fn run_elevated_get_help(exe: &Path, version: &str) -> Result<u32> {
     }
 
     unsafe {
-        WaitForSingleObject(info.hProcess, INFINITE);
+        WaitForSingleObject(info.hProcess, u32::MAX);
         let mut exit_code = 1u32;
         if GetExitCodeProcess(info.hProcess, &mut exit_code) == 0 {
             CloseHandle(info.hProcess);
