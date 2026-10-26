@@ -29,9 +29,9 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
 
-      - name: Check version metadata
+      - name: Synchronize version metadata locally
         shell: pwsh
-        run: ./scripts/sync-version.ps1 -Check
+        run: ./scripts/sync-version.ps1
 
       - name: Build SST, native SFX packager and stub
         shell: pwsh
