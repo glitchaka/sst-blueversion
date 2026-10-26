@@ -74,6 +74,7 @@ struct OverlayState {
     beacon: Option<SstBeaconHandle>,
     enabled: bool,
     peers: HashMap<String, BeaconPeer>,
+    peer_count: usize,
     selected: Option<String>,
     hwnd: HWND,
 }
@@ -87,6 +88,7 @@ impl OverlayState {
             beacon,
             enabled,
             peers: HashMap::new(),
+            peer_count: 0,
             selected: None,
             hwnd: null_mut(),
         }
@@ -119,21 +121,24 @@ impl OverlayState {
 
         while let Some(event) = beacon.try_event() {
             match event {
-                BeaconEvent::PeerJoined { peer, .. } => {
+                BeaconEvent::PeerJoined { peer, peer_count } => {
                     self.selected = Some(peer.id.clone());
                     self.peers.insert(peer.id.clone(), peer);
+                    self.peer_count = peer_count;
                     self.enabled = true;
                     changed = true;
                 }
-                BeaconEvent::PeerLeft { peer, .. } => {
+                BeaconEvent::PeerLeft { peer, peer_count } => {
                     self.peers.remove(&peer.id);
+                    self.peer_count = peer_count;
                     if self.selected.as_deref() == Some(peer.id.as_str()) {
                         self.selected = self.peers.keys().next().cloned();
                     }
                     changed = true;
                 }
-                BeaconEvent::Status { enabled, .. } => {
+                BeaconEvent::Status { enabled, peer_count } => {
                     self.enabled = enabled;
+                    self.peer_count = peer_count;
                     if !enabled {
                         self.peers.clear();
                         self.selected = None;
@@ -148,12 +153,14 @@ impl OverlayState {
     fn toggle(&mut self) {
         let Some(beacon) = self.beacon.as_ref() else {
             self.enabled = false;
+            self.peer_count = 0;
             return;
         };
         let next = !self.enabled;
         beacon.set_enabled(next);
         self.enabled = next;
         self.peers.clear();
+        self.peer_count = 0;
         self.selected = None;
     }
 }
@@ -422,7 +429,7 @@ unsafe fn paint(hwnd: HWND, state: &OverlayState) {
     }
 
     if let Some(peer) = state.selected_peer() {
-        let extra = state.peers.len().saturating_sub(1);
+        let extra = state.peer_count.saturating_sub(1);
         let label = if extra == 0 {
             format!("{}  ·  {}  ·  SST {}", peer.host, peer.address, peer.version)
         } else {
