@@ -18,7 +18,7 @@ use windows_sys::Win32::{
     System::Threading::{GetExitCodeProcess, WaitForSingleObject},
     UI::{
         Shell::{SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW},
-        WindowsAndMessaging::SW_SHOWNORMAL,
+        WindowsAndMessaging::SW_HIDE,
     },
 };
 #[cfg(windows)]
@@ -35,6 +35,36 @@ const WAIT_INFINITE: u32 = 0xffff_ffff;
 #[cfg(windows)]
 fn wide(value: impl AsRef<OsStr>) -> Vec<u16> {
     value.as_ref().encode_wide().chain(Some(0)).collect()
+}
+
+#[cfg(windows)]
+fn quote_arg(value: &str) -> String {
+    if !value.is_empty()
+        && !value.chars().any(|c| c.is_whitespace() || c == '"')
+    {
+        return value.to_owned();
+    }
+
+    let mut out = String::from("\"");
+    let mut slashes = 0usize;
+    for ch in value.chars() {
+        if ch == '\\' {
+            slashes += 1;
+            continue;
+        }
+        if ch == '"' {
+            out.push_str(&"\\".repeat(slashes * 2 + 1));
+            out.push('"');
+            slashes = 0;
+            continue;
+        }
+        out.push_str(&"\\".repeat(slashes));
+        slashes = 0;
+        out.push(ch);
+    }
+    out.push_str(&"\\".repeat(slashes * 2));
+    out.push('"');
+    out
 }
 
 #[cfg(windows)]
@@ -74,7 +104,6 @@ fn extract_zip(zip_path: &Path, destination: &Path) -> Result<()> {
             bail!("AutoLogon.zip contiene una ruta insegura");
         };
         let output = destination.join(relative);
-
         if entry.is_dir() {
             fs::create_dir_all(&output)?;
             continue;
@@ -144,20 +173,22 @@ fn verify_microsoft_signature(exe: &Path) -> Result<()> {
         let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
         bail!(
             "SST rechazó Sysinternals Autologon porque la firma Microsoft no pudo validarse{}",
-            if detail.is_empty() {
-                String::new()
-            } else {
-                format!(": {detail}")
-            }
+            if detail.is_empty() { String::new() } else { format!(": {detail}") }
         );
     }
     Ok(())
 }
 
 #[cfg(windows)]
-fn run_elevated(exe: &Path) -> Result<()> {
+fn run_elevated_cli(exe: &Path, user: &str, domain: &str, password: &str) -> Result<u32> {
     let verb = wide("runas");
     let exe_w = wide(exe.as_os_str());
+    let params = ["/accepteula", user, domain, password]
+        .into_iter()
+        .map(quote_arg)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let params_w = wide(params);
     let dir_w = wide(exe.parent().unwrap_or_else(|| Path::new(".")).as_os_str());
 
     let mut info: SHELLEXECUTEINFOW = unsafe { zeroed() };
@@ -165,8 +196,9 @@ fn run_elevated(exe: &Path) -> Result<()> {
     info.fMask = SEE_MASK_NOCLOSEPROCESS;
     info.lpVerb = verb.as_ptr();
     info.lpFile = exe_w.as_ptr();
+    info.lpParameters = params_w.as_ptr();
     info.lpDirectory = dir_w.as_ptr();
-    info.nShow = SW_SHOWNORMAL;
+    info.nShow = SW_HIDE;
 
     if unsafe { ShellExecuteExW(&mut info) } == 0 {
         let error = unsafe { GetLastError() };
@@ -181,15 +213,23 @@ fn run_elevated(exe: &Path) -> Result<()> {
 
     unsafe {
         WaitForSingleObject(info.hProcess, WAIT_INFINITE);
-        let mut exit_code = 0u32;
-        let _ = GetExitCodeProcess(info.hProcess, &mut exit_code);
+        let mut exit_code = 1u32;
+        if GetExitCodeProcess(info.hProcess, &mut exit_code) == 0 {
+            let error = GetLastError();
+            CloseHandle(info.hProcess);
+            bail!("no se pudo obtener el resultado de Autologon (Win32 {error})");
+        }
         CloseHandle(info.hProcess);
+        Ok(exit_code)
     }
-    Ok(())
 }
 
 #[cfg(windows)]
-pub fn launch() -> Result<()> {
+pub fn configure(user: &str, domain: &str, password: &str) -> Result<()> {
+    if user.trim().is_empty() || domain.trim().is_empty() || password.is_empty() {
+        bail!("usuario, dominio y contraseña son obligatorios");
+    }
+
     let root = env::temp_dir().join("sst").join("tools").join("sysinternals-autologon");
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(&root)
@@ -203,7 +243,11 @@ pub fn launch() -> Result<()> {
         let exe = find_executable(&root, expected)
             .with_context(|| format!("el paquete de Microsoft no contiene {expected}"))?;
         verify_microsoft_signature(&exe)?;
-        run_elevated(&exe)
+        let code = run_elevated_cli(&exe, user.trim(), domain.trim(), password)?;
+        if code != 0 {
+            bail!("Sysinternals Autologon terminó con código {code}");
+        }
+        Ok(())
     })();
 
     let _ = fs::remove_dir_all(&root);
@@ -211,6 +255,6 @@ pub fn launch() -> Result<()> {
 }
 
 #[cfg(not(windows))]
-pub fn launch() -> anyhow::Result<()> {
+pub fn configure(_user: &str, _domain: &str, _password: &str) -> anyhow::Result<()> {
     anyhow::bail!("Sysinternals Autologon sólo está disponible en Windows")
 }
