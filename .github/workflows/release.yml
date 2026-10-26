@@ -60,11 +60,11 @@ jobs:
             Write-Host "La versión $env:VERSION ya pertenece a este mismo commit; se permite reintentar el empaquetado."
           }
 
-      - name: Build SST and self-extractor stub
+      - name: Build SST and internal self-extractor stub
         shell: pwsh
-        run: cargo build --release --bin sst --bin sst_setup
+        run: cargo build --release --bin sst --bin sst_sfx_stub
 
-      - name: Package release
+      - name: Package final self-extracting release
         shell: pwsh
         run: ./scripts/package-release.ps1 -UpdateManifestUrl '${{ inputs.update_manifest_url }}'
 
