@@ -27,8 +27,6 @@ use crate::{
 
 use super::BuiltinCommand;
 
-mod tutorial;
-
 const GET_HELP_DOWNLOAD: &str = "https://aka.ms/SaRA_EnterpriseVersionFiles";
 const GET_HELP_ZIP: &str = "GetHelpCmd.zip";
 const LEGACY_SARA_DOWNLOAD: &str = "https://github.com/ServiceDeskCSI/SaRACmd/releases/download/17_01_2877_000/SaRACmd_17_01_2877_000.zip";
@@ -62,7 +60,6 @@ impl BuiltinCommand for ToolsBuiltin {
         match args[0].to_ascii_lowercase().as_str() {
             "list" => Ok(help_output()),
             "office" => office_tools(&args[1..]),
-            "tutorial" | "tutorials" => tutorial::run(&args[1..]),
             other => Ok(CommandOutput::error(
                 format!("tools: utilidad desconocida: {other}\nuse: tools list"),
                 2,
@@ -81,16 +78,12 @@ fn help_output() -> CommandOutput {
            tools office scrub [all|m365|2024|2021|2019|2016|2013|2010|2007]\n\
            tools office sara [VERSION]\n\
            tools office scrub-current [VERSION]\n\n\
-         Tutorials\n\
-           tools tutorial list\n\
-           tools tutorial <nombre>\n\n\
          diagnose/verify revisa instalación, residuos, versión/build de Office, Outlook,\n\
          WebView2, WAM/AAD Broker, TokenBroker, estado Entra/PRT y cachés.\n\
          auth repair vuelve a registrar AAD BrokerPlugin para el usuario actual.\n\
          scrub/sara usa el SaRACmd Enterprise antiguo y verifica la firma Microsoft\n\
          antes de ejecutar OfficeScrubScenario. scrub-current conserva GetHelpCmd\n\
-         como backend alternativo actual.\n\
-         tutorial muestra documentación remota en memoria, sin guardarla como archivo local.\n",
+         como backend alternativo actual.\n",
     )
 }
 
