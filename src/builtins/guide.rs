@@ -23,15 +23,79 @@ impl GuideBuiltin {
             if entry.name.eq_ignore_ascii_case("wiki") {
                 entry.name = "guide".to_owned();
                 entry.aliases.clear();
-                entry.summary = "Guía interactiva local de comandos de SST.".to_owned();
-                entry.use_case = "Descubrir qué comandos existen, cuándo se usan, su sintaxis y de qué herramienta heredan comportamiento.".to_owned();
+                entry.summary = "Guía interactiva de comandos y manuales completos de SST.".to_owned();
+                entry.use_case = "Descubrir qué comandos existen, abrir su referencia rápida local y, cuando hay conectividad, cargar el manual operativo completo mantenido en adm-toolbox.".to_owned();
                 entry.syntax = "guide\nguide COMANDO\nguide search TEXTO".to_owned();
-                entry.origin = "SST nativo.".to_owned();
-                entry.compatibility = "No necesita Internet y documenta también compatibilidad Bash/Unix.".to_owned();
+                entry.origin = "SST nativo + manuales SST remotos.".to_owned();
+                entry.compatibility = "La ficha local funciona sin Internet. Los manuales extensos se obtienen por HTTPS en memoria y no se guardan como archivos locales.".to_owned();
             } else if entry.name.eq_ignore_ascii_case("help") {
-                entry.use_case = "Consultar sintaxis corta del intérprete; para documentación contextual usa guide.".to_owned();
+                entry.use_case = "Consultar sintaxis corta del intérprete; para documentación contextual y manuales extensos usa guide.".to_owned();
             }
         }
+
+        entries.extend([
+            entry(
+                "overview",
+                &[],
+                "Tutoriales",
+                "Mapa completo de capacidades públicas de SST.",
+                "Entender rápidamente qué familias de herramientas ofrece SST y dónde está documentada cada una.",
+                "guide overview",
+                "Manual SST remoto.",
+                "Se carga por HTTPS en memoria; fallback local si la red no está disponible.",
+            ),
+            entry(
+                "shell-invocation",
+                &[],
+                "Tutoriales",
+                "Opciones de arranque de sst.exe/Nwash.",
+                "Consultar -c, -i, -l, -s, -o/+o, -O/+O, rcfiles y flags de shell.",
+                "guide shell-invocation",
+                "Manual SST remoto.",
+                "Documenta la interfaz pública de invocación, no helpers internos de GUI/broker.",
+            ),
+            entry(
+                "sys-domain",
+                &[],
+                "Tutoriales",
+                "Administración local de dominio: status, join y leave.",
+                "Unir o sacar el equipo de Active Directory y usar OU explícita.",
+                "guide sys-domain",
+                "SST nativo sobre NetJoinDomain/NetUnjoinDomain.",
+                "No confundir con `domain`, que es la consulta local/remota de pertenencia.",
+            ),
+            entry(
+                "office-sara",
+                &[],
+                "Tutoriales",
+                "Desinstalación profunda de Office mediante SaRACmd legacy.",
+                "Usar OfficeScrubScenario, interpretar códigos y auditar residuos.",
+                "guide office-sara",
+                "SST Tools + SaRACmd Enterprise legacy firmado por Microsoft.",
+                "Incluye flujo de recuperación y comparación con GetHelpCmd.",
+            ),
+            entry(
+                "office-gethelp",
+                &[],
+                "Tutoriales",
+                "Desinstalación profunda de Office mediante GetHelpCmd.",
+                "Usar el backend actual de Microsoft y compararlo con SaRA legacy.",
+                "guide office-gethelp",
+                "SST Tools + GetHelpCmd de Microsoft.",
+                "Incluye versiones, códigos y auditoría posterior.",
+            ),
+            entry(
+                "windows-admin",
+                &[],
+                "Tutoriales",
+                "Manual conjunto de administración Windows/Nwash.",
+                "Consultar todas las opciones de eventlog, service, registry, process, acl, pnp, task, session, share, firewall y power.",
+                "guide windows-admin",
+                "Wrappers/implementaciones SST sobre utilidades nativas de Windows.",
+                "Las mutaciones pueden requerir sudo/elevación.",
+            ),
+        ]);
+
         entries.sort_by(|left, right| {
             left.category
                 .to_ascii_lowercase()
@@ -48,18 +112,29 @@ impl GuideBuiltin {
         let mut search_mode = false;
         let mut category_index = 0usize;
         let mut selected = 0usize;
+        // Preserve the text requested by the user instead of immediately replacing it
+        // with the canonical entry name. This lets `guide hostname` resolve the `sys`
+        // entry locally but stream hostname.txt remotely.
         let mut detail_name = open_detail
-            .then(|| find_entry(&entries, initial_query).map(|entry| entry.name.clone()))
+            .then(|| find_entry(&entries, initial_query).map(|_| initial_query.to_owned()))
             .flatten();
         let mut detail_scroll = 0usize;
 
         loop {
-            if let Some(name) = detail_name.clone() {
-                let Some(entry) = find_entry(&entries, &name) else {
+            if let Some(topic) = detail_name.clone() {
+                let Some(entry) = find_entry(&entries, &topic) else {
                     detail_name = None;
                     continue;
                 };
-                let max_scroll = render_detail(terminal.as_mut(), entry, detail_scroll)?;
+                let remote = super::guide_remote::load(&topic)
+                    .or_else(|| super::guide_remote::load(&entry.name));
+                let max_scroll = render_detail(
+                    terminal.as_mut(),
+                    entry,
+                    &topic,
+                    remote.as_deref(),
+                    detail_scroll,
+                )?;
                 detail_scroll = detail_scroll.min(max_scroll);
                 let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
                     continue;
@@ -187,7 +262,7 @@ impl BuiltinCommand for GuideBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "guide — guía interactiva local de todos los comandos de SST"
+        "guide — guía interactiva de comandos y manuales completos de SST"
     }
 
     fn execute(
@@ -236,7 +311,7 @@ fn render_menu(
 
     push_window(&mut out, tw, ww, &title_border(ww, "Shell Shock Tool - Command Guide"));
 
-    let intro = "Welcome to the Shell Shock Tool command guide. Select a command below using the arrow keys or type the first character of its name. Press [ENTER] to open its documentation; press [X] to exit.";
+    let intro = "Select a command and press ENTER. SST will show the full streamed manual when available; otherwise it falls back to the local reference. Press / to search and C to change category.";
     let mut intro_lines = wrap(intro, outer_inner.saturating_sub(4));
     intro_lines.truncate(4);
     while intro_lines.len() < 4 {
@@ -308,6 +383,8 @@ fn render_menu(
 fn render_detail(
     terminal: &mut dyn TerminalSession,
     entry: &WikiEntry,
+    topic: &str,
+    remote: Option<&str>,
     scroll: usize,
 ) -> Result<usize> {
     let (tw, th) = terminal.size()?;
@@ -317,21 +394,12 @@ fn render_detail(
     let outer_inner = ww.saturating_sub(2);
     let body_width = outer_inner.saturating_sub(6);
     let rows = th.saturating_sub(9).clamp(8, 20);
-    let aliases = if entry.aliases.is_empty() {
-        "-".to_owned()
-    } else {
-        entry.aliases.join(", ")
-    };
 
-    let mut body = Vec::new();
-    detail_section(&mut body, "Command", &entry.name, body_width);
-    detail_section(&mut body, "Category", &entry.category, body_width);
-    detail_section(&mut body, "Aliases", &aliases, body_width);
-    detail_section(&mut body, "What it does", &entry.summary, body_width);
-    detail_section(&mut body, "When to use it", &entry.use_case, body_width);
-    detail_section(&mut body, "Syntax", &entry.syntax.replace('\n', "  |  "), body_width);
-    detail_section(&mut body, "Origin / inheritance", &entry.origin, body_width);
-    detail_section(&mut body, "Compatibility / notes", &entry.compatibility, body_width);
+    let body = if let Some(text) = remote {
+        remote_lines(text, body_width)
+    } else {
+        local_detail_lines(entry, body_width)
+    };
 
     let max_scroll = body.len().saturating_sub(rows);
     let scroll = scroll.min(max_scroll);
@@ -349,14 +417,14 @@ fn render_detail(
         &mut out,
         tw,
         ww,
-        &title_border(ww, &format!("SST Guide - {}", entry.name)),
+        &title_border(ww, &format!("SST Guide - {topic}")),
     );
-    push_window(
-        &mut out,
-        tw,
-        ww,
-        &outer_line(ww, "  Command reference. Use Up/Down or PgUp/PgDn to scroll."),
-    );
+    let source = if remote.is_some() {
+        "  Full SST manual · HTTPS/in-memory · Up/Down or PgUp/PgDn to scroll."
+    } else {
+        "  Local reference (remote manual unavailable) · Up/Down or PgUp/PgDn to scroll."
+    };
+    push_window(&mut out, tw, ww, &outer_line(ww, source));
     push_window(&mut out, tw, ww, &inner_top(ww));
 
     for line in body.iter().skip(scroll).take(rows) {
@@ -385,6 +453,46 @@ fn render_detail(
     terminal.write(&out)?;
     terminal.flush()?;
     Ok(max_scroll)
+}
+
+fn local_detail_lines(entry: &WikiEntry, body_width: usize) -> Vec<String> {
+    let aliases = if entry.aliases.is_empty() {
+        "-".to_owned()
+    } else {
+        entry.aliases.join(", ")
+    };
+    let mut body = Vec::new();
+    detail_section(&mut body, "Command", &entry.name, body_width);
+    detail_section(&mut body, "Category", &entry.category, body_width);
+    detail_section(&mut body, "Aliases", &aliases, body_width);
+    detail_section(&mut body, "What it does", &entry.summary, body_width);
+    detail_section(&mut body, "When to use it", &entry.use_case, body_width);
+    detail_section(&mut body, "Syntax", &entry.syntax.replace('\n', "  |  "), body_width);
+    detail_section(&mut body, "Origin / inheritance", &entry.origin, body_width);
+    detail_section(&mut body, "Compatibility / notes", &entry.compatibility, body_width);
+    body
+}
+
+fn remote_lines(text: &str, width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    for raw in text.lines() {
+        if raw.trim().is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        let indent = raw.chars().take_while(|ch| ch.is_whitespace()).count().min(8);
+        let prefix = " ".repeat(indent);
+        let available = width.saturating_sub(indent).max(8);
+        let trimmed = raw.trim();
+        let wrapped = wrap(trimmed, available);
+        for line in wrapped {
+            out.push(format!("{prefix}{line}"));
+        }
+    }
+    if out.is_empty() {
+        out.push("(manual vacío)".to_owned());
+    }
+    out
 }
 
 fn detail_section(lines: &mut Vec<String>, label: &str, value: &str, width: usize) {
