@@ -19,8 +19,11 @@ const MAX_FILES: u32 = 100_000;
 const MAX_PATH_BYTES: u32 = 1024 * 1024;
 
 fn main() {
+    let verify_mode = std::env::args_os().skip(1).any(|arg| arg == "--extract-only");
     if let Err(error) = run() {
-        show_error(&format!("No se pudo extraer Shell Shock Tool:\n\n{error:#}"));
+        if !verify_mode {
+            show_error(&format!("No se pudo extraer Shell Shock Tool:\n\n{error:#}"));
+        }
         std::process::exit(1);
     }
 }
