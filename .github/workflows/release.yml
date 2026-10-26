@@ -60,13 +60,36 @@ jobs:
             Write-Host "La versión $env:VERSION ya pertenece a este mismo commit; se permite reintentar el empaquetado."
           }
 
-      - name: Build SST and internal self-extractor stub
+      - name: Build SST, native SFX packager and stub
         shell: pwsh
-        run: cargo build --release --bin sst --bin sst_sfx_stub
+        run: cargo build --release --bin sst --bin sst_sfx_packager --bin sst_sfx_stub
 
       - name: Package final self-extracting release
         shell: pwsh
         run: ./scripts/package-release.ps1 -UpdateManifestUrl '${{ inputs.update_manifest_url }}'
+
+      - name: Verify final self-extractor by executing it
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $setup = Join-Path $PWD "dist/SST-Setup-$env:VERSION.exe"
+          $extract = Join-Path $env:RUNNER_TEMP 'sst-release-verify'
+          if (Test-Path -LiteralPath $extract) { Remove-Item -Recurse -Force -LiteralPath $extract }
+
+          & $setup --extract-only $extract
+          if ($LASTEXITCODE -ne 0) { throw "El autoextraible terminó con código $LASTEXITCODE" }
+
+          $extracted = Join-Path $extract 'sst.exe'
+          if (-not (Test-Path -LiteralPath $extracted -PathType Leaf)) {
+            throw 'El autoextraible no extrajo sst.exe'
+          }
+
+          $expected = (Get-FileHash -Algorithm SHA256 -LiteralPath 'dist/sst.exe').Hash
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $extracted).Hash
+          if ($expected -ne $actual) {
+            throw "sst.exe extraído no coincide: $actual != $expected"
+          }
 
       - name: Upload distribution artifact
         uses: actions/upload-artifact@v4
