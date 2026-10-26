@@ -1,6 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::{
+    ffi::OsString,
     fs::{self, File},
     io::{Cursor, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
@@ -26,8 +27,8 @@ fn run() -> Result<()> {
     let parent = self_path
         .parent()
         .context("el autoextraible no tiene una carpeta contenedora")?;
-    let destination = parent.join(INSTALL_DIR);
 
+    let (destination, launch) = resolve_destination(parent)?;
     let payload = read_appended_payload(&self_path)?;
     extract_payload(payload, &destination)?;
 
@@ -36,11 +37,35 @@ fn run() -> Result<()> {
         bail!("el payload no contiene sst.exe");
     }
 
-    Command::new(&sst)
-        .current_dir(&destination)
-        .spawn()
-        .with_context(|| format!("no se pudo iniciar {}", sst.display()))?;
+    if launch {
+        Command::new(&sst)
+            .current_dir(&destination)
+            .spawn()
+            .with_context(|| format!("no se pudo iniciar {}", sst.display()))?;
+    }
+
     Ok(())
+}
+
+fn resolve_destination(parent: &Path) -> Result<(PathBuf, bool)> {
+    let mut args = std::env::args_os().skip(1);
+    match args.next() {
+        None => Ok((parent.join(INSTALL_DIR), true)),
+        Some(flag) if flag == OsString::from("--extract-only") => {
+            let destination = args
+                .next()
+                .map(PathBuf::from)
+                .context("--extract-only requiere una carpeta de destino")?;
+            if args.next().is_some() {
+                bail!("--extract-only acepta una sola carpeta de destino");
+            }
+            Ok((destination, false))
+        }
+        Some(other) => bail!(
+            "argumento no reconocido para SST Setup: {}",
+            other.to_string_lossy()
+        ),
+    }
 }
 
 fn read_appended_payload(path: &Path) -> Result<Vec<u8>> {
