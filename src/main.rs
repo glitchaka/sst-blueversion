@@ -1,4 +1,5 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
+#![deny(warnings)]
 
 mod adapters;
 mod app;
