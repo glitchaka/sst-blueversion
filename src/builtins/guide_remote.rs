@@ -10,6 +10,37 @@ const MAX_TUTORIAL_BYTES: usize = 512 * 1024;
 
 static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
 
+pub(super) fn catalog() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("overview", "Inventario global de capacidades de SST."),
+        ("shell-invocation", "Opciones de arranque de sst.exe/Nwash."),
+        ("network", "notsh/net completo: diagnóstico, scan, monitor, tráfico y proveedores."),
+        ("device", "Inventario de dispositivos por MAC/IP."),
+        ("switch", "Perfiles SNMP y localización MAC a puerto."),
+        ("wol", "Wake-on-LAN por MAC o equipo inventariado."),
+        ("diagnostics", "Diagnósticos compuestos de red, hardware, tráfico y dominio."),
+        ("system", "sys completo y sus aliases públicos."),
+        ("domain-status", "Consulta local/remota de pertenencia a dominio."),
+        ("sys-domain", "Administración local de dominio: status, join, leave y OU."),
+        ("hostname", "Consulta y cambio de nombre del equipo."),
+        ("autologon", "Sysinternals Autologon integrado en SST."),
+        ("security", "triage, intel y herramientas de seguridad de sys."),
+        ("windows-admin", "EventLog, servicios, Registro, procesos, ACL, PnP, tareas, sesiones, shares, firewall y energía."),
+        ("sudo", "Administrador, LOCAL SYSTEM y TrustedInstaller."),
+        ("instp", "Gestor de paquetes portables de SST."),
+        ("config", "Configuración, fondos, carrusel y rutas SST."),
+        ("update", "Estado, búsqueda e instalación de actualizaciones SST."),
+        ("tools", "tools/tool/utils y herramientas de mantenimiento."),
+        ("office-sara", "OfficeScrubScenario con SaRACmd legacy."),
+        ("office-gethelp", "OfficeScrubScenario con GetHelpCmd actual."),
+        ("tour", "Tour interactivo y ejemplos empaquetados."),
+        ("helix", "Editor Helix-SST, opciones y controles."),
+        ("bash-nwash", "Builtins Bash/Nwash y todas sus opciones implementadas."),
+        ("unix-compat", "Comandos Unix/GNU-like y sus opciones implementadas."),
+        ("guide", "Uso del manual interactivo y reglas de documentación."),
+    ]
+}
+
 pub(super) fn load(topic: &str) -> Option<String> {
     let filename = filename_for(topic)?;
     let key = filename.to_owned();
