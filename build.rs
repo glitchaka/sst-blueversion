@@ -32,7 +32,6 @@ fn main() {
     println!("cargo:rerun-if-changed=assets/shell-shock-mascot.svg");
     println!("cargo:rerun-if-changed=assets/sst-icon.ico");
     println!("cargo:rerun-if-changed=assets/sst-icon.png");
-    println!("cargo:rerun-if-changed=assets/sst-neofetch.png");
     println!("cargo:rerun-if-changed=bg");
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR no definido"));
