@@ -904,7 +904,7 @@ fn fetch_logo_color(code: u8) -> Option<(u8, u8, u8)> {
         b'G' => Some((186, 189, 198)),
         b'N' => Some((35, 52, 106)),
         b'D' => Some((17, 30, 70)),
-        b'B' => Some((145, 148, 156)),
+        b'B' => Some((6, 48, 185)),
         b'Y' => Some((251, 242, 54)),
         _ => None,
     }
