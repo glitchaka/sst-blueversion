@@ -7,6 +7,10 @@ if (-not $versionMatch.Success) {
     throw 'No se pudo obtener la version desde Cargo.toml.'
 }
 $version = $versionMatch.Groups[1].Value
+$publicReleaseTag = "sst-v$version"
+$publicReleaseBase = "https://github.com/glitchaka/adm-toolbox/releases/download/$publicReleaseTag"
+$publicSstUrl = "$publicReleaseBase/sst.exe"
+$publicSetupUrl = "$publicReleaseBase/SST-Setup-$version.exe"
 
 $releaseNotesPath = Join-Path $root ".release\v$version.md"
 if (-not (Test-Path -LiteralPath $releaseNotesPath -PathType Leaf)) {
@@ -115,12 +119,13 @@ $updateManifest = [ordered]@{
     version = $version
     channel = 'blue'
     published_at = [DateTimeOffset]::UtcNow.ToString('o')
-    asset_url = 'sst.exe'
+    asset_url = $publicSstUrl
     sha256 = $exeHash
     size = $exeSize
     changes = $changes
     setup = [ordered]@{
         name = $setupName
+        url = $publicSetupUrl
         sha256 = $setupHash
         size = $setupSize
         single_use = $true
@@ -144,6 +149,7 @@ Remove-Item -Recurse -Force -LiteralPath $stage
 
 Write-Host "SST $version empaquetado en $dist"
 Write-Host "  Cambios publicados: $($changes.Count)"
+Write-Host "  Update binario: $publicSstUrl"
 Write-Host "  $setupName ($setupSize bytes, single-use, id=$packageId)"
 Write-Host '  sst.exe'
 Write-Host '  sst-update.json'
