@@ -1,7 +1,3 @@
-param(
-    [string]$UpdateManifestUrl = ''
-)
-
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $manifestPath = Join-Path $root 'Cargo.toml'
@@ -11,14 +7,6 @@ if (-not $versionMatch.Success) {
     throw 'No se pudo obtener la version desde Cargo.toml.'
 }
 $version = $versionMatch.Groups[1].Value
-
-if ([string]::IsNullOrWhiteSpace($UpdateManifestUrl)) {
-    throw 'Falta UpdateManifestUrl. Un paquete distribuible de SST debe incluir un canal HTTPS de actualizacion.'
-}
-$UpdateManifestUrl = $UpdateManifestUrl.Trim()
-if (-not $UpdateManifestUrl.StartsWith('https://', [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw 'UpdateManifestUrl debe usar HTTPS.'
-}
 
 $releaseNotesPath = Join-Path $root ".release\v$version.md"
 if (-not (Test-Path -LiteralPath $releaseNotesPath -PathType Leaf)) {
@@ -71,14 +59,6 @@ $bg = Join-Path $release 'bg'
 if (Test-Path -LiteralPath $bg -PathType Container) {
     Copy-Item -Recurse -LiteralPath $bg -Destination (Join-Path $stage 'bg')
 }
-
-$data = Join-Path $stage 'data'
-New-Item -ItemType Directory -Force -Path $data | Out-Null
-[System.IO.File]::WriteAllText(
-    (Join-Path $data 'update-channel.txt'),
-    $UpdateManifestUrl + [Environment]::NewLine,
-    (New-Object System.Text.UTF8Encoding($false))
-)
 
 $setupName = "SST-Setup-$version.exe"
 $setup = Join-Path $dist $setupName
@@ -163,7 +143,6 @@ $manifestJson = ($updateManifest | ConvertTo-Json -Depth 5) + [Environment]::New
 Remove-Item -Recurse -Force -LiteralPath $stage
 
 Write-Host "SST $version empaquetado en $dist"
-Write-Host "  Canal update: $UpdateManifestUrl"
 Write-Host "  Cambios publicados: $($changes.Count)"
 Write-Host "  $setupName ($setupSize bytes, single-use, id=$packageId)"
 Write-Host '  sst.exe'
