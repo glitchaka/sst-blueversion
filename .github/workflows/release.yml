@@ -20,6 +20,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Require main and public update publisher
+        shell: pwsh
+        env:
+          UPDATE_TOKEN: ${{ secrets.SST_UPDATE_PUBLISH_TOKEN }}
+        run: |
+          if ('${{ github.ref }}' -ne 'refs/heads/main') {
+            throw 'Las releases distribuibles de SST sólo pueden publicarse desde main.'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:UPDATE_TOKEN)) {
+            throw 'Falta el secret SST_UPDATE_PUBLISH_TOKEN con permiso Contents: Read and write sobre glitchaka/adm-toolbox.'
+          }
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -103,12 +115,98 @@ jobs:
             throw 'La verificación consumió el artefacto original de distribución.'
           }
 
-      - name: Upload distribution artifact
+      - name: Upload private workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: SST-${{ steps.version.outputs.version }}
           path: dist/*
           if-no-files-found: error
+
+      - name: Publish public update payload
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.SST_UPDATE_PUBLISH_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          UPDATE_REPO: glitchaka/adm-toolbox
+        run: |
+          $tag = "sst-v$env:VERSION"
+          $notes = ".release/v$env:VERSION.md"
+          $setup = "dist/SST-Setup-$env:VERSION.exe"
+
+          gh release view $tag --repo $env:UPDATE_REPO *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit $tag --repo $env:UPDATE_REPO --title "SST $env:VERSION" --notes-file $notes
+          } else {
+            gh release create $tag --repo $env:UPDATE_REPO --target main --title "SST $env:VERSION" --notes-file $notes
+          }
+
+          gh release upload $tag --repo $env:UPDATE_REPO dist/sst.exe $setup --clobber
+          if ($LASTEXITCODE -ne 0) {
+            throw 'No se pudo publicar el payload público de actualización.'
+          }
+
+      - name: Verify public update payload
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $manifest = Get-Content -Raw -LiteralPath 'dist/sst-update.json' | ConvertFrom-Json
+          $download = Join-Path $env:RUNNER_TEMP "sst-$env:VERSION-public.exe"
+          if (Test-Path -LiteralPath $download) { Remove-Item -Force -LiteralPath $download }
+
+          & curl.exe -L --fail --silent --show-error --proto '=https' --tlsv1.2 `
+              --connect-timeout 10 --max-time 180 `
+              $manifest.asset_url -o $download
+          if ($LASTEXITCODE -ne 0) {
+            throw 'El binario público no pudo descargarse desde la URL del manifiesto.'
+          }
+
+          $expectedHash = $manifest.sha256.ToLowerInvariant()
+          $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $download).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) {
+            throw "SHA-256 público incorrecto: $actualHash != $expectedHash"
+          }
+          if ((Get-Item -LiteralPath $download).Length -ne [int64]$manifest.size) {
+            throw 'El tamaño del binario público no coincide con el manifiesto.'
+          }
+
+          Write-Host "Payload público verificado: $($manifest.asset_url)"
+
+      - name: Publish update manifest last
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.SST_UPDATE_PUBLISH_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          UPDATE_REPO: glitchaka/adm-toolbox
+        run: |
+          $path = 'updates/blue/sst-update.json'
+          $current = gh api "repos/$env:UPDATE_REPO/contents/$path?ref=main" | ConvertFrom-Json
+          if (-not $current.sha) {
+            throw 'No se pudo obtener el SHA del manifiesto público actual.'
+          }
+
+          $manifestBytes = [System.IO.File]::ReadAllBytes((Join-Path $PWD 'dist/sst-update.json'))
+          $encoded = [Convert]::ToBase64String($manifestBytes)
+          $payload = [ordered]@{
+            message = "Publish SST $env:VERSION update channel"
+            content = $encoded
+            sha = $current.sha
+            branch = 'main'
+          } | ConvertTo-Json
+
+          $request = Join-Path $env:RUNNER_TEMP 'sst-manifest-publish.json'
+          [System.IO.File]::WriteAllText(
+            $request,
+            $payload,
+            (New-Object System.Text.UTF8Encoding($false))
+          )
+
+          gh api --method PUT "repos/$env:UPDATE_REPO/contents/$path" --input $request > $null
+          if ($LASTEXITCODE -ne 0) {
+            throw 'El payload quedó publicado, pero no se pudo activar el manifiesto del canal.'
+          }
+
+          Write-Host "Canal blue activado en SST $env:VERSION"
 
       - name: Create or refresh private source release
         if: ${{ inputs.publish_release }}
