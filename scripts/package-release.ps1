@@ -12,6 +12,38 @@ if (-not $versionMatch.Success) {
 }
 $version = $versionMatch.Groups[1].Value
 
+if ([string]::IsNullOrWhiteSpace($UpdateManifestUrl)) {
+    throw 'Falta UpdateManifestUrl. Un paquete distribuible de SST debe incluir un canal HTTPS de actualizacion.'
+}
+$UpdateManifestUrl = $UpdateManifestUrl.Trim()
+if (-not $UpdateManifestUrl.StartsWith('https://', [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw 'UpdateManifestUrl debe usar HTTPS.'
+}
+
+$releaseNotesPath = Join-Path $root ".release\v$version.md"
+if (-not (Test-Path -LiteralPath $releaseNotesPath -PathType Leaf)) {
+    throw "Faltan notas de release para $version en $releaseNotesPath"
+}
+$changes = @(
+    Get-Content -LiteralPath $releaseNotesPath |
+        ForEach-Object {
+            $match = [regex]::Match($_, '^\s*-\s+(.+?)\s*$')
+            if ($match.Success) { $match.Groups[1].Value.Trim() }
+        } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+)
+if ($changes.Count -eq 0) {
+    throw "Las notas de release de $version no contienen cambios en formato '- texto'."
+}
+if ($changes.Count -gt 32) {
+    throw 'El manifiesto admite como maximo 32 cambios visibles.'
+}
+foreach ($change in $changes) {
+    if ($change.Length -gt 240) {
+        throw "Cambio demasiado largo para el manifiesto: $change"
+    }
+}
+
 & (Join-Path $PSScriptRoot 'sync-version.ps1') -Check
 if ($LASTEXITCODE -ne 0) {
     throw 'Cargo.toml y Cargo.lock no tienen la misma version.'
@@ -40,15 +72,13 @@ if (Test-Path -LiteralPath $bg -PathType Container) {
     Copy-Item -Recurse -LiteralPath $bg -Destination (Join-Path $stage 'bg')
 }
 
-if (-not [string]::IsNullOrWhiteSpace($UpdateManifestUrl)) {
-    $data = Join-Path $stage 'data'
-    New-Item -ItemType Directory -Force -Path $data | Out-Null
-    [System.IO.File]::WriteAllText(
-        (Join-Path $data 'update-channel.txt'),
-        $UpdateManifestUrl.Trim() + [Environment]::NewLine,
-        (New-Object System.Text.UTF8Encoding($false))
-    )
-}
+$data = Join-Path $stage 'data'
+New-Item -ItemType Directory -Force -Path $data | Out-Null
+[System.IO.File]::WriteAllText(
+    (Join-Path $data 'update-channel.txt'),
+    $UpdateManifestUrl + [Environment]::NewLine,
+    (New-Object System.Text.UTF8Encoding($false))
+)
 
 $setupName = "SST-Setup-$version.exe"
 $setup = Join-Path $dist $setupName
@@ -108,6 +138,7 @@ $updateManifest = [ordered]@{
     asset_url = 'sst.exe'
     sha256 = $exeHash
     size = $exeSize
+    changes = $changes
     setup = [ordered]@{
         name = $setupName
         sha256 = $setupHash
@@ -132,6 +163,8 @@ $manifestJson = ($updateManifest | ConvertTo-Json -Depth 5) + [Environment]::New
 Remove-Item -Recurse -Force -LiteralPath $stage
 
 Write-Host "SST $version empaquetado en $dist"
+Write-Host "  Canal update: $UpdateManifestUrl"
+Write-Host "  Cambios publicados: $($changes.Count)"
 Write-Host "  $setupName ($setupSize bytes, single-use, id=$packageId)"
 Write-Host '  sst.exe'
 Write-Host '  sst-update.json'
