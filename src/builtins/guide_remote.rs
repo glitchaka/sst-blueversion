@@ -148,7 +148,6 @@ fn source_for(topic: &str) -> Option<ManualSource> {
         "config" | "reload" | "sst-path" | "sst-config" => whole("config"),
         "update" => whole("update"),
         "helix" | "hx" | "helix-sst" => whole("helix"),
-        "tour" => whole("tour"),
 
         "." => bash("source"),
         "[" => bash("test"),
