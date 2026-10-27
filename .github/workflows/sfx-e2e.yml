@@ -28,7 +28,7 @@ jobs:
 
       - name: Build final self-extractor
         shell: pwsh
-        run: ./scripts/package-release.ps1 -UpdateManifestUrl 'https://example.invalid/sst-update.json'
+        run: ./scripts/package-release.ps1
 
       - name: Execute single-use self-extractor end to end
         shell: pwsh
