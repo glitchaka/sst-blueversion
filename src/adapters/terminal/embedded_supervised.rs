@@ -11,6 +11,8 @@ use std::{
 
 use anyhow::Result;
 
+use crate::adapters::persistence::AppPaths;
+
 use super::embedded_inner;
 
 const TERMINAL_ERROR_MARKER: &[u8] = b"Error de terminal:";
@@ -18,7 +20,7 @@ const LEGACY_BANNER_MARKER: &[u8] = b"Escribe help para ver los comandos.";
 const SECURITY_PRELOAD_MARKER: &[u8] = b"procesos              revisando";
 const STARTUP_GREETING_MARKER: &str = "«Hola. ¿Te gustaría destruir algún mal hoy?»";
 const STARTUP_FOOTER: &str =
-    "\r\n\x1b[38;5;250mConsejo: usa \x1b[1;38;5;117mguide\x1b[0;38;5;250m para conocer todo lo que puedes hacer con SST.\x1b[0m\r\n\r\n\x1b[1;38;5;117m«Hola. ¿Te gustaría destruir algún mal hoy?»\x1b[0m\r\n\r\n";
+    "\r\n\x1b[38;5;250mConsejo: usa \x1b[1;38;5;117mguide\x1b[0;38;5;250m para conocer todo lo que puedes hacer con SST.\x1b[0m\r\n\r\n\x1b[1;38;5;117m«Hola. ¿Te gustaría destruir algún mal hoy?»\x1b[0m\r\n";
 const EXIT_SETTLE_TIME: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -38,11 +40,14 @@ pub struct EmbeddedSession {
     pub output: mpsc::Receiver<Vec<u8>>,
     worker_failed: Arc<AtomicBool>,
     exit_seen_at: Mutex<Option<Instant>>,
+    paths: AppPaths,
+    update_scheduled: AtomicBool,
 }
 
 impl EmbeddedSession {
     pub fn start(cols: u16, rows: u16) -> Result<Self> {
         let mut inner = embedded_inner::EmbeddedSession::start(cols, rows)?;
+        let paths = AppPaths::detect();
 
         // Move the worker output receiver into a relay. Besides supervising fatal
         // worker errors, this keeps the visual startup compact: neofetch remains
@@ -52,6 +57,7 @@ impl EmbeddedSession {
         let (relay_tx, output) = mpsc::channel();
         let worker_failed = Arc::new(AtomicBool::new(false));
         let relay_failed = Arc::clone(&worker_failed);
+        let update_paths = paths.clone();
 
         thread::spawn(move || {
             let mut startup = StartupRelayState::WaitingForFetch;
@@ -91,6 +97,26 @@ impl EmbeddedSession {
                             if relay_tx.send(STARTUP_FOOTER.as_bytes().to_vec()).is_err() {
                                 break;
                             }
+
+                            // The updater belongs to the real terminal lifecycle,
+                            // not to a silent background task. Run it after the
+                            // compact startup footer and relay progress directly
+                            // into the same SST console.
+                            let update_result = crate::application::update::startup_update(
+                                &update_paths,
+                                |text| {
+                                    let _ = relay_tx.send(text.as_bytes().to_vec());
+                                },
+                            );
+                            if let Err(error) = update_result {
+                                let message = format!(
+                                    "\r\n\x1b[1;38;5;203mActualizaciones: no se pudo completar la comprobación: {error}\x1b[0m\r\n\r\n"
+                                );
+                                if relay_tx.send(message.into_bytes()).is_err() {
+                                    break;
+                                }
+                            }
+
                             startup = StartupRelayState::Complete;
                         }
                         // All preload progress and the verbose startup report are
@@ -111,6 +137,8 @@ impl EmbeddedSession {
             output,
             worker_failed,
             exit_seen_at: Mutex::new(None),
+            paths,
+            update_scheduled: AtomicBool::new(false),
         })
     }
 
@@ -137,12 +165,38 @@ impl EmbeddedSession {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         match *seen {
-            Some(instant) => instant.elapsed() >= EXIT_SETTLE_TIME,
+            Some(instant) if instant.elapsed() >= EXIT_SETTLE_TIME => {
+                self.schedule_update_once();
+                true
+            }
+            Some(_) => false,
             None => {
                 *seen = Some(Instant::now());
                 false
             }
         }
+    }
+
+    fn schedule_update_once(&self) {
+        if self
+            .update_scheduled
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return;
+        }
+
+        if crate::application::update::schedule_pending_update(&self.paths).is_err() {
+            self.update_scheduled.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
+impl Drop for EmbeddedSession {
+    fn drop(&mut self) {
+        // Closing the native window bypasses the shell's `exit` command. Schedule
+        // a pending update here too so both exit paths apply the staged binary.
+        self.schedule_update_once();
     }
 }
 
