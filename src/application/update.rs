@@ -393,6 +393,12 @@ fn download(url: &str, destination: &Path) -> Result<()> {
         "--proto",
         "=https",
         "--tlsv1.2",
+        "--connect-timeout",
+        "5",
+        "--max-time",
+        "120",
+        "--retry",
+        "1",
         "-H",
         &format!("User-Agent: {CURL_USER_AGENT}"),
     ]);
