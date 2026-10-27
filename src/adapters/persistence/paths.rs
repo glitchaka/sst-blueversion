@@ -31,8 +31,9 @@ SST_CORNER_RADIUS=16
 # Separación entre la isla superior y la primera línea de contenido.
 SST_CONTENT_TOP_GAP=12
 
-# Densidad de la terminal.
+# Densidad y texto de la terminal.
 SST_FONT_SIZE=13
+SST_FONT_COLOR='#DFE8EF'
 SST_CELL_WIDTH=8
 SST_CELL_HEIGHT=17
 SST_TERMINAL_PADDING_X=8
@@ -121,6 +122,7 @@ pub struct AppearanceConfig {
     pub corner_radius: u16,
     pub content_top_gap: u16,
     pub font_size: u16,
+    pub font_color: String,
     pub cell_width: u16,
     pub cell_height: u16,
     pub terminal_padding_x: u16,
@@ -142,6 +144,7 @@ impl Default for AppearanceConfig {
             corner_radius: 16,
             content_top_gap: 12,
             font_size: 13,
+            font_color: "#DFE8EF".to_owned(),
             cell_width: 8,
             cell_height: 17,
             terminal_padding_x: 8,
@@ -236,6 +239,7 @@ impl AppPaths {
 
             for (key, value, comment) in [
                 ("SST_FONT_SIZE", "13", "# Tamaño de fuente de la terminal."),
+                ("SST_FONT_COLOR", "'#DFE8EF'", "# Color base del texto de la terminal (#RRGGBB)."),
                 ("SST_CELL_WIDTH", "8", "# Ancho de celda de la terminal."),
                 ("SST_CELL_HEIGHT", "17", "# Alto de celda de la terminal."),
                 ("SST_TERMINAL_PADDING_X", "8", "# Padding horizontal de la terminal."),
@@ -287,6 +291,9 @@ impl AppPaths {
                 }
                 if let Some(value) = appearance.get("background_color").and_then(toml::Value::as_str) {
                     replace("SST_BACKGROUND_COLOR", value.to_owned());
+                }
+                if let Some(value) = appearance.get("font_color").and_then(toml::Value::as_str) {
+                    replace("SST_FONT_COLOR", value.to_owned());
                 }
                 if let Some(value) = appearance.get("background_image").and_then(toml::Value::as_str) {
                     replace("SST_BACKGROUND_IMAGE", value.to_owned());
@@ -366,6 +373,9 @@ impl AppPaths {
             .and_then(|value| value.parse::<u16>().ok())
         {
             config.font_size = value.clamp(8, 32);
+        }
+        if let Some(value) = assignment_value(&text, "SST_FONT_COLOR") {
+            config.font_color = value;
         }
         if let Some(value) = assignment_value(&text, "SST_CELL_WIDTH")
             .and_then(|value| value.parse::<u16>().ok())
