@@ -505,7 +505,7 @@ fn wrap(value: &str, width: usize) -> Vec<String> {
     let mut rows = Vec::new();
     let mut line = String::new();
     for word in value.split_whitespace() {
-        let extra = word.chars().count() + usize::from(!line.is_empty());
+        let extra = word.chars().count() + if line.is_empty() { 0 } else { 1 };
         if !line.is_empty() && line.chars().count() + extra > width {
             rows.push(line);
             line = String::new();
