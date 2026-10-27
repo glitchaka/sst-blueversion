@@ -162,9 +162,15 @@ function Value-OrUnknown($value) {
     return [string]$value
 }
 
+$inventoryPath = 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Inventory\Office\16.0'
+$inventory = Get-ItemProperty -LiteralPath $inventoryPath -ErrorAction SilentlyContinue
 $c2r = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration' -ErrorAction SilentlyContinue
 $c2rSvc = Get-Service -Name ClickToRunSvc -ErrorAction SilentlyContinue
 $tokenBroker = Get-Service -Name TokenBroker -ErrorAction SilentlyContinue
+
+$inventoryProducts = if ($inventory) { $inventory.OfficeProductReleaseIds } else { $null }
+$inventoryVersion = if ($inventory) { $inventory.OfficePackageVersion } else { $null }
+$hasInventory = [bool]($inventory -and ($inventoryProducts -or $inventoryVersion))
 
 $roots = @()
 if ($env:ProgramFiles) { $roots += (Join-Path $env:ProgramFiles 'Microsoft Office\root\Office16') }
@@ -186,20 +192,23 @@ $registeredOffice = @(
         }
 )
 
-$hasCoreResidue = [bool]($c2r -or $c2rSvc -or $officeRoot -or $outlookPath)
-if ($registeredOffice.Count -gt 0) {
+$hasCoreComponents = [bool]($c2r -or $c2rSvc -or $officeRoot -or $outlookPath)
+if ($hasInventory) {
+    $officeState = 'INSTALLED / C2R INVENTORY PRESENT'
+} elseif ($registeredOffice.Count -gt 0) {
     $officeState = 'INSTALLED / REGISTERED PRODUCT PRESENT'
-} elseif ($hasCoreResidue) {
-    $officeState = 'REMOVED / CORE RESIDUALS PRESENT'
+} elseif ($hasCoreComponents) {
+    $officeState = 'INCOMPLETE / C2R INVENTORY MISSING'
 } else {
     $officeState = 'ABSENT / CLEAN'
 }
 
-$officeVersion = $null
-if ($c2r) {
+$officeVersion = $inventoryVersion
+if (-not $officeVersion -and $c2r) {
     if ($c2r.VersionToReport) { $officeVersion = $c2r.VersionToReport }
     elseif ($c2r.ClientVersionToReport) { $officeVersion = $c2r.ClientVersionToReport }
 }
+$productReleaseIds = if ($inventoryProducts) { $inventoryProducts } elseif ($c2r) { $c2r.ProductReleaseIds } else { $null }
 
 $webView = $null
 $edgeRoots = @(
@@ -251,14 +260,15 @@ $wvProcesses = @(Get-Process -Name msedgewebview2 -ErrorAction SilentlyContinue)
 
 Write-Output 'OFFICE'
 Write-Output ("  State ................ {0}" -f $officeState)
-Write-Output ("  Registered products .. {0}" -f $registeredOffice.Count)
+Write-Output ("  C2R Inventory ........ {0}" -f $(if ($hasInventory) { 'PRESENT' } else { 'ABSENT' }))
+Write-Output ("  OfficeProductReleaseIds {0}" -f (Value-OrUnknown $productReleaseIds))
+Write-Output ("  OfficePackageVersion . {0}" -f (Value-OrUnknown $officeVersion))
+Write-Output ("  Platform ............. {0}" -f (Value-OrUnknown $c2r.Platform))
+Write-Output ("  Update channel ....... {0}" -f (Value-OrUnknown $c2r.UpdateChannel))
+Write-Output ("  Registered products .. {0} (auxiliary)" -f $registeredOffice.Count)
 foreach ($product in $registeredOffice) {
     Write-Output ("    - {0} {1}" -f $product.DisplayName, $product.DisplayVersion)
 }
-Write-Output ("  Click-to-Run version . {0}" -f (Value-OrUnknown $officeVersion))
-Write-Output ("  Product .............. {0}" -f (Value-OrUnknown $c2r.ProductReleaseIds))
-Write-Output ("  Platform ............. {0}" -f (Value-OrUnknown $c2r.Platform))
-Write-Output ("  Update channel ....... {0}" -f (Value-OrUnknown $c2r.UpdateChannel))
 Write-Output ("  ClickToRunSvc ........ {0}" -f $(if ($c2rSvc) { $c2rSvc.Status } else { 'ABSENT' }))
 Write-Output ("  Office16 root ........ {0}" -f $(if ($officeRoot) { $officeRoot } else { 'ABSENT' }))
 Write-Output ("  Outlook.exe .......... {0}" -f $(if ($outlookPath) { $outlookPath } else { 'ABSENT' }))
