@@ -4,52 +4,46 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
-const TUTORIAL_BASE: &str =
+const MANUAL_BASE: &str =
     "https://raw.githubusercontent.com/glitchaka/adm-toolbox/main/tutorials";
-const MAX_TUTORIAL_BYTES: usize = 512 * 1024;
+const MAX_MANUAL_BYTES: usize = 512 * 1024;
 
 static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
 
-pub(super) fn catalog() -> &'static [(&'static str, &'static str)] {
-    &[
-        ("overview", "Inventario global de capacidades de SST."),
-        ("shell-invocation", "Opciones de arranque de sst.exe/Nwash."),
-        ("network", "notsh/net completo: diagnóstico, scan, monitor, tráfico y proveedores."),
-        ("device", "Inventario de dispositivos por MAC/IP."),
-        ("switch", "Perfiles SNMP y localización MAC a puerto."),
-        ("wol", "Wake-on-LAN por MAC o equipo inventariado."),
-        ("diagnostics", "Diagnósticos compuestos de red, hardware, tráfico y dominio."),
-        ("system", "sys completo y sus aliases públicos."),
-        ("domain-status", "Consulta local/remota de pertenencia a dominio."),
-        ("sys-domain", "Administración local de dominio: status, join, leave y OU."),
-        ("hostname", "Consulta y cambio de nombre del equipo."),
-        ("autologon", "Sysinternals Autologon integrado en SST."),
-        ("security", "triage, intel y herramientas de seguridad de sys."),
-        ("windows-admin", "EventLog, servicios, Registro, procesos, ACL, PnP, tareas, sesiones, shares, firewall y energía."),
-        ("sudo", "Administrador, LOCAL SYSTEM y TrustedInstaller."),
-        ("instp", "Gestor de paquetes portables de SST."),
-        ("config", "Configuración, fondos, carrusel y rutas SST."),
-        ("update", "Estado, búsqueda e instalación de actualizaciones SST."),
-        ("tools", "tools/tool/utils y herramientas de mantenimiento."),
-        ("office-sara", "OfficeScrubScenario con SaRACmd legacy."),
-        ("office-gethelp", "OfficeScrubScenario con GetHelpCmd actual."),
-        ("tour", "Tour interactivo y ejemplos empaquetados."),
-        ("helix", "Editor Helix-SST, opciones y controles."),
-        ("bash-nwash", "Builtins Bash/Nwash y todas sus opciones implementadas."),
-        ("unix-compat", "Comandos Unix/GNU-like y sus opciones implementadas."),
-        ("guide", "Uso del manual interactivo y reglas de documentación."),
-    ]
+#[derive(Clone, Copy)]
+enum Section {
+    Whole,
+    Windows(&'static str),
+    Security(&'static str),
+    Bash(&'static str),
+    Unix(&'static str),
+}
+
+#[derive(Clone, Copy)]
+struct ManualSource {
+    file: &'static str,
+    section: Section,
 }
 
 pub(super) fn load(topic: &str) -> Option<String> {
-    let filename = filename_for(topic)?;
-    let key = filename.to_owned();
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let source = source_for(topic)?;
+    let raw = fetch_cached(source.file)?;
+    let extracted = match source.section {
+        Section::Whole => raw,
+        Section::Windows(name) => extract_windows(&raw, name).unwrap_or(raw),
+        Section::Security(name) => extract_numbered(&raw, name).unwrap_or(raw),
+        Section::Bash(name) => extract_bash(&raw, name).unwrap_or(raw),
+        Section::Unix(name) => extract_unix(&raw, name).unwrap_or(raw),
+    };
+    Some(extracted)
+}
 
+fn fetch_cached(filename: &str) -> Option<String> {
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(value) = cache
         .lock()
         .unwrap_or_else(|error| error.into_inner())
-        .get(&key)
+        .get(filename)
         .cloned()
     {
         return value;
@@ -59,12 +53,12 @@ pub(super) fn load(topic: &str) -> Option<String> {
     cache
         .lock()
         .unwrap_or_else(|error| error.into_inner())
-        .insert(key, value.clone());
+        .insert(filename.to_owned(), value.clone());
     value
 }
 
 fn fetch_file(filename: &str) -> Option<String> {
-    let url = format!("{TUTORIAL_BASE}/{filename}.txt");
+    let url = format!("{MANUAL_BASE}/{filename}.txt");
 
     #[cfg(windows)]
     let curl = crate::support::windows::system32_executable("curl.exe").ok()?;
@@ -85,89 +79,284 @@ fn fetch_file(filename: &str) -> Option<String> {
             "--max-time",
             "20",
             "--user-agent",
-            "SST-Guide/1",
+            "SST-Guide/2",
         ])
         .arg(url)
         .output()
         .ok()?;
 
-    if !output.status.success() || output.stdout.is_empty() || output.stdout.len() > MAX_TUTORIAL_BYTES {
+    if !output.status.success() || output.stdout.is_empty() || output.stdout.len() > MAX_MANUAL_BYTES {
         return None;
     }
-
     String::from_utf8(output.stdout).ok()
 }
 
-fn filename_for(topic: &str) -> Option<&'static str> {
+fn source_for(topic: &str) -> Option<ManualSource> {
     let topic = topic.trim().to_ascii_lowercase();
+    let whole = |file| ManualSource { file, section: Section::Whole };
+    let windows = |name| ManualSource { file: "windows-admin", section: Section::Windows(name) };
+    let security = |name| ManualSource { file: "security", section: Section::Security(name) };
+    let bash = |name| ManualSource { file: "bash-nwash", section: Section::Bash(name) };
+    let unix = |name| ManualSource { file: "unix-compat", section: Section::Unix(name) };
+
     Some(match topic.as_str() {
-        // Direct manual chapter names. These make the Tutoriales category independently
-        // navigable even when the reader does not know a command name yet.
-        "overview" => "overview",
-        "shell-invocation" => "shell-invocation",
-        "guide" | "wiki" | "manual" => "guide",
-        "network" => "network",
-        "device" => "device",
-        "switch" => "switch",
-        "wol" => "wol",
-        "diagnostics" => "diagnostics",
-        "domain-status" => "domain-status",
-        "sys-domain" | "domain-admin" => "domain",
-        "hostname" => "hostname",
-        "autologon" => "autologon",
-        "system" => "system",
-        "security" => "security",
-        "windows-admin" => "windows-admin",
-        "instp" => "instp",
-        "sudo" => "sudo",
-        "config" => "config",
-        "update" => "update",
-        "tools" => "tools",
-        "office-sara" => "office-sara",
-        "office-gethelp" => "office-gethelp",
-        "tour" => "tour",
-        "helix" => "helix",
-        "bash-nwash" => "bash-nwash",
-        "unix-compat" => "unix-compat",
+        "sys" | "ps" | "top" | "df" | "free" | "whoami" | "uname" | "uptime"
+        | "fetch" | "neofetch" | "fastfetch" => whole("system"),
+        "hostname" | "sys hostname" => whole("hostname"),
+        "sys domain" | "domain-admin" => whole("domain"),
+        "sys autologon" | "autologon" => whole("autologon"),
 
-        // Command/alias -> manual chapter mappings.
-        "notsh" | "net" => "network",
-        "diag" => "diagnostics",
+        "notsh" | "net" => whole("network"),
+        "device" => whole("device"),
+        "switch" => whole("switch"),
+        "wol" => whole("wol"),
+        "diag" => whole("diagnostics"),
 
-        "domain" => "domain-status",
-        "ps" | "top" | "df" | "free" | "whoami" | "uname" | "uptime"
-        | "fetch" | "neofetch" | "fastfetch" | "sys" => "system",
+        "domain" => whole("domain-status"),
+        "eventlog" => windows("EVENTLOG"),
+        "service" => windows("SERVICE"),
+        "registry" => windows("REGISTRY"),
+        "process" => windows("PROCESS"),
+        "acl" => windows("ACL"),
+        "pnp" => windows("PNP"),
+        "task" => windows("TASK"),
+        "session" => windows("SESSION"),
+        "share" => windows("SHARE"),
+        "firewall" => windows("FIREWALL"),
+        "power" => windows("POWER"),
 
-        "triage" | "intel" => "security",
+        "triage" => security("triage"),
+        "intel" => security("intel"),
+        "sudo" | "runas" => whole("sudo"),
+        "tools" | "tool" | "utils" => whole("tools"),
+        "tools office diagnose" | "tools office status" | "tools office verify" => whole("office-diagnose"),
+        "tools office auth repair" => whole("office-auth-repair"),
+        "tools office scrub" | "tools office sara" | "tools office uninstall" | "tools office remove" => whole("office-sara"),
+        "tools office scrub-current" | "tools office gethelp" => whole("office-gethelp"),
+        "instp" => whole("instp"),
+        "config" | "reload" | "sst-path" | "sst-config" => whole("config"),
+        "update" => whole("update"),
+        "helix" | "hx" | "helix-sst" => whole("helix"),
+        "tour" => whole("tour"),
 
-        "eventlog" | "service" | "registry" | "process" | "acl" | "pnp" | "task"
-        | "session" | "share" | "firewall" | "power" => "windows-admin",
+        "." => bash("source"),
+        "[" => bash("test"),
+        "readarray" => bash("mapfile"),
+        "typeset" => bash("declare"),
+        ":" => bash(":"),
+        "alias" => bash("alias"),
+        "bg" => bash("bg"),
+        "bind" => bash("bind"),
+        "break" => bash("break"),
+        "builtin" => bash("builtin"),
+        "caller" => bash("caller"),
+        "cd" => bash("cd"),
+        "command" => bash("command"),
+        "compgen" => bash("compgen"),
+        "complete" => bash("complete"),
+        "compopt" => bash("compopt"),
+        "continue" => bash("continue"),
+        "declare" => bash("declare"),
+        "dirs" => bash("dirs"),
+        "disown" => bash("disown"),
+        "echo" => bash("echo"),
+        "enable" => bash("enable"),
+        "eval" => bash("eval"),
+        "exec" => bash("exec"),
+        "exit" => bash("exit"),
+        "export" => bash("export"),
+        "false" => bash("false"),
+        "fc" => bash("fc"),
+        "fg" => bash("fg"),
+        "getopts" => bash("getopts"),
+        "hash" => bash("hash"),
+        "help" => bash("help"),
+        "history" => bash("history"),
+        "jobs" => bash("jobs"),
+        "kill" => bash("kill"),
+        "let" => bash("let"),
+        "local" => bash("local"),
+        "logout" => bash("logout"),
+        "mapfile" => bash("mapfile"),
+        "popd" => bash("popd"),
+        "printf" => bash("printf"),
+        "pushd" => bash("pushd"),
+        "pwd" => bash("pwd"),
+        "read" => bash("read"),
+        "readonly" => bash("readonly"),
+        "return" => bash("return"),
+        "set" => bash("set"),
+        "shift" => bash("shift"),
+        "shopt" => bash("shopt"),
+        "source" => bash("source"),
+        "suspend" => bash("suspend"),
+        "test" => bash("test"),
+        "times" => bash("times"),
+        "trap" => bash("trap"),
+        "true" => bash("true"),
+        "type" => bash("type"),
+        "ulimit" => bash("ulimit"),
+        "umask" => bash("umask"),
+        "unalias" => bash("unalias"),
+        "unset" => bash("unset"),
+        "wait" => bash("wait"),
 
-        "runas" => "sudo",
-        "tool" | "utils" => "tools",
-
-        "hx" | "helix-sst" => "helix",
-        "sst-config" | "reload" | "sst-path" => "config",
-
-        ":" | "." | "[" | "alias" | "bg" | "bind" | "break" | "builtin"
-        | "caller" | "cd" | "command" | "compgen" | "complete" | "compopt"
-        | "continue" | "declare" | "dirs" | "disown" | "enable" | "eval" | "exec"
-        | "exit" | "export" | "fc" | "fg" | "getopts" | "hash" | "help" | "history"
-        | "jobs" | "kill" | "let" | "local" | "logout" | "mapfile" | "popd"
-        | "read" | "readarray" | "readonly" | "return" | "set" | "shift" | "shopt"
-        | "source" | "suspend" | "test" | "times" | "trap" | "typeset" | "ulimit"
-        | "umask" | "unalias" | "unset" | "wait" => "bash-nwash",
-
-        // These names are both Bash builtins and Unix-like names. In Nwash the builtin
-        // path wins, so Guide follows the effective execution path.
-        "echo" | "printf" | "pwd" | "true" | "false" | "type" => "bash-nwash",
-
-        "env" | "clear" | "ls" | "cat" | "head" | "tail" | "grep" | "wc" | "sort"
-        | "uniq" | "cut" | "xargs" | "tee" | "less" | "more" | "sed" | "awk"
-        | "diff" | "sha256sum" | "base64" | "find" | "basename" | "dirname"
-        | "realpath" | "date" | "sleep" | "touch" | "mkdir" | "rm" | "cp" | "mv"
-        | "tar" | "gzip" | "gunzip" | "zip" | "unzip" | "which" => "unix-compat",
-
+        "env" => unix("env"),
+        "clear" => unix("clear"),
+        "ls" => unix("ls"),
+        "cat" => unix("cat"),
+        "head" => unix("head"),
+        "tail" => unix("tail"),
+        "grep" => unix("grep"),
+        "wc" => unix("wc"),
+        "sort" => unix("sort"),
+        "uniq" => unix("uniq"),
+        "cut" => unix("cut"),
+        "xargs" => unix("xargs"),
+        "tee" => unix("tee"),
+        "less" => unix("less"),
+        "more" => unix("more"),
+        "sed" => unix("sed"),
+        "awk" => unix("awk"),
+        "diff" => unix("diff"),
+        "sha256sum" => unix("sha256sum"),
+        "base64" => unix("base64"),
+        "find" => unix("find"),
+        "basename" => unix("basename"),
+        "dirname" => unix("dirname"),
+        "realpath" => unix("realpath"),
+        "date" => unix("date"),
+        "sleep" => unix("sleep"),
+        "touch" => unix("touch"),
+        "mkdir" => unix("mkdir"),
+        "rm" => unix("rm"),
+        "cp" => unix("cp"),
+        "mv" => unix("mv"),
+        "tar" => unix("tar"),
+        "gzip" => unix("gzip"),
+        "gunzip" => unix("gunzip"),
+        "zip" => unix("zip"),
+        "unzip" => unix("unzip"),
+        "which" => unix("which"),
         _ => return None,
     })
+}
+
+fn extract_windows(raw: &str, heading: &str) -> Option<String> {
+    const HEADINGS: &[&str] = &[
+        "EVENTLOG", "SERVICE", "REGISTRY", "PROCESS", "ACL", "PNP", "TASK", "SESSION",
+        "SHARE", "FIREWALL", "POWER", "SEGURIDAD",
+    ];
+    extract_named_block(raw, heading, HEADINGS)
+}
+
+fn extract_bash(raw: &str, topic: &str) -> Option<String> {
+    if matches!(topic, ":" | "true" | "false") {
+        return extract_numbered(raw, "Builtins mínimos");
+    }
+
+    let lines = raw.lines().collect::<Vec<_>>();
+    let start_floor = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("2."))
+        .unwrap_or(0);
+
+    for index in start_floor..lines.len() {
+        let line = lines[index];
+        if line == line.trim() && line.eq_ignore_ascii_case(topic) {
+            let mut end = lines.len();
+            for next in index + 1..lines.len() {
+                let candidate = lines[next];
+                if candidate == candidate.trim()
+                    && (is_numbered_heading(candidate)
+                        || is_bash_builtin_name(candidate.trim()))
+                {
+                    end = next;
+                    break;
+                }
+            }
+            return Some(lines[index..end].join("\n").trim().to_owned());
+        }
+    }
+
+    extract_numbered(raw, topic)
+}
+
+fn extract_unix(raw: &str, topic: &str) -> Option<String> {
+    if matches!(topic, "env" | "clear") {
+        return extract_numbered(raw, "Básicos de UnixService");
+    }
+    extract_numbered(raw, topic)
+}
+
+fn extract_numbered(raw: &str, keyword: &str) -> Option<String> {
+    let lines = raw.lines().collect::<Vec<_>>();
+    let keyword = keyword.to_ascii_lowercase();
+    let start = lines.iter().position(|line| {
+        is_numbered_heading(line)
+            && heading_tokens(line).iter().any(|token| {
+                token == &keyword || keyword.split_whitespace().all(|part| heading_tokens(line).iter().any(|token| token == part))
+            })
+    })?;
+    let end = lines
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .find_map(|(index, line)| is_numbered_heading(line).then_some(index))
+        .unwrap_or(lines.len());
+    Some(lines[start..end].join("\n").trim().to_owned())
+}
+
+fn extract_named_block(raw: &str, heading: &str, headings: &[&str]) -> Option<String> {
+    let lines = raw.lines().collect::<Vec<_>>();
+    let start = lines
+        .iter()
+        .position(|line| line.trim().eq_ignore_ascii_case(heading))?;
+    let end = lines
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .find_map(|(index, line)| {
+            let candidate = line.trim();
+            headings
+                .iter()
+                .any(|known| candidate.eq_ignore_ascii_case(known))
+                .then_some(index)
+        })
+        .unwrap_or(lines.len());
+    Some(lines[start..end].join("\n").trim().to_owned())
+}
+
+fn is_numbered_heading(line: &str) -> bool {
+    let line = line.trim();
+    let Some((number, rest)) = line.split_once('.') else {
+        return false;
+    };
+    !number.is_empty()
+        && number.chars().all(|ch| ch.is_ascii_digit())
+        && rest.starts_with(' ')
+}
+
+fn heading_tokens(line: &str) -> Vec<String> {
+    line.split_once('.')
+        .map(|(_, rest)| rest)
+        .unwrap_or(line)
+        .split(|ch: char| !ch.is_alphanumeric() && ch != ':' && ch != '-')
+        .filter(|part| !part.is_empty())
+        .map(|part| part.trim_matches(':').to_ascii_lowercase())
+        .collect()
+}
+
+fn is_bash_builtin_name(value: &str) -> bool {
+    matches!(
+        value,
+        ":" | "." | "[" | "alias" | "bg" | "bind" | "break" | "builtin" | "caller"
+        | "cd" | "command" | "compgen" | "complete" | "compopt" | "continue" | "declare"
+        | "dirs" | "disown" | "echo" | "enable" | "eval" | "exec" | "exit" | "export"
+        | "false" | "fc" | "fg" | "getopts" | "hash" | "help" | "history" | "jobs"
+        | "kill" | "let" | "local" | "logout" | "mapfile" | "popd" | "printf" | "pushd"
+        | "pwd" | "read" | "readarray" | "readonly" | "return" | "set" | "shift" | "shopt"
+        | "source" | "suspend" | "test" | "times" | "trap" | "true" | "type" | "typeset"
+        | "ulimit" | "umask" | "unalias" | "unset" | "wait"
+    )
 }
