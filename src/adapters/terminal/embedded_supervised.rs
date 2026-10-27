@@ -67,15 +67,10 @@ impl EmbeddedSession {
 
                 match startup {
                     StartupRelayState::WaitingForFetch => {
-                        // embedded.rs still emits the old banner before `fetch`.
-                        // Hide it here so the first visible block is neofetch.
+                        // Ignore any startup-file chatter and the legacy banner.
+                        // The first visible content in the GUI must be neofetch.
                         if contains_bytes(&data, LEGACY_BANNER_MARKER) {
                             startup = StartupRelayState::FetchVisible;
-                            continue;
-                        }
-
-                        if relay_tx.send(data).is_err() {
-                            break;
                         }
                     }
                     StartupRelayState::FetchVisible => {
