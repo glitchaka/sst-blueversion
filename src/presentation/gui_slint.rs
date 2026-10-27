@@ -925,6 +925,7 @@ impl TerminalModel {
             let (left_pad, top_pad, cell_width, cell_height) = self.geometry();
             let font_px = (self.appearance.font_size as f32 * self.scale).round().max(8.0);
             let font_key = font_px.round() as u16;
+            let default_fg = parse_rgb(&self.appearance.font_color).unwrap_or(FG);
 
             for row in 0..rows {
                 for col in 0..cols {
@@ -935,7 +936,7 @@ impl TerminalModel {
                         continue;
                     }
 
-                    let mut fg = terminal_color(cell.fgcolor(), FG);
+                    let mut fg = terminal_color(cell.fgcolor(), default_fg);
                     let mut bg = terminal_color(cell.bgcolor(), BG);
                     let mut paint_background =
                         !matches!(cell.bgcolor(), vt100::Color::Default) || cell.inverse();
