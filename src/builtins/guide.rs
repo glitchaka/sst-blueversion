@@ -1,12 +1,112 @@
-include!("wiki.rs");
+use std::{sync::Arc, time::Duration};
+
+use anyhow::Result;
+
+use crate::core::{
+    CommandContext, CommandOutput,
+    ports::{TerminalFactory, TerminalKey, TerminalSession},
+};
+
+use super::{BuiltinCommand, UNIX_COMMANDS};
 
 const G_SCREEN: &str = "\x1b[44;37m";
 const G_PANEL: &str = "\x1b[47;30m";
-const G_PANEL_BOLD: &str = "\x1b[47;30;1m";
-const G_TITLE: &str = "\x1b[44;93;1m";
-const G_RED: &str = "\x1b[47;31;1m";
-const G_SELECTED: &str = "\x1b[44;97;1m";
 const G_RESET: &str = "\x1b[0m";
+
+const CATEGORY_ORDER: &[(&str, &str)] = &[
+    ("Sistema", "Información del equipo, procesos, memoria, discos, nombre, dominio y Autologon."),
+    ("Red", "Interfaces, rutas, DNS, vecinos, descubrimiento, tráfico, inventario, switches y Wake-on-LAN."),
+    ("Diagnóstico", "Revisiones compuestas para detectar rápidamente problemas de red y del equipo."),
+    ("Windows", "Servicios, Event Log, Registro, procesos, ACL, PnP, tareas, sesiones, SMB, firewall y energía."),
+    ("Seguridad", "Triage, inteligencia, inspección de procesos, persistencia y relaciones de confianza."),
+    ("Privilegios", "Elevación a Administrador, LOCAL SYSTEM y TrustedInstaller."),
+    ("Herramientas", "Herramientas auxiliares integradas en SST."),
+    ("Office", "Diagnóstico, autenticación y desinstalación completa de Microsoft Office."),
+    ("Paquetes", "Instalación y gestión de herramientas portables dentro de SST."),
+    ("Configuración", "Configuración de SST, fondos, rutas y recarga de preferencias."),
+    ("Actualización", "Estado, búsqueda, descarga y aplicación de nuevas versiones de SST."),
+    ("Editor", "Helix-SST y sus controles de edición."),
+    ("Nwash / Bash", "Builtins y comportamiento de compatibilidad con Bash implementados por Nwash."),
+    ("Unix", "Comandos Unix/GNU-like reimplementados dentro de SST."),
+    ("Ejemplos", "Ejemplos prácticos para aprender a usar SST y Nwash."),
+];
+
+const BASH_BUILTINS: &[&str] = &[
+    ":", ".", "[", "alias", "bg", "bind", "break", "builtin", "caller", "cd",
+    "command", "compgen", "complete", "compopt", "continue", "declare", "dirs",
+    "disown", "echo", "enable", "eval", "exec", "exit", "export", "false", "fc",
+    "fg", "getopts", "hash", "help", "history", "jobs", "kill", "let", "local",
+    "logout", "mapfile", "popd", "printf", "pushd", "pwd", "read", "readarray",
+    "readonly", "return", "set", "shift", "shopt", "source", "suspend", "test",
+    "times", "trap", "true", "type", "typeset", "ulimit", "umask", "unalias",
+    "unset", "wait",
+];
+
+const SST_ENTRIES: &[(&str, &[&str], &str, &str)] = &[
+    ("sys", &["ps", "top", "df", "free", "whoami", "uname", "uptime", "fetch", "neofetch", "fastfetch"], "Sistema", "Información y administración local del equipo."),
+    ("hostname", &["sys hostname"], "Sistema", "Consulta o cambia el nombre del equipo."),
+    ("sys domain", &["domain-admin"], "Sistema", "Consulta, une o saca el equipo de un dominio Windows."),
+    ("sys autologon", &["autologon"], "Sistema", "Configura inicio automático mediante Sysinternals Autologon."),
+    ("notsh", &["net"], "Red", "Shell de red unificada de SST."),
+    ("device", &[], "Red", "Inventario local de equipos por MAC/IP."),
+    ("switch", &[], "Red", "Localiza una MAC en switch y puerto mediante perfiles SNMP."),
+    ("wol", &[], "Red", "Envía Wake-on-LAN por MAC o equipo inventariado."),
+    ("diag", &[], "Diagnóstico", "Ejecuta diagnósticos compuestos del equipo y la red."),
+    ("domain", &[], "Windows", "Consulta pertenencia a dominio local o remota."),
+    ("eventlog", &[], "Windows", "Consulta, exporta y limpia Windows Event Log."),
+    ("service", &[], "Windows", "Consulta y controla servicios de Windows."),
+    ("registry", &[], "Windows", "Consulta y modifica el Registro de Windows."),
+    ("process", &[], "Windows", "Lista, inspecciona y termina procesos Windows."),
+    ("acl", &[], "Windows", "Consulta y modifica permisos ACL NTFS."),
+    ("pnp", &[], "Windows", "Consulta y controla dispositivos Plug and Play."),
+    ("task", &[], "Windows", "Consulta y controla tareas programadas."),
+    ("session", &[], "Windows", "Consulta y administra sesiones locales/RDP."),
+    ("share", &[], "Windows", "Consulta y administra recursos compartidos SMB."),
+    ("firewall", &[], "Windows", "Consulta y cambia perfiles de Windows Defender Firewall."),
+    ("power", &[], "Windows", "Apaga, reinicia, cierra sesión o hiberna el equipo."),
+    ("triage", &[], "Seguridad", "Analiza procesos y señales de seguridad del equipo."),
+    ("intel", &[], "Seguridad", "Consulta fuentes e indicadores de inteligencia de seguridad."),
+    ("sudo", &["runas"], "Privilegios", "Eleva comandos o sesiones con privilegios Windows."),
+    ("tools", &["tool", "utils"], "Herramientas", "Catálogo de herramientas auxiliares integradas."),
+    ("tools office diagnose", &["tools office status", "tools office verify"], "Office", "Audita instalación, Click-to-Run, WAM, WebView2, Entra y cachés de autenticación."),
+    ("tools office auth repair", &[], "Office", "Repara el registro de AAD BrokerPlugin para autenticación de Office."),
+    ("tools office scrub", &["tools office sara", "tools office uninstall", "tools office remove"], "Office", "Desinstala Office mediante SaRACmd legacy y audita residuos."),
+    ("tools office scrub-current", &["tools office gethelp"], "Office", "Desinstala Office mediante GetHelpCmd actual."),
+    ("instp", &[], "Paquetes", "Gestiona paquetes portables y aislados de SST."),
+    ("config", &[], "Configuración", "Consulta y modifica la configuración de SST."),
+    ("reload", &[], "Configuración", "Recarga la configuración sin cerrar SST."),
+    ("sst-path", &[], "Configuración", "Traduce rutas estilo Unix al modelo de rutas de SST."),
+    ("update", &[], "Actualización", "Consulta, busca y prepara actualizaciones de SST."),
+    ("helix", &["hx", "helix-sst"], "Editor", "Editor Helix adaptado e integrado en SST."),
+    ("tour", &[], "Ejemplos", "Ejemplos prácticos y demostraciones de uso de SST/Nwash."),
+];
+
+#[derive(Clone)]
+struct GuideEntry {
+    name: String,
+    aliases: Vec<String>,
+    category: String,
+    summary: String,
+}
+
+impl GuideEntry {
+    fn new(name: &str, aliases: &[&str], category: &str, summary: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            aliases: aliases.iter().map(|value| (*value).to_owned()).collect(),
+            category: category.to_owned(),
+            summary: summary.to_owned(),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum View {
+    Categories,
+    Commands(usize),
+    Search,
+    Detail(String),
+}
 
 pub struct GuideBuiltin {
     terminal: Arc<dyn TerminalFactory>,
@@ -17,197 +117,230 @@ impl GuideBuiltin {
         Self { terminal }
     }
 
-    fn entries() -> Vec<WikiEntry> {
-        let mut entries = wiki_entries();
+    fn entries() -> Vec<GuideEntry> {
+        let mut rows = SST_ENTRIES
+            .iter()
+            .map(|(name, aliases, category, summary)| GuideEntry::new(name, aliases, category, summary))
+            .collect::<Vec<_>>();
 
-        for item in &mut entries {
-            if item.name.eq_ignore_ascii_case("wiki") {
-                item.name = "guide".to_owned();
-                item.aliases.clear();
-                item.summary = "Guía interactiva de comandos y manuales completos de SST.".to_owned();
-                item.use_case = "Descubrir comandos, revisar la ficha local y cargar manuales operativos extensos mantenidos en adm-toolbox.".to_owned();
-                item.syntax = "guide\nguide NOMBRE\nguide search TEXTO".to_owned();
-                item.origin = "SST nativo + manuales SST remotos.".to_owned();
-                item.compatibility = "La referencia local funciona sin Internet. Los manuales completos se obtienen por HTTPS en memoria y no se guardan como archivos locales.".to_owned();
-            } else if item.name.eq_ignore_ascii_case("help") {
-                item.use_case = "Consultar ayuda corta del intérprete; para documentación exhaustiva usa guide.".to_owned();
-            }
-        }
-
-        // Every chapter in adm-toolbox is also a first-class Guide entry. We only
-        // skip an exact-name duplicate; aliases intentionally do not block a manual
-        // entry (e.g. hostname is an alias of sys but also has its own manual).
-        for &(name, summary) in super::guide_remote::catalog() {
-            if entries.iter().any(|item| item.name.eq_ignore_ascii_case(name)) {
-                continue;
-            }
-            entries.push(entry(
+        for name in BASH_BUILTINS {
+            rows.push(GuideEntry::new(
                 name,
                 &[],
-                "Tutoriales",
-                summary,
-                "Abrir la referencia operativa completa de esta capacidad desde SST.",
-                &format!("guide {name}"),
-                "Manual SST remoto mantenido en glitchaka/adm-toolbox.",
-                "Se obtiene por HTTPS directamente a memoria. Si no hay conectividad, Guide conserva las fichas locales de los comandos que tengan fallback.",
+                "Nwash / Bash",
+                bash_summary(name),
             ));
         }
 
-        entries.sort_by(|left, right| {
-            left.category
-                .to_ascii_lowercase()
-                .cmp(&right.category.to_ascii_lowercase())
+        for &(name, help) in UNIX_COMMANDS {
+            if BASH_BUILTINS.contains(&name) {
+                continue;
+            }
+            let summary = help
+                .split_once('—')
+                .map(|(_, value)| value.trim())
+                .unwrap_or(help);
+            rows.push(GuideEntry::new(name, &[], "Unix", summary));
+        }
+
+        rows.sort_by(|left, right| {
+            category_rank(&left.category)
+                .cmp(&category_rank(&right.category))
                 .then_with(|| left.name.to_ascii_lowercase().cmp(&right.name.to_ascii_lowercase()))
         });
-        entries
+        rows
     }
 
-    fn run_ui(&self, initial_query: &str, open_detail: bool) -> Result<CommandOutput> {
+    fn run_ui(&self, initial_topic: Option<String>, initial_search: Option<String>) -> Result<CommandOutput> {
         let entries = Self::entries();
         let mut terminal = self.terminal.alternate_screen()?;
-        let mut query = initial_query.to_owned();
-        let mut search_mode = false;
-        let mut category_index = 0usize;
-        let mut selected = 0usize;
-        let mut detail_name = if open_detail && guide_find_entry(&entries, initial_query).is_some() {
-            Some(initial_query.to_owned())
+        let mut view = if let Some(topic) = initial_topic {
+            View::Detail(topic)
+        } else if initial_search.is_some() {
+            View::Search
         } else {
-            None
+            View::Categories
         };
+        let mut query = initial_search.unwrap_or_default();
+        let mut search_input = !query.is_empty();
+        let mut selected = 0usize;
         let mut detail_scroll = 0usize;
 
         loop {
-            if let Some(topic) = detail_name.clone() {
-                let Some(item) = guide_find_entry(&entries, &topic) else {
-                    detail_name = None;
-                    detail_scroll = 0;
-                    continue;
-                };
-
-                let remote = super::guide_remote::load(&topic)
-                    .or_else(|| super::guide_remote::load(&item.name));
-                let max_scroll = render_detail(
-                    terminal.as_mut(),
-                    item,
-                    &topic,
-                    remote.as_deref(),
-                    detail_scroll,
-                )?;
-                detail_scroll = detail_scroll.min(max_scroll);
-
-                let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
-                    continue;
-                };
-                match key {
-                    TerminalKey::Escape | TerminalKey::Enter | TerminalKey::Backspace => {
-                        detail_name = None;
-                        detail_scroll = 0;
-                    }
-                    TerminalKey::Char('x') | TerminalKey::Char('X')
-                    | TerminalKey::Char('q') | TerminalKey::Char('Q') => break,
-                    TerminalKey::Up => detail_scroll = detail_scroll.saturating_sub(1),
-                    TerminalKey::Down => detail_scroll = (detail_scroll + 1).min(max_scroll),
-                    TerminalKey::PageUp => detail_scroll = detail_scroll.saturating_sub(8),
-                    TerminalKey::PageDown => detail_scroll = (detail_scroll + 8).min(max_scroll),
-                    TerminalKey::Home => detail_scroll = 0,
-                    TerminalKey::End => detail_scroll = max_scroll,
-                    _ => {}
-                }
-                continue;
-            }
-
-            let categories = categories(&entries);
-            if category_index >= categories.len() {
-                category_index = 0;
-            }
-            let category = categories
-                .get(category_index)
-                .map(String::as_str)
-                .unwrap_or("todos");
-            let visible = visible_entries(&entries, &query, category);
-            if visible.is_empty() {
-                selected = 0;
-            } else if selected >= visible.len() {
-                selected = visible.len() - 1;
-            }
-
-            render_menu(
-                terminal.as_mut(),
-                &visible,
-                selected,
-                category,
-                &query,
-                search_mode,
-            )?;
-
-            let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
-                continue;
-            };
-
-            if search_mode {
-                match key {
-                    TerminalKey::Escape | TerminalKey::Enter => search_mode = false,
-                    TerminalKey::Backspace => {
-                        query.pop();
+            match view.clone() {
+                View::Detail(topic) => {
+                    let Some(item) = find_entry(&entries, &topic) else {
+                        view = View::Categories;
                         selected = 0;
-                    }
-                    TerminalKey::Delete => {
-                        query.clear();
-                        selected = 0;
-                    }
-                    TerminalKey::Char(ch) if !ch.is_control() => {
-                        query.push(ch);
-                        selected = 0;
-                    }
-                    _ => {}
-                }
-                continue;
-            }
+                        continue;
+                    };
+                    let manual = super::guide_remote::load(&item.name)
+                        .or_else(|| item.aliases.iter().find_map(|alias| super::guide_remote::load(alias)));
+                    let max_scroll = render_detail(
+                        terminal.as_mut(),
+                        item,
+                        manual.as_deref(),
+                        detail_scroll,
+                    )?;
+                    detail_scroll = detail_scroll.min(max_scroll);
 
-            match key {
-                TerminalKey::Enter => {
-                    if let Some(item) = visible.get(selected).copied() {
-                        detail_name = Some(item.name.clone());
-                        detail_scroll = 0;
-                    }
-                }
-                TerminalKey::Escape
-                | TerminalKey::Char('x') | TerminalKey::Char('X')
-                | TerminalKey::Char('q') | TerminalKey::Char('Q') => break,
-                TerminalKey::Up => selected = selected.saturating_sub(1),
-                TerminalKey::Down => {
-                    if selected + 1 < visible.len() {
-                        selected += 1;
-                    }
-                }
-                TerminalKey::PageUp => selected = selected.saturating_sub(8),
-                TerminalKey::PageDown => {
-                    if !visible.is_empty() {
-                        selected = (selected + 8).min(visible.len() - 1);
-                    }
-                }
-                TerminalKey::Home => selected = 0,
-                TerminalKey::End => {
-                    if !visible.is_empty() {
-                        selected = visible.len() - 1;
-                    }
-                }
-                TerminalKey::Char('/') => search_mode = true,
-                TerminalKey::Char('c') | TerminalKey::Char('C') => {
-                    category_index = (category_index + 1) % categories.len().max(1);
-                    selected = 0;
-                }
-                TerminalKey::Char(ch) if ch.is_ascii_alphanumeric() && !visible.is_empty() => {
-                    let needle = ch.to_ascii_lowercase();
-                    for offset in 1..=visible.len() {
-                        let index = (selected + offset) % visible.len();
-                        if visible[index].name.to_ascii_lowercase().starts_with(needle) {
-                            selected = index;
-                            break;
+                    let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
+                        continue;
+                    };
+                    match key {
+                        TerminalKey::Escape | TerminalKey::Enter | TerminalKey::Backspace => {
+                            view = View::Commands(category_rank(&item.category));
+                            selected = index_in_category(&entries, &item.category, &item.name);
+                            detail_scroll = 0;
                         }
+                        TerminalKey::Char('x') | TerminalKey::Char('X')
+                        | TerminalKey::Char('q') | TerminalKey::Char('Q') => break,
+                        TerminalKey::Up => detail_scroll = detail_scroll.saturating_sub(1),
+                        TerminalKey::Down => detail_scroll = (detail_scroll + 1).min(max_scroll),
+                        TerminalKey::PageUp => detail_scroll = detail_scroll.saturating_sub(8),
+                        TerminalKey::PageDown => detail_scroll = (detail_scroll + 8).min(max_scroll),
+                        TerminalKey::Home => detail_scroll = 0,
+                        TerminalKey::End => detail_scroll = max_scroll,
+                        _ => {}
                     }
                 }
-                _ => {}
+                View::Categories => {
+                    selected = selected.min(CATEGORY_ORDER.len().saturating_sub(1));
+                    render_categories(terminal.as_mut(), selected)?;
+                    let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
+                        continue;
+                    };
+                    match key {
+                        TerminalKey::Enter => {
+                            view = View::Commands(selected);
+                            selected = 0;
+                        }
+                        TerminalKey::Char('/') => {
+                            query.clear();
+                            search_input = true;
+                            selected = 0;
+                            view = View::Search;
+                        }
+                        TerminalKey::Escape
+                        | TerminalKey::Char('x') | TerminalKey::Char('X')
+                        | TerminalKey::Char('q') | TerminalKey::Char('Q') => break,
+                        TerminalKey::Up => selected = selected.saturating_sub(1),
+                        TerminalKey::Down => selected = (selected + 1).min(CATEGORY_ORDER.len().saturating_sub(1)),
+                        TerminalKey::PageUp => selected = selected.saturating_sub(6),
+                        TerminalKey::PageDown => selected = (selected + 6).min(CATEGORY_ORDER.len().saturating_sub(1)),
+                        TerminalKey::Home => selected = 0,
+                        TerminalKey::End => selected = CATEGORY_ORDER.len().saturating_sub(1),
+                        _ => {}
+                    }
+                }
+                View::Commands(category_index) => {
+                    let category_index = category_index.min(CATEGORY_ORDER.len().saturating_sub(1));
+                    let category = CATEGORY_ORDER[category_index].0;
+                    let visible = entries
+                        .iter()
+                        .filter(|item| item.category == category)
+                        .collect::<Vec<_>>();
+                    selected = selected.min(visible.len().saturating_sub(1));
+                    render_commands(terminal.as_mut(), category, &visible, selected)?;
+                    let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
+                        continue;
+                    };
+                    match key {
+                        TerminalKey::Enter => {
+                            if let Some(item) = visible.get(selected) {
+                                view = View::Detail(item.name.clone());
+                                detail_scroll = 0;
+                            }
+                        }
+                        TerminalKey::Escape | TerminalKey::Backspace => {
+                            selected = category_index;
+                            view = View::Categories;
+                        }
+                        TerminalKey::Char('/') => {
+                            query.clear();
+                            search_input = true;
+                            selected = 0;
+                            view = View::Search;
+                        }
+                        TerminalKey::Char('x') | TerminalKey::Char('X')
+                        | TerminalKey::Char('q') | TerminalKey::Char('Q') => break,
+                        TerminalKey::Up => selected = selected.saturating_sub(1),
+                        TerminalKey::Down => selected = (selected + 1).min(visible.len().saturating_sub(1)),
+                        TerminalKey::PageUp => selected = selected.saturating_sub(8),
+                        TerminalKey::PageDown => selected = (selected + 8).min(visible.len().saturating_sub(1)),
+                        TerminalKey::Home => selected = 0,
+                        TerminalKey::End => selected = visible.len().saturating_sub(1),
+                        TerminalKey::Char(ch) if ch.is_ascii_alphanumeric() && !visible.is_empty() => {
+                            let needle = ch.to_ascii_lowercase();
+                            for offset in 1..=visible.len() {
+                                let index = (selected + offset) % visible.len();
+                                if visible[index].name.to_ascii_lowercase().starts_with(needle) {
+                                    selected = index;
+                                    break;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                View::Search => {
+                    let visible = search_entries(&entries, &query);
+                    selected = selected.min(visible.len().saturating_sub(1));
+                    render_search(terminal.as_mut(), &visible, selected, &query, search_input)?;
+                    let Some(key) = terminal.poll_key(Duration::from_millis(200))? else {
+                        continue;
+                    };
+
+                    if search_input {
+                        match key {
+                            TerminalKey::Escape => {
+                                query.clear();
+                                search_input = false;
+                                selected = 0;
+                                view = View::Categories;
+                            }
+                            TerminalKey::Enter => search_input = false,
+                            TerminalKey::Backspace => {
+                                query.pop();
+                                selected = 0;
+                            }
+                            TerminalKey::Delete => {
+                                query.clear();
+                                selected = 0;
+                            }
+                            TerminalKey::Char(ch) if !ch.is_control() => {
+                                query.push(ch);
+                                selected = 0;
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+
+                    match key {
+                        TerminalKey::Enter => {
+                            if let Some(item) = visible.get(selected) {
+                                view = View::Detail(item.name.clone());
+                                detail_scroll = 0;
+                            }
+                        }
+                        TerminalKey::Char('/') => search_input = true,
+                        TerminalKey::Escape | TerminalKey::Backspace => {
+                            query.clear();
+                            selected = 0;
+                            view = View::Categories;
+                        }
+                        TerminalKey::Char('x') | TerminalKey::Char('X')
+                        | TerminalKey::Char('q') | TerminalKey::Char('Q') => break,
+                        TerminalKey::Up => selected = selected.saturating_sub(1),
+                        TerminalKey::Down => selected = (selected + 1).min(visible.len().saturating_sub(1)),
+                        TerminalKey::PageUp => selected = selected.saturating_sub(8),
+                        TerminalKey::PageDown => selected = (selected + 8).min(visible.len().saturating_sub(1)),
+                        TerminalKey::Home => selected = 0,
+                        TerminalKey::End => selected = visible.len().saturating_sub(1),
+                        _ => {}
+                    }
+                }
             }
         }
 
@@ -221,7 +354,7 @@ impl BuiltinCommand for GuideBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "guide — guía interactiva y manual operativo completo de SST"
+        "guide — manual interactivo completo de SST"
     }
 
     fn execute(
@@ -230,222 +363,260 @@ impl BuiltinCommand for GuideBuiltin {
         args: &[String],
         _context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
-        match args.first().map(String::as_str) {
-            None | Some("--help") | Some("-h") => self.run_ui("", false),
-            Some("search") => self.run_ui(&args.get(1..).unwrap_or_default().join(" "), false),
-            Some(name) => self.run_ui(name, true),
+        if args.first().map(String::as_str) == Some("search") {
+            return self.run_ui(None, Some(args.get(1..).unwrap_or_default().join(" ")));
         }
+        if args.is_empty() || matches!(args.first().map(String::as_str), Some("--help") | Some("-h")) {
+            return self.run_ui(None, None);
+        }
+        self.run_ui(Some(args.join(" ")), None)
     }
 }
 
-fn guide_find_entry<'a>(entries: &'a [WikiEntry], name: &str) -> Option<&'a WikiEntry> {
+fn category_rank(category: &str) -> usize {
+    CATEGORY_ORDER
+        .iter()
+        .position(|(name, _)| name.eq_ignore_ascii_case(category))
+        .unwrap_or(CATEGORY_ORDER.len())
+}
+
+fn find_entry<'a>(entries: &'a [GuideEntry], name: &str) -> Option<&'a GuideEntry> {
     entries
         .iter()
         .find(|item| item.name.eq_ignore_ascii_case(name))
         .or_else(|| {
             entries.iter().find(|item| {
-                item.aliases
-                    .iter()
-                    .any(|alias| alias.eq_ignore_ascii_case(name))
+                item.aliases.iter().any(|alias| alias.eq_ignore_ascii_case(name))
             })
         })
 }
 
-fn render_menu(
-    terminal: &mut dyn TerminalSession,
-    entries: &[&WikiEntry],
-    selected: usize,
-    category: &str,
-    query: &str,
-    search_mode: bool,
-) -> Result<()> {
+fn index_in_category(entries: &[GuideEntry], category: &str, name: &str) -> usize {
+    entries
+        .iter()
+        .filter(|item| item.category == category)
+        .position(|item| item.name == name)
+        .unwrap_or(0)
+}
+
+fn search_entries<'a>(entries: &'a [GuideEntry], query: &str) -> Vec<&'a GuideEntry> {
+    let needle = query.trim().to_ascii_lowercase();
+    let mut rows = entries
+        .iter()
+        .filter(|item| {
+            needle.is_empty()
+                || item.name.to_ascii_lowercase().contains(&needle)
+                || item.aliases.iter().any(|alias| alias.to_ascii_lowercase().contains(&needle))
+                || item.category.to_ascii_lowercase().contains(&needle)
+                || item.summary.to_ascii_lowercase().contains(&needle)
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        category_rank(&left.category)
+            .cmp(&category_rank(&right.category))
+            .then_with(|| left.name.to_ascii_lowercase().cmp(&right.name.to_ascii_lowercase()))
+    });
+    rows
+}
+
+fn bash_summary(name: &str) -> &'static str {
+    match name {
+        ":" => "Builtin nulo; devuelve éxito.",
+        "." | "source" => "Ejecuta un archivo en la shell actual.",
+        "[" | "test" => "Evalúa expresiones condicionales.",
+        "alias" => "Define o consulta aliases.",
+        "bg" => "Reanuda trabajos en segundo plano.",
+        "bind" => "Gestiona bindings de edición de línea.",
+        "break" => "Sale de uno o más bucles.",
+        "builtin" => "Ejecuta explícitamente un builtin.",
+        "caller" => "Muestra contexto de llamada de funciones.",
+        "cd" => "Cambia el directorio actual.",
+        "command" => "Ejecuta o resuelve un comando ignorando funciones cuando corresponde.",
+        "compgen" => "Genera candidatos de autocompletado.",
+        "complete" => "Define reglas de autocompletado.",
+        "compopt" => "Ajusta opciones de autocompletado.",
+        "continue" => "Continúa la siguiente iteración de un bucle.",
+        "declare" | "typeset" => "Declara variables y atributos.",
+        "dirs" => "Muestra la pila de directorios.",
+        "disown" => "Desasocia trabajos de la shell.",
+        "echo" => "Imprime argumentos y escapes soportados.",
+        "enable" => "Habilita o deshabilita builtins.",
+        "eval" => "Evalúa texto como código shell.",
+        "exec" => "Ejecuta un comando en el contexto actual.",
+        "exit" | "logout" => "Termina la shell o sesión.",
+        "export" => "Exporta variables o funciones al entorno.",
+        "false" => "Devuelve estado 1.",
+        "fc" => "Lista, edita o repite comandos del historial.",
+        "fg" => "Trae un trabajo al primer plano.",
+        "getopts" => "Procesa opciones cortas en scripts.",
+        "hash" => "Gestiona la caché de resolución de comandos.",
+        "help" => "Muestra ayuda de builtins Nwash/Bash.",
+        "history" => "Consulta o modifica el historial.",
+        "jobs" => "Lista trabajos administrados por la shell.",
+        "kill" => "Envía señales a procesos o trabajos.",
+        "let" => "Evalúa expresiones aritméticas.",
+        "local" => "Declara variables locales de función.",
+        "mapfile" | "readarray" => "Lee líneas en un array indexado.",
+        "popd" => "Elimina una entrada de la pila de directorios.",
+        "printf" => "Imprime datos con formato.",
+        "pushd" => "Añade o rota la pila de directorios.",
+        "pwd" => "Muestra el directorio actual.",
+        "read" => "Lee entrada y la asigna a variables.",
+        "readonly" => "Marca variables o funciones como solo lectura.",
+        "return" => "Retorna de una función o archivo source.",
+        "set" => "Configura opciones y parámetros de la shell.",
+        "shift" => "Desplaza parámetros posicionales.",
+        "shopt" => "Configura opciones específicas de Bash/Nwash.",
+        "suspend" => "Suspende la shell cuando el host lo permite.",
+        "times" => "Muestra tiempos acumulados de CPU.",
+        "trap" => "Gestiona traps y señales.",
+        "true" => "Devuelve estado 0.",
+        "type" => "Describe cómo se resuelve un nombre.",
+        "ulimit" => "Consulta o configura límites compatibles de la shell.",
+        "umask" => "Consulta o configura la máscara de permisos.",
+        "unalias" => "Elimina aliases.",
+        "unset" => "Elimina variables o funciones.",
+        "wait" => "Espera procesos o trabajos.",
+        _ => "Builtin compatible implementado por Nwash.",
+    }
+}
+
+fn render_categories(terminal: &mut dyn TerminalSession, selected: usize) -> Result<()> {
     let (tw, th) = terminal.size()?;
-    let tw = usize::from(tw.max(40));
+    let tw = usize::from(tw.max(48));
     let th = usize::from(th.max(18));
     let ww = window_width(tw);
-    let outer_inner = ww.saturating_sub(2);
-    let menu_width = ww.saturating_sub(6);
-    let menu_inner = menu_width.saturating_sub(2);
-    let command_width = 18usize.min(menu_inner.saturating_sub(18));
-    let description_width = menu_inner.saturating_sub(command_width + 2);
-    let rows = th.saturating_sub(14).clamp(5, 14);
+    let rows = th.saturating_sub(8).clamp(6, CATEGORY_ORDER.len());
+    let start = selected.saturating_sub(rows.saturating_sub(1));
+    let end = (start + rows).min(CATEGORY_ORDER.len());
+
+    let mut lines = Vec::new();
+    lines.push("Elige un área. SST aparece primero; Nwash/Bash y Unix están separados como capas de compatibilidad.".to_owned());
+    lines.push("ENTER abre el área · / busca en toda la guía · Esc/Q sale".to_owned());
+    lines.push(String::new());
+    for index in start..end {
+        let (name, description) = CATEGORY_ORDER[index];
+        let marker = if index == selected { ">" } else { " " };
+        lines.push(format!("{marker} {name:<16} {description}"));
+    }
+
+    render_box(terminal, tw, th, ww, "Shell Shock Tool — Guía", &lines, "↑↓ navegar · ENTER abrir · / buscar · Q salir")
+}
+
+fn render_commands(
+    terminal: &mut dyn TerminalSession,
+    category: &str,
+    entries: &[&GuideEntry],
+    selected: usize,
+) -> Result<()> {
+    let (tw, th) = terminal.size()?;
+    let tw = usize::from(tw.max(48));
+    let th = usize::from(th.max(18));
+    let ww = window_width(tw);
+    let rows = th.saturating_sub(7).clamp(5, 20);
     let start = selected.saturating_sub(rows.saturating_sub(1));
     let end = (start + rows).min(entries.len());
-    let top_padding = th.saturating_sub(rows + 13) / 2;
 
-    terminal.clear()?;
-    let mut out = String::new();
-    out.push_str(G_SCREEN);
-    out.push_str("\x1b[2J\x1b[H");
-    for _ in 0..top_padding {
-        out.push('\n');
+    let mut lines = Vec::new();
+    lines.push(format!("Área: {category}"));
+    lines.push(String::new());
+    for index in start..end {
+        let item = entries[index];
+        let marker = if index == selected { ">" } else { " " };
+        lines.push(format!("{marker} {:<26} {}", item.name, item.summary));
     }
 
-    push_window(&mut out, tw, ww, &title_border(ww, "Shell Shock Tool - Guide"));
+    render_box(terminal, tw, th, ww, "Shell Shock Tool — Guía", &lines, "ENTER manual completo · Backspace/Esc áreas · / buscar · Q salir")
+}
 
-    let intro = "Select a command or manual. ENTER opens the complete streamed manual when available; / searches and C changes category. The Tutoriales category exposes every maintained manual chapter.";
-    let mut intro_lines = wrap(intro, outer_inner.saturating_sub(4));
-    intro_lines.truncate(4);
-    while intro_lines.len() < 4 {
-        intro_lines.push(String::new());
-    }
-    for line in intro_lines {
-        push_window(&mut out, tw, ww, &outer_line(ww, &format!("  {line}")));
-    }
+fn render_search(
+    terminal: &mut dyn TerminalSession,
+    entries: &[&GuideEntry],
+    selected: usize,
+    query: &str,
+    input: bool,
+) -> Result<()> {
+    let (tw, th) = terminal.size()?;
+    let tw = usize::from(tw.max(48));
+    let th = usize::from(th.max(18));
+    let ww = window_width(tw);
+    let rows = th.saturating_sub(8).clamp(5, 18);
+    let start = selected.saturating_sub(rows.saturating_sub(1));
+    let end = (start + rows).min(entries.len());
 
-    let filter = format!(
-        "Category: {}    Search: {}{}",
-        category,
-        if search_mode { "> " } else { "" },
-        if query.is_empty() { "(none)" } else { query }
-    );
-    push_window(&mut out, tw, ww, &outer_line(ww, &filter));
-    push_window(&mut out, tw, ww, &inner_top(ww));
-
-    let header = format!(
-        "  │{}{:command_width$}  {:description_width$}{}│",
-        G_PANEL_BOLD,
-        "Command / manual",
-        "Quick reference",
-        G_PANEL,
-        command_width = command_width,
-        description_width = description_width,
-    );
-    push_window(&mut out, tw, ww, &outer_ansi_line(ww, &header));
-    push_window(&mut out, tw, ww, &inner_separator(ww));
-
-    for row in 0..rows {
-        let index = start + row;
-        let content = if index < end {
+    let mut lines = Vec::new();
+    lines.push(format!("Buscar: {}{}", if input { "> " } else { "" }, if query.is_empty() { "(escribe para buscar)" } else { query }));
+    lines.push(String::new());
+    if entries.is_empty() {
+        lines.push("No hay coincidencias.".to_owned());
+    } else {
+        for index in start..end {
             let item = entries[index];
-            let name = clip(&item.name, command_width);
-            let description = clip(&item.summary, description_width);
-            let row_text = format!(
-                "{:command_width$}  {:description_width$}",
-                name,
-                description,
-                command_width = command_width,
-                description_width = description_width,
-            );
-            if index == selected {
-                format!("  │{G_SELECTED}{row_text}{G_PANEL}│")
-            } else {
-                format!("  │{row_text}│")
-            }
-        } else {
-            format!("  │{}│", " ".repeat(menu_inner))
-        };
-        push_window(&mut out, tw, ww, &outer_ansi_line(ww, &content));
+            let marker = if index == selected { ">" } else { " " };
+            lines.push(format!("{marker} {:<26} [{:<13}] {}", item.name, item.category, item.summary));
+        }
     }
 
-    push_window(&mut out, tw, ww, &inner_bottom(ww));
-    push_window(&mut out, tw, ww, &outer_separator(ww));
-    let buttons = format!(
-        "{}[ Select ]{}    {}X{} Exit Guide    {}C{} Category    / Search",
-        G_SELECTED, G_PANEL, G_RED, G_PANEL, G_PANEL_BOLD, G_PANEL,
-    );
-    push_window(&mut out, tw, ww, &centered_ansi_line(ww, &buttons));
-    push_window(&mut out, tw, ww, &bottom_border(ww));
-    out.push_str(G_RESET);
-
-    terminal.write(&out)?;
-    terminal.flush()
+    let footer = if input {
+        "Escribe · ENTER terminar búsqueda · Esc cancelar"
+    } else {
+        "ENTER abrir · / editar búsqueda · Backspace/Esc áreas · Q salir"
+    };
+    render_box(terminal, tw, th, ww, "Shell Shock Tool — Buscar", &lines, footer)
 }
 
 fn render_detail(
     terminal: &mut dyn TerminalSession,
-    item: &WikiEntry,
-    topic: &str,
-    remote: Option<&str>,
+    item: &GuideEntry,
+    manual: Option<&str>,
     scroll: usize,
 ) -> Result<usize> {
     let (tw, th) = terminal.size()?;
-    let tw = usize::from(tw.max(40));
+    let tw = usize::from(tw.max(48));
     let th = usize::from(th.max(18));
     let ww = window_width(tw);
-    let outer_inner = ww.saturating_sub(2);
-    let body_width = outer_inner.saturating_sub(6);
-    let rows = th.saturating_sub(9).clamp(8, 24);
+    let inner = ww.saturating_sub(6);
+    let rows = th.saturating_sub(6).clamp(8, 30);
 
-    let body = if let Some(text) = remote {
-        remote_lines(text, body_width)
-    } else {
-        local_detail_lines(item, body_width)
-    };
-
+    let body = manual
+        .map(|text| manual_lines(text, inner))
+        .unwrap_or_else(|| fallback_lines(item, inner));
     let max_scroll = body.len().saturating_sub(rows);
     let scroll = scroll.min(max_scroll);
-    let top_padding = th.saturating_sub(rows + 8) / 2;
 
-    terminal.clear()?;
-    let mut out = String::new();
-    out.push_str(G_SCREEN);
-    out.push_str("\x1b[2J\x1b[H");
-    for _ in 0..top_padding {
-        out.push('\n');
-    }
-
-    push_window(
-        &mut out,
-        tw,
-        ww,
-        &title_border(ww, &format!("SST Guide - {topic}")),
-    );
-    let source = if remote.is_some() {
-        "  Full manual · HTTPS -> memory only · Up/Down or PgUp/PgDn to scroll."
+    let mut lines = Vec::new();
+    let aliases = if item.aliases.is_empty() {
+        String::new()
     } else {
-        "  Local fallback · remote manual unavailable · Up/Down or PgUp/PgDn to scroll."
+        format!("Aliases: {}", item.aliases.join(", "))
     };
-    push_window(&mut out, tw, ww, &outer_line(ww, source));
-    push_window(&mut out, tw, ww, &inner_top(ww));
-
-    for line in body.iter().skip(scroll).take(rows) {
-        let content = format!(
-            "  │ {:<body_width$} │",
-            clip(line, body_width),
-            body_width = body_width
-        );
-        push_window(&mut out, tw, ww, &outer_ansi_line(ww, &content));
+    if !aliases.is_empty() {
+        lines.push(aliases);
+        lines.push(String::new());
     }
-    for _ in body.len().saturating_sub(scroll).min(rows)..rows {
-        let content = format!("  │ {:<body_width$} │", "", body_width = body_width);
-        push_window(&mut out, tw, ww, &outer_ansi_line(ww, &content));
-    }
+    lines.extend(body.iter().skip(scroll).take(rows).cloned());
 
-    push_window(&mut out, tw, ww, &inner_bottom(ww));
-    push_window(&mut out, tw, ww, &outer_separator(ww));
-    let buttons = format!(
-        "{}[ Back ]{}    {}X{} Exit Guide    PgUp/PgDn Scroll",
-        G_SELECTED, G_PANEL, G_RED, G_PANEL
-    );
-    push_window(&mut out, tw, ww, &centered_ansi_line(ww, &buttons));
-    push_window(&mut out, tw, ww, &bottom_border(ww));
-    out.push_str(G_RESET);
-
-    terminal.write(&out)?;
-    terminal.flush()?;
+    let position = if body.len() > rows {
+        format!("líneas {}-{} de {} · ↑↓/PgUp/PgDn desplazar · Backspace volver · Q salir", scroll + 1, (scroll + rows).min(body.len()), body.len())
+    } else {
+        "Backspace/Enter/Esc volver · Q salir".to_owned()
+    };
+    render_box(terminal, tw, th, ww, &format!("SST — {}", item.name), &lines, &position)?;
     Ok(max_scroll)
 }
 
-fn local_detail_lines(item: &WikiEntry, width: usize) -> Vec<String> {
-    let aliases = if item.aliases.is_empty() {
-        "-".to_owned()
-    } else {
-        item.aliases.join(", ")
-    };
-    let mut body = Vec::new();
-    detail_section(&mut body, "Command", &item.name, width);
-    detail_section(&mut body, "Category", &item.category, width);
-    detail_section(&mut body, "Aliases", &aliases, width);
-    detail_section(&mut body, "What it does", &item.summary, width);
-    detail_section(&mut body, "When to use it", &item.use_case, width);
-    detail_section(&mut body, "Syntax", &item.syntax.replace('\n', "  |  "), width);
-    detail_section(&mut body, "Origin / inheritance", &item.origin, width);
-    detail_section(&mut body, "Compatibility / notes", &item.compatibility, width);
-    body
+fn fallback_lines(item: &GuideEntry, width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    out.extend(wrap(&item.summary, width));
+    out.push(String::new());
+    out.extend(wrap(
+        "No se pudo cargar la documentación completa en este momento. La referencia del comando sigue disponible desde su ayuda integrada.",
+        width,
+    ));
+    out
 }
 
-fn remote_lines(text: &str, width: usize) -> Vec<String> {
+fn manual_lines(text: &str, width: usize) -> Vec<String> {
     let mut out = Vec::new();
     for raw in text.lines() {
         if raw.trim().is_empty() {
@@ -460,26 +631,53 @@ fn remote_lines(text: &str, width: usize) -> Vec<String> {
         }
     }
     if out.is_empty() {
-        out.push("(manual vacío)".to_owned());
+        out.push("Sin contenido.".to_owned());
     }
     out
 }
 
-fn detail_section(lines: &mut Vec<String>, label: &str, value: &str, width: usize) {
-    if !lines.is_empty() {
-        lines.push(String::new());
+fn render_box(
+    terminal: &mut dyn TerminalSession,
+    tw: usize,
+    th: usize,
+    ww: usize,
+    title: &str,
+    lines: &[String],
+    footer: &str,
+) -> Result<()> {
+    let content_rows = th.saturating_sub(4).max(8);
+    let visible = lines.len().min(content_rows);
+    let top_padding = th.saturating_sub(visible + 4) / 2;
+
+    terminal.clear()?;
+    let mut out = String::new();
+    out.push_str(G_SCREEN);
+    out.push_str("\x1b[2J\x1b[H");
+    for _ in 0..top_padding {
+        out.push('\n');
     }
-    lines.push(format!("{label}:"));
-    for line in wrap(value, width.saturating_sub(2)) {
-        lines.push(format!("  {line}"));
+
+    push_window(&mut out, tw, ww, &title_border(ww, title));
+    for line in lines.iter().take(content_rows) {
+        push_window(&mut out, tw, ww, &frame_line(ww, line));
     }
+    for _ in visible..content_rows.min(lines.len().max(visible)) {
+        push_window(&mut out, tw, ww, &frame_line(ww, ""));
+    }
+    push_window(&mut out, tw, ww, &separator(ww));
+    push_window(&mut out, tw, ww, &frame_line(ww, footer));
+    push_window(&mut out, tw, ww, &bottom_border(ww));
+    out.push_str(G_RESET);
+
+    terminal.write(&out)?;
+    terminal.flush()
 }
 
 fn window_width(terminal_width: usize) -> usize {
-    if terminal_width >= 68 {
-        terminal_width.saturating_sub(4).min(104)
+    if terminal_width >= 72 {
+        terminal_width.saturating_sub(4).min(112)
     } else {
-        terminal_width.saturating_sub(2).max(38)
+        terminal_width.saturating_sub(2).max(44)
     }
 }
 
@@ -499,82 +697,59 @@ fn title_border(width: usize, title: &str) -> String {
     let remaining = inner.saturating_sub(title.chars().count());
     let left = remaining / 2;
     let right = remaining.saturating_sub(left);
-    format!(
-        "┌{}{}{}{}{}┐",
-        "─".repeat(left),
-        G_TITLE,
-        title,
-        G_PANEL,
-        "─".repeat(right)
-    )
+    format!("┌{}{}{}┐", "─".repeat(left), title, "─".repeat(right))
+}
+
+fn separator(width: usize) -> String {
+    format!("├{}┤", "─".repeat(width.saturating_sub(2)))
 }
 
 fn bottom_border(width: usize) -> String {
     format!("└{}┘", "─".repeat(width.saturating_sub(2)))
 }
 
-fn outer_separator(width: usize) -> String {
-    format!("├{}┤", "─".repeat(width.saturating_sub(2)))
-}
-
-fn outer_line(width: usize, text: &str) -> String {
+fn frame_line(width: usize, value: &str) -> String {
     let inner = width.saturating_sub(2);
-    let text = clip(text, inner);
-    format!("│{:<inner$}│", text, inner = inner)
+    let value = clip(value, inner.saturating_sub(2));
+    let visible = value.chars().count();
+    format!("│ {}{} │", value, " ".repeat(inner.saturating_sub(visible + 2)))
 }
 
-fn outer_ansi_line(width: usize, content: &str) -> String {
-    let inner = width.saturating_sub(2);
-    let visible = ansi_visible_width(content).min(inner);
-    format!("│{content}{}│", " ".repeat(inner.saturating_sub(visible)))
-}
-
-fn centered_ansi_line(width: usize, content: &str) -> String {
-    let inner = width.saturating_sub(2);
-    let visible = ansi_visible_width(content).min(inner);
-    let left = inner.saturating_sub(visible) / 2;
-    let right = inner.saturating_sub(visible + left);
-    format!("│{}{}{}│", " ".repeat(left), content, " ".repeat(right))
-}
-
-fn ansi_visible_width(value: &str) -> usize {
-    let mut count = 0usize;
-    let mut chars = value.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\x1b' && chars.peek().is_some_and(|next| *next == '[') {
-            chars.next();
-            for code in chars.by_ref() {
-                if code == 'm' {
-                    break;
-                }
-            }
-        } else {
-            count += 1;
-        }
+fn wrap(value: &str, width: usize) -> Vec<String> {
+    if width == 0 {
+        return vec![String::new()];
     }
-    count
+    let mut rows = Vec::new();
+    let mut line = String::new();
+    for word in value.split_whitespace() {
+        let extra = if line.is_empty() {
+            word.chars().count()
+        } else {
+            1 + word.chars().count()
+        };
+        if !line.is_empty() && line.chars().count() + extra > width {
+            rows.push(line);
+            line = String::new();
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(word);
+    }
+    if !line.is_empty() || rows.is_empty() {
+        rows.push(line);
+    }
+    rows
 }
 
-fn inner_top(width: usize) -> String {
-    let menu_width = width.saturating_sub(6);
-    outer_line(
-        width,
-        &format!("  ┌{}┐", "─".repeat(menu_width.saturating_sub(2))),
-    )
-}
-
-fn inner_separator(width: usize) -> String {
-    let menu_width = width.saturating_sub(6);
-    outer_line(
-        width,
-        &format!("  ├{}┤", "─".repeat(menu_width.saturating_sub(2))),
-    )
-}
-
-fn inner_bottom(width: usize) -> String {
-    let menu_width = width.saturating_sub(6);
-    outer_line(
-        width,
-        &format!("  └{}┘", "─".repeat(menu_width.saturating_sub(2))),
-    )
+fn clip(value: &str, width: usize) -> String {
+    if value.chars().count() <= width {
+        return value.to_owned();
+    }
+    if width <= 1 {
+        return "…".chars().take(width).collect();
+    }
+    let mut out = value.chars().take(width - 1).collect::<String>();
+    out.push('…');
+    out
 }
