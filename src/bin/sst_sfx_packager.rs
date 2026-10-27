@@ -1,15 +1,18 @@
 use std::{
     env,
+    fmt::Write as _,
     fs::{self, File},
     io::{self, Read, Write},
     path::{Component, Path, PathBuf},
 };
 
 use anyhow::{Context, Result, bail};
+use rand_core::{OsRng, RngCore};
 
 const PACKAGE_MAGIC: &[u8; 8] = b"SSTPKG01";
-const SFX_MAGIC: &[u8; 8] = b"SSTSFX02";
+const SFX_MAGIC: &[u8; 8] = b"SSTSFX03";
 const PACKAGE_VERSION: u32 = 1;
+const PACKAGE_ID_LEN: usize = 16;
 
 #[derive(Debug)]
 struct SourceFile {
@@ -47,10 +50,27 @@ fn run() -> Result<()> {
         bail!("el payload no contiene archivos");
     }
 
-    build_self_extractor(&stub, &output, &files)?;
+    let package_id = generate_package_id();
+    build_self_extractor(&stub, &output, &files, &package_id)?;
     println!("Autoextraible creado: {}", output.display());
+    println!("ID de paquete: {}", package_id_hex(&package_id));
     println!("Archivos empaquetados: {}", files.len());
     Ok(())
+}
+
+fn generate_package_id() -> [u8; PACKAGE_ID_LEN] {
+    let mut id = [0u8; PACKAGE_ID_LEN];
+    let mut rng = OsRng;
+    rng.fill_bytes(&mut id);
+    id
+}
+
+fn package_id_hex(id: &[u8; PACKAGE_ID_LEN]) -> String {
+    let mut out = String::with_capacity(PACKAGE_ID_LEN * 2);
+    for byte in id {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
 }
 
 fn scan_files(root: &Path) -> Result<Vec<SourceFile>> {
@@ -106,7 +126,12 @@ fn validate_relative_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn build_self_extractor(stub: &Path, output: &Path, files: &[SourceFile]) -> Result<()> {
+fn build_self_extractor(
+    stub: &Path,
+    output: &Path,
+    files: &[SourceFile],
+    package_id: &[u8; PACKAGE_ID_LEN],
+) -> Result<()> {
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -154,6 +179,7 @@ fn build_self_extractor(stub: &Path, output: &Path, files: &[SourceFile]) -> Res
 
     out.write_all(SFX_MAGIC)?;
     write_u64(&mut out, package_offset)?;
+    out.write_all(package_id)?;
     out.flush()?;
     Ok(())
 }
