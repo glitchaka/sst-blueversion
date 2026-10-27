@@ -41,9 +41,6 @@ struct ConsumptionGuard {
 impl ConsumptionGuard {
     fn acquire(package_id: &[u8; PACKAGE_ID_LEN]) -> Result<Claim> {
         let root = consumption_root()?;
-        fs::create_dir_all(&root)
-            .with_context(|| format!("no se pudo preparar {}", root.display()))?;
-
         let id = package_id_hex(package_id);
         let used = root.join(format!("{id}.used"));
         if used.is_file() {
@@ -53,8 +50,21 @@ impl ConsumptionGuard {
         let pending = root.join(format!("{id}.pending"));
         match OpenOptions::new().write(true).create_new(true).open(&pending) {
             Ok(mut file) => {
-                writeln!(file, "pid={}", std::process::id())?;
-                file.flush()?;
+                if used.is_file() {
+                    drop(file);
+                    let _ = fs::remove_file(&pending);
+                    return Ok(Claim::AlreadyUsed);
+                }
+                if let Err(error) = writeln!(file, "pid={}", std::process::id()) {
+                    drop(file);
+                    let _ = fs::remove_file(&pending);
+                    return Err(error).context("no se pudo registrar la reserva del paquete");
+                }
+                if let Err(error) = file.flush() {
+                    drop(file);
+                    let _ = fs::remove_file(&pending);
+                    return Err(error).context("no se pudo confirmar la reserva del paquete");
+                }
                 Ok(Claim::Acquired(Self {
                     pending,
                     used,
@@ -89,10 +99,10 @@ impl Drop for ConsumptionGuard {
 }
 
 fn main() {
-    let verify_mode = std::env::args_os().skip(1).any(|arg| arg == "--extract-only");
+    let verify_mode = env::args_os().skip(1).any(|arg| arg == "--extract-only");
     if let Err(error) = run() {
         if !verify_mode {
-            show_error(&format!("No se pudo extraer Shell Shock Tool:\n\n{error:#}"));
+            show_error(&format!("No se pudo completar SST Setup:\n\n{error:#}"));
         }
         std::process::exit(1);
     }
@@ -261,11 +271,30 @@ fn extract_bundle(executable: &Path, destination: &Path, package_offset: u64) ->
 }
 
 fn consumption_root() -> Result<PathBuf> {
-    let base = env::var_os("PROGRAMDATA")
-        .map(PathBuf::from)
-        .or_else(|| env::var_os("LOCALAPPDATA").map(PathBuf::from))
-        .unwrap_or_else(env::temp_dir);
-    Ok(base.join("Shell Shock Tool").join("sfx-consumed"))
+    let mut candidates = Vec::new();
+    if let Some(path) = env::var_os("PROGRAMDATA") {
+        candidates.push(PathBuf::from(path));
+    }
+    if let Some(path) = env::var_os("LOCALAPPDATA") {
+        candidates.push(PathBuf::from(path));
+    }
+    candidates.push(env::temp_dir());
+
+    let mut last_error = None;
+    for base in candidates {
+        let root = base.join("Shell Shock Tool").join("sfx-consumed");
+        match fs::create_dir_all(&root) {
+            Ok(()) => return Ok(root),
+            Err(error) => last_error = Some((root, error)),
+        }
+    }
+
+    if let Some((root, error)) = last_error {
+        return Err(error).with_context(|| {
+            format!("no se pudo preparar el registro de paquetes consumidos en {}", root.display())
+        });
+    }
+    bail!("no existe una ubicación válida para registrar el consumo del paquete")
 }
 
 fn package_id_hex(id: &[u8; PACKAGE_ID_LEN]) -> String {
@@ -291,6 +320,7 @@ fn schedule_self_delete(executable: &Path, package_id: &[u8; PACKAGE_ID_LEN]) ->
         "setlocal\r\n",
         "set \"target=%~1\"\r\n",
         "for /L %%I in (1,1,40) do (\r\n",
+        "  type nul > \"%target%\" 2>nul\r\n",
         "  del /f /q \"%target%\" >nul 2>&1\r\n",
         "  if not exist \"%target%\" goto :done\r\n",
         "  ping 127.0.0.1 -n 2 >nul\r\n",
