@@ -13,8 +13,6 @@ static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new()
 #[derive(Clone, Copy)]
 enum Section {
     Whole,
-    Windows(&'static str),
-    Security(&'static str),
     Bash(&'static str),
     Unix(&'static str),
 }
@@ -30,8 +28,6 @@ pub(super) fn load(topic: &str) -> Option<String> {
     let raw = fetch_cached(source.file)?;
     let extracted = match source.section {
         Section::Whole => raw,
-        Section::Windows(name) => extract_windows(&raw, name).unwrap_or(raw),
-        Section::Security(name) => extract_numbered(&raw, name).unwrap_or(raw),
         Section::Bash(name) => extract_bash(&raw, name).unwrap_or(raw),
         Section::Unix(name) => extract_unix(&raw, name).unwrap_or(raw),
     };
@@ -91,14 +87,29 @@ fn fetch_file(filename: &str) -> Option<String> {
     String::from_utf8(output.stdout).ok()
 }
 
+fn whole(file: &'static str) -> ManualSource {
+    ManualSource {
+        file,
+        section: Section::Whole,
+    }
+}
+
+fn bash(name: &'static str) -> ManualSource {
+    ManualSource {
+        file: "bash-nwash",
+        section: Section::Bash(name),
+    }
+}
+
+fn unix(name: &'static str) -> ManualSource {
+    ManualSource {
+        file: "unix-compat",
+        section: Section::Unix(name),
+    }
+}
+
 fn source_for(topic: &str) -> Option<ManualSource> {
     let topic = topic.trim().to_ascii_lowercase();
-    let whole = |file| ManualSource { file, section: Section::Whole };
-    let windows = |name| ManualSource { file: "windows-admin", section: Section::Windows(name) };
-    let security = |name| ManualSource { file: "security", section: Section::Security(name) };
-    let bash = |name| ManualSource { file: "bash-nwash", section: Section::Bash(name) };
-    let unix = |name| ManualSource { file: "unix-compat", section: Section::Unix(name) };
-
     Some(match topic.as_str() {
         "sys" | "ps" | "top" | "df" | "free" | "whoami" | "uname" | "uptime"
         | "fetch" | "neofetch" | "fastfetch" => whole("system"),
@@ -113,20 +124,20 @@ fn source_for(topic: &str) -> Option<ManualSource> {
         "diag" => whole("diagnostics"),
 
         "domain" => whole("domain-status"),
-        "eventlog" => windows("EVENTLOG"),
-        "service" => windows("SERVICE"),
-        "registry" => windows("REGISTRY"),
-        "process" => windows("PROCESS"),
-        "acl" => windows("ACL"),
-        "pnp" => windows("PNP"),
-        "task" => windows("TASK"),
-        "session" => windows("SESSION"),
-        "share" => windows("SHARE"),
-        "firewall" => windows("FIREWALL"),
-        "power" => windows("POWER"),
+        "eventlog" => whole("eventlog"),
+        "service" => whole("service"),
+        "registry" => whole("registry"),
+        "process" => whole("process"),
+        "acl" => whole("acl"),
+        "pnp" => whole("pnp"),
+        "task" => whole("task"),
+        "session" => whole("session"),
+        "share" => whole("share"),
+        "firewall" => whole("firewall"),
+        "power" => whole("power"),
 
-        "triage" => security("triage"),
-        "intel" => security("intel"),
+        "triage" => whole("triage"),
+        "intel" => whole("intel"),
         "sudo" | "runas" => whole("sudo"),
         "tools" | "tool" | "utils" => whole("tools"),
         "tools office diagnose" | "tools office status" | "tools office verify" => whole("office-diagnose"),
@@ -242,14 +253,6 @@ fn source_for(topic: &str) -> Option<ManualSource> {
     })
 }
 
-fn extract_windows(raw: &str, heading: &str) -> Option<String> {
-    const HEADINGS: &[&str] = &[
-        "EVENTLOG", "SERVICE", "REGISTRY", "PROCESS", "ACL", "PNP", "TASK", "SESSION",
-        "SHARE", "FIREWALL", "POWER", "SEGURIDAD",
-    ];
-    extract_named_block(raw, heading, HEADINGS)
-}
-
 fn extract_bash(raw: &str, topic: &str) -> Option<String> {
     if matches!(topic, ":" | "true" | "false") {
         return extract_numbered(raw, "Builtins mínimos");
@@ -291,38 +294,24 @@ fn extract_unix(raw: &str, topic: &str) -> Option<String> {
 
 fn extract_numbered(raw: &str, keyword: &str) -> Option<String> {
     let lines = raw.lines().collect::<Vec<_>>();
-    let keyword = keyword.to_ascii_lowercase();
+    let keyword_tokens = keyword
+        .split_whitespace()
+        .map(|part| part.to_ascii_lowercase())
+        .collect::<Vec<_>>();
     let start = lines.iter().position(|line| {
-        is_numbered_heading(line)
-            && heading_tokens(line).iter().any(|token| {
-                token == &keyword || keyword.split_whitespace().all(|part| heading_tokens(line).iter().any(|token| token == part))
-            })
+        if !is_numbered_heading(line) {
+            return false;
+        }
+        let tokens = heading_tokens(line);
+        keyword_tokens
+            .iter()
+            .all(|part| tokens.iter().any(|token| token == part))
     })?;
     let end = lines
         .iter()
         .enumerate()
         .skip(start + 1)
         .find_map(|(index, line)| is_numbered_heading(line).then_some(index))
-        .unwrap_or(lines.len());
-    Some(lines[start..end].join("\n").trim().to_owned())
-}
-
-fn extract_named_block(raw: &str, heading: &str, headings: &[&str]) -> Option<String> {
-    let lines = raw.lines().collect::<Vec<_>>();
-    let start = lines
-        .iter()
-        .position(|line| line.trim().eq_ignore_ascii_case(heading))?;
-    let end = lines
-        .iter()
-        .enumerate()
-        .skip(start + 1)
-        .find_map(|(index, line)| {
-            let candidate = line.trim();
-            headings
-                .iter()
-                .any(|known| candidate.eq_ignore_ascii_case(known))
-                .then_some(index)
-        })
         .unwrap_or(lines.len());
     Some(lines[start..end].join("\n").trim().to_owned())
 }
@@ -341,7 +330,7 @@ fn heading_tokens(line: &str) -> Vec<String> {
     line.split_once('.')
         .map(|(_, rest)| rest)
         .unwrap_or(line)
-        .split(|ch: char| !ch.is_alphanumeric() && ch != ':' && ch != '-')
+        .split(|ch: char| !ch.is_alphanumeric() && ch != ':')
         .filter(|part| !part.is_empty())
         .map(|part| part.trim_matches(':').to_ascii_lowercase())
         .collect()
