@@ -3,10 +3,6 @@ name: Release SST
 on:
   workflow_dispatch:
     inputs:
-      update_manifest_url:
-        description: 'URL HTTPS pública y estable de sst-update.json usada por los equipos SST'
-        required: true
-        type: string
       publish_release:
         description: 'Crear también la GitHub Release privada del repositorio fuente'
         required: true
@@ -43,14 +39,6 @@ jobs:
           if (-not $m.Success) { throw 'No se pudo leer la versión canónica.' }
           "version=$($m.Groups[1].Value)" >> $env:GITHUB_OUTPUT
 
-      - name: Validate update channel
-        shell: pwsh
-        run: |
-          $url = '${{ inputs.update_manifest_url }}'.Trim()
-          if (-not $url.StartsWith('https://', [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw 'update_manifest_url debe ser una URL HTTPS pública y estable.'
-          }
-
       - name: Refuse version reuse on different code
         shell: pwsh
         env:
@@ -73,7 +61,7 @@ jobs:
 
       - name: Package final self-extracting release
         shell: pwsh
-        run: ./scripts/package-release.ps1 -UpdateManifestUrl '${{ inputs.update_manifest_url }}'
+        run: ./scripts/package-release.ps1
 
       - name: Verify final self-extractor by executing a disposable copy
         shell: pwsh
