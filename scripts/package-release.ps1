@@ -62,25 +62,33 @@ if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) {
 
 $stubSize = (Get-Item -LiteralPath $stub).Length
 $setupSize = (Get-Item -LiteralPath $setup).Length
-if ($setupSize -le ($stubSize + 16)) {
+$footerLength = 32
+if ($setupSize -le ($stubSize + $footerLength)) {
     throw 'El autoextraible final no contiene payload: su tamano no supera al stub.'
 }
 
 $stream = [System.IO.File]::OpenRead($setup)
 try {
-    if ($stream.Length -lt 16) { throw 'Autoextraible final demasiado pequeno.' }
-    $stream.Seek(-16, [System.IO.SeekOrigin]::End) | Out-Null
+    if ($stream.Length -lt $footerLength) { throw 'Autoextraible final demasiado pequeno.' }
+    $stream.Seek(-$footerLength, [System.IO.SeekOrigin]::End) | Out-Null
     $magicBytes = New-Object byte[] 8
     if ($stream.Read($magicBytes, 0, 8) -ne 8) { throw 'No se pudo leer el footer SFX.' }
     $magic = [System.Text.Encoding]::ASCII.GetString($magicBytes)
-    if ($magic -ne 'SSTSFX02') { throw "Footer SFX invalido: $magic" }
+    if ($magic -ne 'SSTSFX03') { throw "Footer SFX invalido: $magic" }
 
     $offsetBytes = New-Object byte[] 8
     if ($stream.Read($offsetBytes, 0, 8) -ne 8) { throw 'No se pudo leer el offset del bundle.' }
     $bundleOffset = [System.BitConverter]::ToInt64($offsetBytes, 0)
-    if ($bundleOffset -le 0 -or $bundleOffset -ge ($stream.Length - 16)) {
+    if ($bundleOffset -le 0 -or $bundleOffset -ge ($stream.Length - $footerLength)) {
         throw 'Offset del bundle fuera de rango.'
     }
+
+    $packageIdBytes = New-Object byte[] 16
+    if ($stream.Read($packageIdBytes, 0, 16) -ne 16) { throw 'No se pudo leer el ID unico del paquete.' }
+    if (($packageIdBytes | Where-Object { $_ -ne 0 }).Count -eq 0) {
+        throw 'ID unico del paquete invalido.'
+    }
+    $packageId = -join ($packageIdBytes | ForEach-Object { $_.ToString('x2') })
 } finally {
     $stream.Dispose()
 }
@@ -104,6 +112,8 @@ $updateManifest = [ordered]@{
         name = $setupName
         sha256 = $setupHash
         size = $setupSize
+        single_use = $true
+        package_id = $packageId
     }
 }
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -122,7 +132,7 @@ $manifestJson = ($updateManifest | ConvertTo-Json -Depth 5) + [Environment]::New
 Remove-Item -Recurse -Force -LiteralPath $stage
 
 Write-Host "SST $version empaquetado en $dist"
-Write-Host "  $setupName ($setupSize bytes)"
+Write-Host "  $setupName ($setupSize bytes, single-use, id=$packageId)"
 Write-Host '  sst.exe'
 Write-Host '  sst-update.json'
 Write-Host '  version.txt'
