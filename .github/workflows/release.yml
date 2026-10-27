@@ -68,17 +68,20 @@ jobs:
         shell: pwsh
         run: ./scripts/package-release.ps1 -UpdateManifestUrl '${{ inputs.update_manifest_url }}'
 
-      - name: Verify final self-extractor by executing it
+      - name: Verify final self-extractor by executing a disposable copy
         shell: pwsh
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           $setup = Join-Path $PWD "dist/SST-Setup-$env:VERSION.exe"
+          $verifySetup = Join-Path $env:RUNNER_TEMP "SST-Setup-$env:VERSION-verify.exe"
           $extract = Join-Path $env:RUNNER_TEMP 'sst-release-verify'
           if (Test-Path -LiteralPath $extract) { Remove-Item -Recurse -Force -LiteralPath $extract }
+          if (Test-Path -LiteralPath $verifySetup) { Remove-Item -Force -LiteralPath $verifySetup }
+          Copy-Item -LiteralPath $setup -Destination $verifySetup
 
           $arguments = '--extract-only "' + $extract + '"'
-          $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
+          $process = Start-Process -FilePath $verifySetup -ArgumentList $arguments -Wait -PassThru
           if ($process.ExitCode -ne 0) {
             throw "El autoextraible terminó con código $($process.ExitCode)"
           }
@@ -92,6 +95,17 @@ jobs:
           $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $extracted).Hash
           if ($expected -ne $actual) {
             throw "sst.exe extraído no coincide: $actual != $expected"
+          }
+
+          $deadline = [DateTime]::UtcNow.AddSeconds(15)
+          while ((Test-Path -LiteralPath $verifySetup) -and [DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 250
+          }
+          if (Test-Path -LiteralPath $verifySetup) {
+            throw 'La copia de verificación del autoextraible no se autoeliminó.'
+          }
+          if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) {
+            throw 'La verificación consumió el artefacto original de distribución.'
           }
 
       - name: Upload distribution artifact
