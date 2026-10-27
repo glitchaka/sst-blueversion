@@ -7,11 +7,35 @@
 El workflow manual **Release SST** genera en `dist/`:
 
 - `sst.exe`: ejecutable actualizable.
-- `SST-Setup-<version>.exe`: autoextraíble portable.
-- `sst-update.json`: manifiesto con versión, SHA-256 y tamaño de `sst.exe`.
+- `SST-Setup-<version>.exe`: autoextraíble portable de un solo uso.
+- `sst-update.json`: manifiesto con versión, SHA-256 y tamaño de `sst.exe` y metadatos del setup.
 - `version.txt`: versión canónica tomada de `Cargo.toml`.
 
-`SST-Setup-<version>.exe` se copia a un pendrive y, al ejecutarse, extrae el payload en una carpeta `SST` situada en ese mismo soporte. La futura integración de `disk-seal` se hará sobre este flujo; no forma parte todavía del autoextraíble.
+`SST-Setup-<version>.exe` usa el formato `SSTSFX03`. Cada paquete recibe al construirse un ID aleatorio de 128 bits que también se publica en `setup.package_id` dentro de `sst-update.json`.
+
+El setup está diseñado para una sola extracción:
+
+1. Antes de extraer reserva de forma atómica el ID del paquete para impedir ejecuciones simultáneas.
+2. Si la extracción falla antes de completarse, libera la reserva y permite reintentar el mismo paquete.
+3. Cuando `sst.exe` y el resto del payload terminan de escribirse correctamente, el ID queda marcado como consumido en el equipo.
+4. Después del éxito se inicia un helper oculto que espera a que cierre el stub, trunca el autoextraíble y lo elimina.
+5. Si otra copia con el mismo ID intenta ejecutarse en ese equipo, se rechaza sin extraer y también programa su eliminación.
+
+El registro de consumo intenta usar primero `%ProgramData%\Shell Shock Tool\sfx-consumed`; si no existe permiso de escritura usa `%LocalAppData%` y, como último recurso, la carpeta temporal del usuario. De esta forma el autoextraíble no depende de un archivo sidecar situado junto al paquete.
+
+La garantía anterior es local/offline. Una copia realizada antes del consumo y llevada a otro equipo no puede quedar invalidada globalmente sin un servicio de canje o activación en red. Ese control global podrá integrarse con el sistema de activación cuando corresponda.
+
+En el uso portable normal el setup puede copiarse a un pendrive y, al ejecutarse, extrae el payload en una carpeta `SST` situada en ese mismo soporte; después consume y elimina esa copia del autoextraíble. La futura integración de `disk-seal` se hará sobre este flujo.
+
+## Verificación del SFX
+
+`.github/workflows/sfx-e2e.yml` es manual. La verificación crea dos copias temporales del mismo setup antes de ejecutarlo:
+
+- la primera debe extraer correctamente y autoeliminarse;
+- la segunda debe ser rechazada por compartir el mismo `package_id` y no puede dejar un segundo `sst.exe`;
+- el archivo original dentro de `dist/` no se ejecuta durante la prueba y queda disponible para publicación.
+
+El workflow de release usa el mismo principio: verifica una copia descartable para no consumir el artefacto que luego se publica.
 
 ## Canal público
 
