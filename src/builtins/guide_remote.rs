@@ -4,6 +4,11 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+
 const MANUAL_BASE: &str =
     "https://raw.githubusercontent.com/glitchaka/adm-toolbox/main/tutorials";
 const MAX_MANUAL_BYTES: usize = 512 * 1024;
@@ -61,7 +66,8 @@ fn fetch_file(filename: &str) -> Option<String> {
     #[cfg(not(windows))]
     let curl = std::path::PathBuf::from("curl");
 
-    let output = Command::new(curl)
+    let mut command = Command::new(curl);
+    command
         .args([
             "-L",
             "--fail",
@@ -77,9 +83,12 @@ fn fetch_file(filename: &str) -> Option<String> {
             "--user-agent",
             "SST-Guide/2",
         ])
-        .arg(url)
-        .output()
-        .ok()?;
+        .arg(url);
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let output = command.output().ok()?;
 
     if !output.status.success() || output.stdout.is_empty() || output.stdout.len() > MAX_MANUAL_BYTES {
         return None;
