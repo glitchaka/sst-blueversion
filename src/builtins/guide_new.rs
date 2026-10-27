@@ -348,7 +348,7 @@ fn render_areas(terminal: &mut dyn TerminalSession, selected: usize) -> Result<(
 }
 
 fn render_commands(terminal: &mut dyn TerminalSession, area: &str, entries: &[&Entry], selected: usize) -> Result<()> {
-    let (rows, start, end) = window(entries.len(), selected, terminal.size()?.1, 7, 20);
+    let (rows, start, end) = window(entries.len(), selected, terminal.size()?.1, 2, 20);
     let mut lines = vec![format!("Área: {area}"), String::new()];
     for index in start..end {
         let entry = entries[index];
@@ -362,7 +362,7 @@ fn render_commands(terminal: &mut dyn TerminalSession, area: &str, entries: &[&E
 }
 
 fn render_search(terminal: &mut dyn TerminalSession, entries: &[&Entry], selected: usize, query: &str, typing: bool) -> Result<()> {
-    let (rows, start, end) = window(entries.len(), selected, terminal.size()?.1, 8, 18);
+    let (rows, start, end) = window(entries.len(), selected, terminal.size()?.1, 2, 18);
     let prompt = if query.is_empty() { "(escribe para buscar)" } else { query };
     let mut lines = vec![format!("Buscar: {}{prompt}", if typing { "> " } else { "" }), String::new()];
     if entries.is_empty() {
@@ -386,9 +386,11 @@ fn render_search(terminal: &mut dyn TerminalSession, entries: &[&Entry], selecte
 }
 
 fn render_detail(terminal: &mut dyn TerminalSession, entry: &Entry, manual: Option<&str>, scroll: usize) -> Result<usize> {
-    let (_, height) = terminal.size()?;
-    let rows = usize::from(height.max(18)).saturating_sub(6).clamp(8, 30);
-    let width = content_width(terminal.size()?.0);
+    let (columns, height) = terminal.size()?;
+    let body_rows = panel_body_rows(height);
+    let alias_rows = if entry.aliases.is_empty() { 0 } else { 2 };
+    let rows = body_rows.saturating_sub(alias_rows).max(1);
+    let width = content_width(columns);
     let body = manual.map(|text| manual_lines(text, width)).unwrap_or_else(|| {
         let mut rows = wrap(&entry.summary, width);
         rows.push(String::new());
@@ -412,8 +414,16 @@ fn render_detail(terminal: &mut dyn TerminalSession, entry: &Entry, manual: Opti
     Ok(max_scroll)
 }
 
+fn panel_body_rows(height: u16) -> usize {
+    let available = usize::from(height.max(18)).saturating_sub(4).max(8);
+    (CATEGORIES.len() + 3).min(available).max(8)
+}
+
 fn window(len: usize, selected: usize, height: u16, reserved: usize, max_rows: usize) -> (usize, usize, usize) {
-    let rows = usize::from(height.max(18)).saturating_sub(reserved).clamp(5, max_rows);
+    let rows = panel_body_rows(height)
+        .saturating_sub(reserved)
+        .max(1)
+        .min(max_rows);
     let start = selected.saturating_sub(rows.saturating_sub(1));
     let end = (start + rows).min(len);
     (rows, start, end)
@@ -424,9 +434,9 @@ fn draw(terminal: &mut dyn TerminalSession, title: &str, lines: &[String], foote
     let tw = usize::from(tw.max(48));
     let th = usize::from(th.max(18));
     let ww = if tw >= 72 { tw.saturating_sub(4).min(112) } else { tw.saturating_sub(2).max(44) };
-    let max_lines = th.saturating_sub(4).max(8);
-    let shown = lines.len().min(max_lines);
-    let top = th.saturating_sub(shown + 4) / 2;
+    let body_rows = panel_body_rows(th as u16);
+    let panel_height = body_rows + 4;
+    let top = th.saturating_sub(panel_height) / 2;
 
     terminal.clear()?;
     let mut out = String::new();
@@ -435,7 +445,8 @@ fn draw(terminal: &mut dyn TerminalSession, title: &str, lines: &[String], foote
     for _ in 0..top { out.push('\n'); }
 
     push(&mut out, tw, ww, &title_line(ww, title));
-    for line in lines.iter().take(max_lines) {
+    for index in 0..body_rows {
+        let line = lines.get(index).map(String::as_str).unwrap_or("");
         push(&mut out, tw, ww, &text_line(ww, line));
     }
     push(&mut out, tw, ww, &separator(ww));
