@@ -16,9 +16,13 @@ const UPDATE_DIR: &str = "update";
 const CHANNEL_FILE: &str = "update-channel.txt";
 const REMOTE_MANIFEST_FILE: &str = "remote-manifest.json";
 const PENDING_FILE: &str = "pending.json";
+const APPLIED_STAGED_FILE: &str = "applied.pending.json";
+const APPLIED_FILE: &str = "applied.json";
 const STAGED_EXE: &str = "sst.exe.new";
 const APPLY_SCRIPT: &str = "apply-update.cmd";
 const CURL_USER_AGENT: &str = "Shell-Shock-Tool-updater";
+const MAX_CHANGES: usize = 32;
+const MAX_CHANGE_LEN: usize = 240;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpdateManifest {
@@ -30,14 +34,31 @@ pub struct UpdateManifest {
     pub sha256: String,
     #[serde(default)]
     pub size: Option<u64>,
+    #[serde(default)]
+    pub previous_version: Option<String>,
+    #[serde(default)]
+    pub changes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PendingUpdate {
+    #[serde(default)]
+    from_version: String,
     version: String,
     sha256: String,
     staged_path: String,
     staged_at: String,
+    #[serde(default)]
+    changes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AppliedUpdate {
+    from_version: String,
+    version: String,
+    applied_at: String,
+    #[serde(default)]
+    changes: Vec<String>,
 }
 
 pub fn current_version() -> &'static str {
@@ -51,6 +72,53 @@ pub fn spawn_background_check(paths: AppPaths) {
     thread::spawn(move || {
         let _ = check_and_stage(&paths);
     });
+}
+
+/// Runs the startup update flow and emits user-facing progress into the caller's
+/// terminal. Nothing is printed when no update channel has been configured,
+/// except a one-shot receipt for an update that was just applied.
+pub fn startup_update<F>(paths: &AppPaths, mut notify: F) -> Result<()>
+where
+    F: FnMut(&str),
+{
+    if let Some(applied) = take_applied_receipt(paths)? {
+        notify(&format!(
+            "\r\n\x1b[1;38;5;117mSST actualizado: {} -> {}\x1b[0m\r\n",
+            applied.from_version, applied.version
+        ));
+        write_changes(&applied.changes, &mut notify);
+        notify("\r\n");
+    }
+
+    if configured_manifest_url(paths).is_none() {
+        return Ok(());
+    }
+
+    notify("\r\n\x1b[38;5;250mActualizaciones: comprobando canal...\x1b[0m\r\n");
+    let manifest = fetch_manifest(paths)?;
+    validate_manifest(&manifest)?;
+
+    if !is_newer(&manifest.version, current_version())? {
+        cleanup_obsolete_pending(paths)?;
+        notify(&format!(
+            "\x1b[38;5;250mActualizaciones: SST {} está al día.\x1b[0m\r\n\r\n",
+            current_version()
+        ));
+        return Ok(());
+    }
+
+    notify(&format!(
+        "\x1b[1;38;5;117mNueva versión: {} -> {}\x1b[0m\r\n",
+        current_version(), manifest.version
+    ));
+    write_changes(&manifest.changes, &mut notify);
+    notify("\x1b[38;5;250mActualizaciones: descargando sst.exe...\x1b[0m\r\n");
+    stage_manifest_with_progress(paths, &manifest, &mut notify)?;
+    notify(&format!(
+        "\x1b[1;38;5;114mActualización {} preparada y verificada. Se aplicará al cerrar SST.\x1b[0m\r\n\r\n",
+        manifest.version
+    ));
+    Ok(())
 }
 
 pub fn status(paths: &AppPaths) -> Result<String> {
@@ -67,6 +135,7 @@ pub fn status(paths: &AppPaths) -> Result<String> {
                 "Actualización preparada: {} (se aplicará al cerrar SST)\n",
                 pending.version
             ));
+            append_plain_changes(&mut output, &pending.changes);
         } else {
             output.push_str("Actualización preparada: ninguna\n");
         }
@@ -86,18 +155,22 @@ pub fn check_now(paths: &AppPaths, stage: bool) -> Result<String> {
         ));
     }
 
+    let mut output = format!(
+        "Actualización disponible: {} -> {}\n",
+        current_version(), manifest.version
+    );
+    append_plain_changes(&mut output, &manifest.changes);
+
     if !stage {
-        return Ok(format!(
-            "Actualización disponible: {} -> {}\n",
-            current_version(), manifest.version
-        ));
+        return Ok(output);
     }
 
     stage_manifest(paths, &manifest)?;
-    Ok(format!(
+    output.push_str(&format!(
         "Actualización {} descargada y verificada. Se aplicará al cerrar SST.\n",
         manifest.version
-    ))
+    ));
+    Ok(output)
 }
 
 pub fn check_and_stage(paths: &AppPaths) -> Result<bool> {
@@ -131,6 +204,20 @@ pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
     let script = update_dir.join(APPLY_SCRIPT);
     let backup = target.with_extension("exe.old");
     let pending_file = pending_path(paths);
+    let applied_staged = update_dir.join(APPLIED_STAGED_FILE);
+    let applied_file = update_dir.join(APPLIED_FILE);
+
+    let applied = AppliedUpdate {
+        from_version: if pending.from_version.trim().is_empty() {
+            current_version().to_owned()
+        } else {
+            pending.from_version.clone()
+        },
+        version: pending.version.clone(),
+        applied_at: Utc::now().to_rfc3339(),
+        changes: pending.changes.clone(),
+    };
+    fs::write(&applied_staged, serde_json::to_vec_pretty(&applied)?)?;
 
     let body = format!(
         "@echo off\r\n\
@@ -139,6 +226,8 @@ pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
          set \"NEW={}\"\r\n\
          set \"BACKUP={}\"\r\n\
          set \"PENDING={}\"\r\n\
+         set \"APPLIED_PENDING={}\"\r\n\
+         set \"APPLIED={}\"\r\n\
          for /L %%I in (1,1,120) do (\r\n\
            move /Y \"%TARGET%\" \"%BACKUP%\" >nul 2>&1 && goto replace\r\n\
            timeout /t 1 /nobreak >nul\r\n\
@@ -151,6 +240,7 @@ pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
            exit /b 11\r\n\
          )\r\n\
          del /Q \"%BACKUP%\" >nul 2>&1\r\n\
+         move /Y \"%APPLIED_PENDING%\" \"%APPLIED%\" >nul 2>&1\r\n\
          del /Q \"%PENDING%\" >nul 2>&1\r\n\
          start \"\" \"%TARGET%\"\r\n\
          del /Q \"%~f0\" >nul 2>&1\r\n",
@@ -158,6 +248,8 @@ pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
         batch_value(&staged),
         batch_value(&backup),
         batch_value(&pending_file),
+        batch_value(&applied_staged),
+        batch_value(&applied_file),
     );
     fs::write(&script, body)?;
 
@@ -219,21 +311,35 @@ fn fetch_manifest(paths: &AppPaths) -> Result<UpdateManifest> {
 }
 
 fn stage_manifest(paths: &AppPaths, manifest: &UpdateManifest) -> Result<()> {
+    stage_manifest_with_progress(paths, manifest, &mut |_| {})
+}
+
+fn stage_manifest_with_progress<F>(
+    paths: &AppPaths,
+    manifest: &UpdateManifest,
+    notify: &mut F,
+) -> Result<()>
+where
+    F: FnMut(&str),
+{
     let dir = update_dir(paths);
     fs::create_dir_all(&dir)?;
     let partial = dir.join("sst.exe.part");
     let staged = dir.join(STAGED_EXE);
     let _ = fs::remove_file(&partial);
     download(&manifest.asset_url, &partial)?;
+    notify("\x1b[38;5;250mActualizaciones: verificando tamaño y SHA-256...\x1b[0m\r\n");
     verify_file(&partial, &manifest.sha256, manifest.size)?;
     let _ = fs::remove_file(&staged);
     fs::rename(&partial, &staged)?;
 
     let pending = PendingUpdate {
+        from_version: current_version().to_owned(),
         version: manifest.version.clone(),
         sha256: manifest.sha256.to_ascii_lowercase(),
         staged_path: staged.to_string_lossy().into_owned(),
         staged_at: Utc::now().to_rfc3339(),
+        changes: manifest.changes.clone(),
     };
     fs::write(pending_path(paths), serde_json::to_vec_pretty(&pending)?)?;
     Ok(())
@@ -245,6 +351,12 @@ fn validate_manifest(manifest: &UpdateManifest) -> Result<()> {
     }
     parse_version(&manifest.version)
         .with_context(|| format!("versión remota inválida: {}", manifest.version))?;
+    if let Some(previous) = manifest.previous_version.as_deref()
+        && !previous.trim().is_empty()
+    {
+        parse_version(previous)
+            .with_context(|| format!("versión anterior inválida: {previous}"))?;
+    }
     if manifest.channel.chars().any(char::is_control) {
         bail!("canal de actualización inválido en el manifiesto");
     }
@@ -252,6 +364,15 @@ fn validate_manifest(manifest: &UpdateManifest) -> Result<()> {
     let hash = manifest.sha256.trim();
     if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         bail!("SHA-256 inválido en el manifiesto");
+    }
+    if manifest.changes.len() > MAX_CHANGES {
+        bail!("el manifiesto contiene demasiadas entradas de cambios");
+    }
+    for change in &manifest.changes {
+        let text = change.trim();
+        if text.is_empty() || text.chars().count() > MAX_CHANGE_LEN || text.chars().any(char::is_control) {
+            bail!("entrada de cambios inválida en el manifiesto");
+        }
     }
     Ok(())
 }
@@ -382,6 +503,18 @@ fn load_pending(paths: &AppPaths) -> Result<Option<PendingUpdate>> {
     ))
 }
 
+fn take_applied_receipt(paths: &AppPaths) -> Result<Option<AppliedUpdate>> {
+    let path = update_dir(paths).join(APPLIED_FILE);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let bytes = fs::read(&path)?;
+    let receipt: AppliedUpdate = serde_json::from_slice(&bytes)
+        .context("applied.json de update está dañado")?;
+    let _ = fs::remove_file(path);
+    Ok(Some(receipt))
+}
+
 fn cleanup_obsolete_pending(paths: &AppPaths) -> Result<()> {
     let Some(pending) = load_pending(paths)? else {
         return Ok(());
@@ -391,7 +524,33 @@ fn cleanup_obsolete_pending(paths: &AppPaths) -> Result<()> {
     }
     let _ = fs::remove_file(&pending.staged_path);
     let _ = fs::remove_file(pending_path(paths));
+    let _ = fs::remove_file(update_dir(paths).join(APPLIED_STAGED_FILE));
     Ok(())
+}
+
+fn write_changes<F>(changes: &[String], notify: &mut F)
+where
+    F: FnMut(&str),
+{
+    if changes.is_empty() {
+        return;
+    }
+    notify("\x1b[38;5;250mCambios:\x1b[0m\r\n");
+    for change in changes {
+        notify(&format!("  + {}\r\n", change.trim()));
+    }
+}
+
+fn append_plain_changes(output: &mut String, changes: &[String]) {
+    if changes.is_empty() {
+        return;
+    }
+    output.push_str("Cambios:\n");
+    for change in changes {
+        output.push_str("  + ");
+        output.push_str(change.trim());
+        output.push('\n');
+    }
 }
 
 fn batch_value(path: &Path) -> String {
