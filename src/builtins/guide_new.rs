@@ -5,183 +5,184 @@ use std::{
 };
 
 use anyhow::Result;
+use serde::Deserialize;
 
 use crate::core::{
     CommandContext, CommandOutput,
     ports::{TerminalFactory, TerminalKey, TerminalSession},
 };
 
-use super::{BuiltinCommand, UNIX_COMMANDS, guide_remote::ManualKind};
+use super::BuiltinCommand;
 
 const SCREEN: &str = "\x1b[44;37m";
 const PANEL: &str = "\x1b[47;30m";
 const RESET: &str = "\x1b[0m";
 
-const CATEGORIES: &[(&str, &str)] = &[
-    ("Sistema", "Equipo, procesos, memoria, discos, hostname, dominio y Autologon."),
-    ("Red", "Interfaces, rutas, DNS, vecinos, scan, monitor, inventario, switches y WOL."),
-    ("Diagnóstico", "Diagnósticos compuestos del equipo y la red."),
-    ("Windows", "Event Log, servicios, Registro, procesos, ACL, PnP, tareas, sesiones, SMB, firewall y energía."),
-    ("Seguridad", "Triage, inteligencia, persistencia e inspección de procesos."),
-    ("Privilegios", "Administrador, LOCAL SYSTEM y TrustedInstaller."),
-    ("Herramientas", "Framework de diagnóstico, reparación y remoción por producto/proveedor."),
-    ("Paquetes", "Paquetes portables instalados dentro de SST."),
-    ("Arch / Portabilidad", "Catálogo de Arch Linux y evaluación de qué proyectos pueden portarse a SST/Windows."),
-    ("Configuración", "Configuración, fondos, rutas y recarga."),
-    ("Actualización", "Comprobación, descarga y aplicación de versiones SST."),
-    ("Editor", "Helix-SST."),
-    ("Nwash / Bash", "Builtins Bash implementados por Nwash."),
-    ("Unix", "Comandos Unix/GNU-like reimplementados en SST."),
-];
+#[derive(Clone, Deserialize)]
+struct GuideUi {
+    title: String,
+    #[serde(default)]
+    intro: Vec<String>,
+    areas_footer: String,
+    commands_footer: String,
+    search_footer: String,
+    search_typing_footer: String,
+    detail_footer: String,
+    detail_scroll_footer: String,
+    area_label: String,
+    search_label: String,
+    empty_search: String,
+    aliases_label: String,
+}
 
-const BASH_BUILTINS: &[&str] = &[
-    ":", ".", "[", "alias", "bg", "bind", "break", "builtin", "caller", "cd",
-    "command", "compgen", "complete", "compopt", "continue", "declare", "dirs",
-    "disown", "echo", "enable", "eval", "exec", "exit", "export", "false", "fc",
-    "fg", "getopts", "hash", "help", "history", "jobs", "kill", "let", "local",
-    "logout", "mapfile", "popd", "printf", "pushd", "pwd", "read", "readarray",
-    "readonly", "return", "set", "shift", "shopt", "source", "suspend", "test",
-    "times", "trap", "true", "type", "typeset", "ulimit", "umask", "unalias",
-    "unset", "wait",
-];
+#[derive(Clone, Deserialize)]
+struct Area {
+    id: String,
+    name: String,
+    summary: String,
+}
 
-const SST_COMMANDS: &[(&str, &[&str], &str, &str, ManualKind)] = &[
-    ("sys", &["ps", "top", "df", "free", "whoami", "uname", "uptime", "fetch", "neofetch", "fastfetch"], "Sistema", "Información y administración local del equipo.", ManualKind::Whole("system")),
-    ("hostname", &["sys hostname"], "Sistema", "Consulta o cambia el nombre del equipo.", ManualKind::Whole("hostname")),
-    ("sys domain", &["domain-admin"], "Sistema", "Estado, unión y salida de dominio Windows.", ManualKind::Whole("domain")),
-    ("sys autologon", &["autologon"], "Sistema", "Inicio automático mediante Sysinternals Autologon.", ManualKind::Whole("autologon")),
-    ("notsh", &["net"], "Red", "Shell de red unificada de SST.", ManualKind::Whole("network")),
-    ("device", &[], "Red", "Inventario de equipos por MAC/IP.", ManualKind::Whole("device")),
-    ("switch", &[], "Red", "Localiza una MAC en switch/puerto.", ManualKind::Whole("switch")),
-    ("wol", &[], "Red", "Wake-on-LAN.", ManualKind::Whole("wol")),
-    ("diag", &[], "Diagnóstico", "Diagnósticos compuestos.", ManualKind::Whole("diagnostics")),
-    ("domain", &[], "Windows", "Consulta pertenencia a dominio local/remota.", ManualKind::Whole("domain-status")),
-    ("eventlog", &[], "Windows", "Windows Event Log.", ManualKind::Whole("eventlog")),
-    ("service", &[], "Windows", "Servicios Windows.", ManualKind::Whole("service")),
-    ("registry", &[], "Windows", "Registro de Windows.", ManualKind::Whole("registry")),
-    ("process", &[], "Windows", "Procesos Windows.", ManualKind::Whole("process")),
-    ("acl", &[], "Windows", "Permisos ACL NTFS.", ManualKind::Whole("acl")),
-    ("pnp", &[], "Windows", "Dispositivos Plug and Play.", ManualKind::Whole("pnp")),
-    ("task", &[], "Windows", "Tareas programadas.", ManualKind::Whole("task")),
-    ("session", &[], "Windows", "Sesiones locales/RDP.", ManualKind::Whole("session")),
-    ("share", &[], "Windows", "Recursos compartidos SMB.", ManualKind::Whole("share")),
-    ("firewall", &[], "Windows", "Windows Defender Firewall.", ManualKind::Whole("firewall")),
-    ("power", &[], "Windows", "Apagado, reinicio, logoff e hibernación.", ManualKind::Whole("power")),
-    ("triage", &[], "Seguridad", "Análisis de seguridad y procesos.", ManualKind::Whole("triage")),
-    ("intel", &[], "Seguridad", "Fuentes y lookups de inteligencia.", ManualKind::Whole("intel")),
-    ("sudo", &["runas"], "Privilegios", "Elevación de comandos y sesión.", ManualKind::Whole("sudo")),
-    ("tools", &["tool", "utils"], "Herramientas", "Framework de utilidades de mantenimiento por producto/proveedor.", ManualKind::Whole("tools")),
-    ("tools office diagnose", &["tools office status", "tools office verify"], "Herramientas", "Audita Office, Outlook y la cadena de autenticación.", ManualKind::Whole("office-diagnose")),
-    ("tools office auth repair", &[], "Herramientas", "Re-registra AAD BrokerPlugin.", ManualKind::Whole("office-auth-repair")),
-    ("tools office scrub", &["tools office sara", "tools office uninstall", "tools office remove"], "Herramientas", "Desinstalación completa con SaRACmd legacy.", ManualKind::Whole("office-sara")),
-    ("tools office scrub-current", &["tools office gethelp"], "Herramientas", "Desinstalación con GetHelpCmd actual.", ManualKind::Whole("office-gethelp")),
-    ("instp", &[], "Paquetes", "Gestor portable de paquetes SST.", ManualKind::Whole("instp")),
-    ("arch packages", &["arch-packages", "arch portability", "arch portabilidad"], "Arch / Portabilidad", "Catálogo vivo de Arch y matriz de portabilidad a Windows/SST.", ManualKind::Whole("arch-packages-portability")),
-    ("config", &[], "Configuración", "Configuración principal de SST.", ManualKind::Whole("config")),
-    ("reload", &[], "Configuración", "Recarga la configuración de la shell.", ManualKind::Whole("config")),
-    ("sst-path", &[], "Configuración", "Traduce rutas Unix/Windows para SST.", ManualKind::Whole("config")),
-    ("update", &[], "Actualización", "Busca y prepara actualizaciones SST.", ManualKind::Whole("update")),
-    ("helix", &["hx", "helix-sst"], "Editor", "Editor Helix integrado en SST.", ManualKind::Whole("helix")),
-];
+#[derive(Clone, Deserialize)]
+struct ManualSpec {
+    file: String,
+    #[serde(default = "default_extension")]
+    extension: String,
+    #[serde(default = "default_section")]
+    section: String,
+    #[serde(default)]
+    topic: Option<String>,
+}
+
+fn default_extension() -> String {
+    "txt".to_owned()
+}
+
+fn default_section() -> String {
+    "whole".to_owned()
+}
+
+#[derive(Clone, Deserialize)]
+struct EntrySpec {
+    name: String,
+    #[serde(default)]
+    aliases: Vec<String>,
+    area: String,
+    summary: String,
+    manual: ManualSpec,
+}
+
+#[derive(Deserialize)]
+struct CatalogSpec {
+    schema: u32,
+    ui: GuideUi,
+    areas: Vec<Area>,
+    entries: Vec<EntrySpec>,
+}
 
 struct Entry {
     name: String,
     aliases: Vec<String>,
-    category: &'static str,
+    area: String,
     summary: String,
-    manual: ManualKind,
+    manual: ManualSpec,
     search_key: String,
 }
 
-impl Entry {
-    fn new(
-        name: &str,
-        aliases: &[&str],
-        category: &'static str,
-        summary: &str,
-        manual: ManualKind,
-    ) -> Self {
-        let aliases = aliases.iter().map(|alias| (*alias).to_owned()).collect::<Vec<_>>();
-        let mut search_key = format!("{name}\n{category}\n{summary}").to_ascii_lowercase();
-        for alias in &aliases {
-            search_key.push('\n');
-            search_key.push_str(&alias.to_ascii_lowercase());
-        }
-        Self {
-            name: name.to_owned(),
-            aliases,
-            category,
-            summary: summary.to_owned(),
-            manual,
-            search_key,
-        }
-    }
-}
-
 struct GuideIndex {
+    ui: GuideUi,
+    areas: Vec<Area>,
     entries: Vec<Entry>,
     lookup: HashMap<String, usize>,
-    by_category: Vec<Vec<usize>>,
+    by_area: Vec<Vec<usize>>,
+    area_lookup: HashMap<String, usize>,
 }
 
 impl GuideIndex {
-    fn build() -> Self {
-        let mut entries = SST_COMMANDS
-            .iter()
-            .map(|(name, aliases, category, summary, manual)| {
-                Entry::new(name, aliases, category, summary, *manual)
-            })
-            .collect::<Vec<_>>();
-
-        for name in BASH_BUILTINS {
-            entries.push(Entry::new(
-                name,
-                &[],
-                "Nwash / Bash",
-                "Builtin Bash/Nwash; abre su referencia completa de opciones y comportamiento.",
-                ManualKind::Bash,
-            ));
+    fn from_json(raw: &str) -> Option<Self> {
+        let spec: CatalogSpec = serde_json::from_str(raw).ok()?;
+        if spec.schema != 1 || spec.areas.is_empty() {
+            return None;
         }
 
-        for &(name, help) in UNIX_COMMANDS {
-            if BASH_BUILTINS.contains(&name) {
-                continue;
+        let mut area_lookup = HashMap::new();
+        for (index, area) in spec.areas.iter().enumerate() {
+            let id = area.id.trim().to_ascii_lowercase();
+            if id.is_empty() || area_lookup.insert(id, index).is_some() {
+                return None;
             }
-            let summary = help
-                .split_once('—')
-                .map(|(_, value)| value.trim())
-                .unwrap_or(help);
-            entries.push(Entry::new(name, &[], "Unix", summary, ManualKind::Unix));
         }
 
-        entries.sort_by(|left, right| {
-            category_index(left.category)
-                .cmp(&category_index(right.category))
-                .then_with(|| left.name.to_ascii_lowercase().cmp(&right.name.to_ascii_lowercase()))
-        });
-
+        let mut entries = Vec::with_capacity(spec.entries.len());
         let mut lookup = HashMap::new();
-        let mut by_category = vec![Vec::new(); CATEGORIES.len()];
-        for (index, entry) in entries.iter().enumerate() {
-            lookup.insert(entry.name.to_ascii_lowercase(), index);
-            for alias in &entry.aliases {
-                lookup.entry(alias.to_ascii_lowercase()).or_insert(index);
+        let mut by_area = vec![Vec::new(); spec.areas.len()];
+
+        for item in spec.entries {
+            let name = item.name.trim().to_owned();
+            if name.is_empty() {
+                return None;
             }
-            let category = category_index(entry.category);
-            if category < by_category.len() {
-                by_category[category].push(index);
+            let area_key = item.area.trim().to_ascii_lowercase();
+            let area_index = *area_lookup.get(&area_key)?;
+            let aliases = item
+                .aliases
+                .into_iter()
+                .map(|alias| alias.trim().to_owned())
+                .filter(|alias| !alias.is_empty())
+                .collect::<Vec<_>>();
+
+            let mut search_key = format!(
+                "{}\n{}\n{}\n{}",
+                name,
+                spec.areas[area_index].name,
+                spec.areas[area_index].summary,
+                item.summary
+            )
+            .to_ascii_lowercase();
+            for alias in &aliases {
+                search_key.push('\n');
+                search_key.push_str(&alias.to_ascii_lowercase());
             }
+
+            let entry_index = entries.len();
+            if lookup
+                .insert(name.to_ascii_lowercase(), entry_index)
+                .is_some()
+            {
+                return None;
+            }
+            for alias in &aliases {
+                lookup
+                    .entry(alias.to_ascii_lowercase())
+                    .or_insert(entry_index);
+            }
+
+            entries.push(Entry {
+                name,
+                aliases,
+                area: area_key,
+                summary: item.summary,
+                manual: item.manual,
+                search_key,
+            });
+            by_area[area_index].push(entry_index);
         }
 
-        Self {
+        Some(Self {
+            ui: spec.ui,
+            areas: spec.areas,
             entries,
             lookup,
-            by_category,
-        }
+            by_area,
+            area_lookup,
+        })
     }
 
     fn find(&self, value: &str) -> Option<usize> {
         self.lookup.get(&value.trim().to_ascii_lowercase()).copied()
+    }
+
+    fn area_index(&self, area: &str) -> Option<usize> {
+        self.area_lookup.get(&area.to_ascii_lowercase()).copied()
     }
 
     fn search(&self, query: &str) -> Vec<usize> {
@@ -214,8 +215,13 @@ impl GuideBuiltin {
     }
 
     fn run(&self, direct: Option<String>, search: Option<String>) -> Result<CommandOutput> {
-        let index = GuideIndex::build();
-        let mut terminal = self.terminal.alternate_screen()?;
+        let Some(raw) = super::guide_remote::load_index() else {
+            return Ok(CommandOutput::ok("\n"));
+        };
+        let Some(index) = GuideIndex::from_json(&raw) else {
+            return Ok(CommandOutput::ok("\n"));
+        };
+
         let mut query = search.unwrap_or_default();
         let mut search_results = index.search(&query);
         let mut view = direct
@@ -225,6 +231,7 @@ impl GuideBuiltin {
         let mut typing = matches!(view, View::Search) && !query.is_empty();
         let mut selected = 0usize;
         let mut scroll = 0usize;
+        let mut terminal = self.terminal.alternate_screen()?;
         let mut size = terminal.size()?;
         let mut dirty = true;
         let mut manual_cache: HashMap<usize, Option<Arc<str>>> = HashMap::new();
@@ -240,18 +247,18 @@ impl GuideBuiltin {
             if dirty {
                 match view {
                     View::Areas => {
-                        selected = selected.min(CATEGORIES.len().saturating_sub(1));
-                        render_areas(terminal.as_mut(), size, selected)?;
+                        selected = selected.min(index.areas.len().saturating_sub(1));
+                        render_areas(terminal.as_mut(), size, &index, selected)?;
                     }
                     View::Commands(area) => {
-                        let area = area.min(CATEGORIES.len().saturating_sub(1));
-                        let visible = &index.by_category[area];
+                        let area = area.min(index.areas.len().saturating_sub(1));
+                        let visible = &index.by_area[area];
                         selected = selected.min(visible.len().saturating_sub(1));
                         render_commands(
                             terminal.as_mut(),
                             size,
-                            CATEGORIES[area].0,
-                            &index.entries,
+                            &index,
+                            area,
                             visible,
                             selected,
                         )?;
@@ -261,7 +268,7 @@ impl GuideBuiltin {
                         render_search(
                             terminal.as_mut(),
                             size,
-                            &index.entries,
+                            &index,
                             &search_results,
                             selected,
                             &query,
@@ -274,13 +281,18 @@ impl GuideBuiltin {
                         let body = if let Some(body) = wrapped_cache.get(&(entry_index, width)).cloned() {
                             body
                         } else {
-                            let manual = manual_cache
-                                .entry(entry_index)
-                                .or_insert_with(|| super::guide_remote::load(entry.manual, &entry.name));
+                            let manual = manual_cache.entry(entry_index).or_insert_with(|| {
+                                super::guide_remote::load_manual(
+                                    &entry.manual.file,
+                                    &entry.manual.extension,
+                                    &entry.manual.section,
+                                    entry.manual.topic.as_deref(),
+                                )
+                            });
                             let lines = manual
                                 .as_deref()
                                 .map(|text| manual_lines(text, width))
-                                .unwrap_or_else(|| fallback_lines(&entry.summary, width));
+                                .unwrap_or_default();
                             let body = Arc::new(lines);
                             wrapped_cache.insert((entry_index, width), Arc::clone(&body));
                             body
@@ -288,6 +300,7 @@ impl GuideBuiltin {
                         let max_scroll = render_detail(
                             terminal.as_mut(),
                             size,
+                            &index,
                             entry,
                             body.as_slice(),
                             scroll,
@@ -322,7 +335,7 @@ impl GuideBuiltin {
                         dirty = true;
                     }
                     TerminalKey::Down => {
-                        selected = (selected + 1).min(CATEGORIES.len().saturating_sub(1));
+                        selected = (selected + 1).min(index.areas.len().saturating_sub(1));
                         dirty = true;
                     }
                     TerminalKey::PageUp => {
@@ -330,7 +343,7 @@ impl GuideBuiltin {
                         dirty = true;
                     }
                     TerminalKey::PageDown => {
-                        selected = (selected + 6).min(CATEGORIES.len().saturating_sub(1));
+                        selected = (selected + 6).min(index.areas.len().saturating_sub(1));
                         dirty = true;
                     }
                     TerminalKey::Home => {
@@ -338,7 +351,7 @@ impl GuideBuiltin {
                         dirty = true;
                     }
                     TerminalKey::End => {
-                        selected = CATEGORIES.len().saturating_sub(1);
+                        selected = index.areas.len().saturating_sub(1);
                         dirty = true;
                     }
                     TerminalKey::Escape
@@ -349,8 +362,8 @@ impl GuideBuiltin {
                     _ => {}
                 },
                 View::Commands(area) => {
-                    let area = area.min(CATEGORIES.len().saturating_sub(1));
-                    let visible = &index.by_category[area];
+                    let area = area.min(index.areas.len().saturating_sub(1));
+                    let visible = &index.by_area[area];
                     match key {
                         TerminalKey::Enter => {
                             if let Some(entry_index) = visible.get(selected).copied() {
@@ -500,8 +513,8 @@ impl GuideBuiltin {
                     let max_scroll = body_len.saturating_sub(rows);
                     match key {
                         TerminalKey::Backspace | TerminalKey::Enter | TerminalKey::Escape => {
-                            let area = category_index(entry.category).min(CATEGORIES.len().saturating_sub(1));
-                            selected = index.by_category[area]
+                            let area = index.area_index(&entry.area).unwrap_or(0);
+                            selected = index.by_area[area]
                                 .iter()
                                 .position(|candidate| *candidate == entry_index)
                                 .unwrap_or(0);
@@ -553,7 +566,7 @@ impl BuiltinCommand for GuideBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "guide — manual interactivo completo de SST"
+        "guide — manual interactivo de SST cargado desde el repositorio"
     }
 
     fn execute(
@@ -572,48 +585,44 @@ impl BuiltinCommand for GuideBuiltin {
     }
 }
 
-fn category_index(category: &str) -> usize {
-    CATEGORIES
-        .iter()
-        .position(|(name, _)| name.eq_ignore_ascii_case(category))
-        .unwrap_or(CATEGORIES.len())
-}
-
 fn render_areas(
     terminal: &mut dyn TerminalSession,
     size: (u16, u16),
+    index: &GuideIndex,
     selected: usize,
 ) -> Result<()> {
-    let mut lines = vec![
-        "Elige un área de SST. Nwash/Bash y Unix aparecen al final como capas de compatibilidad.".to_owned(),
-        "Cada comando abre directamente su documentación completa, con opciones, ejemplos, permisos y recuperación.".to_owned(),
-        String::new(),
-    ];
-    for (index, (name, summary)) in CATEGORIES.iter().enumerate() {
-        let marker = if index == selected { ">" } else { " " };
-        lines.push(format!("{marker} {name:<18} {summary}"));
+    let mut lines = index.ui.intro.clone();
+    if !lines.is_empty() {
+        lines.push(String::new());
+    }
+    for (position, area) in index.areas.iter().enumerate() {
+        let marker = if position == selected { ">" } else { " " };
+        lines.push(format!("{marker} {:<18} {}", area.name, area.summary));
     }
     draw(
         terminal,
         size,
-        "Shell Shock Tool — Guía",
+        &index.ui.title,
         &lines,
-        "↑↓ navegar · ENTER abrir · / buscar · Q salir",
+        &index.ui.areas_footer,
     )
 }
 
 fn render_commands(
     terminal: &mut dyn TerminalSession,
     size: (u16, u16),
-    area: &str,
-    entries: &[Entry],
+    index: &GuideIndex,
+    area: usize,
     visible: &[usize],
     selected: usize,
 ) -> Result<()> {
     let (rows, start, end) = window(visible.len(), selected, size.1, 2, 24);
-    let mut lines = vec![format!("Área: {area}"), String::new()];
+    let mut lines = vec![
+        format!("{}: {}", index.ui.area_label, index.areas[area].name),
+        String::new(),
+    ];
     for position in start..end {
-        let entry = &entries[visible[position]];
+        let entry = &index.entries[visible[position]];
         let marker = if position == selected { ">" } else { " " };
         lines.push(format!("{marker} {:<28} {}", entry.name, entry.summary));
     }
@@ -623,47 +632,64 @@ fn render_commands(
     draw(
         terminal,
         size,
-        "Shell Shock Tool — Guía",
+        &index.ui.title,
         &lines,
-        "ENTER abrir · Backspace/Esc áreas · / buscar · Q salir",
+        &index.ui.commands_footer,
     )
 }
 
 fn render_search(
     terminal: &mut dyn TerminalSession,
     size: (u16, u16),
-    entries: &[Entry],
+    index: &GuideIndex,
     visible: &[usize],
     selected: usize,
     query: &str,
     typing: bool,
 ) -> Result<()> {
     let (rows, start, end) = window(visible.len(), selected, size.1, 2, 22);
-    let prompt = if query.is_empty() { "(escribe para buscar)" } else { query };
-    let mut lines = vec![format!("Buscar: {}{prompt}", if typing { "> " } else { "" }), String::new()];
+    let prompt = if query.is_empty() { "" } else { query };
+    let mut lines = vec![
+        format!(
+            "{}: {}{}",
+            index.ui.search_label,
+            if typing { "> " } else { "" },
+            prompt
+        ),
+        String::new(),
+    ];
     if visible.is_empty() {
-        lines.push("No hay coincidencias.".to_owned());
+        lines.push(index.ui.empty_search.clone());
     } else {
         for position in start..end {
-            let entry = &entries[visible[position]];
+            let entry = &index.entries[visible[position]];
+            let area = index
+                .area_index(&entry.area)
+                .and_then(|area| index.areas.get(area))
+                .map(|area| area.name.as_str())
+                .unwrap_or("");
             let marker = if position == selected { ">" } else { " " };
-            lines.push(format!("{marker} {:<26} [{:<18}] {}", entry.name, entry.category, entry.summary));
+            lines.push(format!(
+                "{marker} {:<26} [{:<18}] {}",
+                entry.name, area, entry.summary
+            ));
         }
     }
     for _ in end.saturating_sub(start)..rows {
         lines.push(String::new());
     }
     let footer = if typing {
-        "Escribe · ENTER terminar búsqueda · Esc cancelar"
+        &index.ui.search_typing_footer
     } else {
-        "ENTER abrir · / editar · Backspace/Esc áreas · Q salir"
+        &index.ui.search_footer
     };
-    draw(terminal, size, "Shell Shock Tool — Buscar", &lines, footer)
+    draw(terminal, size, &index.ui.title, &lines, footer)
 }
 
 fn render_detail(
     terminal: &mut dyn TerminalSession,
     size: (u16, u16),
+    index: &GuideIndex,
     entry: &Entry,
     body: &[String],
     scroll: usize,
@@ -673,24 +699,28 @@ fn render_detail(
     let scroll = scroll.min(max_scroll);
     let mut lines = Vec::new();
     if !entry.aliases.is_empty() {
-        lines.push(format!("Aliases: {}", entry.aliases.join(", ")));
+        lines.push(format!(
+            "{}: {}",
+            index.ui.aliases_label,
+            entry.aliases.join(", ")
+        ));
         lines.push(String::new());
     }
     lines.extend(body.iter().skip(scroll).take(rows).cloned());
     let footer = if body.len() > rows {
-        format!(
-            "{}-{} de {} · ↑↓/PgUp/PgDn desplazar · Backspace volver · Q salir",
-            scroll + 1,
-            (scroll + rows).min(body.len()),
-            body.len()
-        )
+        index
+            .ui
+            .detail_scroll_footer
+            .replace("{start}", &(scroll + 1).to_string())
+            .replace("{end}", &(scroll + rows).min(body.len()).to_string())
+            .replace("{total}", &body.len().to_string())
     } else {
-        "Backspace/Enter/Esc volver · Q salir".to_owned()
+        index.ui.detail_footer.clone()
     };
     draw(
         terminal,
         size,
-        &format!("SST — {}", entry.name),
+        &format!("{} — {}", index.ui.title, entry.name),
         &lines,
         &footer,
     )?;
@@ -807,16 +837,6 @@ fn content_width(columns: u16) -> usize {
     window.saturating_sub(6)
 }
 
-fn fallback_lines(summary: &str, width: usize) -> Vec<String> {
-    let mut rows = wrap(summary, width);
-    rows.push(String::new());
-    rows.extend(wrap(
-        "No se pudo cargar la documentación extensa. Usa la ayuda integrada del comando como referencia temporal.",
-        width,
-    ));
-    rows
-}
-
 fn manual_lines(text: &str, width: usize) -> Vec<String> {
     let mut out = Vec::new();
     for raw in text.lines() {
@@ -830,9 +850,6 @@ fn manual_lines(text: &str, width: usize) -> Vec<String> {
         for line in wrap(raw.trim(), available) {
             out.push(format!("{prefix}{line}"));
         }
-    }
-    if out.is_empty() {
-        out.push("Sin contenido.".to_owned());
     }
     out
 }
