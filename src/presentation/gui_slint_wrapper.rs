@@ -37,7 +37,25 @@ struct PendingUpdate {
 
 pub fn run() -> Result<()> {
     let paths = AppPaths::detect();
-    update::spawn_background_check(paths.clone());
+    paths.ensure_layout()?;
+
+    // Startup updates are truly automatic: if a verified update was already
+    // staged during a previous session, apply it before opening the GUI.
+    if schedule_pending_update(&paths)? {
+        return Ok(());
+    }
+
+    // Check the configured channel synchronously at startup. A network/update
+    // error must never prevent SST from opening, so failures fall through to
+    // the normal GUI. When a new version is staged successfully, immediately
+    // hand it off to the transactional updater and exit; the helper relaunches
+    // SST from the new executable.
+    if update::configured_manifest_url(&paths).is_some()
+        && update::startup_update(&paths, |_| {}).is_ok()
+        && schedule_pending_update(&paths)?
+    {
+        return Ok(());
+    }
 
     let _beacon_overlay = BeaconOverlayGuard::start();
     let result = super::gui_slint_base::run();
@@ -47,6 +65,9 @@ pub fn run() -> Result<()> {
     // folded onto the same implementation.
     let _legacy_handoff: fn(&AppPaths) -> Result<bool> = update::schedule_pending_update;
 
+    // A pending update can still appear while SST is running (for example from
+    // an explicit `update install`). Preserve close-time application as a
+    // fallback, while startup remains the primary automatic path.
     if result.is_ok() {
         schedule_pending_update(&paths)?;
     }
