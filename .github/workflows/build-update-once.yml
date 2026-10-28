@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.release/build-0.1.9-blue.5.trigger'
+      - '.github/workflows/build-update-once.yml'
 
 permissions:
   contents: read
