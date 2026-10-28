@@ -306,7 +306,7 @@ fn printers(args: &[String]) -> anyhow::Result<CommandOutput> {
                sys printers --default   sólo la impresora predeterminada\n\
 \n\
              Muestra cola, servidor de impresión, recurso compartido, puerto e IP cuando\n\
-             el puerto TCP/IP permite resolverla. No usa PowerShell.\n",
+             el puerto TCP/IP o la ubicación WSD permiten resolverla. No usa PowerShell.\n",
         ));
     }
 
@@ -517,7 +517,8 @@ fn enumerate_printers() -> anyhow::Result<Vec<PrinterRow>> {
             }
         }
 
-        let ip = resolve_printer_ip(&port);
+        let ip = resolve_printer_ip(&port)
+            .or_else(|| resolve_printer_location_ip(&location));
         let is_default = default_name
             .as_deref()
             .is_some_and(|default| default.eq_ignore_ascii_case(&name));
@@ -576,6 +577,31 @@ unsafe fn wide_ptr_string(ptr: *const u16) -> String {
         }
         String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len))
     }
+}
+
+fn resolve_printer_location_ip(location: &str) -> Option<String> {
+    let raw = location.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    let authority = raw
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(raw)
+        .split('/')
+        .next()
+        .unwrap_or("");
+
+    let host = if let Some(rest) = authority.strip_prefix('[') {
+        rest.split_once(']').map(|(host, _)| host).unwrap_or(rest)
+    } else if let Some((host, port)) = authority.rsplit_once(':') {
+        if port.parse::<u16>().is_ok() { host } else { authority }
+    } else {
+        authority
+    };
+
+    resolve_printer_ip(host)
 }
 
 fn resolve_printer_ip(port: &str) -> Option<String> {
