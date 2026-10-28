@@ -44,7 +44,7 @@ impl BuiltinCommand for ToolsBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "tools — suite de utilidades de mantenimiento y reparación"
+        "tools — framework de utilidades de mantenimiento por producto o proveedor"
     }
 
     fn execute(
@@ -61,7 +61,9 @@ impl BuiltinCommand for ToolsBuiltin {
             "list" => Ok(help_output()),
             "office" => office_tools(&args[1..]),
             other => Ok(CommandOutput::error(
-                format!("tools: utilidad desconocida: {other}\nuse: tools list"),
+                format!(
+                    "tools: familia o producto desconocido: {other}\nuse: tools list\nsintaxis: tools <producto> <acción> [opciones]"
+                ),
                 2,
             )),
         }
@@ -71,19 +73,33 @@ impl BuiltinCommand for ToolsBuiltin {
 fn help_output() -> CommandOutput {
     CommandOutput::ok(
         "SST Tools\n\n\
+         Framework de diagnóstico, reparación, limpieza y desinstalación profunda\n\
+         organizado por producto o proveedor. Office es una familia de tools;\n\
+         no define el subsistema completo.\n\n\
+         Sintaxis\n\
+           tools list\n\
+           tools <producto> <acción> [opciones]\n\n\
+         Familias disponibles\n\
+           Office / Microsoft 365\n\
+             tools office diagnose\n\
+             tools office verify\n\
+             tools office auth repair\n\
+             tools office scrub [all|m365|2024|2021|2019|2016|2013|2010|2007]\n\
+             tools office sara [VERSION]\n\
+             tools office scrub-current [VERSION]\n\n\
+         Modelo para nuevas familias\n\
+           tools <producto> diagnose\n\
+           tools <producto> repair\n\
+           tools <producto> remove\n\n\
+         SST puede combinar diagnóstico propio antes/después con la herramienta\n\
+         oficial del fabricante. Los backends externos se descargan desde su fuente,\n\
+         se validan antes de ejecutarse y permanecen aislados del código de SST.\n\n\
          Office\n\
-           tools office diagnose\n\
-           tools office verify\n\
-           tools office auth repair\n\
-           tools office scrub [all|m365|2024|2021|2019|2016|2013|2010|2007]\n\
-           tools office sara [VERSION]\n\
-           tools office scrub-current [VERSION]\n\n\
-         diagnose/verify revisa instalación, residuos, versión/build de Office, Outlook,\n\
-         WebView2, WAM/AAD Broker, TokenBroker, estado Entra/PRT y cachés.\n\
-         auth repair vuelve a registrar AAD BrokerPlugin para el usuario actual.\n\
-         scrub/sara usa el SaRACmd Enterprise antiguo y verifica la firma Microsoft\n\
-         antes de ejecutar OfficeScrubScenario. scrub-current conserva GetHelpCmd\n\
-         como backend alternativo actual.\n",
+           diagnose/verify revisa instalación, residuos, versión/build, Outlook,\n\
+           WebView2, WAM/AAD Broker, TokenBroker, estado Entra/PRT y cachés.\n\
+           auth repair vuelve a registrar AAD BrokerPlugin para el usuario actual.\n\
+           scrub/sara usa SaRACmd Enterprise legacy y valida la firma Microsoft.\n\
+           scrub-current conserva GetHelpCmd como backend alternativo actual.\n",
     )
 }
 
