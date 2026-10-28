@@ -43,8 +43,8 @@ pub fn run() -> Result<()> {
     let result = super::gui_slint_base::run();
 
     // Keep the legacy handoff referenced while the GUI uses the hardened
-    // console-independent path below. This can be removed when update.rs is
-    // folded onto the same helper implementation.
+    // transactional handoff below. This can be removed once update.rs is
+    // folded onto the same implementation.
     let _legacy_handoff: fn(&AppPaths) -> Result<bool> = update::schedule_pending_update;
 
     if result.is_ok() {
@@ -74,12 +74,38 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
 
     fs::create_dir_all(&update_dir)?;
     let target = std::env::current_exe().context("no se pudo resolver sst.exe")?;
+    let ready = target.with_extension("exe.new");
     let backup = target.with_extension("exe.old");
     let applied_staged = update_dir.join(APPLIED_STAGED_FILE);
     let applied_file = update_dir.join(APPLIED_FILE);
     let legacy_script = update_dir.join(APPLY_SCRIPT);
     let safe_script = update_dir.join(SAFE_APPLY_SCRIPT);
     let ping = system32_executable("ping.exe")?;
+
+    // Prepare everything while the current executable is still known-good.
+    // The replacement is copied beside sst.exe first so the final operation is
+    // a same-directory rename, not a cross-directory/cross-volume move.
+    let _ = fs::remove_file(&ready);
+    fs::copy(&staged, &ready).with_context(|| {
+        format!(
+            "no se pudo preparar {} desde {}",
+            ready.display(),
+            staged.display()
+        )
+    })?;
+    verify_staged(&ready, &pending.sha256)?;
+
+    // Preserve the working executable BEFORE attempting the swap. Never rename
+    // the live sst.exe away as the first step of an update.
+    fs::copy(&target, &backup).with_context(|| {
+        format!(
+            "no se pudo crear la copia de seguridad {}",
+            backup.display()
+        )
+    })?;
+    if fs::metadata(&backup)?.len() == 0 {
+        anyhow::bail!("la copia de seguridad del ejecutable quedó vacía");
+    }
 
     let from_version = if pending.from_version.trim().is_empty() {
         update::current_version().to_owned()
@@ -94,43 +120,49 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
     });
     fs::write(&applied_staged, serde_json::to_vec_pretty(&receipt)?)?;
 
-    // Do not use timeout.exe here. SST is a Windows GUI subsystem process and
-    // the helper is deliberately spawned with CREATE_NO_WINDOW; timeout.exe can
-    // fail immediately without a usable console/input handle. ping.exe provides
-    // a console-independent one-second delay while we wait for Windows to release
-    // the running image before replacing it.
+    // SST is a Windows GUI subsystem process and this helper runs hidden. Do
+    // not use timeout.exe: it can fail immediately without a console/input
+    // handle. ping.exe provides the retry delay without requiring a console.
+    //
+    // Crucially, TARGET is never moved away first. READY and TARGET live in the
+    // same directory, so move /Y becomes the final replacement only after
+    // Windows releases the running image. BACKUP remains intact even on success.
     let body = format!(
         "@echo off\r\n\
          setlocal DisableDelayedExpansion\r\n\
          set \"TARGET={}\"\r\n\
-         set \"NEW={}\"\r\n\
+         set \"READY={}\"\r\n\
          set \"BACKUP={}\"\r\n\
+         set \"STAGED={}\"\r\n\
          set \"PENDING={}\"\r\n\
          set \"APPLIED_PENDING={}\"\r\n\
          set \"APPLIED={}\"\r\n\
          set \"LEGACY_SCRIPT={}\"\r\n\
          set \"PING={}\"\r\n\
-         del /Q \"%BACKUP%\" >nul 2>&1\r\n\
+         if not exist \"%TARGET%\" (\r\n\
+           copy /Y \"%BACKUP%\" \"%TARGET%\" >nul 2>&1\r\n\
+         )\r\n\
          for /L %%I in (1,1,120) do (\r\n\
-           move /Y \"%TARGET%\" \"%BACKUP%\" >nul 2>&1 && goto replace\r\n\
+           move /Y \"%READY%\" \"%TARGET%\" >nul 2>&1 && goto installed\r\n\
            \"%PING%\" -n 2 -w 1000 127.0.0.1 >nul 2>&1\r\n\
          )\r\n\
+         if not exist \"%TARGET%\" copy /Y \"%BACKUP%\" \"%TARGET%\" >nul 2>&1\r\n\
          exit /b 10\r\n\
-         :replace\r\n\
-         move /Y \"%NEW%\" \"%TARGET%\" >nul 2>&1\r\n\
-         if errorlevel 1 (\r\n\
-           move /Y \"%BACKUP%\" \"%TARGET%\" >nul 2>&1\r\n\
+         :installed\r\n\
+         if not exist \"%TARGET%\" (\r\n\
+           copy /Y \"%BACKUP%\" \"%TARGET%\" >nul 2>&1\r\n\
            exit /b 11\r\n\
          )\r\n\
-         del /Q \"%BACKUP%\" >nul 2>&1\r\n\
          move /Y \"%APPLIED_PENDING%\" \"%APPLIED%\" >nul 2>&1\r\n\
          del /Q \"%PENDING%\" >nul 2>&1\r\n\
+         del /Q \"%STAGED%\" >nul 2>&1\r\n\
          del /Q \"%LEGACY_SCRIPT%\" >nul 2>&1\r\n\
          start \"\" \"%TARGET%\"\r\n\
          del /Q \"%~f0\" >nul 2>&1\r\n",
         batch_value(&target),
-        batch_value(&staged),
+        batch_value(&ready),
         batch_value(&backup),
+        batch_value(&staged),
         batch_value(&pending_path),
         batch_value(&applied_staged),
         batch_value(&applied_file),
