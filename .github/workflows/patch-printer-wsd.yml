@@ -1,0 +1,85 @@
+name: Patch printer WSD IP resolution
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-printer-wsd.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch WSD printer IP resolution
+        shell: python
+        run: |
+          from pathlib import Path
+
+          system = Path('src/application/system.rs')
+          text = system.read_text(encoding='utf-8')
+
+          old = '        let ip = resolve_printer_ip(&port);\n'
+          new = '        let ip = resolve_printer_ip(&port)\n            .or_else(|| resolve_printer_location_ip(&location));\n'
+          if old not in text:
+              raise SystemExit('No se encontró el punto de resolución IP de impresoras')
+          text = text.replace(old, new, 1)
+
+          marker = 'fn resolve_printer_ip(port: &str) -> Option<String> {\n'
+          helper = '''fn resolve_printer_location_ip(location: &str) -> Option<String> {
+    let raw = location.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    let authority = raw
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(raw)
+        .split('/')
+        .next()
+        .unwrap_or("");
+
+    let host = if let Some(rest) = authority.strip_prefix('[') {
+        rest.split_once(']').map(|(host, _)| host).unwrap_or(rest)
+    } else if let Some((host, port)) = authority.rsplit_once(':') {
+        if port.parse::<u16>().is_ok() { host } else { authority }
+    } else {
+        authority
+    };
+
+    resolve_printer_ip(host)
+}
+
+'''
+          if marker not in text:
+              raise SystemExit('No se encontró resolve_printer_ip')
+          text = text.replace(marker, helper + marker, 1)
+
+          text = text.replace(
+              '             el puerto TCP/IP permite resolverla. No usa PowerShell.\\n',
+              '             el puerto TCP/IP o la ubicación WSD permiten resolverla. No usa PowerShell.\\n',
+              1,
+          )
+
+          system.write_text(text, encoding='utf-8')
+
+          cargo = Path('Cargo.toml')
+          cargo_text = cargo.read_text(encoding='utf-8')
+          old_version = 'version = "0.1.9-blue.5"'
+          new_version = 'version = "0.1.9-blue.6"'
+          if old_version not in cargo_text:
+              raise SystemExit('Cargo.toml no está en 0.1.9-blue.5')
+          cargo.write_text(cargo_text.replace(old_version, new_version, 1), encoding='utf-8')
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "glitchaka"
+          git config user.email "82622846+glitchaka@users.noreply.github.com"
+          git add src/application/system.rs Cargo.toml
+          git commit -m "fix: resolver IP de impresoras WSD desde ubicación"
+          git push
