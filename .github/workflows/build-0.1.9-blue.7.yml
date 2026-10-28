@@ -1,0 +1,43 @@
+name: Build SST 0.1.9-blue.7 artifact
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.release/build-0.1.9-blue.7.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Synchronize version metadata
+        shell: pwsh
+        run: ./scripts/sync-version.ps1
+
+      - name: Build SST and release packagers
+        shell: pwsh
+        run: cargo build --release --bin sst --bin sst_sfx_packager --bin sst_sfx_stub
+
+      - name: Package release
+        shell: pwsh
+        run: ./scripts/package-release.ps1
+
+      - name: Upload SST 0.1.9-blue.7 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SST-0.1.9-blue.7
+          path: dist/*
+          if-no-files-found: error
