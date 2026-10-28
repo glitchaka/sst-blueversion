@@ -15,8 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Patch WSD printer IP resolution
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           system = Path('src/application/system.rs')
@@ -30,31 +31,31 @@ jobs:
 
           marker = 'fn resolve_printer_ip(port: &str) -> Option<String> {\n'
           helper = '''fn resolve_printer_location_ip(location: &str) -> Option<String> {
-    let raw = location.trim();
-    if raw.is_empty() {
-        return None;
-    }
+              let raw = location.trim();
+              if raw.is_empty() {
+                  return None;
+              }
 
-    let authority = raw
-        .split_once("://")
-        .map(|(_, rest)| rest)
-        .unwrap_or(raw)
-        .split('/')
-        .next()
-        .unwrap_or("");
+              let authority = raw
+                  .split_once("://")
+                  .map(|(_, rest)| rest)
+                  .unwrap_or(raw)
+                  .split('/')
+                  .next()
+                  .unwrap_or("");
 
-    let host = if let Some(rest) = authority.strip_prefix('[') {
-        rest.split_once(']').map(|(host, _)| host).unwrap_or(rest)
-    } else if let Some((host, port)) = authority.rsplit_once(':') {
-        if port.parse::<u16>().is_ok() { host } else { authority }
-    } else {
-        authority
-    };
+              let host = if let Some(rest) = authority.strip_prefix('[') {
+                  rest.split_once(']').map(|(host, _)| host).unwrap_or(rest)
+              } else if let Some((host, port)) = authority.rsplit_once(':') {
+                  if port.parse::<u16>().is_ok() { host } else { authority }
+              } else {
+                  authority
+              };
 
-    resolve_printer_ip(host)
-}
+              resolve_printer_ip(host)
+          }
 
-'''
+          '''
           if marker not in text:
               raise SystemExit('No se encontró resolve_printer_ip')
           text = text.replace(marker, helper + marker, 1)
@@ -74,6 +75,7 @@ jobs:
           if old_version not in cargo_text:
               raise SystemExit('Cargo.toml no está en 0.1.9-blue.5')
           cargo.write_text(cargo_text.replace(old_version, new_version, 1), encoding='utf-8')
+          PY
 
       - name: Commit patch
         shell: bash
