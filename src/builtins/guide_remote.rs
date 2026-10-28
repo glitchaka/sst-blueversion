@@ -11,27 +11,34 @@ use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 const MANUAL_BASE: &str =
     "https://raw.githubusercontent.com/glitchaka/adm-toolbox/main/tutorials";
-const SST_DOC_BASE: &str =
-    "https://raw.githubusercontent.com/glitchaka/sst-blueversion/main/docs";
-const ARCH_PORTABILITY_DOC: &str = "arch-packages-portability";
+const INDEX_FILE: &str = "guide-index.json";
+const MAX_INDEX_BYTES: usize = 2 * 1024 * 1024;
 const MAX_MANUAL_BYTES: usize = 512 * 1024;
 
-static FILE_CACHE: OnceLock<Mutex<HashMap<&'static str, Option<Arc<str>>>>> = OnceLock::new();
-static TOPIC_CACHE: OnceLock<Mutex<HashMap<(ManualKind, String), Option<Arc<str>>>>> =
-    OnceLock::new();
+static FILE_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
+static TOPIC_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(super) enum ManualKind {
-    Whole(&'static str),
-    Bash,
-    Unix,
+/// The catalog is intentionally not persisted or compiled into SST. `guide`
+/// gets its areas, entries, aliases, summaries and UI labels from the repo on
+/// every invocation. If the repository is unavailable, there is no local
+/// catalog to display.
+pub(super) fn load_index() -> Option<String> {
+    fetch_repo_file(INDEX_FILE, MAX_INDEX_BYTES)
 }
 
-pub(super) fn load(kind: ManualKind, topic: &str) -> Option<Arc<str>> {
-    let topic = canonical_topic(kind, topic);
-    let key = (kind, topic.clone());
-    let cache = TOPIC_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+pub(super) fn load_manual(
+    file: &str,
+    extension: &str,
+    section: &str,
+    topic: Option<&str>,
+) -> Option<Arc<str>> {
+    if !valid_component(file) || !valid_extension(extension) {
+        return None;
+    }
 
+    let topic = topic.unwrap_or_default().trim().to_owned();
+    let key = format!("{file}.{extension}\u{1f}{section}\u{1f}{topic}");
+    let cache = TOPIC_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(value) = cache
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -41,16 +48,12 @@ pub(super) fn load(kind: ManualKind, topic: &str) -> Option<Arc<str>> {
         return value;
     }
 
-    let file = match kind {
-        ManualKind::Whole(file) => file,
-        ManualKind::Bash => "bash-nwash",
-        ManualKind::Unix => "unix-compat",
-    };
-    let raw = fetch_cached(file)?;
-    let value = match kind {
-        ManualKind::Whole(_) => Some(raw),
-        ManualKind::Bash => extract_bash(&raw, &topic).map(Arc::<str>::from),
-        ManualKind::Unix => extract_unix(&raw, &topic).map(Arc::<str>::from),
+    let raw = fetch_cached(file, extension)?;
+    let value = match section {
+        "whole" => Some(raw),
+        "bash" => extract_bash(&raw, &topic).map(Arc::<str>::from),
+        "unix" => extract_unix(&raw, &topic).map(Arc::<str>::from),
+        _ => None,
     };
 
     cache
@@ -60,34 +63,20 @@ pub(super) fn load(kind: ManualKind, topic: &str) -> Option<Arc<str>> {
     value
 }
 
-fn canonical_topic(kind: ManualKind, topic: &str) -> String {
-    let topic = topic.trim().to_ascii_lowercase();
-    match kind {
-        ManualKind::Bash => match topic.as_str() {
-            "." => "source".to_owned(),
-            "[" => "test".to_owned(),
-            "readarray" => "mapfile".to_owned(),
-            "typeset" => "declare".to_owned(),
-            _ => topic,
-        },
-        _ => topic,
-    }
-}
-
-fn fetch_cached(filename: &'static str) -> Option<Arc<str>> {
+fn fetch_cached(file: &str, extension: &str) -> Option<Arc<str>> {
+    let filename = format!("{file}.{extension}");
     let cache = FILE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(value) = cache
         .lock()
         .unwrap_or_else(|error| error.into_inner())
-        .get(filename)
+        .get(&filename)
         .cloned()
     {
         return value;
     }
 
-    // Never hold the mutex while curl is running. A slow network request for one
-    // manual must not block access to a manual already present in memory.
-    let value = fetch_file(filename).map(Arc::<str>::from);
+    // Never keep the lock while curl is running.
+    let value = fetch_repo_file(&filename, MAX_MANUAL_BYTES).map(Arc::<str>::from);
     cache
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -95,12 +84,11 @@ fn fetch_cached(filename: &'static str) -> Option<Arc<str>> {
     value
 }
 
-fn fetch_file(filename: &str) -> Option<String> {
-    let url = if filename == ARCH_PORTABILITY_DOC {
-        format!("{SST_DOC_BASE}/ARCH_PACKAGES_PORTABILITY.md")
-    } else {
-        format!("{MANUAL_BASE}/{filename}.txt")
-    };
+fn fetch_repo_file(filename: &str, max_bytes: usize) -> Option<String> {
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return None;
+    }
+    let url = format!("{MANUAL_BASE}/{filename}");
 
     #[cfg(windows)]
     let curl = crate::support::windows::system32_executable("curl.exe").ok()?;
@@ -122,7 +110,7 @@ fn fetch_file(filename: &str) -> Option<String> {
             "--max-time",
             "8",
             "--user-agent",
-            "SST-Guide/3",
+            "SST-Guide/4",
         ])
         .arg(url);
 
@@ -130,10 +118,21 @@ fn fetch_file(filename: &str) -> Option<String> {
     command.creation_flags(CREATE_NO_WINDOW);
 
     let output = command.output().ok()?;
-    if !output.status.success() || output.stdout.is_empty() || output.stdout.len() > MAX_MANUAL_BYTES {
+    if !output.status.success() || output.stdout.is_empty() || output.stdout.len() > max_bytes {
         return None;
     }
     String::from_utf8(output.stdout).ok()
+}
+
+fn valid_component(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn valid_extension(value: &str) -> bool {
+    matches!(value, "txt" | "md")
 }
 
 fn extract_bash(raw: &str, topic: &str) -> Option<String> {
