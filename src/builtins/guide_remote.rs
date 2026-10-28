@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     process::Command,
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 #[cfg(windows)]
@@ -16,34 +16,66 @@ const SST_DOC_BASE: &str =
 const ARCH_PORTABILITY_DOC: &str = "arch-packages-portability";
 const MAX_MANUAL_BYTES: usize = 512 * 1024;
 
-static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
+static FILE_CACHE: OnceLock<Mutex<HashMap<&'static str, Option<Arc<str>>>>> = OnceLock::new();
+static TOPIC_CACHE: OnceLock<Mutex<HashMap<(ManualKind, String), Option<Arc<str>>>>> =
+    OnceLock::new();
 
-#[derive(Clone, Copy)]
-enum Section {
-    Whole,
-    Bash(&'static str),
-    Unix(&'static str),
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(super) enum ManualKind {
+    Whole(&'static str),
+    Bash,
+    Unix,
 }
 
-#[derive(Clone, Copy)]
-struct ManualSource {
-    file: &'static str,
-    section: Section,
-}
+pub(super) fn load(kind: ManualKind, topic: &str) -> Option<Arc<str>> {
+    let topic = canonical_topic(kind, topic);
+    let key = (kind, topic.clone());
+    let cache = TOPIC_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
-pub(super) fn load(topic: &str) -> Option<String> {
-    let source = source_for(topic)?;
-    let raw = fetch_cached(source.file)?;
-    let extracted = match source.section {
-        Section::Whole => raw,
-        Section::Bash(name) => extract_bash(&raw, name).unwrap_or(raw),
-        Section::Unix(name) => extract_unix(&raw, name).unwrap_or(raw),
+    if let Some(value) = cache
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get(&key)
+        .cloned()
+    {
+        return value;
+    }
+
+    let file = match kind {
+        ManualKind::Whole(file) => file,
+        ManualKind::Bash => "bash-nwash",
+        ManualKind::Unix => "unix-compat",
     };
-    Some(extracted)
+    let raw = fetch_cached(file)?;
+    let value = match kind {
+        ManualKind::Whole(_) => Some(raw),
+        ManualKind::Bash => extract_bash(&raw, &topic).map(Arc::<str>::from),
+        ManualKind::Unix => extract_unix(&raw, &topic).map(Arc::<str>::from),
+    };
+
+    cache
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .insert(key, value.clone());
+    value
 }
 
-fn fetch_cached(filename: &str) -> Option<String> {
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+fn canonical_topic(kind: ManualKind, topic: &str) -> String {
+    let topic = topic.trim().to_ascii_lowercase();
+    match kind {
+        ManualKind::Bash => match topic.as_str() {
+            "." => "source".to_owned(),
+            "[" => "test".to_owned(),
+            "readarray" => "mapfile".to_owned(),
+            "typeset" => "declare".to_owned(),
+            _ => topic,
+        },
+        _ => topic,
+    }
+}
+
+fn fetch_cached(filename: &'static str) -> Option<Arc<str>> {
+    let cache = FILE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(value) = cache
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -53,11 +85,13 @@ fn fetch_cached(filename: &str) -> Option<String> {
         return value;
     }
 
-    let value = fetch_file(filename);
+    // Never hold the mutex while curl is running. A slow network request for one
+    // manual must not block access to a manual already present in memory.
+    let value = fetch_file(filename).map(Arc::<str>::from);
     cache
         .lock()
         .unwrap_or_else(|error| error.into_inner())
-        .insert(filename.to_owned(), value.clone());
+        .insert(filename, value.clone());
     value
 }
 
@@ -84,11 +118,11 @@ fn fetch_file(filename: &str) -> Option<String> {
             "=https",
             "--tlsv1.2",
             "--connect-timeout",
-            "5",
+            "2",
             "--max-time",
-            "20",
+            "8",
             "--user-agent",
-            "SST-Guide/2",
+            "SST-Guide/3",
         ])
         .arg(url);
 
@@ -96,177 +130,10 @@ fn fetch_file(filename: &str) -> Option<String> {
     command.creation_flags(CREATE_NO_WINDOW);
 
     let output = command.output().ok()?;
-
     if !output.status.success() || output.stdout.is_empty() || output.stdout.len() > MAX_MANUAL_BYTES {
         return None;
     }
     String::from_utf8(output.stdout).ok()
-}
-
-fn whole(file: &'static str) -> ManualSource {
-    ManualSource {
-        file,
-        section: Section::Whole,
-    }
-}
-
-fn bash(name: &'static str) -> ManualSource {
-    ManualSource {
-        file: "bash-nwash",
-        section: Section::Bash(name),
-    }
-}
-
-fn unix(name: &'static str) -> ManualSource {
-    ManualSource {
-        file: "unix-compat",
-        section: Section::Unix(name),
-    }
-}
-
-fn source_for(topic: &str) -> Option<ManualSource> {
-    let topic = topic.trim().to_ascii_lowercase();
-    Some(match topic.as_str() {
-        "sys" | "ps" | "top" | "df" | "free" | "whoami" | "uname" | "uptime"
-        | "fetch" | "neofetch" | "fastfetch" => whole("system"),
-        "hostname" | "sys hostname" => whole("hostname"),
-        "sys domain" | "domain-admin" => whole("domain"),
-        "sys autologon" | "autologon" => whole("autologon"),
-
-        "notsh" | "net" => whole("network"),
-        "device" => whole("device"),
-        "switch" => whole("switch"),
-        "wol" => whole("wol"),
-        "diag" => whole("diagnostics"),
-
-        "domain" => whole("domain-status"),
-        "eventlog" => whole("eventlog"),
-        "service" => whole("service"),
-        "registry" => whole("registry"),
-        "process" => whole("process"),
-        "acl" => whole("acl"),
-        "pnp" => whole("pnp"),
-        "task" => whole("task"),
-        "session" => whole("session"),
-        "share" => whole("share"),
-        "firewall" => whole("firewall"),
-        "power" => whole("power"),
-
-        "triage" => whole("triage"),
-        "intel" => whole("intel"),
-        "sudo" | "runas" => whole("sudo"),
-        "tools" | "tool" | "utils" => whole("tools"),
-        "tools office diagnose" | "tools office status" | "tools office verify" => whole("office-diagnose"),
-        "tools office auth repair" => whole("office-auth-repair"),
-        "tools office scrub" | "tools office sara" | "tools office uninstall" | "tools office remove" => whole("office-sara"),
-        "tools office scrub-current" | "tools office gethelp" => whole("office-gethelp"),
-        "arch packages" | "arch-packages" | "arch portability" | "arch portabilidad" => whole(ARCH_PORTABILITY_DOC),
-        "instp" => whole("instp"),
-        "config" | "reload" | "sst-path" | "sst-config" => whole("config"),
-        "update" => whole("update"),
-        "helix" | "hx" | "helix-sst" => whole("helix"),
-
-        "." => bash("source"),
-        "[" => bash("test"),
-        "readarray" => bash("mapfile"),
-        "typeset" => bash("declare"),
-        ":" => bash(":"),
-        "alias" => bash("alias"),
-        "bg" => bash("bg"),
-        "bind" => bash("bind"),
-        "break" => bash("break"),
-        "builtin" => bash("builtin"),
-        "caller" => bash("caller"),
-        "cd" => bash("cd"),
-        "command" => bash("command"),
-        "compgen" => bash("compgen"),
-        "complete" => bash("complete"),
-        "compopt" => bash("compopt"),
-        "continue" => bash("continue"),
-        "declare" => bash("declare"),
-        "dirs" => bash("dirs"),
-        "disown" => bash("disown"),
-        "echo" => bash("echo"),
-        "enable" => bash("enable"),
-        "eval" => bash("eval"),
-        "exec" => bash("exec"),
-        "exit" => bash("exit"),
-        "export" => bash("export"),
-        "false" => bash("false"),
-        "fc" => bash("fc"),
-        "fg" => bash("fg"),
-        "getopts" => bash("getopts"),
-        "hash" => bash("hash"),
-        "help" => bash("help"),
-        "history" => bash("history"),
-        "jobs" => bash("jobs"),
-        "kill" => bash("kill"),
-        "let" => bash("let"),
-        "local" => bash("local"),
-        "logout" => bash("logout"),
-        "mapfile" => bash("mapfile"),
-        "popd" => bash("popd"),
-        "printf" => bash("printf"),
-        "pushd" => bash("pushd"),
-        "pwd" => bash("pwd"),
-        "read" => bash("read"),
-        "readonly" => bash("readonly"),
-        "return" => bash("return"),
-        "set" => bash("set"),
-        "shift" => bash("shift"),
-        "shopt" => bash("shopt"),
-        "source" => bash("source"),
-        "suspend" => bash("suspend"),
-        "test" => bash("test"),
-        "times" => bash("times"),
-        "trap" => bash("trap"),
-        "true" => bash("true"),
-        "type" => bash("type"),
-        "ulimit" => bash("ulimit"),
-        "umask" => bash("umask"),
-        "unalias" => bash("unalias"),
-        "unset" => bash("unset"),
-        "wait" => bash("wait"),
-
-        "env" => unix("env"),
-        "clear" => unix("clear"),
-        "ls" => unix("ls"),
-        "cat" => unix("cat"),
-        "head" => unix("head"),
-        "tail" => unix("tail"),
-        "grep" => unix("grep"),
-        "wc" => unix("wc"),
-        "sort" => unix("sort"),
-        "uniq" => unix("uniq"),
-        "cut" => unix("cut"),
-        "xargs" => unix("xargs"),
-        "tee" => unix("tee"),
-        "less" => unix("less"),
-        "more" => unix("more"),
-        "sed" => unix("sed"),
-        "awk" => unix("awk"),
-        "diff" => unix("diff"),
-        "sha256sum" => unix("sha256sum"),
-        "base64" => unix("base64"),
-        "find" => unix("find"),
-        "basename" => unix("basename"),
-        "dirname" => unix("dirname"),
-        "realpath" => unix("realpath"),
-        "date" => unix("date"),
-        "sleep" => unix("sleep"),
-        "touch" => unix("touch"),
-        "mkdir" => unix("mkdir"),
-        "rm" => unix("rm"),
-        "cp" => unix("cp"),
-        "mv" => unix("mv"),
-        "tar" => unix("tar"),
-        "gzip" => unix("gzip"),
-        "gunzip" => unix("gunzip"),
-        "zip" => unix("zip"),
-        "unzip" => unix("unzip"),
-        "which" => unix("which"),
-        _ => return None,
-    })
 }
 
 fn extract_bash(raw: &str, topic: &str) -> Option<String> {
@@ -287,8 +154,7 @@ fn extract_bash(raw: &str, topic: &str) -> Option<String> {
             for next in index + 1..lines.len() {
                 let candidate = lines[next];
                 if candidate == candidate.trim()
-                    && (is_numbered_heading(candidate)
-                        || is_bash_builtin_name(candidate.trim()))
+                    && (is_numbered_heading(candidate) || is_bash_builtin_name(candidate.trim()))
                 {
                     end = next;
                     break;
