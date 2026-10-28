@@ -1,0 +1,20 @@
+name: Publish SST once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.release/publish-0.1.9-blue.5.trigger'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch official release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --repo ${{ github.repository }} --ref main -f publish_release=true
