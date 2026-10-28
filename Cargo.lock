@@ -4702,7 +4702,7 @@ dependencies = [
 
 [[package]]
 name = "sst"
-version = "0.1.9-blue.0"
+version = "0.1.9-blue.5"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5273,9 +5273,9 @@ checksum = "b1d386ff53b415b7fe27b50bb44679e2cc4660272694b7b6f3326d8480823a94"
 
 [[package]]
 name = "unicode-width"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
+checksum = "ca718471876992059f251e33aafc334346ada08042b7661dd1fe313a9bced557"
 
 [[package]]
 name = "unicode-xid"
