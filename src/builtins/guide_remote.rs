@@ -11,6 +11,9 @@ use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 const MANUAL_BASE: &str =
     "https://raw.githubusercontent.com/glitchaka/adm-toolbox/main/tutorials";
+const SST_DOC_BASE: &str =
+    "https://raw.githubusercontent.com/glitchaka/sst-blueversion/main/docs";
+const ARCH_PORTABILITY_DOC: &str = "arch-packages-portability";
 const MAX_MANUAL_BYTES: usize = 512 * 1024;
 
 static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
@@ -59,7 +62,11 @@ fn fetch_cached(filename: &str) -> Option<String> {
 }
 
 fn fetch_file(filename: &str) -> Option<String> {
-    let url = format!("{MANUAL_BASE}/{filename}.txt");
+    let url = if filename == ARCH_PORTABILITY_DOC {
+        format!("{SST_DOC_BASE}/ARCH_PACKAGES_PORTABILITY.md")
+    } else {
+        format!("{MANUAL_BASE}/{filename}.txt")
+    };
 
     #[cfg(windows)]
     let curl = crate::support::windows::system32_executable("curl.exe").ok()?;
@@ -153,6 +160,7 @@ fn source_for(topic: &str) -> Option<ManualSource> {
         "tools office auth repair" => whole("office-auth-repair"),
         "tools office scrub" | "tools office sara" | "tools office uninstall" | "tools office remove" => whole("office-sara"),
         "tools office scrub-current" | "tools office gethelp" => whole("office-gethelp"),
+        "arch packages" | "arch-packages" | "arch portability" | "arch portabilidad" => whole(ARCH_PORTABILITY_DOC),
         "instp" => whole("instp"),
         "config" | "reload" | "sst-path" | "sst-config" => whole("config"),
         "update" => whole("update"),
