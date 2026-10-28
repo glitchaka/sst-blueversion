@@ -13,8 +13,10 @@ pub fn run() -> Result<()> {
 
     // A staged update is only handed off after the GUI has closed. The helper
     // waits for this process to release sst.exe, replaces it and relaunches SST.
+    // Do not swallow a scheduling failure: otherwise the UI reports an update
+    // as prepared forever while the actual handoff never starts.
     if result.is_ok() {
-        let _ = update::schedule_pending_update(&paths);
+        update::schedule_pending_update(&paths)?;
     }
     result
 }
