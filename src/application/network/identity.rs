@@ -1,7 +1,5 @@
-use flate2::read::GzDecoder;
 use std::{
     collections::HashMap,
-    io::Read,
     sync::OnceLock,
 };
 
@@ -13,13 +11,16 @@ pub struct MacIdentity {
 }
 
 struct Registry {
-    entries: HashMap<String, String>,
+    ma_l: HashMap<String, String>,
+    ma_m: HashMap<String, String>,
+    ma_s: HashMap<String, String>,
 }
 
 static REGISTRY: OnceLock<Registry> = OnceLock::new();
 
-const IEEE_MAC_REGISTRY_GZ: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/ieee-mac-vendors.txt.gz"));
+const IEEE_MA_L: &str = include_str!(concat!(env!("OUT_DIR"), "/ieee-ma-l.csv"));
+const IEEE_MA_M: &str = include_str!(concat!(env!("OUT_DIR"), "/ieee-ma-m.csv"));
+const IEEE_MA_S: &str = include_str!(concat!(env!("OUT_DIR"), "/ieee-ma-s.csv"));
 
 pub fn identify_mac(mac: &str) -> MacIdentity {
     let Some(bytes) = parse_mac(mac) else {
@@ -60,19 +61,28 @@ pub fn identify_mac(mac: &str) -> MacIdentity {
         .collect::<String>();
     let registry = registry();
 
-    for prefix_len in [9usize, 7, 6] {
-        if let Some(vendor) = registry.entries.get(&key[..prefix_len]) {
-            let registry_name = match prefix_len {
-                9 => "MA-S",
-                7 => "MA-M",
-                _ => "MA-L",
-            };
-            return MacIdentity {
-                scope: "global".to_owned(),
-                vendor: Some(vendor.clone()),
-                registry: Some(registry_name.to_owned()),
-            };
-        }
+    if let Some(vendor) = registry.ma_s.get(&key[..9]) {
+        return MacIdentity {
+            scope: "global".to_owned(),
+            vendor: Some(vendor.clone()),
+            registry: Some("MA-S".to_owned()),
+        };
+    }
+
+    if let Some(vendor) = registry.ma_m.get(&key[..7]) {
+        return MacIdentity {
+            scope: "global".to_owned(),
+            vendor: Some(vendor.clone()),
+            registry: Some("MA-M".to_owned()),
+        };
+    }
+
+    if let Some(vendor) = registry.ma_l.get(&key[..6]) {
+        return MacIdentity {
+            scope: "global".to_owned(),
+            vendor: Some(vendor.clone()),
+            registry: Some("MA-L".to_owned()),
+        };
     }
 
     MacIdentity {
@@ -83,40 +93,67 @@ pub fn identify_mac(mac: &str) -> MacIdentity {
 }
 
 fn registry() -> &'static Registry {
-    REGISTRY.get_or_init(|| {
-        let mut decoder = GzDecoder::new(IEEE_MAC_REGISTRY_GZ);
-        let mut text = String::new();
-        decoder
-            .read_to_string(&mut text)
-            .expect("No se pudo descomprimir el registro IEEE de fabricantes MAC embebido");
-
-        Registry {
-            entries: parse_registry(&text),
-        }
+    REGISTRY.get_or_init(|| Registry {
+        ma_l: parse_registry(IEEE_MA_L, 6),
+        ma_m: parse_registry(IEEE_MA_M, 7),
+        ma_s: parse_registry(IEEE_MA_S, 9),
     })
 }
 
-fn parse_registry(text: &str) -> HashMap<String, String> {
+fn parse_registry(text: &str, prefix_len: usize) -> HashMap<String, String> {
     let mut entries = HashMap::new();
 
     for line in text.lines() {
-        let Some((assignment, organization)) = line.split_once('\t') else {
+        let fields = parse_csv_line(line);
+        if fields.len() < 3 {
             continue;
-        };
-        let assignment = assignment.trim().to_ascii_uppercase();
-        if !matches!(assignment.len(), 6 | 7 | 9)
+        }
+
+        let assignment = fields[1]
+            .trim()
+            .trim_start_matches('\u{feff}')
+            .chars()
+            .filter(|ch| ch.is_ascii_hexdigit())
+            .collect::<String>()
+            .to_ascii_uppercase();
+
+        if assignment.eq_ignore_ascii_case("Assignment")
+            || assignment.len() != prefix_len
             || !assignment.chars().all(|ch| ch.is_ascii_hexdigit())
         {
             continue;
         }
 
-        let organization = organization.trim();
+        let organization = fields[2].trim();
         if !organization.is_empty() {
             entries.insert(assignment, organization.to_owned());
         }
     }
 
     entries
+}
+
+fn parse_csv_line(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut field = String::new();
+    let mut quoted = false;
+    let mut chars = line.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' if quoted && chars.peek() == Some(&'"') => {
+                field.push('"');
+                chars.next();
+            }
+            '"' => quoted = !quoted,
+            ',' if !quoted => {
+                fields.push(std::mem::take(&mut field));
+            }
+            _ => field.push(ch),
+        }
+    }
+    fields.push(field);
+    fields
 }
 
 fn parse_mac(mac: &str) -> Option<[u8; 6]> {
