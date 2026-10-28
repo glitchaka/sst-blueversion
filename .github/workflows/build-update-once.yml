@@ -1,0 +1,25 @@
+name: Build SST update once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.release/build-0.1.9-blue.5.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  build-update:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build SST release
+        run: cargo build --release --bin sst
+      - name: Upload SST update binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: sst-update-0.1.9-blue.5
+          path: target/release/sst.exe
+          if-no-files-found: error
