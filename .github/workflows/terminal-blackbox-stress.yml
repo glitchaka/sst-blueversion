@@ -12,6 +12,7 @@ on:
     paths:
       - '.qa/terminal-blackbox.trigger'
       - 'scripts/terminal_blackbox_stress.py'
+      - 'scripts/gui_idle_resource_probe.ps1'
       - '.github/workflows/terminal-blackbox-stress.yml'
 
 permissions:
@@ -50,6 +51,12 @@ jobs:
         shell: pwsh
         run: cargo build --release --bin sst
 
+      - name: Measure GUI idle CPU and memory
+        id: gui_resources
+        continue-on-error: true
+        shell: pwsh
+        run: ./scripts/gui_idle_resource_probe.ps1 -Exe ./target/release/sst.exe
+
       - name: Run terminal black-box and stress suite
         id: blackbox
         continue-on-error: true
@@ -76,10 +83,12 @@ jobs:
         shell: pwsh
         env:
           RUST_OUTCOME: ${{ steps.rust_tests.outcome }}
+          GUI_RESOURCE_OUTCOME: ${{ steps.gui_resources.outcome }}
           BLACKBOX_OUTCOME: ${{ steps.blackbox.outcome }}
         run: |
           $failed = @()
           if ($env:RUST_OUTCOME -ne 'success') { $failed += "Rust tests: $env:RUST_OUTCOME" }
+          if ($env:GUI_RESOURCE_OUTCOME -ne 'success') { $failed += "GUI resources: $env:GUI_RESOURCE_OUTCOME" }
           if ($env:BLACKBOX_OUTCOME -ne 'success') { $failed += "Black-box/stress: $env:BLACKBOX_OUTCOME" }
           if ($failed.Count -gt 0) {
             throw ($failed -join '; ')
