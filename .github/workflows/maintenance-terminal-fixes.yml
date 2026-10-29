@@ -12,35 +12,21 @@ permissions:
 jobs:
   apply:
     runs-on: windows-latest
-    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Apply final updater process-exit fix
+      - name: Fix QA harness false positives
         shell: pwsh
-        run: python .maintenance/postfix_terminal_update_exit.py
+        run: python .maintenance/fix_qa_harness.py
 
-      - name: Commit and push fix before validation
+      - name: Commit and push harness fix
         shell: pwsh
         run: |
           git config user.name 'sst-maintenance-bot'
           git config user.email 'sst-maintenance@users.noreply.github.com'
-          git add src/adapters/terminal/embedded.rs
+          git add scripts/terminal_blackbox_stress.py
           git diff --cached --check
-          git commit -m 'Let updater release executable before swap'
+          git commit -m 'Fix terminal QA false positives'
           git push origin HEAD:main
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Validate after push
-        shell: pwsh
-        run: |
-          cargo fmt --check
-          cargo test --workspace --all-targets
-          cargo build --release --bin sst
