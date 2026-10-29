@@ -11,7 +11,7 @@ on:
     branches: [main]
     paths:
       - '.qa/terminal-blackbox.trigger'
-      - 'scripts/terminal-blackbox-stress.ps1'
+      - 'scripts/terminal_blackbox_stress.py'
       - '.github/workflows/terminal-blackbox-stress.yml'
 
 permissions:
@@ -61,7 +61,7 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:INPUT_STRESS_SCALE)) {
             $scale = [int]$env:INPUT_STRESS_SCALE
           }
-          ./scripts/terminal-blackbox-stress.ps1 -Exe ./target/release/sst.exe -StressScale $scale
+          python ./scripts/terminal_blackbox_stress.py --exe ./target/release/sst.exe --stress-scale $scale
 
       - name: Upload QA report
         if: always()
