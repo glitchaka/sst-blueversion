@@ -1,1 +1,1 @@
-apply final updater process-exit fix 2026-10-29
+apply terminal QA harness false-positive fixes 2026-10-29
