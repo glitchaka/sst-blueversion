@@ -37,6 +37,30 @@ jobs:
         shell: pwsh
         run: ./scripts/sync-version.ps1
 
+      - name: Prepare pinned IEEE registry for reproducible build
+        shell: pwsh
+        run: |
+          $rev = '65f556005f63a22ae353e6f129440dbdb3c29c06'
+          $dir = Join-Path $env:RUNNER_TEMP 'sst-ieee'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $items = @(
+            @{ Name = 'oui.csv'; Env = 'SST_IEEE_MAL_CSV' },
+            @{ Name = 'mam.csv'; Env = 'SST_IEEE_MAM_CSV' },
+            @{ Name = 'oui36.csv'; Env = 'SST_IEEE_MAS_CSV' }
+          )
+          foreach ($item in $items) {
+            $target = Join-Path $dir $item.Name
+            $url = "https://raw.githubusercontent.com/StewAlexander-com/maclookup.py/$rev/$($item.Name)"
+            & curl.exe -L --fail --silent --show-error --retry 3 --retry-all-errors --connect-timeout 8 --max-time 120 $url -o $target
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $target)) {
+              throw "No se pudo preparar $($item.Name) para el build"
+            }
+            if ((Get-Item -LiteralPath $target).Length -lt 10000) {
+              throw "El registro $($item.Name) descargado parece incompleto"
+            }
+            "$($item.Env)=$target" >> $env:GITHUB_ENV
+          }
+
       - name: Compile all test targets
         shell: pwsh
         run: cargo test --workspace --all-targets --no-run
