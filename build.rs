@@ -38,14 +38,17 @@ fn main() {
     let manifest_dir = PathBuf::from(
         env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR no definido"),
     );
+    let cache_dir = build_asset_cache_dir(&manifest_dir);
+    fs::create_dir_all(&cache_dir)
+        .expect("No se pudo crear el caché compartido de assets de compilación");
 
     sync_background_assets(&manifest_dir, &out_dir);
-    ensure_nerd_font(&out_dir);
-    ensure_spell_dictionary(&out_dir);
-    ensure_ieee_registry(&out_dir);
+    ensure_nerd_font(&cache_dir, &out_dir);
+    ensure_spell_dictionary(&cache_dir, &out_dir);
+    ensure_ieee_registry(&cache_dir, &out_dir);
 
     #[cfg(windows)]
-    ensure_helix_archive(&out_dir);
+    ensure_helix_archive(&cache_dir, &out_dir);
 
     #[cfg(windows)]
     {
@@ -62,17 +65,26 @@ fn main() {
     }
 }
 
+fn build_asset_cache_dir(manifest_dir: &Path) -> PathBuf {
+    let target_dir = env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                manifest_dir.join(path)
+            }
+        })
+        .unwrap_or_else(|| manifest_dir.join("target"));
+    target_dir.join("sst-build-assets")
+}
+
 fn sync_background_assets(manifest_dir: &Path, out_dir: &Path) {
     let source = manifest_dir.join("bg");
     if !source.is_dir() {
         return;
     }
 
-    // OUT_DIR is target/<profile>/build/<package-hash>/out. The executable is
-    // written to target/<profile>, and AppPaths deliberately treats that
-    // directory as SST's portable root. Keep the repository's bg/ folder next
-    // to the executable so `config bg` and SST_BACKGROUND_IMAGE resolve the
-    // same files in source builds as they do in a portable deployment.
     let profile_dir = out_dir
         .ancestors()
         .nth(3)
@@ -117,131 +129,126 @@ fn curl_program() -> PathBuf {
     }
 }
 
-fn ensure_nerd_font(out_dir: &Path) {
-    let destination = out_dir.join(FONT_NAME);
+fn download_to_cache(url: &str, destination: &Path, description: &str) {
+    let name = destination
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("asset");
+    let temporary = destination.with_file_name(format!("{name}.part"));
+    let _ = fs::remove_file(&temporary);
 
-    if let Some(source) = env::var_os("SST_NERD_FONT_FILE") {
-        fs::copy(Path::new(&source), &destination)
-            .expect("No se pudo copiar SST_NERD_FONT_FILE");
-    } else if !destination.is_file() {
-        let status = Command::new(curl_program())
-            .args([
-                "-L",
-                "--fail",
-                "--silent",
-                "--show-error",
-                FONT_URL,
-                "-o",
-            ])
-            .arg(&destination)
-            .status()
-            .expect("No se pudo ejecutar curl para obtener la Nerd Font durante la compilación");
+    let status = Command::new(curl_program())
+        .args([
+            "-L",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--proto",
+            "=https",
+            "--tlsv1.2",
+            "--retry",
+            "3",
+            "--retry-all-errors",
+            "--connect-timeout",
+            "10",
+            "--max-time",
+            "180",
+            url,
+            "-o",
+        ])
+        .arg(&temporary)
+        .status()
+        .unwrap_or_else(|error| panic!("No se pudo ejecutar curl para {description}: {error}"));
 
-        if !status.success() {
-            panic!(
-                "No se pudo obtener la Nerd Font. Compile con Internet o defina SST_NERD_FONT_FILE apuntando a JetBrainsMono Nerd Font Mono."
-            );
-        }
+    if !status.success() {
+        let _ = fs::remove_file(&temporary);
+        panic!("No se pudo descargar {description} desde {url}");
     }
 
-    let metadata = fs::metadata(&destination)
-        .expect("La Nerd Font embebida no existe");
-    if metadata.len() < 100_000 {
-        panic!("La Nerd Font embebida parece incompleta");
+    if destination.exists() {
+        fs::remove_file(destination)
+            .unwrap_or_else(|error| panic!("No se pudo reemplazar {description}: {error}"));
+    }
+    fs::rename(&temporary, destination)
+        .unwrap_or_else(|error| panic!("No se pudo activar {description} descargado: {error}"));
+}
+
+fn validate_asset(path: &Path, minimum: u64, description: &str) {
+    let metadata = fs::metadata(path)
+        .unwrap_or_else(|_| panic!("Falta {description} en {}", path.display()));
+    if metadata.len() < minimum {
+        panic!("{description} parece incompleto");
     }
 }
 
-fn ensure_spell_dictionary(out_dir: &Path) {
+fn materialize_cached(cache_path: &Path, out_dir: &Path, name: &str, description: &str) {
+    let destination = out_dir.join(name);
+    fs::copy(cache_path, &destination).unwrap_or_else(|error| {
+        panic!(
+            "No se pudo copiar {description} desde el caché compartido a {}: {error}",
+            destination.display()
+        )
+    });
+}
+
+fn ensure_nerd_font(cache_dir: &Path, out_dir: &Path) {
+    let cache = cache_dir.join(FONT_NAME);
+
+    if let Some(source) = env::var_os("SST_NERD_FONT_FILE") {
+        fs::copy(Path::new(&source), &cache).expect("No se pudo copiar SST_NERD_FONT_FILE");
+    } else if !cache.is_file() {
+        download_to_cache(FONT_URL, &cache, "la Nerd Font");
+    }
+
+    validate_asset(&cache, 100_000, "La Nerd Font embebida");
+    materialize_cached(&cache, out_dir, FONT_NAME, "la Nerd Font");
+}
+
+fn ensure_spell_dictionary(cache_dir: &Path, out_dir: &Path) {
     for (name, url, minimum) in [
         ("helix-sst-es-CL.aff", SPELL_AFF_URL, 50_000u64),
         ("helix-sst-es-CL.dic", SPELL_DIC_URL, 200_000u64),
         ("helix-sst-es-CL.LICENSE", SPELL_LICENSE_URL, 500u64),
     ] {
-        let destination = out_dir.join(name);
-        if !destination.is_file() {
-            let status = Command::new(curl_program())
-                .args(["-L", "--fail", "--silent", "--show-error", url, "-o"])
-                .arg(&destination)
-                .status()
-                .expect("No se pudo ejecutar curl para obtener el diccionario de Helix-SST");
-            if !status.success() {
-                panic!(
-                    "No se pudo obtener el diccionario ortográfico es-CL de Helix-SST (rev {SPELL_DICT_REV})."
-                );
-            }
+        let cache = cache_dir.join(name);
+        if !cache.is_file() {
+            download_to_cache(url, &cache, &format!("el diccionario ortográfico {name}"));
         }
-        let metadata = fs::metadata(&destination)
-            .expect("Falta un archivo del diccionario ortográfico de Helix-SST");
-        if metadata.len() < minimum {
-            panic!("El archivo de diccionario {name} parece incompleto");
-        }
+        validate_asset(&cache, minimum, &format!("El archivo de diccionario {name}"));
+        materialize_cached(&cache, out_dir, name, &format!("el diccionario {name}"));
     }
 }
 
-fn ensure_ieee_registry(out_dir: &Path) {
+fn ensure_ieee_registry(cache_dir: &Path, out_dir: &Path) {
     for (name, url, override_var) in [
         ("ieee-ma-l.csv", IEEE_MAL_URL, "SST_IEEE_MAL_CSV"),
         ("ieee-ma-m.csv", IEEE_MAM_URL, "SST_IEEE_MAM_CSV"),
         ("ieee-ma-s.csv", IEEE_MAS_URL, "SST_IEEE_MAS_CSV"),
     ] {
-        let destination = out_dir.join(name);
+        let cache = cache_dir.join(name);
 
         if let Some(source) = env::var_os(override_var) {
-            fs::copy(Path::new(&source), &destination)
+            fs::copy(Path::new(&source), &cache)
                 .unwrap_or_else(|_| panic!("No se pudo copiar {override_var}"));
-        } else if !destination.is_file() {
-            let status = Command::new(curl_program())
-                .args(["-L", "--fail", "--silent", "--show-error", url, "-o"])
-                .arg(&destination)
-                .status()
-                .expect("No se pudo ejecutar curl para obtener el registro IEEE de MAC");
-
-            if !status.success() {
-                panic!(
-                    "No se pudo obtener {url}. Compile con Internet o defina {override_var} con el CSV oficial de IEEE."
-                );
-            }
+        } else if !cache.is_file() {
+            download_to_cache(url, &cache, &format!("el registro IEEE {name}"));
         }
 
-        let metadata = fs::metadata(&destination)
-            .unwrap_or_else(|_| panic!("Falta el registro IEEE {name}"));
-        if metadata.len() < 10_000 {
-            panic!("El registro IEEE {name} parece incompleto");
-        }
+        validate_asset(&cache, 10_000, &format!("El registro IEEE {name}"));
+        materialize_cached(&cache, out_dir, name, &format!("el registro IEEE {name}"));
     }
 }
 
 #[cfg(windows)]
-fn ensure_helix_archive(out_dir: &Path) {
-    let destination = out_dir.join(HELIX_ARCHIVE_NAME);
+fn ensure_helix_archive(cache_dir: &Path, out_dir: &Path) {
+    let cache = cache_dir.join(HELIX_ARCHIVE_NAME);
 
     if let Some(source) = env::var_os("SST_HELIX_ARCHIVE") {
-        fs::copy(Path::new(&source), &destination)
-            .expect("No se pudo copiar SST_HELIX_ARCHIVE");
-    } else if !destination.is_file() {
-        let status = Command::new(curl_program())
-            .args([
-                "-L",
-                "--fail",
-                "--silent",
-                "--show-error",
-                HELIX_URL,
-                "-o",
-            ])
-            .arg(&destination)
-            .status()
-            .expect("No se pudo ejecutar curl para obtener Helix durante la compilación");
-
-        if !status.success() {
-            panic!(
-                "No se pudo obtener Helix {HELIX_VERSION}. Compile con Internet o defina SST_HELIX_ARCHIVE apuntando al ZIP oficial."
-            );
-        }
+        fs::copy(Path::new(&source), &cache).expect("No se pudo copiar SST_HELIX_ARCHIVE");
+    } else if !cache.is_file() {
+        download_to_cache(HELIX_URL, &cache, &format!("Helix {HELIX_VERSION}"));
     }
 
-    let metadata = fs::metadata(&destination)
-        .expect("El paquete de Helix embebido no existe");
-    if metadata.len() < 1_000_000 {
-        panic!("El paquete de Helix embebido parece incompleto");
-    }
+    validate_asset(&cache, 1_000_000, "El paquete de Helix embebido");
+    materialize_cached(&cache, out_dir, HELIX_ARCHIVE_NAME, "el paquete de Helix");
 }
