@@ -18,22 +18,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Repair patcher for current source format
+      - name: Apply final updater process-exit fix
         shell: pwsh
-        run: python .maintenance/repair_apply_script.py
+        run: python .maintenance/postfix_terminal_update_exit.py
 
-      - name: Apply terminal correctness and resource fixes
-        shell: pwsh
-        run: python .maintenance/apply_terminal_fixes.py
-
-      - name: Commit and push fixes before validation
+      - name: Commit and push fix before validation
         shell: pwsh
         run: |
           git config user.name 'sst-maintenance-bot'
           git config user.email 'sst-maintenance@users.noreply.github.com'
-          git add src/core/bash/environment.rs src/core/bash/interpreter.rs src/core/bash/lexer.rs src/core/ports.rs src/adapters/shell/native_engine.rs src/adapters/terminal/embedded.rs src/presentation/gui_slint.rs src/application/update.rs src/main.rs src/app.rs
+          git add src/adapters/terminal/embedded.rs
           git diff --cached --check
-          git commit -m 'Fix terminal correctness, updater and idle resource use'
+          git commit -m 'Let updater release executable before swap'
           git push origin HEAD:main
 
       - uses: dtolnay/rust-toolchain@stable
