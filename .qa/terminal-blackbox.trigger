@@ -1,1 +1,1 @@
-run final terminal QA with corrected harness and GUI resource probe 2026-10-29
+run terminal QA for SST 0.1.9-blue.8 with shared build asset cache
