@@ -15,13 +15,12 @@ old = '''s = replace_once(
     "defer heredoc expansion",
 )
 '''
-new = '''s, heredoc_count = re.subn(
+new = '''heredoc_pattern = re.compile(
     r'if\\s+!spec\\.quoted\\s*\\{\\s*body\\s*=\\s*self\\.expand_scalar\\(&body\\)\\?;\\s*\\}',
-    'if !spec.quoted {\\n                body = format!("\\\\u{1f}SST_HEREDOC_EXPAND\\\\u{1f}{body}");\\n            }',
-    s,
-    count=1,
-    flags=re.S,
+    re.S,
 )
+heredoc_replacement = 'if !spec.quoted {\\n                body = format!("\\\\u{1f}SST_HEREDOC_EXPAND\\\\u{1f}{body}");\\n            }'
+s, heredoc_count = heredoc_pattern.subn(lambda _match: heredoc_replacement, s, count=1)
 if heredoc_count != 1:
     raise SystemExit(f"defer heredoc expansion: expected 1 match, got {heredoc_count}")
 '''
