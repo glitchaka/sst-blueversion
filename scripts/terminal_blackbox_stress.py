@@ -219,7 +219,7 @@ def main() -> int:
         print("=== Invocation / transport ===")
         h.contains("version", ["--version"], "Shell Shock Tool", 0)
         h.contains("help", ["--help"], "-c COMANDO", 0)
-        h.contains("embedded-pty-transport", ["--verify-terminal"], "SST_NATIVE_OK", 0, "transport", 20)
+        h.contains("embedded-pty-transport", ["--verify-terminal"], "Shell Shock Tool: prompt, entrada, ejecución y salida correctos.", 0, "transport", 20)
 
         print("=== Bash/Nwash language ===")
         cases = [
@@ -297,7 +297,7 @@ def main() -> int:
         unix_cases = [
             ("grep", 'printf "alpha\\nbeta\\ngamma\\n" | grep beta', "beta\n"),
             ("sed", 'printf "abc\\n" | sed "s/b/X/"', "aXc\n"),
-            ("awk", 'printf "a b\\n" | awk "{print $2}"', "b\n"),
+            ("awk", "printf 'a b\\n' | awk '{print $2}'", "b\n"),
             ("cut", 'printf "a:b:c\\n" | cut -d: -f2', "b\n"),
             ("uniq", 'printf "a\\na\\nb\\n" | uniq', "a\nb\n"),
             ("wc", 'printf "a\\nb\\nc\\n" | wc -l', "3\n"),
