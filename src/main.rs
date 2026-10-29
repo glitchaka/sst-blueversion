@@ -392,7 +392,14 @@ fn run_cli(args: &[String]) -> Result<i32> {
     };
 
     engine.set_arguments(&script_name, &positional);
-    let result = engine.execute(&source)?;
+    let piped_stdin = if std::env::var("__SST_NWASH_PIPE_STDIN").as_deref() == Ok("1") {
+        let mut bytes = Vec::new();
+        std::io::stdin().read_to_end(&mut bytes)?;
+        Some(bytes)
+    } else {
+        None
+    };
+    let result = engine.execute_with_stdin(&source, piped_stdin.as_deref())?;
     print!("{}", result.stdout);
     eprint!("{}", result.stderr);
     Ok(result.status)

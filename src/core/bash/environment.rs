@@ -387,6 +387,9 @@ impl ShellEnvironment {
         if let Some(array) = self.assoc_arrays.get(name) {
             return array.contains_key("0");
         }
+        if let Ok(index) = name.parse::<usize>() {
+            return index == 0 || (index > 0 && index <= self.positional.len());
+        }
         self.vars.contains_key(name)
     }
 

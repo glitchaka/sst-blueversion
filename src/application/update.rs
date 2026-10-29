@@ -2,7 +2,6 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
     process::Command,
-    thread,
 };
 
 use anyhow::{Context, Result, bail};
@@ -65,15 +64,6 @@ pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-pub fn spawn_background_check(paths: AppPaths) {
-    if configured_manifest_url(&paths).is_none() {
-        return;
-    }
-    thread::spawn(move || {
-        let _ = check_and_stage(&paths);
-    });
-}
-
 /// Runs the startup update flow and emits user-facing progress into the caller's
 /// terminal. Nothing is printed when no update channel has been configured,
 /// except a one-shot receipt for an update that was just applied.
@@ -115,7 +105,7 @@ where
     notify("\x1b[38;5;250mActualizaciones: descargando sst.exe...\x1b[0m\r\n");
     stage_manifest_with_progress(paths, &manifest, &mut notify)?;
     notify(&format!(
-        "\x1b[1;38;5;114mActualización {} preparada y verificada. Se aplicará al cerrar SST.\x1b[0m\r\n\r\n",
+        "\x1b[1;38;5;114mActualización {} preparada y verificada. Aplicando actualización...\x1b[0m\r\n\r\n",
         manifest.version
     ));
     Ok(())
@@ -173,17 +163,6 @@ pub fn check_now(paths: &AppPaths, stage: bool) -> Result<String> {
     Ok(output)
 }
 
-pub fn check_and_stage(paths: &AppPaths) -> Result<bool> {
-    let manifest = fetch_manifest(paths)?;
-    validate_manifest(&manifest)?;
-    if !is_newer(&manifest.version, current_version())? {
-        cleanup_obsolete_pending(paths)?;
-        return Ok(false);
-    }
-    stage_manifest(paths, &manifest)?;
-    Ok(true)
-}
-
 /// Starts a hidden one-shot Windows batch helper that waits until this SST
 /// process releases sst.exe, replaces it with the already verified staged
 /// binary and relaunches SST. No permanent updater executable is installed.
@@ -199,14 +178,21 @@ pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
     let staged = PathBuf::from(&pending.staged_path);
     verify_file(&staged, &pending.sha256, None)?;
     let target = std::env::current_exe().context("no se pudo resolver sst.exe")?;
+    let swap_new = target.with_extension("exe.new");
+    let backup = target.with_extension("exe.old");
+    if swap_new != staged {
+        let _ = fs::remove_file(&swap_new);
+        fs::copy(&staged, &swap_new)
+            .context("no se pudo preparar sst.exe.new junto al ejecutable activo")?;
+    }
+    verify_file(&swap_new, &pending.sha256, None)?;
+
     let update_dir = update_dir(paths);
     fs::create_dir_all(&update_dir)?;
     let script = update_dir.join(APPLY_SCRIPT);
-    let backup = target.with_extension("exe.old");
     let pending_file = pending_path(paths);
     let applied_staged = update_dir.join(APPLIED_STAGED_FILE);
     let applied_file = update_dir.join(APPLIED_FILE);
-
     let applied = AppliedUpdate {
         from_version: if pending.from_version.trim().is_empty() {
             current_version().to_owned()
@@ -219,45 +205,50 @@ pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
     };
     fs::write(&applied_staged, serde_json::to_vec_pretty(&applied)?)?;
 
-    let body = format!(
-        "@echo off\r\n\
-         setlocal DisableDelayedExpansion\r\n\
-         set \"TARGET={}\"\r\n\
-         set \"NEW={}\"\r\n\
-         set \"BACKUP={}\"\r\n\
-         set \"PENDING={}\"\r\n\
-         set \"APPLIED_PENDING={}\"\r\n\
-         set \"APPLIED={}\"\r\n\
-         for /L %%I in (1,1,120) do (\r\n\
-           move /Y \"%TARGET%\" \"%BACKUP%\" >nul 2>&1 && goto replace\r\n\
-           timeout /t 1 /nobreak >nul\r\n\
-         )\r\n\
-         exit /b 10\r\n\
-         :replace\r\n\
-         move /Y \"%NEW%\" \"%TARGET%\" >nul 2>&1\r\n\
-         if errorlevel 1 (\r\n\
-           move /Y \"%BACKUP%\" \"%TARGET%\" >nul 2>&1\r\n\
-           exit /b 11\r\n\
-         )\r\n\
-         del /Q \"%BACKUP%\" >nul 2>&1\r\n\
-         move /Y \"%APPLIED_PENDING%\" \"%APPLIED%\" >nul 2>&1\r\n\
-         del /Q \"%PENDING%\" >nul 2>&1\r\n\
-         start \"\" \"%TARGET%\"\r\n\
-         del /Q \"%~f0\" >nul 2>&1\r\n",
-        batch_value(&target),
-        batch_value(&staged),
-        batch_value(&backup),
-        batch_value(&pending_file),
-        batch_value(&applied_staged),
-        batch_value(&applied_file),
-    );
-    fs::write(&script, body)?;
-
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         let cmd = system32_executable("cmd.exe")?;
+        let ping = system32_executable("ping.exe")?;
+        let body = format!(
+            "@echo off\r\n\
+             setlocal DisableDelayedExpansion\r\n\
+             set \"TARGET={}\"\r\n\
+             set \"NEW={}\"\r\n\
+             set \"BACKUP={}\"\r\n\
+             set \"PENDING={}\"\r\n\
+             set \"APPLIED_PENDING={}\"\r\n\
+             set \"APPLIED={}\"\r\n\
+             set \"PING={}\"\r\n\
+             if exist \"%BACKUP%\" del /Q \"%BACKUP%\" >nul 2>&1\r\n\
+             for /L %%I in (1,1,120) do (\r\n\
+               move /Y \"%TARGET%\" \"%BACKUP%\" >nul 2>&1 && goto replace\r\n\
+               \"%PING%\" -n 2 127.0.0.1 >nul\r\n\
+             )\r\n\
+             exit /b 10\r\n\
+             :replace\r\n\
+             move /Y \"%NEW%\" \"%TARGET%\" >nul 2>&1\r\n\
+             if errorlevel 1 goto rollback\r\n\
+             if not exist \"%TARGET%\" goto rollback\r\n\
+             move /Y \"%APPLIED_PENDING%\" \"%APPLIED%\" >nul 2>&1\r\n\
+             del /Q \"%PENDING%\" >nul 2>&1\r\n\
+             del /Q \"%BACKUP%\" >nul 2>&1\r\n\
+             start \"\" \"%TARGET%\"\r\n\
+             del /Q \"%~f0\" >nul 2>&1\r\n\
+             exit /b 0\r\n\
+             :rollback\r\n\
+             if exist \"%BACKUP%\" move /Y \"%BACKUP%\" \"%TARGET%\" >nul 2>&1\r\n\
+             exit /b 11\r\n",
+            batch_value(&target),
+            batch_value(&swap_new),
+            batch_value(&backup),
+            batch_value(&pending_file),
+            batch_value(&applied_staged),
+            batch_value(&applied_file),
+            batch_value(&ping),
+        );
+        fs::write(&script, body)?;
         Command::new(cmd)
             .args(["/D", "/S", "/C"])
             .arg(&script)
@@ -268,7 +259,7 @@ pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
 
     #[cfg(not(windows))]
     {
-        let _ = script;
+        let _ = (&script, &swap_new, &backup);
         bail!("la aplicación automática de updates sólo está disponible en Windows");
     }
 

@@ -1589,7 +1589,7 @@ pub fn run() -> Result<()> {
     let carousel_window_event = Rc::new(Cell::new(false));
     let appearance_state = Rc::new(RefCell::new(appearance.clone()));
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
-    let metrics = Rc::new(RefCell::new(System::new_all()));
+    let metrics = Rc::new(RefCell::new(System::new()));
     let ui = SstBlueWindow::new()?;
 
     if let Some(image) = background_image {
@@ -1690,7 +1690,7 @@ pub fn run() -> Result<()> {
         let carousel_window_event = carousel_window_event.clone();
         let paths = paths.clone();
 
-        timer.start(TimerMode::Repeated, Duration::from_millis(16), move || {
+        timer.start(TimerMode::Repeated, Duration::from_millis(33), move || {
             let Some(ui) = weak.upgrade() else {
                 return;
             };
@@ -1822,9 +1822,10 @@ pub fn run() -> Result<()> {
                 }
             }
 
-            if last_status.borrow().elapsed() >= Duration::from_secs(1) {
+            if last_status.borrow().elapsed() >= Duration::from_secs(2) {
                 let mut system = metrics.borrow_mut();
-                system.refresh_all();
+                system.refresh_cpu_usage();
+                system.refresh_memory();
 
                 let cpu = if system.cpus().is_empty() {
                     0.0

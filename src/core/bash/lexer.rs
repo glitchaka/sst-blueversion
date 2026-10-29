@@ -408,6 +408,18 @@ pub fn lex(input: &str) -> Result<Vec<Token>> {
             '(' => { flush(&mut word, &mut out); out.push(Token::LParen); i += 1; }
             ')' => { flush(&mut word, &mut out); out.push(Token::RParen); i += 1; }
             '{' if word.is_empty() => {
+                if let Some(relative_end) = chars[i + 1..].iter().position(|ch| *ch == '}') {
+                    let close = i + 1 + relative_end;
+                    let inner: String = chars[i + 1..close].iter().collect();
+                    let brace_expansion = !inner.is_empty()
+                        && !inner.chars().any(char::is_whitespace)
+                        && (inner.contains("..") || inner.contains(','));
+                    if brace_expansion {
+                        word.extend(&chars[i..=close]);
+                        i = close + 1;
+                        continue;
+                    }
+                }
                 let mut end = i + 1;
                 while end < chars.len() && (chars[end] == '_' || chars[end].is_ascii_alphanumeric()) {
                     end += 1;

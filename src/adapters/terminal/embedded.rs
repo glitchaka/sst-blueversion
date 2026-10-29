@@ -93,7 +93,20 @@ impl EmbeddedSession {
         thread::spawn(move || {
             io::install(terminal_io);
             let result = (|| -> Result<()> {
-                let (mut engine, _, paths) = crate::composition::build_engine()?;
+                let paths = crate::adapters::persistence::AppPaths::detect();
+                paths.ensure_layout()?;
+                if let Err(error) = crate::application::update::startup_update(&paths, |line| {
+                    let _ = io::write(line.as_bytes());
+                }) {
+                    io::write(format!(
+                        "\r\nActualizaciones: no se pudo comprobar el canal ({error}).\r\n\r\n"
+                    ).as_bytes())?;
+                }
+                if crate::application::update::schedule_pending_update(&paths)? {
+                    return Ok(());
+                }
+
+                let (mut engine, _, _) = crate::composition::build_engine()?;
                 engine.set_interactive(true);
 
                 // The native GUI is an interactive non-login Bash session. Unlike

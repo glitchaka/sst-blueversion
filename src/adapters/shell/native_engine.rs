@@ -855,12 +855,7 @@ impl ShellCommandHost for WindowsShellHost {
                 let output = child.wait_with_output()?;
                 let status = output.status.code().unwrap_or(1);
                 let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-                let mut stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-                if status != 0 && stdout.trim().is_empty() && stderr.trim().is_empty() {
-                    stderr = format!(
-                        "{program}: el proceso terminó sin salida con código {status}\n"
-                    );
-                }
+                let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
                 return Ok(ExecutionResult::from_parts(stdout, stderr, status));
             }
 
@@ -921,6 +916,9 @@ impl ShellCommandHost for WindowsShellHost {
                 let upstream = previous_stdout.take()
                     .ok_or_else(|| anyhow::anyhow!("pipeline: stdout anterior no disponible"))?;
                 command.stdin(Stdio::from(upstream));
+            }
+            if index > 0 || stdin.is_some() {
+                command.env("__SST_NWASH_PIPE_STDIN", "1");
             }
 
             let mut child = command.spawn()
@@ -1798,9 +1796,13 @@ impl ShellEngine for NativeShellEngine {
     }
 
     fn execute(&mut self, line: &str) -> Result<ShellExecution> {
+        self.execute_with_stdin(line, None)
+    }
+
+    fn execute_with_stdin(&mut self, line: &str, stdin: Option<&[u8]>) -> Result<ShellExecution> {
         self.interrupt.store(false, std::sync::atomic::Ordering::SeqCst);
         self.force_abort.store(false, std::sync::atomic::Ordering::SeqCst);
-        let result = self.interpreter.execute_text(line)?;
+        let result = self.interpreter.execute_text_with_stdin(line, stdin)?;
 
         let mut execution = if result.exit_requested {
             ShellExecution::exit(result.status)

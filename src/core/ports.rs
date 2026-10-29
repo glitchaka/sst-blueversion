@@ -33,6 +33,10 @@ pub trait TextEditor: Send + Sync {
 pub trait ShellEngine: Send {
     fn working_dir(&self) -> &Path;
     fn execute(&mut self, line: &str) -> Result<ShellExecution>;
+    fn execute_with_stdin(&mut self, line: &str, stdin: Option<&[u8]>) -> Result<ShellExecution> {
+        let _ = stdin;
+        self.execute(line)
+    }
     fn set_arguments(&mut self, name: &str, args: &[String]);
     fn set_interactive(&mut self, _interactive: bool) {}
     fn prepare_prompt(&mut self, _continuation: bool) -> Result<(String, String, Option<String>)> {

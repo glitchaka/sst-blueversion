@@ -324,6 +324,7 @@ impl Interpreter {
         .unwrap_or_default();
 
         environment.unset("__SST_NWASH_STREAM_CHILD");
+        environment.unset("__SST_NWASH_PIPE_STDIN");
         environment.unset("__SST_NWASH_PARENT_STATUS");
         environment.unset("__SST_NWASH_ALIASES");
         environment.unset("__SST_NWASH_FUNCTIONS");
@@ -1041,7 +1042,7 @@ impl Interpreter {
         self.execute_text_with_stdin(input, None)
     }
 
-    fn execute_text_with_stdin(
+    pub(crate) fn execute_text_with_stdin(
         &mut self,
         input: &str,
         stdin: Option<&[u8]>,
@@ -1116,6 +1117,7 @@ impl Interpreter {
                 let mut last = ExecutionResult::success();
                 for node in nodes {
                     last.append(self.execute(node, stdin)?);
+                    if self.env.option_enabled("noexec") { break; }
                     if last.exit_requested || last.flow != FlowSignal::None { break; }
                     if last.status != 0
                         && self.env.option_enabled("errexit")
@@ -1541,8 +1543,8 @@ impl Interpreter {
                 }
 
                 if !spec.quoted {
-                    body = self.expand_scalar(&body)?;
-                }
+                body = format!("\u{1f}SST_HEREDOC_EXPAND\u{1f}{body}");
+            }
 
                 counter += 1;
                 let variable = format!("__SST_HEREDOC_{counter}");
@@ -1867,8 +1869,7 @@ impl Interpreter {
                 Ok(true)
             }
             RedirectKind::HereString => {
-                let mut value = self.expand_scalar(&redirect.target)?;
-                value.push('\n');
+                let value = self.expand_here_input(&redirect.target)?;
                 self.managed_input_fds.insert(
                     redirect.fd,
                     ManagedInputFd::Data { bytes: value.into_bytes(), offset: 0 },
@@ -1959,8 +1960,7 @@ impl Interpreter {
                     }
                 }
                 RedirectKind::HereString => {
-                    let mut value = self.expand_scalar(&redirect.target)?;
-                    value.push('\n');
+                    let value = self.expand_here_input(&redirect.target)?;
                     local_stdin = Some(value.into_bytes());
                 }
                 _ => {}
@@ -2045,8 +2045,7 @@ impl Interpreter {
                     }
                 }
                 RedirectKind::HereString => {
-                    let mut value = self.expand_scalar(&redirect.target)?;
-                    value.push('\n');
+                    let value = self.expand_here_input(&redirect.target)?;
                     local_stdin = Some(value.into_bytes());
                 }
                 _ => {}
@@ -7232,6 +7231,16 @@ impl Interpreter {
         result.stdout = routed_stdout;
         result.stderr = routed_stderr;
         Ok(())
+    }
+
+    fn expand_here_input(&mut self, target: &str) -> Result<String> {
+        const DEFERRED_HEREDOC: &str = "\u{1f}SST_HEREDOC_EXPAND\u{1f}";
+        let mut value = self.expand_scalar(target)?;
+        if let Some(raw) = value.strip_prefix(DEFERRED_HEREDOC) {
+            value = self.expand_scalar(raw)?;
+        }
+        value.push('\n');
+        Ok(value)
     }
 
     fn expand_words(&mut self, words: &[String]) -> Result<Vec<String>> {
