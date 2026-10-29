@@ -103,7 +103,10 @@ impl EmbeddedSession {
                     ).as_bytes())?;
                 }
                 if crate::application::update::schedule_pending_update(&paths)? {
-                    return Ok(());
+                    // The swap helper cannot replace the running executable while this
+                    // GUI process still owns it. Startup has no user session to preserve,
+                    // so terminate immediately; the verified helper relaunches SST.
+                    std::process::exit(0);
                 }
 
                 let (mut engine, _, _) = crate::composition::build_engine()?;
