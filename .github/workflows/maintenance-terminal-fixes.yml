@@ -18,6 +18,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Repair patcher for current source format
+        shell: pwsh
+        run: python .maintenance/repair_apply_script.py
+
       - name: Apply terminal correctness and resource fixes
         shell: pwsh
         run: python .maintenance/apply_terminal_fixes.py
