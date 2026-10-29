@@ -20,7 +20,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Require main and public update publisher
+      - name: Validate main and detect public publisher
+        id: publisher
         shell: pwsh
         env:
           UPDATE_TOKEN: ${{ secrets.SST_UPDATE_PUBLISH_TOKEN }}
@@ -29,7 +30,10 @@ jobs:
             throw 'Las releases distribuibles de SST sólo pueden publicarse desde main.'
           }
           if ([string]::IsNullOrWhiteSpace($env:UPDATE_TOKEN)) {
-            throw 'Falta el secret SST_UPDATE_PUBLISH_TOKEN con permiso Contents: Read and write sobre glitchaka/adm-toolbox.'
+            'can_publish=false' >> $env:GITHUB_OUTPUT
+            Write-Warning 'SST_UPDATE_PUBLISH_TOKEN no está configurado: se compilará y verificará la release, pero no se activará adm-toolbox.'
+          } else {
+            'can_publish=true' >> $env:GITHUB_OUTPUT
           }
 
       - name: Install Rust stable
@@ -41,6 +45,30 @@ jobs:
       - name: Synchronize version metadata
         shell: pwsh
         run: ./scripts/sync-version.ps1
+
+      - name: Prepare pinned IEEE registry for reproducible build
+        shell: pwsh
+        run: |
+          $rev = '65f556005f63a22ae353e6f129440dbdb3c29c06'
+          $dir = Join-Path $env:RUNNER_TEMP 'sst-ieee'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $items = @(
+            @{ Name = 'oui.csv'; Env = 'SST_IEEE_MAL_CSV' },
+            @{ Name = 'mam.csv'; Env = 'SST_IEEE_MAM_CSV' },
+            @{ Name = 'oui36.csv'; Env = 'SST_IEEE_MAS_CSV' }
+          )
+          foreach ($item in $items) {
+            $target = Join-Path $dir $item.Name
+            $url = "https://raw.githubusercontent.com/StewAlexander-com/maclookup.py/$rev/$($item.Name)"
+            & curl.exe -L --fail --silent --show-error --retry 3 --retry-all-errors --connect-timeout 8 --max-time 120 $url -o $target
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $target)) {
+              throw "No se pudo preparar $($item.Name) para el build"
+            }
+            if ((Get-Item -LiteralPath $target).Length -lt 10000) {
+              throw "El registro $($item.Name) descargado parece incompleto"
+            }
+            "$($item.Env)=$target" >> $env:GITHUB_ENV
+          }
 
       - name: Read canonical version
         id: version
@@ -123,6 +151,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish public update payload
+        if: ${{ steps.publisher.outputs.can_publish == 'true' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.SST_UPDATE_PUBLISH_TOKEN }}
@@ -146,6 +175,7 @@ jobs:
           }
 
       - name: Verify public update payload
+        if: ${{ steps.publisher.outputs.can_publish == 'true' }}
         shell: pwsh
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -173,6 +203,7 @@ jobs:
           Write-Host "Payload público verificado: $($manifest.asset_url)"
 
       - name: Publish update manifest last
+        if: ${{ steps.publisher.outputs.can_publish == 'true' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.SST_UPDATE_PUBLISH_TOKEN }}
