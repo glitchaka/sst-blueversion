@@ -1,1 +1,1 @@
-publish final 0.1.9-blue.7 candidate after terminal, guide, updater and resource fixes
+publish 0.1.9-blue.7 after resilient QA and release pipeline fixes
