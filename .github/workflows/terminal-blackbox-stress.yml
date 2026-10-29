@@ -1,0 +1,68 @@
+name: SST terminal black-box and stress
+
+on:
+  workflow_dispatch:
+    inputs:
+      stress_scale:
+        description: 'Multiplicador de estrés (1 normal, 2+ agresivo)'
+        required: true
+        default: '1'
+  push:
+    branches: [main]
+    paths:
+      - '.qa/terminal-blackbox.trigger'
+      - 'scripts/terminal-blackbox-stress.ps1'
+      - '.github/workflows/terminal-blackbox-stress.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  terminal-blackbox:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Synchronize version metadata
+        shell: pwsh
+        run: ./scripts/sync-version.ps1
+
+      - name: Compile all test targets
+        shell: pwsh
+        run: cargo test --workspace --all-targets --no-run
+
+      - name: Run Rust test suite
+        shell: pwsh
+        run: cargo test --workspace --all-targets
+
+      - name: Build release SST
+        shell: pwsh
+        run: cargo build --release --bin sst
+
+      - name: Run terminal black-box and stress suite
+        shell: pwsh
+        env:
+          INPUT_STRESS_SCALE: ${{ github.event.inputs.stress_scale }}
+        run: |
+          $scale = 1
+          if (-not [string]::IsNullOrWhiteSpace($env:INPUT_STRESS_SCALE)) {
+            $scale = [int]$env:INPUT_STRESS_SCALE
+          }
+          ./scripts/terminal-blackbox-stress.ps1 -Exe ./target/release/sst.exe -StressScale $scale
+
+      - name: Upload QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sst-terminal-blackbox-report
+          path: qa-results/*
+          if-no-files-found: warn
