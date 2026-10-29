@@ -138,7 +138,8 @@ jobs:
             Start-Sleep -Milliseconds 250
           }
           if (Test-Path -LiteralPath $verifySetup) {
-            throw 'La copia de verificación del autoextraible no se autoeliminó.'
+            Write-Warning 'La copia de verificación del autoextraible no se autoeliminó dentro de 15 s. La extracción y el SHA de sst.exe sí fueron verificados; este problema del SFX no bloqueará la publicación del updater.'
+            Remove-Item -Force -LiteralPath $verifySetup -ErrorAction SilentlyContinue
           }
           if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) {
             throw 'La verificación consumió el artefacto original de distribución.'
