@@ -86,8 +86,8 @@ jobs:
         run: |
           $tag = "v$env:VERSION"
           git fetch --tags --force
-          git rev-parse --verify --quiet "refs/tags/$tag" *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $existing = (git tag --list $tag).Trim()
+          if (-not [string]::IsNullOrWhiteSpace($existing)) {
             $tagCommit = (git rev-list -n 1 $tag).Trim()
             if ($tagCommit -ne $env:GITHUB_SHA) {
               throw "La versión $env:VERSION ya fue publicada desde $tagCommit. Aumente la versión de Cargo.toml antes de publicar código distinto."
