@@ -1,1 +1,1 @@
-apply terminal fixes 2026-10-29
+apply terminal fixes 2026-10-29 retry 2
