@@ -1,0 +1,78 @@
+name: SST published blue-channel black-box
+
+on:
+  workflow_dispatch:
+    inputs:
+      stress_scale:
+        description: 'Multiplicador de estrés'
+        required: true
+        default: '1'
+  push:
+    branches: [main]
+    paths:
+      - '.qa/published-blackbox.trigger'
+      - '.github/workflows/terminal-published-blackbox.yml'
+      - 'scripts/terminal_blackbox_stress.py'
+
+permissions:
+  contents: read
+
+jobs:
+  published-blackbox:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download blue-channel manifest and executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = 'https://raw.githubusercontent.com/glitchaka/adm-toolbox/main/updates/blue'
+          Invoke-WebRequest -Uri "$base/sst-update.json" -OutFile "$env:RUNNER_TEMP/sst-update.json"
+          $manifest = Get-Content -Raw "$env:RUNNER_TEMP/sst-update.json" | ConvertFrom-Json
+          $asset = if ($manifest.asset_url -match '^https://') { $manifest.asset_url } else { "$base/$($manifest.asset_url)" }
+          Invoke-WebRequest -Uri $asset -OutFile "$env:RUNNER_TEMP/sst.exe"
+          $hash = (Get-FileHash -Algorithm SHA256 "$env:RUNNER_TEMP/sst.exe").Hash.ToLowerInvariant()
+          $size = (Get-Item "$env:RUNNER_TEMP/sst.exe").Length
+          if ($hash -ne ([string]$manifest.sha256).ToLowerInvariant()) { throw "SHA mismatch: $hash != $($manifest.sha256)" }
+          if ($size -ne [int64]$manifest.size) { throw "Size mismatch: $size != $($manifest.size)" }
+          "SST_PUBLISHED_VERSION=$($manifest.version)" >> $env:GITHUB_ENV
+          Write-Host "Testing published SST $($manifest.version), SHA-256 verified, $size bytes"
+
+      - name: Run published binary black-box and stress suite
+        id: blackbox
+        continue-on-error: true
+        shell: pwsh
+        env:
+          INPUT_STRESS_SCALE: ${{ github.event.inputs.stress_scale }}
+        run: |
+          $scale = 1
+          if (-not [string]::IsNullOrWhiteSpace($env:INPUT_STRESS_SCALE)) { $scale = [int]$env:INPUT_STRESS_SCALE }
+          python ./scripts/terminal_blackbox_stress.py --exe "$env:RUNNER_TEMP/sst.exe" --stress-scale $scale
+
+      - name: Add published version to report
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path qa-results/terminal-blackbox.json) {
+            $r = Get-Content -Raw qa-results/terminal-blackbox.json | ConvertFrom-Json
+            $r | Add-Member -NotePropertyName published_version -NotePropertyValue $env:SST_PUBLISHED_VERSION -Force
+            $r | ConvertTo-Json -Depth 8 | Set-Content qa-results/terminal-blackbox.json -Encoding utf8
+          }
+
+      - name: Upload published QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sst-published-blue-blackbox-report
+          path: qa-results/*
+          if-no-files-found: warn
+
+      - name: Enforce published QA
+        if: always()
+        shell: pwsh
+        env:
+          OUTCOME: ${{ steps.blackbox.outcome }}
+        run: |
+          if ($env:OUTCOME -ne 'success') { throw "Published blue-channel black-box/stress: $env:OUTCOME" }
