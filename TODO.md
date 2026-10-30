@@ -1,15 +1,6 @@
 # SST TODO
 
-## Hotfix actual: 0.1.9-blue.9
-
-### Actualizador
-- [x] Mantener un solo binario distribuido: `sst.exe`.
-- [x] Sustituir el handoff crítico basado en `timeout.exe`/batch por una copia temporal del mismo `sst.exe` que aplica el reemplazo fuera del proceso principal.
-- [x] Verificar SHA-256 antes y después del reemplazo y conservar `sst.exe.old` como rollback.
-- [x] Relanzar SST después del swap y eliminar la copia temporal del helper desde la nueva instancia.
-- [ ] Validar en CI el flujo de actualización real antes de publicar el hotfix.
-
-## Próxima versión funcional: 0.1.9-blue.10
+## Próxima versión: 0.1.9-blue.9
 
 ### Actualizaciones
 - [ ] Después de aplicar una actualización y relanzar SST, mostrar temporalmente las novedades de la versión aplicada antes de continuar al prompt normal.
@@ -20,13 +11,7 @@
 - [ ] Permitir descargar contenido para uso offline por apartado, no como un paquete monolítico.
 - [ ] Sin conexión, mostrar únicamente los apartados que el usuario haya descargado previamente; si no hay ninguno descargado, `guide` debe quedar vacío.
 - [ ] Permitir actualizar y eliminar la copia offline de cada apartado de forma independiente.
-- [ ] Mantener `Arch / Portabilidad` como apartado propio de primer nivel.
-
-### `Arch / Portabilidad`
-- [ ] Usarlo como área de revisión técnica para decidir qué funcionalidades/proyectos se portarán a SST.
-- [ ] Evaluar el código fuente nativo/upstream y la funcionalidad que interesa portar; no usar como criterio si ya existe un port o versión para Windows.
-- [ ] Registrar propósito, lenguaje, arquitectura, dependencias POSIX/Linux que deban sustituirse, equivalentes Win32/NT/SST, dificultad, riesgo, valor para SST y destino previsto.
-- [ ] Estados de decisión: `PENDIENTE`, `APROBADO`, `DESCARTADO`, `IMPLEMENTADO`.
+- [ ] Implementar `Arch / Portabilidad` como apartado independiente con índice y contenido propios; no mezclar candidatos de portabilidad con las áreas, comandos, búsquedas ni manuales normales de `guide`.
 
 ### Módulos nativos SST
 - [ ] Para herramientas aprobadas que deban distribuirse como extensiones, usar módulos nativos cargables por SST, no ejecutables externos como diseño por defecto.
