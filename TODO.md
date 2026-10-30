@@ -1,6 +1,15 @@
 # SST TODO
 
-## Próxima versión: 0.1.9-blue.9
+## Hotfix actual: 0.1.9-blue.9
+
+### Actualizador
+- [x] Mantener un solo binario distribuido: `sst.exe`.
+- [x] Sustituir el handoff crítico basado en `timeout.exe`/batch por una copia temporal del mismo `sst.exe` que aplica el reemplazo fuera del proceso principal.
+- [x] Verificar SHA-256 antes y después del reemplazo y conservar `sst.exe.old` como rollback.
+- [x] Relanzar SST después del swap y eliminar la copia temporal del helper desde la nueva instancia.
+- [ ] Validar en CI el flujo de actualización real antes de publicar el hotfix.
+
+## Próxima versión funcional: 0.1.9-blue.10
 
 ### Actualizaciones
 - [ ] Después de aplicar una actualización y relanzar SST, mostrar temporalmente las novedades de la versión aplicada antes de continuar al prompt normal.
