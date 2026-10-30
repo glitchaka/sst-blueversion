@@ -1,2 +1,2 @@
 publish SST 0.1.9-blue.8 from main
-retry after adding release notes and fixing packaging gate
+republish after atomic updater handoff and parent-PID regression passed
