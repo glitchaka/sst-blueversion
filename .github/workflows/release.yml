@@ -79,7 +79,7 @@ jobs:
           if (-not $m.Success) { throw 'No se pudo leer la versión canónica.' }
           "version=$($m.Groups[1].Value)" >> $env:GITHUB_OUTPUT
 
-      - name: Refuse version reuse on different code
+      - name: Validate version reuse policy
         shell: pwsh
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -91,9 +91,13 @@ jobs:
             $tagCommit = [string](git rev-list -n 1 $tag)
             $tagCommit = $tagCommit.Trim()
             if ($tagCommit -ne $env:GITHUB_SHA) {
-              throw "La versión $env:VERSION ya fue publicada desde $tagCommit. Aumente la versión de Cargo.toml antes de publicar código distinto."
+              if ($env:VERSION -notmatch '-blue\.\d+$') {
+                throw "La versión estable $env:VERSION ya fue publicada desde $tagCommit. Aumente la versión antes de publicar código distinto."
+              }
+              Write-Warning "Se refrescará la build blue $env:VERSION desde $env:GITHUB_SHA; el tag anterior apuntaba a $tagCommit."
+            } else {
+              Write-Host "La versión $env:VERSION ya pertenece a este mismo commit; se permite reintentar el empaquetado."
             }
-            Write-Host "La versión $env:VERSION ya pertenece a este mismo commit; se permite reintentar el empaquetado."
           }
 
       - name: Build SST, native SFX packager and stub
@@ -256,6 +260,10 @@ jobs:
 
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
+            if ($env:VERSION -match '-blue\.\d+$') {
+              git tag -f $tag $env:GITHUB_SHA
+              git push --force origin $tag
+            }
             gh release edit $tag --title "Shell Shock Tool $env:VERSION" --notes-file $notes
           } else {
             gh release create $tag --target $env:GITHUB_SHA --title "Shell Shock Tool $env:VERSION" --notes-file $notes
