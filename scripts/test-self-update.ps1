@@ -14,20 +14,23 @@ $root = Join-Path $env:RUNNER_TEMP ("sst-self-update-test-" + [guid]::NewGuid().
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 
 try {
-    $helper = Join-Path $root 'sst-update-helper.exe'
+    $updateDir = Join-Path $root 'update'
+    $helperDir = Join-Path $updateDir 'tmp'
+    New-Item -ItemType Directory -Force -Path $helperDir | Out-Null
+
+    $helper = Join-Path $helperDir 'sst-update-helper.exe'
     $target = Join-Path $root 'sst.exe'
     $ready = Join-Path $root 'sst.exe.new'
     $backup = Join-Path $root 'sst.exe.old'
-    $pending = Join-Path $root 'pending.json'
-    $appliedPending = Join-Path $root 'applied.pending.json'
-    $applied = Join-Path $root 'applied.json'
+    $pending = Join-Path $updateDir 'pending.json'
+    $appliedPending = Join-Path $updateDir 'applied.pending.json'
+    $applied = Join-Path $updateDir 'applied.json'
 
     Copy-Item -LiteralPath $sst -Destination $helper -Force
 
     $oldExe = Join-Path $env:SystemRoot 'System32\whoami.exe'
     $newExe = Join-Path $env:SystemRoot 'System32\where.exe'
     Copy-Item -LiteralPath $oldExe -Destination $target -Force
-    Copy-Item -LiteralPath $target -Destination $backup -Force
     Copy-Item -LiteralPath $newExe -Destination $ready -Force
 
     '{"pending":true}' | Set-Content -LiteralPath $pending -Encoding utf8NoBOM
@@ -39,16 +42,14 @@ try {
         throw 'La prueba necesita ejecutables viejo/nuevo diferentes.'
     }
 
-    $lockerScript = Join-Path $root 'hold-lock.ps1'
-    @"
-`$stream = [System.IO.File]::Open('$($target.Replace("'", "''"))', [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
-try { Start-Sleep -Seconds 3 } finally { `$stream.Dispose() }
-"@ | Set-Content -LiteralPath $lockerScript -Encoding utf8NoBOM
-
-    $locker = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoLogo', '-NoProfile', '-File', $lockerScript) -PassThru -WindowStyle Hidden
-    Start-Sleep -Milliseconds 300
+    # Simula exactamente la instancia SST que todavía está cerrándose. El helper
+    # debe esperar a este PID, aunque el archivo objetivo sea reemplazable antes.
+    $parent = Start-Process -FilePath 'pwsh.exe' `
+        -ArgumentList @('-NoLogo', '-NoProfile', '-Command', 'Start-Sleep -Seconds 3') `
+        -PassThru -WindowStyle Hidden
 
     $env:SST_INTERNAL_APPLY_UPDATE = '1'
+    $env:SST_UPDATE_PARENT_PID = [string]$parent.Id
     $env:SST_UPDATE_TARGET = $target
     $env:SST_UPDATE_READY = $ready
     $env:SST_UPDATE_BACKUP = $backup
@@ -60,6 +61,19 @@ try { Start-Sleep -Seconds 3 } finally { `$stream.Dispose() }
 
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     $process = Start-Process -FilePath $helper -ArgumentList '--gui' -PassThru
+
+    Start-Sleep -Seconds 1
+    if ($process.HasExited) {
+        throw 'El helper terminó mientras la instancia SST anterior seguía viva.'
+    }
+    if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
+        throw 'sst.exe desapareció antes de terminar la instancia SST anterior.'
+    }
+    $duringHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+    if ($duringHash -ne $oldHash) {
+        throw 'sst.exe fue modificado antes de terminar la instancia SST anterior.'
+    }
+
     if (-not $process.WaitForExit(30000)) {
         try { $process.Kill($true) } catch {}
         throw 'El helper de actualización no terminó dentro de 30 segundos.'
@@ -70,9 +84,12 @@ try { Start-Sleep -Seconds 3 } finally { `$stream.Dispose() }
         throw "El helper de actualización terminó con código $($process.ExitCode)."
     }
     if ($timer.Elapsed.TotalSeconds -lt 2.0) {
-        throw 'El helper no esperó correctamente a que se liberara el ejecutable objetivo.'
+        throw 'El helper no esperó correctamente al proceso SST anterior.'
     }
 
+    if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
+        throw 'sst.exe desapareció después del reemplazo.'
+    }
     $installedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
     if ($installedHash -ne $expectedHash) {
         throw "El ejecutable instalado no coincide con el esperado: $installedHash"
@@ -86,11 +103,23 @@ try { Start-Sleep -Seconds 3 } finally { `$stream.Dispose() }
     if (-not (Test-Path -LiteralPath $backup -PathType Leaf)) {
         throw 'No se conservó el rollback sst.exe.old.'
     }
+    $backupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $backup).Hash.ToLowerInvariant()
+    if ($backupHash -ne $oldHash) {
+        throw 'sst.exe.old no contiene el ejecutable anterior esperado.'
+    }
 
-    Write-Host "Self-update handoff OK ($([math]::Round($timer.Elapsed.TotalSeconds, 2)) s)"
+    # Verifica que el ejecutable reemplazado sigue siendo lanzable después del
+    # handoff; el problema real no puede dejar una ruta inexistente.
+    $probe = Start-Process -FilePath $target -ArgumentList 'cmd.exe' -Wait -PassThru -WindowStyle Hidden
+    if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
+        throw 'sst.exe dejó de existir después de volver a lanzarlo.'
+    }
+
+    Write-Host "Self-update parent handoff OK ($([math]::Round($timer.Elapsed.TotalSeconds, 2)) s)"
 }
 finally {
     Remove-Item Env:SST_INTERNAL_APPLY_UPDATE -ErrorAction SilentlyContinue
+    Remove-Item Env:SST_UPDATE_PARENT_PID -ErrorAction SilentlyContinue
     Remove-Item Env:SST_UPDATE_TARGET -ErrorAction SilentlyContinue
     Remove-Item Env:SST_UPDATE_READY -ErrorAction SilentlyContinue
     Remove-Item Env:SST_UPDATE_BACKUP -ErrorAction SilentlyContinue
