@@ -26,16 +26,20 @@
 - [ ] Resolver dependencias primero contra capacidades que SST ya pueda proporcionar; descargar módulos adicionales solo cuando una capacidad realmente falte.
 - [ ] Distinguir dependencias directas, transitivas y opcionales.
 
-### `instp`: separar instalación CLI y gestor de paquetes
-- [ ] Separar dos superficies bajo `instp`:
+### `instp`: un solo motor de gestión de paquetes
+- [ ] `instp` debe ser el único motor de gestión de paquetes de SST. No crear un segundo gestor independiente para la interfaz TUI.
+- [ ] Separar dos superficies sobre el mismo motor `instp`:
   - CLI transaccional de instalación/actualización con comportamiento tipo APT.
   - Gestor/catálogo TUI para explorar paquetes, inspirado visualmente en `guide`.
+- [ ] La TUI debe reutilizar exactamente el mismo catálogo, resolver de dependencias, estado instalado, verificación, transacciones y operaciones de `instp`; solo cambia la interfaz.
 - [ ] `instp` sin argumentos debe abrir el gestor/catálogo TUI.
 - [ ] `instp <paquete>` sin verbo de instalación/actualización debe ser una consulta de estado, nunca una instalación implícita.
 - [ ] La consulta debe distinguir como mínimo:
   - paquete instalado: mostrar versión instalada y, si se conoce, versión disponible;
   - paquete disponible pero no instalado;
   - paquete no encontrado en el catálogo.
+- [ ] `instp update` debe actualizar el catálogo/índices de paquetes.
+- [ ] `instp upgrade` debe actualizar paquetes instalados según las reglas definidas por `instp`.
 - [ ] `instp install <paquete>` debe instalar el paquete y resolver sus dependencias/capacidades necesarias.
 - [ ] La ruta de actualización debe actualizar únicamente lo solicitado o lo que corresponda según el subcomando, sin convertir una consulta simple en una transacción.
 
