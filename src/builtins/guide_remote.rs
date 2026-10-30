@@ -19,19 +19,31 @@ const MAX_MANUAL_BYTES: usize = 512 * 1024;
 static FILE_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
 static TOPIC_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
 
-/// The catalog is intentionally not persisted or compiled into SST. `guide`
-/// gets its areas, entries, aliases, summaries and UI labels from the repo on
-/// every invocation. If the repository is unavailable, there is no local
-/// catalog to display.
+/// The normal guide index remains the source of commands/manuals. Arch review
+/// data lives in a separate index and is merged only by builds that know about
+/// it, so older published SST versions are not changed by adding candidates.
 pub(super) fn load_index() -> Option<String> {
-    fetch_repo_file(INDEX_FILE, MAX_INDEX_BYTES)
+    let base = fetch_repo_file(INDEX_FILE, MAX_INDEX_BYTES)?;
+    let Some(arch) = fetch_repo_file(ARCH_INDEX_FILE, MAX_INDEX_BYTES) else {
+        return Some(base);
+    };
+    merge_catalogs(&base, &arch).or(Some(base))
 }
 
-/// Arch/Portabilidad is intentionally a separate review data source. Older
-/// SST builds ignore this file entirely, so adding candidates never changes
-/// the guide shown by an already published build.
-pub(super) fn load_arch_index() -> Option<String> {
-    fetch_repo_file(ARCH_INDEX_FILE, MAX_INDEX_BYTES)
+fn merge_catalogs(base: &str, extra: &str) -> Option<String> {
+    let mut base: serde_json::Value = serde_json::from_str(base).ok()?;
+    let extra: serde_json::Value = serde_json::from_str(extra).ok()?;
+    if extra.get("schema")?.as_u64()? != 1 {
+        return None;
+    }
+
+    for key in ["areas", "entries"] {
+        let target = base.get_mut(key)?.as_array_mut()?;
+        let source = extra.get(key)?.as_array()?;
+        target.extend(source.iter().cloned());
+    }
+
+    serde_json::to_string(&base).ok()
 }
 
 pub(super) fn load_manual(
