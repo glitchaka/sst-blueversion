@@ -12,6 +12,7 @@ use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 const MANUAL_BASE: &str =
     "https://raw.githubusercontent.com/glitchaka/adm-toolbox/main/tutorials";
 const INDEX_FILE: &str = "guide-index.json";
+const ARCH_INDEX_FILE: &str = "arch-index.json";
 const MAX_INDEX_BYTES: usize = 2 * 1024 * 1024;
 const MAX_MANUAL_BYTES: usize = 512 * 1024;
 
@@ -24,6 +25,13 @@ static TOPIC_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLoc
 /// catalog to display.
 pub(super) fn load_index() -> Option<String> {
     fetch_repo_file(INDEX_FILE, MAX_INDEX_BYTES)
+}
+
+/// Arch/Portabilidad is intentionally a separate review data source. Older
+/// SST builds ignore this file entirely, so adding candidates never changes
+/// the guide shown by an already published build.
+pub(super) fn load_arch_index() -> Option<String> {
+    fetch_repo_file(ARCH_INDEX_FILE, MAX_INDEX_BYTES)
 }
 
 pub(super) fn load_manual(
