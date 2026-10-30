@@ -1,0 +1,61 @@
+name: SST self-update regression
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/presentation/gui_slint_wrapper.rs'
+      - 'scripts/test-self-update.ps1'
+      - '.github/workflows/self-update-regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  self-update:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Synchronize version metadata
+        shell: pwsh
+        run: ./scripts/sync-version.ps1
+
+      - name: Prepare pinned IEEE registry
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rev = '65f556005f63a22ae353e6f129440dbdb3c29c06'
+          $dir = Join-Path $env:RUNNER_TEMP 'sst-ieee'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $items = @(
+            @{ Name = 'oui.csv'; Env = 'SST_IEEE_MAL_CSV' },
+            @{ Name = 'mam.csv'; Env = 'SST_IEEE_MAM_CSV' },
+            @{ Name = 'oui36.csv'; Env = 'SST_IEEE_MAS_CSV' }
+          )
+          foreach ($item in $items) {
+            $target = Join-Path $dir $item.Name
+            $url = "https://raw.githubusercontent.com/StewAlexander-com/maclookup.py/$rev/$($item.Name)"
+            & curl.exe -L --fail --silent --show-error --retry 3 --retry-all-errors --connect-timeout 8 --max-time 120 $url -o $target
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $target -PathType Leaf)) {
+              throw "No se pudo preparar $($item.Name)"
+            }
+            "$($item.Env)=$target" >> $env:GITHUB_ENV
+          }
+
+      - name: Build SST for updater regression
+        shell: pwsh
+        run: cargo build --bin sst
+
+      - name: Exercise real self-update handoff
+        shell: pwsh
+        run: ./scripts/test-self-update.ps1 -SstPath ./target/debug/sst.exe
