@@ -53,16 +53,10 @@ pub fn run() -> Result<()> {
     let paths = AppPaths::detect();
     paths.ensure_layout()?;
 
-    // If a verified update is already staged, hand it to a temporary copy of
-    // this same SST executable before opening the GUI. No permanent updater
-    // executable is installed.
     if schedule_pending_update(&paths)? {
         return Ok(());
     }
 
-    // Check the configured channel synchronously at startup. A network/update
-    // error must never prevent SST from opening. When a new version is staged,
-    // hand it off immediately to the temporary self-update helper and exit.
     if update::configured_manifest_url(&paths).is_some()
         && update::startup_update(&paths, |_| {}).is_ok()
         && schedule_pending_update(&paths)?
@@ -73,8 +67,6 @@ pub fn run() -> Result<()> {
     let _beacon_overlay = BeaconOverlayGuard::start();
     let result = super::gui_slint_base::run();
 
-    // A pending update can still appear while SST is running, for example from
-    // an explicit update command. Apply it after the GUI closes.
     if result.is_ok() {
         schedule_pending_update(&paths)?;
     }
@@ -107,8 +99,6 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
     let applied_staged = update_dir.join(APPLIED_STAGED_FILE);
     let applied_file = update_dir.join(APPLIED_FILE);
 
-    // Prepare and verify the replacement beside the active executable. The
-    // helper will only touch TARGET after the current process has released it.
     if ready != staged {
         let _ = fs::remove_file(&ready);
         fs::copy(&staged, &ready).with_context(|| {
@@ -121,17 +111,10 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
     }
     verify_staged(&ready, &pending.sha256)?;
 
-    // Keep a known-good rollback copy before spawning the helper.
+    // ReplaceFileW creates BACKUP atomically from TARGET on success. Do not
+    // create or rename TARGET away beforehand: TARGET must always remain a
+    // runnable SST until Windows commits the replacement.
     let _ = fs::remove_file(&backup);
-    fs::copy(&target, &backup).with_context(|| {
-        format!(
-            "no se pudo crear la copia de seguridad {}",
-            backup.display()
-        )
-    })?;
-    if fs::metadata(&backup)?.len() == 0 {
-        bail!("la copia de seguridad del ejecutable quedó vacía");
-    }
 
     let from_version = if pending.from_version.trim().is_empty() {
         update::current_version().to_owned()
@@ -151,9 +134,6 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-        // Keep all transient updater state inside SST's own update workspace.
-        // The helper is a disposable byte-for-byte copy of the current SST
-        // binary and the tmp directory is removed after a successful handoff.
         let helper_dir = update_dir.join(UPDATE_TMP_DIR);
         fs::create_dir_all(&helper_dir)?;
         let helper = helper_dir.join(format!(
@@ -212,35 +192,46 @@ fn run_update_helper() -> Result<()> {
 
     verify_staged(&ready, &expected_hash)?;
 
-    // The parent SST process is still winding down when this helper starts.
-    // Retry with an in-process sleep; unlike timeout.exe this does not depend on
-    // a console handle and therefore also works for the GUI subsystem build.
-    let mut released = false;
-    for _ in 0..240 {
-        match fs::remove_file(&target) {
-            Ok(()) => {
-                released = true;
-                break;
+    #[cfg(windows)]
+    {
+        // ReplaceFileW is the commit point. While TARGET is still locked by the
+        // parent process it simply fails and TARGET remains untouched. There is
+        // no intermediate state where sst.exe has been deleted or renamed away.
+        let mut installed = false;
+        let mut last_error = None;
+        for _ in 0..240 {
+            match replace_file_atomic(&target, &ready, Some(&backup)) {
+                Ok(()) => {
+                    installed = true;
+                    break;
+                }
+                Err(error) => {
+                    last_error = Some(error);
+                    thread::sleep(Duration::from_millis(250));
+                }
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                released = true;
-                break;
-            }
-            Err(_) => thread::sleep(Duration::from_millis(250)),
+        }
+        if !installed {
+            let detail = last_error
+                .map(|error| format!(": {error:#}"))
+                .unwrap_or_default();
+            bail!("sst.exe no pudo reemplazarse dentro del plazo de actualización{detail}");
         }
     }
-    if !released {
-        bail!("sst.exe no se liberó dentro del plazo de actualización");
-    }
 
-    if let Err(error) = fs::rename(&ready, &target) {
-        let _ = fs::copy(&backup, &target);
-        return Err(error).context("no se pudo instalar el nuevo sst.exe");
+    #[cfg(not(windows))]
+    {
+        let _ = (&target, &ready, &backup);
+        bail!("la aplicación automática de updates sólo está disponible en Windows");
     }
 
     if let Err(error) = verify_staged(&target, &expected_hash) {
-        let _ = fs::remove_file(&target);
-        let _ = fs::copy(&backup, &target);
+        #[cfg(windows)]
+        {
+            if backup.is_file() {
+                let _ = replace_file_atomic(&target, &backup, None);
+            }
+        }
         return Err(error).context("el sst.exe instalado no pasó la verificación final");
     }
 
@@ -248,7 +239,7 @@ fn run_update_helper() -> Result<()> {
     fs::rename(&applied_pending, &applied)
         .context("no se pudo registrar la actualización aplicada")?;
     let _ = fs::remove_file(&pending);
-    if staged != target {
+    if staged != target && staged != ready {
         let _ = fs::remove_file(&staged);
     }
 
@@ -258,6 +249,44 @@ fn run_update_helper() -> Result<()> {
         .spawn()
         .context("la actualización se aplicó, pero no se pudo relanzar SST")?;
 
+    Ok(())
+}
+
+#[cfg(windows)]
+fn replace_file_atomic(target: &Path, replacement: &Path, backup: Option<&Path>) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::ReplaceFileW;
+
+    fn wide(path: &Path) -> Vec<u16> {
+        path.as_os_str().encode_wide().chain(Some(0)).collect()
+    }
+
+    let target_w = wide(target);
+    let replacement_w = wide(replacement);
+    let backup_w = backup.map(wide);
+    let backup_ptr = backup_w
+        .as_ref()
+        .map_or(std::ptr::null(), |value| value.as_ptr());
+
+    let result = unsafe {
+        ReplaceFileW(
+            target_w.as_ptr(),
+            replacement_w.as_ptr(),
+            backup_ptr,
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    if result == 0 {
+        return Err(std::io::Error::last_os_error()).with_context(|| {
+            format!(
+                "ReplaceFileW falló al sustituir {} por {}",
+                target.display(),
+                replacement.display()
+            )
+        });
+    }
     Ok(())
 }
 
