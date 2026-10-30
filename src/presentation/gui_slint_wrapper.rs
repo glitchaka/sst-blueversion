@@ -22,6 +22,7 @@ const APPLIED_STAGED_FILE: &str = "applied.pending.json";
 const APPLIED_FILE: &str = "applied.json";
 
 const HELPER_MODE_ENV: &str = "SST_INTERNAL_APPLY_UPDATE";
+const HELPER_PARENT_PID_ENV: &str = "SST_UPDATE_PARENT_PID";
 const HELPER_TARGET_ENV: &str = "SST_UPDATE_TARGET";
 const HELPER_READY_ENV: &str = "SST_UPDATE_READY";
 const HELPER_BACKUP_ENV: &str = "SST_UPDATE_BACKUP";
@@ -149,6 +150,7 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
         Command::new(&helper)
             .arg("--gui")
             .env(HELPER_MODE_ENV, "1")
+            .env(HELPER_PARENT_PID_ENV, std::process::id().to_string())
             .env(HELPER_TARGET_ENV, &target)
             .env(HELPER_READY_ENV, &ready)
             .env(HELPER_BACKUP_ENV, &backup)
@@ -180,6 +182,10 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
 }
 
 fn run_update_helper() -> Result<()> {
+    let parent_pid = env::var(HELPER_PARENT_PID_ENV)
+        .context("falta PID de la instancia SST que entregó la actualización")?
+        .parse::<u32>()
+        .context("PID interno de actualización inválido")?;
     let target = required_env_path(HELPER_TARGET_ENV)?;
     let ready = required_env_path(HELPER_READY_ENV)?;
     let backup = required_env_path(HELPER_BACKUP_ENV)?;
@@ -194,12 +200,17 @@ fn run_update_helper() -> Result<()> {
 
     #[cfg(windows)]
     {
-        // ReplaceFileW is the commit point. While TARGET is still locked by the
-        // parent process it simply fails and TARGET remains untouched. There is
-        // no intermediate state where sst.exe has been deleted or renamed away.
+        // File availability is not a reliable proxy for process lifetime on
+        // Windows. Wait for the exact SST instance that handed off the update
+        // to terminate before touching the installed executable.
+        wait_for_process_exit(parent_pid)?;
+
+        // ReplaceFileW is the commit point. TARGET remains runnable until the
+        // replacement succeeds; if Windows rejects the operation, nothing is
+        // removed or renamed away first.
         let mut installed = false;
         let mut last_error = None;
-        for _ in 0..240 {
+        for _ in 0..40 {
             match replace_file_atomic(&target, &ready, Some(&backup)) {
                 Ok(()) => {
                     installed = true;
@@ -215,13 +226,13 @@ fn run_update_helper() -> Result<()> {
             let detail = last_error
                 .map(|error| format!(": {error:#}"))
                 .unwrap_or_default();
-            bail!("sst.exe no pudo reemplazarse dentro del plazo de actualización{detail}");
+            bail!("sst.exe no pudo reemplazarse después de cerrar la instancia anterior{detail}");
         }
     }
 
     #[cfg(not(windows))]
     {
-        let _ = (&target, &ready, &backup);
+        let _ = (&parent_pid, &target, &ready, &backup);
         bail!("la aplicación automática de updates sólo está disponible en Windows");
     }
 
@@ -250,6 +261,44 @@ fn run_update_helper() -> Result<()> {
         .context("la actualización se aplicó, pero no se pudo relanzar SST")?;
 
     Ok(())
+}
+
+#[cfg(windows)]
+fn wait_for_process_exit(pid: u32) -> Result<()> {
+    use windows_sys::Win32::{
+        Foundation::CloseHandle,
+        System::Threading::{OpenProcess, WaitForSingleObject},
+    };
+
+    const SYNCHRONIZE_ACCESS: u32 = 0x0010_0000;
+    const WAIT_OBJECT_0_VALUE: u32 = 0x0000_0000;
+    const WAIT_TIMEOUT_VALUE: u32 = 0x0000_0102;
+    const WAIT_FAILED_VALUE: u32 = 0xffff_ffff;
+    const PARENT_EXIT_TIMEOUT_MS: u32 = 60_000;
+
+    let handle = unsafe { OpenProcess(SYNCHRONIZE_ACCESS, 0, pid) };
+    if handle.is_null() {
+        let error = std::io::Error::last_os_error();
+        // ERROR_INVALID_PARAMETER means the process already ceased to exist
+        // before the helper could open a synchronization handle.
+        if error.raw_os_error() == Some(87) {
+            return Ok(());
+        }
+        return Err(error).with_context(|| format!("no se pudo observar el proceso SST padre {pid}"));
+    }
+
+    let wait = unsafe { WaitForSingleObject(handle, PARENT_EXIT_TIMEOUT_MS) };
+    unsafe {
+        let _ = CloseHandle(handle);
+    }
+
+    match wait {
+        WAIT_OBJECT_0_VALUE => Ok(()),
+        WAIT_TIMEOUT_VALUE => bail!("la instancia SST anterior no terminó dentro de 60 segundos"),
+        WAIT_FAILED_VALUE => Err(std::io::Error::last_os_error())
+            .context("falló la espera del cierre de la instancia SST anterior"),
+        other => bail!("WaitForSingleObject devolvió un estado inesperado: 0x{other:08x}"),
+    }
 }
 
 #[cfg(windows)]
