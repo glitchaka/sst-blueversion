@@ -1,15 +1,20 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
+    fs,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
 
 use anyhow::Result;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::core::{
-    CommandContext, CommandOutput,
-    ports::{TerminalFactory, TerminalKey, TerminalSession},
+use crate::{
+    adapters::persistence::AppPaths,
+    core::{
+        CommandContext, CommandOutput,
+        ports::{TerminalFactory, TerminalKey, TerminalSession},
+    },
 };
 
 use super::BuiltinCommand;
@@ -17,6 +22,8 @@ use super::BuiltinCommand;
 const SCREEN: &str = "\x1b[44;37m";
 const PANEL: &str = "\x1b[47;30m";
 const RESET: &str = "\x1b[0m";
+const ARCH_AREA: &str = "arch";
+const ARCH_REVIEW_FILE: &str = "arch-review.json";
 
 #[derive(Clone, Deserialize)]
 struct GuideUi {
@@ -77,6 +84,12 @@ struct CatalogSpec {
     ui: GuideUi,
     areas: Vec<Area>,
     entries: Vec<EntrySpec>,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct ArchReviewState {
+    #[serde(default)]
+    approved: HashSet<String>,
 }
 
 struct Entry {
@@ -222,6 +235,8 @@ impl GuideBuiltin {
             return Ok(CommandOutput::ok("\n"));
         };
 
+        let review_path = arch_review_path();
+        let mut review = load_arch_review(&review_path);
         let mut query = search.unwrap_or_default();
         let mut search_results = index.search(&query);
         let mut view = direct
@@ -261,6 +276,7 @@ impl GuideBuiltin {
                             area,
                             visible,
                             selected,
+                            &review.approved,
                         )?;
                     }
                     View::Search => {
@@ -297,6 +313,7 @@ impl GuideBuiltin {
                             wrapped_cache.insert((entry_index, width), Arc::clone(&body));
                             body
                         };
+                        let approved = review.approved.contains(&review_key(entry));
                         let max_scroll = render_detail(
                             terminal.as_mut(),
                             size,
@@ -304,6 +321,7 @@ impl GuideBuiltin {
                             entry,
                             body.as_slice(),
                             scroll,
+                            approved,
                         )?;
                         scroll = scroll.min(max_scroll);
                     }
@@ -369,6 +387,13 @@ impl GuideBuiltin {
                             if let Some(entry_index) = visible.get(selected).copied() {
                                 view = View::Detail(entry_index);
                                 scroll = 0;
+                                dirty = true;
+                            }
+                        }
+                        TerminalKey::Char(' ') if index.areas[area].id == ARCH_AREA => {
+                            if let Some(entry_index) = visible.get(selected).copied() {
+                                toggle_arch_review(&mut review, &index.entries[entry_index]);
+                                save_arch_review(&review_path, &review)?;
                                 dirty = true;
                             }
                         }
@@ -509,9 +534,14 @@ impl GuideBuiltin {
                         .get(&(entry_index, width))
                         .map(|body| body.len())
                         .unwrap_or(0);
-                    let rows = detail_rows(size.1, entry.aliases.is_empty());
+                    let rows = detail_rows(size.1, entry.aliases.is_empty(), entry.area == ARCH_AREA);
                     let max_scroll = body_len.saturating_sub(rows);
                     match key {
+                        TerminalKey::Char(' ') if entry.area == ARCH_AREA => {
+                            toggle_arch_review(&mut review, entry);
+                            save_arch_review(&review_path, &review)?;
+                            dirty = true;
+                        }
                         TerminalKey::Backspace | TerminalKey::Enter | TerminalKey::Escape => {
                             let area = index.area_index(&entry.area).unwrap_or(0);
                             selected = index.by_area[area]
@@ -585,6 +615,39 @@ impl BuiltinCommand for GuideBuiltin {
     }
 }
 
+fn arch_review_path() -> PathBuf {
+    AppPaths::detect()
+        .data_dir()
+        .join("guide")
+        .join(ARCH_REVIEW_FILE)
+}
+
+fn load_arch_review(path: &Path) -> ArchReviewState {
+    fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn save_arch_review(path: &Path, state: &ArchReviewState) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, serde_json::to_vec_pretty(state)?)?;
+    Ok(())
+}
+
+fn review_key(entry: &Entry) -> String {
+    entry.name.trim().to_ascii_lowercase()
+}
+
+fn toggle_arch_review(state: &mut ArchReviewState, entry: &Entry) {
+    let key = review_key(entry);
+    if !state.approved.insert(key.clone()) {
+        state.approved.remove(&key);
+    }
+}
+
 fn render_areas(
     terminal: &mut dyn TerminalSession,
     size: (u16, u16),
@@ -615,8 +678,10 @@ fn render_commands(
     area: usize,
     visible: &[usize],
     selected: usize,
+    approved: &HashSet<String>,
 ) -> Result<()> {
     let (rows, start, end) = window(visible.len(), selected, size.1, 2, 24);
+    let arch = index.areas[area].id == ARCH_AREA;
     let mut lines = vec![
         format!("{}: {}", index.ui.area_label, index.areas[area].name),
         String::new(),
@@ -624,18 +689,25 @@ fn render_commands(
     for position in start..end {
         let entry = &index.entries[visible[position]];
         let marker = if position == selected { ">" } else { " " };
-        lines.push(format!("{marker} {:<28} {}", entry.name, entry.summary));
+        if arch {
+            let checked = if approved.contains(&review_key(entry)) { "x" } else { " " };
+            lines.push(format!(
+                "{marker} [{checked}] {:<24} {}",
+                entry.name, entry.summary
+            ));
+        } else {
+            lines.push(format!("{marker} {:<28} {}", entry.name, entry.summary));
+        }
     }
     for _ in end.saturating_sub(start)..rows {
         lines.push(String::new());
     }
-    draw(
-        terminal,
-        size,
-        &index.ui.title,
-        &lines,
-        &index.ui.commands_footer,
-    )
+    let footer = if arch {
+        "↑↓ navegar · ENTER abrir · ESPACIO aprobar/quitar · Backspace volver · Q salir"
+    } else {
+        &index.ui.commands_footer
+    };
+    draw(terminal, size, &index.ui.title, &lines, footer)
 }
 
 fn render_search(
@@ -693,11 +765,17 @@ fn render_detail(
     entry: &Entry,
     body: &[String],
     scroll: usize,
+    approved: bool,
 ) -> Result<usize> {
-    let rows = detail_rows(size.1, entry.aliases.is_empty());
+    let is_arch = entry.area == ARCH_AREA;
+    let rows = detail_rows(size.1, entry.aliases.is_empty(), is_arch);
     let max_scroll = body.len().saturating_sub(rows);
     let scroll = scroll.min(max_scroll);
     let mut lines = Vec::new();
+    if is_arch {
+        lines.push(format!("Aprobado: [{}]", if approved { "x" } else { " " }));
+        lines.push(String::new());
+    }
     if !entry.aliases.is_empty() {
         lines.push(format!(
             "{}: {}",
@@ -707,7 +785,18 @@ fn render_detail(
         lines.push(String::new());
     }
     lines.extend(body.iter().skip(scroll).take(rows).cloned());
-    let footer = if body.len() > rows {
+    let footer = if is_arch {
+        if body.len() > rows {
+            format!(
+                "{}-{} de {} · ↑↓/PgUp/PgDn desplazar · ESPACIO aprobar/quitar · Backspace volver · Q salir",
+                scroll + 1,
+                (scroll + rows).min(body.len()),
+                body.len()
+            )
+        } else {
+            "ESPACIO aprobar/quitar · Backspace/Enter/Esc volver · Q salir".to_owned()
+        }
+    } else if body.len() > rows {
         index
             .ui
             .detail_scroll_footer
@@ -727,9 +816,12 @@ fn render_detail(
     Ok(max_scroll)
 }
 
-fn detail_rows(height: u16, no_aliases: bool) -> usize {
+fn detail_rows(height: u16, no_aliases: bool, arch_review: bool) -> usize {
     let aliases = if no_aliases { 0 } else { 2 };
-    panel_body_rows(height).saturating_sub(aliases).max(1)
+    let review = if arch_review { 2 } else { 0 };
+    panel_body_rows(height)
+        .saturating_sub(aliases + review)
+        .max(1)
 }
 
 fn panel_body_rows(height: u16) -> usize {
