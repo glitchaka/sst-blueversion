@@ -16,6 +16,7 @@ use crate::{adapters::persistence::AppPaths, application::update};
 use super::beacon_overlay::BeaconOverlayGuard;
 
 const UPDATE_DIR: &str = "update";
+const UPDATE_TMP_DIR: &str = "tmp";
 const PENDING_FILE: &str = "pending.json";
 const APPLIED_STAGED_FILE: &str = "applied.pending.json";
 const APPLIED_FILE: &str = "applied.json";
@@ -150,9 +151,12 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-        // The updater is not a second installed executable. It is a disposable
-        // byte-for-byte copy of the currently running SST binary in %TEMP%.
-        let helper = env::temp_dir().join(format!(
+        // Keep all transient updater state inside SST's own update workspace.
+        // The helper is a disposable byte-for-byte copy of the current SST
+        // binary and the tmp directory is removed after a successful handoff.
+        let helper_dir = update_dir.join(UPDATE_TMP_DIR);
+        fs::create_dir_all(&helper_dir)?;
+        let helper = helper_dir.join(format!(
             "sst-update-helper-{}-{}.exe",
             std::process::id(),
             Utc::now().timestamp_millis()
@@ -265,8 +269,18 @@ fn schedule_helper_cleanup() {
     thread::spawn(move || {
         for _ in 0..80 {
             match fs::remove_file(&path) {
-                Ok(()) => return,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+                Ok(()) => {
+                    if let Some(parent) = path.parent() {
+                        let _ = fs::remove_dir(parent);
+                    }
+                    return;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    if let Some(parent) = path.parent() {
+                        let _ = fs::remove_dir(parent);
+                    }
+                    return;
+                }
                 Err(_) => thread::sleep(Duration::from_millis(100)),
             }
         }
