@@ -11,7 +11,17 @@
 - [ ] Permitir descargar contenido para uso offline por apartado, no como un paquete monolítico.
 - [ ] Sin conexión, mostrar únicamente los apartados que el usuario haya descargado previamente; si no hay ninguno descargado, `guide` debe quedar vacío.
 - [ ] Permitir actualizar y eliminar la copia offline de cada apartado de forma independiente.
-- [ ] Implementar `Arch / Portabilidad` como apartado independiente con índice y contenido propios; no mezclar candidatos de portabilidad con las áreas, comandos, búsquedas ni manuales normales de `guide`.
+- [ ] Mostrar `Arch / Portabilidad` como apartado propio de primer nivel dentro de `guide`, pero no tratarlo como documentación ni como un manual normal.
+
+### `Arch / Portabilidad`: catálogo de revisión, no tutorial
+- [ ] Al abrir `Arch / Portabilidad`, entrar a una vista interactiva de revisión de candidatos; no abrir un `.md`, tutorial, manual o texto explicativo.
+- [ ] Mantener su índice/datos separados del catálogo de comandos de `guide`, de sus búsquedas y de sus manuales.
+- [ ] Presentar una lista navegable de paquetes/proyectos candidatos con información útil para decidir qué portar, evitando bloques de explicación general.
+- [ ] La lista debe permitir buscar y filtrar candidatos y mostrar como mínimo: nombre/proyecto, propósito breve, upstream, lenguaje, licencia, dependencias/plataforma relevantes y estado de revisión.
+- [ ] Al abrir un candidato, mostrar una ficha técnica de decisión: componentes útiles, dependencias Linux/POSIX que habría que sustituir, capacidades ya cubiertas por SST, partes que conviene portar, dificultad/riesgo y destino previsto dentro de SST.
+- [ ] Estados de decisión: `PENDIENTE`, `APROBADO`, `DESCARTADO`, `IMPLEMENTADO`.
+- [ ] No usar como criterio principal si existe una versión Windows ya hecha; la revisión parte del upstream original y de qué código/funcionalidad conviene portar a SST.
+- [ ] El resultado preferido de un port aprobado es funcionalidad nativa SST o módulo nativo SST, no un `.exe` externo por defecto.
 
 ### Módulos nativos SST
 - [ ] Para herramientas aprobadas que deban distribuirse como extensiones, usar módulos nativos cargables por SST, no ejecutables externos como diseño por defecto.
