@@ -308,6 +308,7 @@ fn package_id_hex(id: &[u8; PACKAGE_ID_LEN]) -> String {
 #[cfg(windows)]
 fn schedule_self_delete(executable: &Path, package_id: &[u8; PACKAGE_ID_LEN]) -> Result<()> {
     use std::os::windows::process::CommandExt;
+    use std::process::Stdio;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let script = env::temp_dir().join(format!(
@@ -315,12 +316,13 @@ fn schedule_self_delete(executable: &Path, package_id: &[u8; PACKAGE_ID_LEN]) ->
         package_id_hex(package_id),
         std::process::id()
     ));
+    // Do not truncate the setup while waiting for Windows to release its image
+    // mapping. A failed deletion must leave the original package intact.
     let body = concat!(
         "@echo off\r\n",
         "setlocal\r\n",
         "set \"target=%~1\"\r\n",
         "for /L %%I in (1,1,40) do (\r\n",
-        "  type nul > \"%target%\" 2>nul\r\n",
         "  del /f /q \"%target%\" >nul 2>&1\r\n",
         "  if not exist \"%target%\" goto :done\r\n",
         "  ping 127.0.0.1 -n 2 >nul\r\n",
@@ -336,15 +338,17 @@ fn schedule_self_delete(executable: &Path, package_id: &[u8; PACKAGE_ID_LEN]) ->
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
     let cmd = system_root.join("System32").join("cmd.exe");
-    let command_line = format!(
-        "call \"{}\" \"{}\"",
-        script.display(),
-        executable.display()
-    );
 
+    // Pass the batch path and target as independent arguments. Building one
+    // quoted `call "..." "..."` string is fragile under cmd.exe /C quoting and
+    // can leave the deletion helper running without ever reaching the script.
     let mut command = Command::new(&cmd);
-    command.args(["/D", "/Q", "/C"]);
-    command.arg(command_line);
+    command.args(["/D", "/Q", "/C", "call"]);
+    command.arg(&script);
+    command.arg(executable);
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::null());
+    command.stderr(Stdio::null());
     command.creation_flags(CREATE_NO_WINDOW);
     command
         .spawn()
