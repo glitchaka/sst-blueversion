@@ -76,8 +76,6 @@ def main():
     assert area_ids[-1] == "arch", "Arch debe estar al final, fuera del bloque normal"
     area_set = set(area_ids)
 
-    # Mirrors GuideIndex::from_json lookup semantics closely enough to catch
-    # duplicate names and, additionally, names that would overwrite an older alias.
     names = set()
     lookup = {}
     arch_entries = []
@@ -103,7 +101,9 @@ def main():
         if area == "arch":
             arch_entries.append(entry)
             file = manual.get("file", "")
-            assert re.fullmatch(r"arch-[0-9a-f]{2}", file), f"{name}: shard inválido {file}"
+            assert re.fullmatch(r"arch-(?:[0-9a-f]{2}|p-[0-9a-f]{12})", file), (
+                f"{name}: shard inválido {file}"
+            )
             assert manual.get("section") == "unix", f"{name}: section debe ser unix"
             topic = str(manual.get("topic", "")).strip()
             assert topic, f"{name}: topic vacío"
@@ -111,7 +111,7 @@ def main():
 
     assert len(arch_entries) >= 15000, f"catálogo Arch incompleto: {len(arch_entries)}"
     assert len(refs) >= 240, f"muy pocos shards Arch: {len(refs)}"
-    print(f"Arch entries: {len(arch_entries)}; shards: {len(refs)}")
+    print(f"Arch entries: {len(arch_entries)}; manuals: {len(refs)}")
 
     failures = []
     checked = 0
