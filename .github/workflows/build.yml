@@ -1,13 +1,19 @@
 name: build
 
-# Deliberately user-triggered: SST's development policy keeps compilation and
-# test execution under explicit operator control instead of running on every push.
+# Deliberately operator-triggered: SST's development policy keeps compilation
+# and tests under explicit control instead of running on every source push.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.qa/full-build.trigger'
+      - '.github/workflows/build.yml'
 
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
