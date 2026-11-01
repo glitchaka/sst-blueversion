@@ -1,1 +1,1 @@
-run SFX end-to-end QA after updater and guide changes
+rerun SFX end-to-end QA after reliable self-delete handoff fix
