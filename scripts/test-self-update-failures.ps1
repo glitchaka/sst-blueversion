@@ -5,6 +5,20 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class SstQaWindows {
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+}
+'@
+
 $sst = [System.IO.Path]::GetFullPath($SstPath)
 if (-not (Test-Path -LiteralPath $sst -PathType Leaf)) {
     throw "No existe SST en $sst"
@@ -27,6 +41,24 @@ function Clear-UpdateEnv {
     foreach ($name in $names) {
         Remove-Item "Env:$name" -ErrorAction SilentlyContinue
     }
+}
+
+function Close-ProcessDialogs([int]$ProcessId) {
+    $script:closedDialog = $false
+    $callback = [SstQaWindows+EnumWindowsProc]{
+        param([IntPtr]$hWnd, [IntPtr]$lParam)
+        [uint32]$ownerPid = 0
+        [void][SstQaWindows]::GetWindowThreadProcessId($hWnd, [ref]$ownerPid)
+        if ($ownerPid -eq [uint32]$ProcessId) {
+            # WM_CLOSE. The updater helper itself has no normal top-level window;
+            # any top-level window at this point is its fatal-error MessageBox.
+            [void][SstQaWindows]::PostMessage($hWnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+            $script:closedDialog = $true
+        }
+        return $true
+    }
+    [void][SstQaWindows]::EnumWindows($callback, [IntPtr]::Zero)
+    return $script:closedDialog
 }
 
 function New-Case([string]$Name) {
@@ -69,9 +101,18 @@ function Set-HelperEnv($Case, [string]$Hash) {
 
 function Invoke-Helper($Case, [int]$TimeoutMs = 20000) {
     $process = Start-Process -FilePath $Case.Helper -ArgumentList '--gui' -PassThru -WindowStyle Hidden
-    if (-not $process.WaitForExit($TimeoutMs)) {
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMs)
+    $sawDialog = $false
+    while (-not $process.HasExited -and [DateTime]::UtcNow -lt $deadline) {
+        if (Close-ProcessDialogs $process.Id) {
+            $sawDialog = $true
+        }
+        Start-Sleep -Milliseconds 100
+        $process.Refresh()
+    }
+    if (-not $process.HasExited) {
         try { $process.Kill($true) } catch {}
-        throw "Helper no terminó dentro de $TimeoutMs ms"
+        throw "Helper no terminó dentro de $TimeoutMs ms (dialog=$sawDialog)"
     }
     return $process.ExitCode
 }
