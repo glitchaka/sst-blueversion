@@ -2,6 +2,11 @@ name: Verify SST self-extractor
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.qa/sfx-e2e.trigger'
+      - '.github/workflows/sfx-e2e.yml'
 
 permissions:
   contents: read
@@ -9,6 +14,7 @@ permissions:
 jobs:
   sfx-e2e:
     runs-on: windows-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
