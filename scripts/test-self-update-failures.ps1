@@ -77,9 +77,9 @@ function Invoke-Helper($Case, [int]$TimeoutMs = 20000) {
 }
 
 function Assert-TargetOld($Case, [string]$Message) {
-    if (-not (Test-Path -LiteralPath $Case.Target -PathType Leaf)) { throw "$Message: sst.exe desapareció" }
+    if (-not (Test-Path -LiteralPath $Case.Target -PathType Leaf)) { throw "${Message}: sst.exe desapareció" }
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Case.Target).Hash.ToLowerInvariant()
-    if ($hash -ne $oldHash) { throw "$Message: sst.exe fue modificado ($hash)" }
+    if ($hash -ne $oldHash) { throw "${Message}: sst.exe fue modificado ($hash)" }
 }
 
 function Remove-Case($Case) {
