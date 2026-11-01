@@ -9,6 +9,7 @@ on:
       - 'Cargo.lock'
       - 'src/presentation/gui_slint_wrapper.rs'
       - 'scripts/test-self-update.ps1'
+      - 'scripts/test-self-update-failures.ps1'
       - '.github/workflows/self-update-regression.yml'
 
 permissions:
@@ -17,6 +18,7 @@ permissions:
 jobs:
   self-update:
     runs-on: windows-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -59,3 +61,7 @@ jobs:
       - name: Exercise real self-update handoff
         shell: pwsh
         run: ./scripts/test-self-update.ps1 -SstPath ./target/debug/sst.exe
+
+      - name: Exercise updater failure matrix
+        shell: pwsh
+        run: ./scripts/test-self-update-failures.ps1 -SstPath ./target/debug/sst.exe
