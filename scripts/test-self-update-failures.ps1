@@ -50,8 +50,6 @@ function Close-ProcessDialogs([int]$ProcessId) {
         [uint32]$ownerPid = 0
         [void][SstQaWindows]::GetWindowThreadProcessId($hWnd, [ref]$ownerPid)
         if ($ownerPid -eq [uint32]$ProcessId) {
-            # WM_CLOSE. The updater helper itself has no normal top-level window;
-            # any top-level window at this point is its fatal-error MessageBox.
             [void][SstQaWindows]::PostMessage($hWnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
             $script:closedDialog = $true
         }
@@ -87,7 +85,6 @@ function New-Case([string]$Name) {
 
 function Set-HelperEnv($Case, [string]$Hash) {
     $env:SST_INTERNAL_APPLY_UPDATE = '1'
-    # An impossible PID makes the helper treat the parent as already gone.
     $env:SST_UPDATE_PARENT_PID = '4294967294'
     $env:SST_UPDATE_TARGET = $Case.Target
     $env:SST_UPDATE_READY = $Case.Ready
@@ -104,9 +101,7 @@ function Invoke-Helper($Case, [int]$TimeoutMs = 20000) {
     $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMs)
     $sawDialog = $false
     while (-not $process.HasExited -and [DateTime]::UtcNow -lt $deadline) {
-        if (Close-ProcessDialogs $process.Id) {
-            $sawDialog = $true
-        }
+        if (Close-ProcessDialogs $process.Id) { $sawDialog = $true }
         Start-Sleep -Milliseconds 100
         $process.Refresh()
     }
@@ -132,7 +127,6 @@ function Remove-Case($Case) {
 $results = [System.Collections.Generic.List[string]]::new()
 Clear-UpdateEnv
 
-# 1. Hash incorrecto: debe abortar antes de tocar el ejecutable instalado.
 $case = New-Case 'bad-hash'
 try {
     Set-HelperEnv $case ('0' * 64)
@@ -143,7 +137,6 @@ try {
     $results.Add('PASS bad-hash: target intacto')
 } finally { Remove-Case $case }
 
-# 2. Staging ausente: no debe borrar ni renombrar sst.exe.
 $case = New-Case 'missing-ready'
 try {
     Remove-Item -Force -LiteralPath $case.Ready
@@ -154,7 +147,6 @@ try {
     $results.Add('PASS missing-ready: target intacto')
 } finally { Remove-Case $case }
 
-# 3. Variables internas inválidas: debe fallar sin tocar target.
 $case = New-Case 'bad-parent-pid'
 try {
     Set-HelperEnv $case $newHash
@@ -165,8 +157,6 @@ try {
     $results.Add('PASS bad-parent-pid: target intacto')
 } finally { Remove-Case $case }
 
-# 4. Target bloqueado más allá de los reintentos de ReplaceFileW.
-# Debe agotar el intento y conservar el sst.exe viejo, no dejar un hueco.
 $case = New-Case 'locked-target'
 $lock = $null
 try {
@@ -174,6 +164,10 @@ try {
     $lock = [System.IO.File]::Open($case.Target, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
     $exit = Invoke-Helper $case 20000
     if ($exit -eq 0) { throw 'ReplaceFileW reportó éxito con target bloqueado en exclusiva.' }
+    # La prueba misma mantiene el archivo en exclusivo; soltar el lock antes de
+    # inspeccionar SHA evita confundir ese bloqueo con un fallo del updater.
+    $lock.Dispose()
+    $lock = $null
     Assert-TargetOld $case 'Target bloqueado'
     if (-not (Test-Path -LiteralPath $case.Ready -PathType Leaf)) { throw 'Fallo de ReplaceFileW consumió staging.' }
     $results.Add('PASS locked-target: reintenta y conserva target')
@@ -182,8 +176,6 @@ try {
     Remove-Case $case
 }
 
-# 5. Fallo de metadatos DESPUÉS del commit atómico.
-# Aunque el recibo falte, la instalación jamás puede quedar sin target o rollback.
 $case = New-Case 'missing-receipt'
 try {
     Remove-Item -Force -LiteralPath $case.AppliedPending
@@ -199,7 +191,6 @@ try {
     $results.Add('PASS missing-receipt: target nuevo y rollback conservado (helper reporta error)')
 } finally { Remove-Case $case }
 
-# 6. Falta una variable crítica: fallo temprano, target intacto.
 $case = New-Case 'missing-env'
 try {
     Set-HelperEnv $case $newHash
