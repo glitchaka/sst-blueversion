@@ -27,7 +27,6 @@ def is_numbered_heading(line: str) -> bool:
 
 def heading_tokens(line: str):
     rest = line.split(".", 1)[1] if "." in line else line
-    # Mirrors guide_remote.rs: split on non-alnum except ':', trim ':', lowercase.
     parts = re.split(r"[^\w:]+", rest, flags=re.UNICODE)
     return [p.strip(":").lower() for p in parts if p.strip(":")]
 
@@ -77,7 +76,10 @@ def main():
     assert area_ids[-1] == "arch", "Arch debe estar al final, fuera del bloque normal"
     area_set = set(area_ids)
 
+    # Mirrors GuideIndex::from_json lookup semantics closely enough to catch
+    # duplicate names and, additionally, names that would overwrite an older alias.
     names = set()
+    lookup = {}
     arch_entries = []
     refs = defaultdict(list)
     for entry in entries:
@@ -85,7 +87,15 @@ def main():
         key = name.lower()
         assert name, "entrada sin nombre"
         assert key not in names, f"entrada duplicada: {name}"
+        if key in lookup:
+            raise AssertionError(f"nombre {name!r} sobrescribiría alias previo de {lookup[key]!r}")
         names.add(key)
+        lookup[key] = name
+        for alias in entry.get("aliases", []):
+            alias_key = str(alias).strip().lower()
+            if alias_key and alias_key not in lookup:
+                lookup[alias_key] = name
+
         area = str(entry.get("area", "")).strip().lower()
         assert area in area_set, f"{name}: área inexistente {area}"
         manual = entry.get("manual")
@@ -117,18 +127,21 @@ def main():
             failures.append(f"{filename}: UTF-8 inválido: {exc}")
             continue
         for entry in refs[shard]:
-            name = entry["name"]
+            display_name = entry["name"]
+            package_name = entry.get("package", display_name)
             topic = entry["manual"]["topic"]
             section = extract_numbered(text, topic)
             checked += 1
             if section is None:
-                failures.append(f"{name}: sección no encontrada en {filename} para topic={topic!r}")
+                failures.append(
+                    f"{display_name}: sección no encontrada en {filename} para topic={topic!r}"
+                )
                 continue
-            expected = f"Paquete: {name}"
+            expected = f"Paquete: {package_name}"
             if expected not in section.splitlines():
                 first = section.splitlines()[0] if section else "<vacío>"
                 failures.append(
-                    f"{name}: resolución ambigua/incorrecta en {filename}; obtuvo {first!r}"
+                    f"{display_name}: resolución ambigua/incorrecta en {filename}; obtuvo {first!r}"
                 )
 
     if failures:
@@ -139,8 +152,6 @@ def main():
             print(f" ... y {len(failures) - 100} más")
         raise AssertionError(f"fallaron {len(failures)} resoluciones Arch de {checked}")
 
-    # Failure invariants: malformed local data must be detectable, and missing
-    # remote manuals must not be present in the published catalog.
     try:
         json.loads(b"{broken")
         raise AssertionError("JSON corrupto fue aceptado")
@@ -148,7 +159,7 @@ def main():
         pass
 
     print(f"PASS: {checked} fichas Arch resuelven exactamente a su paquete")
-    print("PASS: estructura, duplicados, límites y referencias del guide válidos")
+    print("PASS: estructura, lookup, duplicados, límites y referencias del guide válidos")
 
 
 if __name__ == "__main__":
