@@ -59,6 +59,11 @@ if (Test-Path -LiteralPath $dist) {
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 Copy-Item -LiteralPath $sst -Destination (Join-Path $stage 'sst.exe')
+$guide = Join-Path $release 'guide'
+if (-not (Test-Path -LiteralPath (Join-Path $guide 'guide-index.json') -PathType Leaf)) {
+    throw 'Falta la guía local del build: target/release/guide/guide-index.json'
+}
+Copy-Item -Recurse -LiteralPath $guide -Destination (Join-Path $stage 'guide')
 $bg = Join-Path $release 'bg'
 if (Test-Path -LiteralPath $bg -PathType Container) {
     Copy-Item -Recurse -LiteralPath $bg -Destination (Join-Path $stage 'bg')
@@ -109,6 +114,8 @@ try {
 
 $rawExe = Join-Path $dist 'sst.exe'
 Copy-Item -LiteralPath $sst -Destination $rawExe
+# La distribución portable conserva exactamente la misma guía sin Internet.
+Copy-Item -Recurse -LiteralPath $guide -Destination (Join-Path $dist 'guide')
 
 $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $rawExe).Hash.ToLowerInvariant()
 $setupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash.ToLowerInvariant()
@@ -151,6 +158,6 @@ Write-Host "SST $version empaquetado en $dist"
 Write-Host "  Cambios publicados: $($changes.Count)"
 Write-Host "  Update binario: $publicSstUrl"
 Write-Host "  $setupName ($setupSize bytes, single-use, id=$packageId)"
-Write-Host '  sst.exe'
+Write-Host '  sst.exe + guide/ (portable, offline)'
 Write-Host '  sst-update.json'
 Write-Host '  version.txt'
