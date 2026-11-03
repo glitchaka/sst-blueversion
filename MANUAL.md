@@ -835,6 +835,17 @@ neofetch --plain > neofetch.txt
 
 ---
 
+## Telemetría de sensores — `sys sensors`
+
+```bash
+sys sensors
+sys temperature
+```
+
+Muestra todas las temperaturas efectivamente disponibles de CPU, GPU, SSD/discos, placa base, memoria y demás componentes publicados. Las fuentes son WMI de LibreHardwareMonitor/OpenHardwareMonitor (si se ejecutan con su interfaz WMI activa), Windows Storage SMART/CIM, NVIDIA NVML (`nvidia-smi`) y zonas térmicas ACPI. Estas últimas aparecen separadas porque **no representan necesariamente el CPU**. Si no hay lectura de CPU, se informa expresamente que no está disponible: SST no inventa temperaturas.
+
+---
+
 # 2. Triage de seguridad — `triage`
 
 `triage` es la herramienta de correlación activa de SST. No se limita a mostrar el resultado que apareció al abrir la consola.
