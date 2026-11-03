@@ -1,1 +1,1 @@
-2026-11-03 — verificacion integral de SST para demo viernes 6 (build, recursos de GUI, blackbox, stress, triage diferido, sensores).
+2026-11-03 — blackbox + resource test SST after offline guide download, LAN beacon disabled and triage fixes.
