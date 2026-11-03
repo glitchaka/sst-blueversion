@@ -203,7 +203,7 @@ impl AppPaths {
         let needs_update = fs::read_to_string(&stamp)
             .map(|version| version.trim() != GUIDE_SNAPSHOT_ID)
             .unwrap_or(true);
-        for (name, contents) in GUIDE_ASSETS {
+        for &(name, contents) in GUIDE_ASSETS {
             let destination = directory.join(name);
             if needs_update || !destination.is_file() {
                 fs::write(&destination, contents).with_context(|| {
