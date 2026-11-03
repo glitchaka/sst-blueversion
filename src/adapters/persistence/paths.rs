@@ -58,6 +58,9 @@ alias cls='clear'
 # export SST_URLHAUS_AUTH_KEY='...'
 "#;
 
+// Generated at build time from the committed guide/ directory.
+include!(concat!(env!("OUT_DIR"), "/guide_assets.rs"));
+
 const TOUR_SCRIPT: &str = include_str!("../../../tour.sh");
 const TOUR_EXAMPLES: &[(&str, &str)] = &[
     ("README.md", include_str!("../../../examples/README.md")),
@@ -172,6 +175,7 @@ impl AppPaths {
         fs::create_dir_all(self.data_dir())?;
         fs::create_dir_all(self.intel_dir())?;
         fs::create_dir_all(self.bg_dir())?;
+        self.ensure_guide_assets()?;
         self.ensure_tour_assets()?;
 
         let config = self.config_file();
@@ -187,6 +191,31 @@ impl AppPaths {
         }
 
         self.migrate_legacy_terminal_toml()?;
+        Ok(())
+    }
+
+    fn ensure_guide_assets(&self) -> Result<()> {
+        // Raw .exe updates must not strand guide without its companion folder.
+        // A snapshot stamp avoids rewriting user files on every launch.
+        let directory = self.root.join("guide");
+        fs::create_dir_all(&directory)?;
+        let stamp = directory.join(".sst-guide-snapshot");
+        let needs_update = fs::read_to_string(&stamp)
+            .map(|version| version.trim() != GUIDE_SNAPSHOT_ID)
+            .unwrap_or(true);
+        for (name, contents) in GUIDE_ASSETS {
+            let destination = directory.join(name);
+            if needs_update || !destination.is_file() {
+                fs::write(&destination, contents).with_context(|| {
+                    format!("No se pudo instalar el tutorial local {}", destination.display())
+                })?;
+            }
+        }
+        if needs_update {
+            fs::write(&stamp, GUIDE_SNAPSHOT_ID).with_context(|| {
+                format!("No se pudo registrar el estado de la guía local {}", stamp.display())
+            })?;
+        }
         Ok(())
     }
 
