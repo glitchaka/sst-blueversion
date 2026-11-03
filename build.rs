@@ -32,6 +32,7 @@ fn main() {
     println!("cargo:rerun-if-changed=assets/sst-icon.ico");
     println!("cargo:rerun-if-changed=assets/sst-icon.png");
     println!("cargo:rerun-if-changed=bg");
+    println!("cargo:rerun-if-changed=guide");
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR no definido"));
     let manifest_dir = PathBuf::from(
@@ -42,6 +43,7 @@ fn main() {
         .expect("No se pudo crear el caché compartido de assets de compilación");
 
     sync_background_assets(&manifest_dir, &out_dir);
+    prepare_guide_assets(&manifest_dir, &out_dir);
     ensure_nerd_font(&cache_dir, &out_dir);
     ensure_spell_dictionary(&cache_dir, &out_dir);
     ensure_ieee_registry(&cache_dir, &out_dir);
@@ -76,6 +78,58 @@ fn build_asset_cache_dir(manifest_dir: &Path) -> PathBuf {
         })
         .unwrap_or_else(|| manifest_dir.join("target"));
     target_dir.join("sst-build-assets")
+}
+
+
+fn prepare_guide_assets(manifest_dir: &Path, out_dir: &Path) {
+    // Source of truth: repository's guide/ directory, not live HTTP.
+    // Generate an embedded recovery copy so binary-only updates also work offline.
+    let source = manifest_dir.join("guide");
+    let profile_dir = out_dir
+        .ancestors()
+        .nth(3)
+        .expect("No se pudo determinar target/<profile> desde OUT_DIR");
+    let destination = profile_dir.join("guide");
+    fs::create_dir_all(&destination).expect("No se pudo crear guide portable");
+
+    let mut files = fs::read_dir(&source)
+        .expect("Falta la carpeta local guide/ en el repositorio")
+        .map(|entry| entry.expect("Entrada inválida de guide"))
+        .filter(|entry| entry.path().is_file())
+        .collect::<Vec<_>>();
+    files.sort_by_key(|entry| entry.file_name());
+    assert!(
+        files.iter().any(|entry| entry.file_name() == "guide-index.json"),
+        "Falta guide/guide-index.json"
+    );
+
+    let mut generated = String::from("pub(crate) const GUIDE_ASSETS: &[(&str, &[u8])] = &[\n");
+    let mut digest = 0xcbf29ce484222325_u64;
+    for entry in files {
+        let name = entry.file_name();
+        let filename = name.to_str().expect("Nombre de tutorial no UTF-8");
+        assert!(
+            filename.bytes().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, b'-' | b'_' | b'.')),
+            "Nombre inválido de tutorial: {filename}"
+        );
+        let source_file = entry.path();
+        let bytes = fs::read(&source_file).expect("No se pudo leer un tutorial");
+        for byte in filename.bytes().chain(bytes.iter().copied()) {
+            digest ^= byte as u64;
+            digest = digest.wrapping_mul(0x100000001b3);
+        }
+        fs::copy(&source_file, destination.join(filename))
+            .expect("No se pudo copiar la guía al directorio del ejecutable");
+        generated.push_str(&format!(
+            "    ({filename:?}, include_bytes!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/guide/\", {filename:?}))),\n"
+        ));
+    }
+    generated.push_str("];\n");
+    generated.push_str(&format!(
+        "pub(crate) const GUIDE_SNAPSHOT_ID: &str = \"{digest:016x}\";\n"
+    ));
+    fs::write(out_dir.join("guide_assets.rs"), generated)
+        .expect("No se pudo generar el manifiesto de guía embebida");
 }
 
 fn sync_background_assets(manifest_dir: &Path, out_dir: &Path) {
