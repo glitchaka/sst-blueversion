@@ -214,7 +214,7 @@ impl SecurityTriageService {
 
         // La shell entrega el prompt sin esperar firmas, sockets ni SCM.
         // El enriquecimiento queda disponible via `triage --status`.
-        security_deferred::start(self.paths.clone(), snapshots.clone(), Arc::clone(&self.deferred));
+        security_deferred::start(self.paths.clone(), snapshots.clone(), findings.clone(), Arc::clone(&self.deferred));
         self.persist_snapshot_async(snapshots, report.clone());
         report
     }
