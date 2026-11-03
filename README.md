@@ -13,6 +13,12 @@ sst.exe
 
 SST está pensado para poder llevarse como herramienta portable y trabajar desde una única consola sin depender de PowerShell para las tareas que ya incorpora de forma nativa.
 
+### Guía de comandos local
+
+`guide` utiliza el índice y los 35 manuales de `guide/` (133 fichas de soporte SST; Arch no aparece en esta edición). Al ejecutar solamente `sst.exe`, SST crea la carpeta y descarga automáticamente en segundo plano los archivos que falten desde una instantánea fija de GitHub, verificando que sean idénticos a los incluidos en el ejecutable. Si no hay conexión, recupera esas fichas de la copia integrada. Nunca reemplaza un manual existente, y la búsqueda/lectura funciona sin red.
+
+La baliza de presencia LAN entre instancias SST está desactivada en esta edición: no se abre UDP/43838 ni se realiza un broadcast para localizar otras SST. Los comandos habituales de red permanecen disponibles.
+
 ---
 
 ## Construcción
