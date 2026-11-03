@@ -22,6 +22,9 @@ use crate::core::triage::{
     Assessment, Evidence, Family, ObservationState, ParentProfile, Strength, correlate,
 };
 
+#[path = "security_deferred.rs"]
+mod security_deferred;
+
 static SECURITY_SERVICE: OnceLock<Arc<SecurityTriageService>> = OnceLock::new();
 
 pub fn shared_security_service(paths: AppPaths) -> Arc<SecurityTriageService> {
@@ -93,6 +96,7 @@ struct SecuritySource {
 pub struct SecurityTriageService {
     paths: AppPaths,
     last_report: Mutex<Option<PreloadReport>>,
+    deferred: Arc<Mutex<security_deferred::DeferredState>>,
 }
 
 impl SecurityTriageService {
@@ -100,6 +104,7 @@ impl SecurityTriageService {
         Self {
             paths,
             last_report: Mutex::new(None),
+            deferred: Arc::new(Mutex::new(security_deferred::DeferredState::default())),
         }
     }
 
@@ -207,6 +212,9 @@ impl SecurityTriageService {
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = Some(report.clone());
 
+        // La shell entrega el prompt sin esperar firmas, sockets ni SCM.
+        // El enriquecimiento queda disponible via `triage --status`.
+        security_deferred::start(self.paths.clone(), snapshots.clone(), Arc::clone(&self.deferred));
         self.persist_snapshot_async(snapshots, report.clone());
         report
     }
@@ -283,6 +291,12 @@ impl SecurityTriageService {
     }
 
     pub fn triage(&self, args: &[String]) -> Result<CommandOutput> {
+        if args.iter().any(|arg| arg == "--status") {
+            return Ok(CommandOutput::ok(security_deferred::status(&self.paths, &self.deferred)));
+        }
+        if args.iter().any(|arg| arg == "--thermal") {
+            return Ok(crate::application::thermal::report());
+        }
         if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help" | "help")) {
             return Ok(CommandOutput::ok(
                 "triage — análisis activo del equipo, no sólo el estado del preload\n\n\
@@ -290,7 +304,9 @@ impl SecurityTriageService {
                    triage                  vuelve a revisar procesos y aprendizaje local\n\
                    triage PID              investiga un proceso: why + inspect + diff\n\
                    triage --deep           añade conexiones, inicio automático y servicios\n\
-                   triage PID --deep       investigación profunda del PID y sus conexiones\n\n\
+                   triage PID --deep       investigación profunda del PID y sus conexiones\n\
+                   triage --status         avance/resultado de colectores diferidos\n\
+                   triage --thermal        sensores de temperatura disponibles\n\n\
                  SST aprende relaciones padre/hijo recurrentes del mismo equipo, pero una\n\
                  relación aprendida sólo reduce la novedad de linaje; no convierte un proceso\n\
                  en confiable frente a otras señales actuales.\n",
@@ -349,7 +365,8 @@ impl SecurityTriageService {
         let system = refreshed_system();
         let known = self.known_executables().unwrap_or_default();
         let snapshots = collect_processes(&system, &known);
-        let findings = self.analyze_security(&snapshots);
+        let mut findings = self.analyze_security(&snapshots);
+        security_deferred::enrich(&mut findings, &snapshots, &self.deferred);
         let performance = analyze_performance(&snapshots);
         let learned = self.learned_lineages().unwrap_or_default();
 
@@ -485,6 +502,10 @@ impl SecurityTriageService {
         }
 
         if deep {
+            out.push_str("\nENRIQUECIMIENTO DEL ARRANQUE\n------------------------------------------------------------\n");
+            out.push_str(&security_deferred::status(&self.paths, &self.deferred));
+            out.push_str("\nTEMPERATURAS DE HARDWARE\n------------------------------------------------------------\n");
+            out.push_str(&crate::application::thermal::report().stdout);
             let pids = findings.iter().map(|f| f.pid).collect::<HashSet<_>>();
             out.push_str("\nCONEXIONES DE LOS HALLAZGOS\n------------------------------------------------------------\n");
             out.push_str(&triage_connections(&pids));
@@ -753,7 +774,8 @@ impl SecurityTriageService {
         let system = refreshed_system();
         let known = self.known_executables().unwrap_or_default();
         let snapshots = collect_processes(&system, &known);
-        let findings = self.analyze_security(&snapshots);
+        let mut findings = self.analyze_security(&snapshots);
+        security_deferred::enrich(&mut findings, &snapshots, &self.deferred);
         if findings.is_empty() {
             return Ok(CommandOutput::ok(
                 "No hay procesos que superen las reglas actuales de atención.\n",
@@ -1369,6 +1391,19 @@ fn assess_process_with_trust(
     trusted_lineages: Option<&HashSet<(String, String)>>,
     learned_lineages: Option<&HashMap<(String, String), u64>>,
 ) -> Assessment {
+    assess_process_with_extra(
+        process, snapshots, history, trusted_lineages, learned_lineages, &[],
+    )
+}
+
+fn assess_process_with_extra(
+    process: &ProcessSnapshot,
+    snapshots: &[ProcessSnapshot],
+    history: Option<&HashMap<String, ParentProfile>>,
+    trusted_lineages: Option<&HashSet<(String, String)>>,
+    learned_lineages: Option<&HashMap<(String, String), u64>>,
+    extra: &[Evidence],
+) -> Assessment {
     let names = snapshots
         .iter()
         .map(|p| (p.pid, p.name.to_ascii_lowercase()))
@@ -1519,6 +1554,7 @@ fn assess_process_with_trust(
             ));
         }
     }
+    evidence.extend_from_slice(extra);
     correlate(&evidence)
 }
 
