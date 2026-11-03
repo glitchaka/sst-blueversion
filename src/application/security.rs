@@ -553,13 +553,28 @@ impl SecurityTriageService {
             .expect("process from same snapshot");
         let trusted = self.trusted_lineages();
         let learned = self.learned_lineages();
-        let result = assess_process_with_trust(
+        let mut result = assess_process_with_trust(
             snapshot,
             &snapshots,
             history.as_ref().ok(),
             trusted.as_ref().ok(),
             learned.as_ref().ok(),
         );
+        if let Some(enriched) = security_deferred::for_process(
+            &self.deferred, pid, snapshot.start_time, &snapshot.exe,
+        ) {
+            result.classification = result.classification.max(enriched.level);
+            for reason in enriched.reasons {
+                if !result.reasons.contains(&reason) {
+                    result.reasons.push(reason);
+                }
+            }
+            for limitation in enriched.limitations {
+                if !result.limitations.contains(&limitation) {
+                    result.limitations.push(limitation);
+                }
+            }
+        }
         let mut out = format!(
             "{} {} [{pid}]\n\nWhy:\n",
             result.classification.label(),
