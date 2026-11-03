@@ -12,7 +12,6 @@ const HELIX_VERSION: &str = "25.07.1";
 const HELIX_ARCHIVE_NAME: &str = "helix-25.07.1-x86_64-windows.zip";
 const HELIX_URL: &str =
     "https://github.com/helix-editor/helix/releases/download/25.07.1/helix-25.07.1-x86_64-windows.zip";
-const SPELL_DICT_REV: &str = "8cfea406b505e4d7df52d5a19bce525df98c54ab";
 const SPELL_AFF_URL: &str =
     "https://raw.githubusercontent.com/wooorm/dictionaries/8cfea406b505e4d7df52d5a19bce525df98c54ab/dictionaries/es-CL/index.aff";
 const SPELL_DIC_URL: &str =
@@ -120,7 +119,7 @@ fn curl_program() -> PathBuf {
         if !path.is_file() {
             panic!("No se encontró curl.exe del sistema en {}", path.display());
         }
-        return path;
+        path
     }
 
     #[cfg(not(windows))]
