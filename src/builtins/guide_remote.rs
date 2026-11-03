@@ -137,7 +137,36 @@ fn extract_bash(raw: &str, topic: &str) -> Option<String> {
         }
     }
 
-    extract_numbered(raw, topic)
+    extract_numbered(raw, topic).or_else(|| extract_bash_reference(raw, topic))
+}
+
+fn extract_bash_reference(raw: &str, topic: &str) -> Option<String> {
+    // Numerosos builtins comparten una sección (ej. break/continue/return)
+    // y no tienen un encabezado individual. Buscar el inicio de su sintaxis
+    // dentro de cada sección numerada evita devolver una ficha vacía.
+    let lines = raw.lines().collect::<Vec<_>>();
+    let headings = lines
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| is_numbered_heading(line).then_some(index))
+        .collect::<Vec<_>>();
+    for (position, &start) in headings.iter().enumerate().skip(1) {
+        let end = headings.get(position + 1).copied().unwrap_or(lines.len());
+        if lines[start + 1..end].iter().any(|line| {
+            let trimmed = line.trim_start();
+            if !trimmed.starts_with(topic) {
+                return false;
+            }
+            trimmed[topic.len()..].chars().next().is_none_or(|next| {
+                next.is_whitespace() || matches!(next, '[' | ':' | '/' | '(' | '=')
+            })
+        }) {
+            return Some(lines[start..end].join("\n").trim().to_owned());
+        }
+    }
+    // Un builtin que solo figura en el inventario conserva acceso a la
+    // referencia general, en lugar de una pantalla en blanco.
+    extract_numbered(raw, "Alcance")
 }
 
 fn extract_unix(raw: &str, topic: &str) -> Option<String> {
