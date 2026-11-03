@@ -198,7 +198,7 @@ impl SecurityTriageService {
             known_count,
             new_count,
             pending_count: 4,
-            findings,
+            findings: findings.clone(),
             performance,
             history_available,
             memory_total_mib,
