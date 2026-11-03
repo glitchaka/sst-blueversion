@@ -13,7 +13,6 @@ use sha2::{Digest, Sha256};
 
 use crate::{adapters::persistence::AppPaths, application::update};
 
-use super::beacon_overlay::BeaconOverlayGuard;
 
 const UPDATE_DIR: &str = "update";
 const UPDATE_TMP_DIR: &str = "tmp";
@@ -65,7 +64,7 @@ pub fn run() -> Result<()> {
         return Ok(());
     }
 
-    let _beacon_overlay = BeaconOverlayGuard::start();
+    // Demo de soporte: sin baliza UDP, sin anuncio ni búsqueda de otras SST.
     let result = super::gui_slint_base::run();
 
     if result.is_ok() {
