@@ -5,14 +5,15 @@ use std::{
     fs::File,
     io::Read,
     path::Path,
-    process::{Command, Stdio},
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, Instant},
 };
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+use std::{process::{Command, Stdio}, time::{Duration, Instant}};
 
 use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
@@ -21,7 +22,7 @@ use sha2::{Digest, Sha256};
 use super::{
     AppPaths, AttentionLevel, Evidence, Family, Finding, ProcessSnapshot,
     SecurityTriageService, Strength, assess_process_with_extra, capture,
-    display_path, open_security_db, startup_folders, unix_now,
+    open_security_db, startup_folders, unix_now,
 };
 
 #[derive(Clone, Default, Serialize)]
