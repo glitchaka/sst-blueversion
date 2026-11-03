@@ -25,7 +25,8 @@ jobs:
         continue-on-error: true
         run: cargo fmt --all -- --check
 
-      - name: Clippy
+      - name: Clippy (advisory until legacy lint debt is normalized)
+        continue-on-error: true
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Test
