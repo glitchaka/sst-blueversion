@@ -524,6 +524,15 @@ sudo --trustedinstaller registry get "HKLM\SOFTWARE"
 
 `sudo --status` muestra nivel, identidad, integridad y privilegios `Se*` del token. Cuando se ejecuta `sudo` sin comando, SST intenta elevar la **sesión** al siguiente nivel. Las variantes `--system` y `--trustedinstaller` ejecutan un comando concreto con ese token.
 
+## Telemetría térmica
+
+`sys sensors` (alias `sys temperature`) consulta las temperaturas que realmente exponen el equipo y sus proveedores disponibles: CPU, GPU, SSD/discos, placa base, memoria y zonas ACPI. También puede mostrar sensores de LibreHardwareMonitor u OpenHardwareMonitor cuando estos publican WMI. NVIDIA se consulta por `nvidia-smi` cuando está disponible y los discos mediante `Get-StorageReliabilityCounter` (Windows Storage). Si una lectura de CPU no existe, SST lo indica; una zona ACPI nunca se presenta como temperatura de CPU.
+
+```bash
+sys sensors
+sys temperature
+```
+
 ## Triage de seguridad local
 
 SST incorpora un triage local explicable. El motor separa rendimiento de señales
