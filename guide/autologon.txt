@@ -1,0 +1,243 @@
+SST Tutorial: Sysinternals Autologon
+
+1. Que es
+
+Autologon configura el inicio automatico de Windows con una cuenta concreta. SST no reimplementa el almacenamiento de la credencial: descarga y ejecuta Microsoft Sysinternals Autologon en modo CLI y sin abrir su interfaz grafica.
+
+SST usa el paquete oficial de Microsoft, valida la firma Authenticode antes de ejecutarlo y elimina los archivos temporales cuando termina.
+
+2. Cuando usarlo
+
+Usalo cuando un equipo deba iniciar sesion automaticamente despues de encenderse o reiniciarse, por ejemplo:
+
+  - kioscos
+  - equipos de sala
+  - estaciones de monitoreo
+  - terminales dedicados
+  - equipos que deben levantar una aplicacion automaticamente
+  - laboratorios o estaciones administradas con una cuenta operacional fija
+
+No lo uses en equipos donde el inicio automatico con una cuenta con privilegios elevados suponga un riesgo innecesario.
+
+3. Interfaz publica completa
+
+Ayuda:
+
+  sys autologon
+  sys autologon -h
+  sys autologon --help
+  autologon
+  autologon -h
+  autologon --help
+
+Configuracion directa:
+
+  sys autologon -u CUENTA -d DOMINIO -p PASSWORD
+  sys autologon --user CUENTA --domain DOMINIO --password PASSWORD
+
+Forma explicita con subcomando `enable`:
+
+  sys autologon enable -u CUENTA -d DOMINIO -p PASSWORD
+  sys autologon enable --user CUENTA --domain DOMINIO --password PASSWORD
+
+Alias directo del builtin `sys`:
+
+  autologon -u CUENTA -d DOMINIO -p PASSWORD
+  autologon enable -u CUENTA -d DOMINIO -p PASSWORD
+
+Opciones publicas implementadas:
+
+  -u, --user       Nombre de la cuenta que iniciara sesion.
+  -d, --domain     Dominio de Windows o contexto de cuenta local.
+  -p, --password   Contrasena de la cuenta.
+  -h, --help       Muestra la ayuda de Autologon dentro de SST.
+
+Subcomandos publicos implementados:
+
+  enable           Explicita que se esta configurando/habilitando Autologon. Es opcional: omitirlo produce el mismo flujo de configuracion.
+
+No existen actualmente otros subcomandos publicos de Autologon en SST.
+
+Los tres valores `user`, `domain` y `password` son obligatorios para configurar Autologon.
+
+4. Combinaciones equivalentes
+
+Estas formas configuran el mismo flujo:
+
+  sys autologon -u operador -d CONTOSO -p PASSWORD
+  sys autologon enable -u operador -d CONTOSO -p PASSWORD
+  sys autologon --user operador --domain CONTOSO --password PASSWORD
+  autologon -u operador -d CONTOSO -p PASSWORD
+  autologon enable --user operador --domain CONTOSO --password PASSWORD
+
+5. Ejemplos
+
+Cuenta de dominio:
+
+  sys autologon -u operador -d CONTOSO -p MiPassword
+
+Cuenta de dominio usando opciones largas:
+
+  sys autologon --user operador --domain CONTOSO --password MiPassword
+
+Cuenta local usando punto como dominio local:
+
+  sys autologon -u operador -d . -p MiPassword
+
+Cuenta local especificando el nombre del equipo:
+
+  sys autologon -u operador -d LAB-PC-042 -p MiPassword
+
+Forma explicita:
+
+  sys autologon enable -u operador -d CONTOSO -p MiPassword
+
+6. Validacion de argumentos
+
+SST exige:
+
+  - usuario no vacio
+  - dominio no vacio
+  - contrasena no vacia
+
+Si falta `-u/--user`, SST devuelve:
+
+  autologon: falta -u/--user
+
+Si falta `-d/--domain`, SST devuelve:
+
+  autologon: falta -d/--domain
+
+Si falta `-p/--password`, SST devuelve:
+
+  autologon: falta -p/--password
+
+7. Que hace SST internamente
+
+Al ejecutar el comando SST:
+
+  1. Comprueba que usuario, dominio y contrasena no esten vacios.
+  2. Crea una carpeta temporal bajo el espacio de herramientas de SST.
+  3. Descarga por HTTPS:
+       https://download.sysinternals.com/files/AutoLogon.zip
+  4. Extrae el paquete evitando rutas ZIP inseguras.
+  5. Selecciona el ejecutable segun la arquitectura:
+       x64      -> Autologon64.exe
+       ARM64    -> Autologon64a.exe
+       otras    -> Autologon.exe
+  6. Valida con Authenticode que el ejecutable este firmado por Microsoft Corporation.
+  7. Solicita UAC si la operacion necesita elevacion.
+  8. Ejecuta Autologon sin mostrar su GUI con:
+       /accepteula usuario dominio password
+  9. Espera el resultado del proceso.
+ 10. Considera correcta la operacion solo si Autologon devuelve codigo 0.
+ 11. Elimina el ZIP y los binarios temporales descargados.
+
+8. Donde queda la credencial
+
+Sysinternals Autologon utiliza el mecanismo de secretos LSA de Windows para almacenar la credencial utilizada por el inicio automatico. SST no crea un archivo con la contrasena ni conserva una copia en su directorio de herramientas.
+
+Esto no convierte el inicio automatico en un mecanismo equivalente a un inicio interactivo protegido. Un administrador local o un usuario con capacidad suficiente sobre el equipo puede acceder a informacion sensible del sistema. La cuenta usada debe tener solo los permisos necesarios.
+
+9. Advertencia sobre -p/--password
+
+La sintaxis actual recibe la contrasena como argumento:
+
+  -p PASSWORD
+  --password PASSWORD
+
+Eso significa que la contrasena se escribe en la linea de comando introducida en SST y puede quedar en el historial de la terminal. Tambien se entrega al proceso de Autologon como argumento, porque ese es el modo CLI soportado por la herramienta de Sysinternals.
+
+Cuando SST incorpore entrada secreta interactiva, la documentacion indicara la forma preferida para evitar escribir la contrasena directamente en el comando.
+
+10. Elevacion UAC
+
+No es necesario abrir SST completo como administrador. SST eleva la operacion necesaria para Autologon cuando corresponde.
+
+Si el usuario cancela UAC, la configuracion no se aplica.
+
+11. Comprobacion despues de configurarlo
+
+La comprobacion definitiva es reiniciar Windows:
+
+  1. Guarda cualquier trabajo abierto.
+  2. Reinicia el equipo.
+  3. Verifica que Windows inicia sesion automaticamente con la cuenta indicada.
+  4. Comprueba que el entorno esperado del usuario carga correctamente.
+
+Si la cuenta tiene una contrasena expirada, bloqueada o modificada posteriormente, el inicio automatico puede dejar de funcionar.
+
+12. Problemas habituales
+
+El comando pide UAC y luego falla:
+  Revisa el mensaje devuelto por SST. La descarga, la firma o Autologon pueden haber fallado.
+
+No puede descargar Autologon:
+  Comprueba conectividad HTTPS hacia download.sysinternals.com.
+
+SST rechaza la herramienta por firma:
+  No fuerces la ejecucion. SST solo acepta el ejecutable si Authenticode valida una firma de Microsoft Corporation.
+
+Autologon devuelve un codigo distinto de 0:
+  SST informa el codigo. La configuracion no debe considerarse aplicada.
+
+Windows muestra la pantalla de inicio igualmente:
+  Comprueba que la cuenta siga habilitada, que la contrasena no haya cambiado y que no exista una politica de Windows que interfiera con el inicio automatico.
+
+13. Relacion con otros comandos SST
+
+Antes de preparar una estacion puede ser util:
+
+  hostname NUEVO_NOMBRE
+  sys domain status
+  sys domain join -d DOMINIO -u CUENTA -p PASSWORD
+  sys autologon -u CUENTA -d DOMINIO -p PASSWORD
+
+Una secuencia habitual de provision es:
+
+  1. cambiar nombre del equipo
+  2. reiniciar si corresponde
+  3. unir al dominio
+  4. reiniciar
+  5. configurar Autologon
+  6. reiniciar y validar
+
+14. Limitaciones actuales
+
+  - La implementacion actual configura Autologon; no expone `disable`.
+  - No expone actualmente `status` para Autologon.
+  - La implementacion actual requiere -p/--password en la linea de comando.
+  - Necesita acceso a Internet para descargar el paquete oficial cuando se ejecuta.
+  - La herramienta es exclusiva de Windows.
+
+15. Resumen rapido exhaustivo
+
+Ayuda:
+
+  sys autologon
+  sys autologon -h
+  sys autologon --help
+
+Configurar:
+
+  sys autologon -u CUENTA -d DOMINIO -p PASSWORD
+  sys autologon --user CUENTA --domain DOMINIO --password PASSWORD
+
+Configurar con `enable`:
+
+  sys autologon enable -u CUENTA -d DOMINIO -p PASSWORD
+
+Alias directo:
+
+  autologon -u CUENTA -d DOMINIO -p PASSWORD
+
+Opciones:
+
+  -u | --user
+  -d | --domain
+  -p | --password
+  -h | --help
+
+Despues:
+
+  reinicia Windows y confirma que la sesion se abre automaticamente.
