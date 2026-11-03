@@ -107,15 +107,33 @@ fn stage(store: &Arc<Mutex<DeferredState>>, index: usize, state: &str, detail: i
 pub(super) fn start(
     paths: AppPaths,
     snapshots: Vec<ProcessSnapshot>,
+    base_findings: Vec<Finding>,
     store: Arc<Mutex<DeferredState>>,
 ) {
     *store.lock().unwrap_or_else(|error| error.into_inner()) = DeferredState::new();
     thread::spawn(move || {
         let work = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            collect(&paths, &snapshots, &store)
+            collect(&paths, &snapshots, &base_findings, &store)
         }));
         match work {
             Ok(findings) => {
+                // Conservar en el historial tanto las señales iniciales como las
+                // independientes obtenidas en segundo plano.
+                let mut complete = base_findings.clone();
+                for extra in &findings {
+                    if let Some(item) = complete.iter_mut().find(|f| f.pid == extra.pid) {
+                        item.level = item.level.max(extra.finding.level);
+                        for reason in &extra.finding.reasons {
+                            if !item.reasons.contains(reason) {
+                                item.reasons.push(reason.clone());
+                            }
+                        }
+                    } else {
+                        complete.push(extra.finding.clone());
+                    }
+                }
+                let service = SecurityTriageService::new(paths.clone());
+                let _ = service.record_assessments(&snapshots, &complete);
                 let mut report = store.lock().unwrap_or_else(|error| error.into_inner());
                 report.findings = findings;
                 report.finished_at = Some(unix_now());
@@ -218,6 +236,7 @@ fn persist_report(paths: &AppPaths, summary: &str) -> anyhow::Result<()> {
 fn collect(
     paths: &AppPaths,
     snapshots: &[ProcessSnapshot],
+    base_findings: &[Finding],
     store: &Arc<Mutex<DeferredState>>,
 ) -> Vec<EnrichedFinding> {
     let mut extra: HashMap<u32, Vec<Evidence>> = HashMap::new();
@@ -327,22 +346,27 @@ fn collect(
     }
 
     stage(store, 3, "RUNNING", "comprobando firma y huella SHA-256 de ejecutables relevantes");
-    let relevant = snapshots.iter()
+    let interesting_pids = base_findings.iter().map(|f| f.pid).collect::<HashSet<_>>();
+    let mut relevant = snapshots.iter()
         .filter(|p| !p.exe.is_empty() && Path::new(&p.exe).is_file())
-        .filter(|p| p.new_to_history || user_writable(&p.exe))
-        .take(16)
+        .filter(|p| interesting_pids.contains(&p.pid) || p.new_to_history || user_writable(&p.exe))
         .collect::<Vec<_>>();
+    // Priorizar lo observado como anomalo en el preload: el orden interno
+    // de sysinfo no debe determinar que ejecutables se investigan.
+    relevant.sort_by_key(|p| (
+        if interesting_pids.contains(&p.pid) { 0 } else if user_writable(&p.exe) { 1 } else { 2 },
+        !p.new_to_history,
+        p.pid,
+    ));
+    relevant.truncate(16);
     let mut unique = HashMap::<String, Vec<&ProcessSnapshot>>::new();
     for row in relevant {
         unique.entry(row.exe.to_ascii_lowercase()).or_default().push(row);
     }
     let paths_list = unique.values().map(|rows| rows[0].exe.clone()).collect::<Vec<_>>();
-    let signatures = match signatures(&paths_list) {
-        Ok(s) => Some(s),
-        Err(error) => {
-            stage(store, 3, "PARTIAL", format!("firmas no disponibles: {error}"));
-            None
-        }
+    let (signatures, signature_error) = match signatures(&paths_list) {
+        Ok(s) => (Some(s), None),
+        Err(error) => (None, Some(error.to_string())),
     };
 
     let conn = open_security_db(paths).ok();
@@ -397,13 +421,17 @@ fn collect(
             );
         }
     }
-    let current_stage = store.lock().unwrap_or_else(|error| error.into_inner())
-        .stages.get(3).map(|s| s.state.clone()).unwrap_or_default();
-    let detail = format!(
+    let mut detail = format!(
         "{} firmas consultadas; {hashed} hashes SHA-256; {changed} cambios historicos; maximo 16 rutas relevantes",
         signatures.as_ref().map_or(0, HashMap::len)
     );
-    stage(store, 3, if current_stage == "PARTIAL" { "PARTIAL" } else { "OK" }, detail);
+    if let Some(error) = &signature_error {
+        detail.push_str(&format!("; Authenticode no disponible: {error}"));
+    }
+    if conn.is_none() {
+        detail.push_str("; historial de hashes no disponible");
+    }
+    stage(store, 3, if signature_error.is_some() || conn.is_none() { "PARTIAL" } else { "OK" }, detail);
 
     let service = SecurityTriageService::new(paths.clone());
     let instances = snapshots.iter().map(|p| (p.pid, p.start_time)).collect::<Vec<_>>();
