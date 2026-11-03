@@ -7,10 +7,6 @@ pub mod editor_clipboard;
 #[cfg(windows)]
 pub mod terminal_verify;
 #[cfg(windows)]
-mod lan_beacon;
-#[cfg(windows)]
-mod beacon_overlay;
-#[cfg(windows)]
 #[path = "gui_slint.rs"]
 mod gui_slint_base;
 #[cfg(windows)]
