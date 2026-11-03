@@ -1,6 +1,7 @@
 //! Lecturas termicas de fuentes disponibles en Windows.
 //! Nunca se equipara una zona ACPI a la temperatura del procesador.
 //! Hardware WMI es opcional: SST no instala controladores ni inventa sensores.
+#[cfg(windows)]
 use std::{
     path::PathBuf,
     process::{Command, Stdio},
@@ -13,6 +14,7 @@ use std::os::windows::process::CommandExt;
 
 use crate::core::CommandOutput;
 
+#[cfg(windows)]
 #[derive(Clone)]
 struct Reading {
     group: String,
@@ -88,7 +90,7 @@ fn windows_sensors() -> anyhow::Result<Vec<Reading>> {
     // de hardware son opcionales; no se requiere PowerShell para las demas herramientas SST.
     const SCRIPT: &str = r#"
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $rows = New-Object 'System.Collections.Generic.List[object]'
 foreach ($ns in @('root\LibreHardwareMonitor','root\OpenHardwareMonitor')) {
   try {
