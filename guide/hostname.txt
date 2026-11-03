@@ -1,0 +1,292 @@
+SST Tutorial: Nombre del equipo
+
+1. Objetivo
+
+SST permite consultar y cambiar el nombre del equipo local. El cambio funciona tanto en equipos independientes como en equipos unidos a dominio.
+
+En un equipo unido a dominio SST intenta utilizar la ruta adecuada para renombrar tambien la cuenta del equipo en Active Directory.
+
+2. Interfaz publica completa
+
+Consultar nombre actual:
+
+  hostname
+  sys hostname
+
+Cambiar nombre:
+
+  hostname NUEVO_NOMBRE
+  sys hostname NUEVO_NOMBRE
+
+Ayuda:
+
+  hostname -h
+  hostname --help
+  sys hostname -h
+  sys hostname --help
+
+Parametros publicos:
+
+  NUEVO_NOMBRE      Nombre nuevo del equipo.
+  -h, --help        Muestra la ayuda de hostname.
+
+No existen otras opciones publicas para hostname.
+
+SST usa internamente una marca privada para transportar la operacion elevada; no forma parte de la interfaz de usuario y no debe ejecutarse manualmente.
+
+3. Reglas de uso
+
+Sin argumentos:
+
+  hostname
+  sys hostname
+
+muestran el nombre actual.
+
+Con exactamente un nombre:
+
+  hostname LAB-PC-042
+
+solicita el cambio de nombre.
+
+Si se proporcionan varios nombres/argumentos funcionales, SST rechaza la orden y exige exactamente un nombre nuevo.
+
+Si el nombre nuevo coincide con el nombre actual, SST informa que el equipo ya tiene ese nombre y no repite el cambio.
+
+4. Ejemplos
+
+Renombrar una estacion:
+
+  hostname LAB-PC-042
+
+Forma equivalente:
+
+  sys hostname LAB-PC-042
+
+Renombrar un notebook:
+
+  hostname NB-SOPORTE-017
+
+Consultar despues del reinicio:
+
+  hostname
+
+5. Validacion exacta del nombre
+
+Antes de llamar a Windows SST valida el nombre solicitado.
+
+Reglas implementadas:
+
+  - despues de trim, no puede estar vacio
+  - no puede superar 63 caracteres
+  - solo acepta letras ASCII, numeros ASCII y guion '-'
+  - no puede comenzar con '-'
+  - no puede terminar con '-'
+  - no puede estar formado solamente por numeros
+
+Ejemplos validos:
+
+  LAB-PC-042
+  SOPORTE01
+  NB-VENTAS-7
+  PC1
+
+Ejemplos rechazados:
+
+  -PC01
+  PC01-
+  PC 01
+  PC_01
+  123456
+  EQUIPOÑ
+
+Mensajes de validacion posibles:
+
+  el nombre del equipo no puede estar vacio
+  el nombre del equipo no puede superar 63 caracteres
+  el nombre del equipo no puede comenzar ni terminar con '-'
+  el nombre del equipo solo puede contener letras ASCII, numeros y '-'
+  el nombre del equipo no puede estar formado solo por numeros
+
+6. Como funciona en un equipo fuera de dominio
+
+SST consulta primero si el equipo pertenece a dominio mediante NetGetJoinInformation.
+
+Si no pertenece, utiliza la API nativa de Windows:
+
+  SetComputerNameExW
+
+con el tipo de nombre fisico DNS del equipo.
+
+7. Como funciona en un equipo unido a dominio
+
+Si el equipo pertenece a un dominio, SST usa:
+
+  NetRenameMachineInDomain
+
+con la opcion de cuenta de equipo correspondiente.
+
+El objetivo es mantener coordinados:
+
+  - el nombre local de la estacion
+  - la identidad de la cuenta de equipo en Active Directory
+
+La llamada usa el contexto administrativo actual. El usuario debe tener permisos suficientes para que Active Directory acepte el cambio.
+
+8. Elevacion UAC
+
+SST intenta primero el renombrado con el token actual.
+
+Si Windows devuelve acceso denegado, SST vuelve a ejecutar solamente la operacion de renombrado mediante UAC.
+
+No es necesario iniciar toda la sesion SST elevada para usar hostname.
+
+Si cancelas UAC, el nombre no se cambia.
+
+Si despues de elevar Windows/AD sigue devolviendo acceso denegado, SST informa que los permisos son insuficientes.
+
+9. Reinicio obligatorio
+
+Aunque Windows acepte el cambio, el nuevo nombre no debe considerarse completamente efectivo hasta reiniciar.
+
+SST informa:
+
+  cambio registrado correctamente; reinicia Windows para completar el renombrado.
+
+Despues del reinicio vuelve a ejecutar:
+
+  hostname
+
+para confirmar el nombre actual.
+
+10. Orden recomendado antes de unir a dominio
+
+Si estas preparando una estacion nueva, define primero el nombre definitivo:
+
+  hostname LAB-PC-042
+
+Reinicia y luego ejecuta:
+
+  sys domain join -d DOMINIO -u CUENTA -p PASSWORD
+
+Esto evita crear inicialmente la cuenta de equipo en Active Directory con un nombre que despues haya que cambiar.
+
+11. Renombrar un equipo que ya esta en dominio
+
+Flujo recomendado:
+
+  1. Comprueba el dominio:
+       sys domain status
+  2. Ejecuta:
+       hostname NUEVO_NOMBRE
+  3. Acepta UAC si aparece.
+  4. Reinicia Windows.
+  5. Comprueba:
+       hostname
+       sys domain status
+  6. Verifica en los recursos corporativos que la identidad del equipo funciona normalmente.
+
+12. Permisos en Active Directory
+
+En un equipo de dominio, cambiar el nombre puede requerir permisos sobre la cuenta de equipo.
+
+Si Windows devuelve acceso denegado incluso despues de UAC, no significa necesariamente que SST este fallando: un administrador local puede no tener derechos para modificar el objeto en Active Directory.
+
+13. Errores habituales
+
+Nombre invalido:
+  SST lo rechaza antes de llamar a Windows. Revisa caracteres, longitud y guiones.
+
+Demasiados argumentos:
+  SST exige exactamente un NUEVO_NOMBRE cuando se solicita un cambio.
+
+Acceso denegado:
+  SST intenta elevar. Si el equipo esta en dominio y sigue fallando, revisa permisos en AD.
+
+UAC cancelado:
+  SST cancela el renombrado y lo informa.
+
+Windows/NetAPI devuelve otro codigo:
+  SST muestra el codigo Win32/NetAPI para diagnostico.
+
+El nombre parece no haber cambiado:
+  Reinicia. El cambio se registra antes de ser plenamente efectivo.
+
+El equipo de dominio pierde acceso a recursos despues del cambio:
+  Verifica conectividad con el dominio, estado de la cuenta del equipo y permisos. Comprueba tambien `sys domain status`.
+
+El nombre local cambia pero hay inconsistencias en AD:
+  Revisa el objeto de equipo y los permisos. No repitas renombrados a ciegas si hay una incidencia de Active Directory.
+
+14. Relacion con otros comandos SST
+
+  hostname                    consulta/cambia nombre
+  sys hostname               forma equivalente
+  sys domain status           comprueba pertenencia al dominio
+  sys domain join             une el equipo a dominio
+  sys domain leave            saca el equipo del dominio
+  sys autologon               configura inicio automatico
+  notsh / net                 diagnostica red
+  diag                        diagnostico compuesto
+
+15. Casos de uso
+
+Provision de equipo nuevo:
+
+  hostname LAB-PC-042
+  reinicio
+  sys domain join -d DOMINIO -u CUENTA -p PASSWORD
+  reinicio
+  sys autologon -u CUENTA -d DOMINIO -p PASSWORD
+
+Correccion de nomenclatura:
+
+  sys domain status
+  hostname NUEVO_NOMBRE
+  reinicio
+
+Equipo fuera de dominio:
+
+  hostname NUEVO_NOMBRE
+  reinicio
+
+16. Limitaciones
+
+  - cambia el equipo local; no es una herramienta de renombrado masivo remoto
+  - no crea reglas de nomenclatura corporativa por si sola
+  - no resuelve permisos incorrectos de Active Directory
+  - requiere reinicio para completar el cambio
+  - en dominio depende de que Windows y AD acepten el renombrado
+  - no permite espacios, guion bajo ni caracteres no ASCII en la validacion actual
+
+17. Resumen rapido exhaustivo
+
+Consultar:
+
+  hostname
+  sys hostname
+
+Cambiar:
+
+  hostname NUEVO_NOMBRE
+  sys hostname NUEVO_NOMBRE
+
+Ayuda:
+
+  hostname -h
+  hostname --help
+  sys hostname -h
+  sys hostname --help
+
+Opciones publicas:
+
+  NUEVO_NOMBRE
+  -h | --help
+
+En dominio:
+
+  sys domain status
+  hostname LAB-PC-042
+  reinicia
+  hostname
+  sys domain status
