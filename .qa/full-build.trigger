@@ -1,1 +1,1 @@
-2026-11-03: second Windows build/clippy/test after fixing build.rs Clippy errors. Demo SST viernes 6 noviembre.
+2026-11-03: Windows full build/tests after guide local download, beacon disabled, and deferred triage compile fix.
