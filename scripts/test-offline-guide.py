@@ -43,7 +43,21 @@ def resolve(text, section, topic):
         for i in range(floor, len(lines)):
             if lines[i] == lines[i].strip() and lines[i].casefold() == topic.casefold():
                 return lines[i].strip()
-        return extract_numbered(text, topic)
+        exact = extract_numbered(text, topic)
+        if exact:
+            return exact
+        sections = [i for i, line in enumerate(lines) if number_heading(line)]
+        for position, start in enumerate(sections[1:], 1):
+            stop = sections[position + 1] if position + 1 < len(sections) else len(lines)
+            for line in lines[start + 1:stop]:
+                stripped = line.lstrip()
+                if stripped.startswith(topic) and (
+                    len(stripped) == len(topic)
+                    or stripped[len(topic)].isspace()
+                    or stripped[len(topic)] in "[:/(="
+                ):
+                    return "\n".join(lines[start:stop]).strip()
+        return extract_numbered(text, "Alcance")
     return None
 
 
