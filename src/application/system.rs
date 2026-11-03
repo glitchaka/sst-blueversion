@@ -58,6 +58,7 @@ impl SystemService {
             "top" => self.top(),
             "disks" | "df" => disks(),
             "memory" | "free" => memory(),
+            "sensors" | "temperature" | "temperatures" | "thermal" => Ok(crate::application::thermal::report()),
             "hostname" => hostname(),
             "whoami" => whoami(),
             "uname" => uname(&args[1..]),
