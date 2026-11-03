@@ -175,6 +175,23 @@ pub(super) fn status(
     "Los colectores diferidos aun no se ejecutaron en esta sesion.\n".to_owned()
 }
 
+pub(super) fn for_process(
+    store: &Arc<Mutex<DeferredState>>,
+    pid: u32,
+    start_time: u64,
+    exe: &str,
+) -> Option<Finding> {
+    let report = store.lock().unwrap_or_else(|error| error.into_inner());
+    if report.finished_at.is_none() {
+        return None;
+    }
+    report.findings.iter().find(|row| {
+        row.pid == pid
+            && row.start_time == start_time
+            && row.exe.eq_ignore_ascii_case(exe)
+    }).map(|row| row.finding.clone())
+}
+
 pub(super) fn enrich(
     findings: &mut Vec<Finding>,
     snapshots: &[ProcessSnapshot],
