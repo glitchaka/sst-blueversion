@@ -536,12 +536,15 @@ sys temperature
 ## Triage de seguridad local
 
 SST incorpora un triage local explicable. El motor separa rendimiento de señales
-de seguridad y conserva historial en `data/security.db`.
+de seguridad y conserva historial en `data/security.db`. Tras mostrar el prompt, cuatro colectores diferidos registran conexiones, persistencia en Run/RunOnce, servicios y autenticidad/huellas SHA-256 de ejecutables relevantes. `triage --status` distingue datos en curso y resultados históricos. El enriquecimiento respeta identidad de PID, inicio y ruta y no trata la falta de firma como prueba de malware.
 
 Comandos principales:
 
 ```bash
 triage
+triage --status
+triage --deep
+triage --thermal
 sys why PID
 sys inspect PID
 sys inspect PID --deep
