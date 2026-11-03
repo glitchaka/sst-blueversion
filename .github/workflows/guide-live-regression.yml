@@ -1,10 +1,16 @@
-name: SST live guide regression
+name: SST offline guide regression
 
 on:
   push:
     branches: [main]
     paths:
-      - 'scripts/test-live-guide.py'
+      - 'guide/**'
+      - 'scripts/test-offline-guide.py'
+      - 'src/builtins/guide_new.rs'
+      - 'src/builtins/guide_remote.rs'
+      - 'src/adapters/persistence/paths.rs'
+      - 'build.rs'
+      - 'scripts/package-release.ps1'
       - '.github/workflows/guide-live-regression.yml'
   workflow_dispatch:
 
@@ -12,10 +18,10 @@ permissions:
   contents: read
 
 jobs:
-  guide-live:
+  guide-offline:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Validate live guide and every Arch package detail
-        run: python3 ./scripts/test-live-guide.py
+      - name: Validate all offline SST manual references and hidden Arch menu
+        run: python3 ./scripts/test-offline-guide.py
