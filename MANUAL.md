@@ -924,6 +924,26 @@ La suma de los procesos no debe interpretarse como igualdad exacta con la RAM to
 
 ---
 
+## `triage --status`
+
+```bash
+triage --status
+```
+
+Muestra el avance y resultado de los cuatro colectores que SST ejecuta **en segundo plano después del prompt de arranque**: sockets TCP, entradas de inicio, servicios, firmas Authenticode y hashes SHA-256 de ejecutables relevantes (límite de coste). Los resultados y los errores de cada fuente quedan visibles. La última captura se conserva en `data/security.db` y se identifica como histórica cuando corresponde.
+
+El enriquecimiento solo se aplica a un PID si coincide también su tiempo de inicio y ruta de ejecutable. Una conexión de red, un servicio o un ejecutable sin firma **no constituyen por sí solos una detección de malware**.
+
+## `triage --thermal`
+
+```bash
+triage --thermal
+```
+
+Expone las mismas lecturas reales que `sys sensors`.
+
+---
+
 ## `triage --deep`
 
 ```bash
@@ -935,7 +955,8 @@ Hace el análisis general y añade correlaciones más costosas:
 - memoria;
 - conexiones asociadas a hallazgos;
 - inicio automático;
-- impacto de servicios.
+- impacto de servicios;
+- estado de los colectores diferidos y temperaturas del hardware disponibles.
 
 ---
 
