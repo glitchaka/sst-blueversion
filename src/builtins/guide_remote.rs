@@ -1,49 +1,21 @@
 use std::{
     collections::HashMap,
-    process::Command,
+    fs,
     sync::{Arc, Mutex, OnceLock},
 };
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-#[cfg(windows)]
-use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+use crate::adapters::persistence::AppPaths;
 
-const MANUAL_BASE: &str =
-    "https://raw.githubusercontent.com/glitchaka/adm-toolbox/main/tutorials";
 const INDEX_FILE: &str = "guide-index.json";
-const ARCH_INDEX_FILE: &str = "arch-index.json";
 const MAX_INDEX_BYTES: usize = 2 * 1024 * 1024;
 const MAX_MANUAL_BYTES: usize = 512 * 1024;
 
 static FILE_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
 static TOPIC_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
 
-/// The normal guide index remains the source of commands/manuals. Arch review
-/// data lives in a separate index and is merged only by builds that know about
-/// it, so older published SST versions are not changed by adding candidates.
+/// Catálogo SST local. No descarga índices ni incorpora Arch en esta edición.
 pub(super) fn load_index() -> Option<String> {
-    let base = fetch_repo_file(INDEX_FILE, MAX_INDEX_BYTES)?;
-    let Some(arch) = fetch_repo_file(ARCH_INDEX_FILE, MAX_INDEX_BYTES) else {
-        return Some(base);
-    };
-    merge_catalogs(&base, &arch).or(Some(base))
-}
-
-fn merge_catalogs(base: &str, extra: &str) -> Option<String> {
-    let mut base: serde_json::Value = serde_json::from_str(base).ok()?;
-    let extra: serde_json::Value = serde_json::from_str(extra).ok()?;
-    if extra.get("schema")?.as_u64()? != 1 {
-        return None;
-    }
-
-    for key in ["areas", "entries"] {
-        let target = base.get_mut(key)?.as_array_mut()?;
-        let source = extra.get(key)?.as_array()?;
-        target.extend(source.iter().cloned());
-    }
-
-    serde_json::to_string(&base).ok()
+    fetch_repo_file(INDEX_FILE, MAX_INDEX_BYTES)
 }
 
 pub(super) fn load_manual(
@@ -95,7 +67,7 @@ fn fetch_cached(file: &str, extension: &str) -> Option<Arc<str>> {
         return value;
     }
 
-    // Never keep the lock while curl is running.
+    // Mantener la caché de fichas: ahora el origen es un archivo local.
     let value = fetch_repo_file(&filename, MAX_MANUAL_BYTES).map(Arc::<str>::from);
     cache
         .lock()
@@ -108,40 +80,17 @@ fn fetch_repo_file(filename: &str, max_bytes: usize) -> Option<String> {
     if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
         return None;
     }
-    let url = format!("{MANUAL_BASE}/{filename}");
 
-    #[cfg(windows)]
-    let curl = crate::support::windows::system32_executable("curl.exe").ok()?;
-    #[cfg(not(windows))]
-    let curl = std::path::PathBuf::from("curl");
-
-    let mut command = Command::new(curl);
-    command
-        .args([
-            "-L",
-            "--fail",
-            "--silent",
-            "--show-error",
-            "--proto",
-            "=https",
-            "--tlsv1.2",
-            "--connect-timeout",
-            "2",
-            "--max-time",
-            "8",
-            "--user-agent",
-            "SST-Guide/4",
-        ])
-        .arg(url);
-
-    #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
-
-    let output = command.output().ok()?;
-    if !output.status.success() || output.stdout.is_empty() || output.stdout.len() > max_bytes {
+    let file = AppPaths::detect().root_dir().join("guide").join(filename);
+    let meta = fs::metadata(&file).ok()?;
+    if !meta.is_file() || meta.len() == 0 || meta.len() > max_bytes as u64 {
         return None;
     }
-    String::from_utf8(output.stdout).ok()
+    let bytes = fs::read(file).ok()?;
+    if bytes.is_empty() || bytes.len() > max_bytes {
+        return None;
+    }
+    String::from_utf8(bytes).ok()
 }
 
 fn valid_component(value: &str) -> bool {
