@@ -317,8 +317,11 @@ def main() -> int:
             ("whoami", "whoami"), ("uname", "uname"), ("uptime", "uptime"),
             ("free", "free"), ("df", "df"), ("ps", "ps"),
             ("sys-whoami", "sys whoami"), ("net-interfaces", "net interfaces"),
+            ("sys-sensors", "sys sensors"), ("triage-status", "triage --status"),
+            ("triage", "triage"),
         ]:
-            run = h.shell(script, 15)
+            timeout = 30 if name == "sys-sensors" else 15
+            run = h.shell(script, timeout)
             h.add(name, "sst-smoke", not run.timed_out and run.exit_code == 0 and bool(run.stdout + run.stderr), run, "read-only command must finish and produce output")
 
         print("=== Differential against Git Bash ===")
