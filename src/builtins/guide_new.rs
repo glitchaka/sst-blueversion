@@ -229,10 +229,10 @@ impl GuideBuiltin {
 
     fn run(&self, direct: Option<String>, search: Option<String>) -> Result<CommandOutput> {
         let Some(raw) = super::guide_remote::load_index() else {
-            return Ok(CommandOutput::ok("\n"));
+            return Ok(CommandOutput::error("guide: no se encontró guide/guide-index.json junto a sst.exe (instala o copia la carpeta guide del paquete de SST).", 1));
         };
         let Some(index) = GuideIndex::from_json(&raw) else {
-            return Ok(CommandOutput::ok("\n"));
+            return Ok(CommandOutput::error("guide: el índice local guide/guide-index.json está dañado o tiene un formato incompatible.", 1));
         };
 
         let review_path = arch_review_path();
@@ -596,7 +596,7 @@ impl BuiltinCommand for GuideBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "guide — manual interactivo de SST cargado desde el repositorio"
+        "guide — documentación interactiva local de SST, sin conexión a Internet"
     }
 
     fn execute(
