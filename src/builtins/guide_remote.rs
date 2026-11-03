@@ -82,15 +82,20 @@ fn fetch_repo_file(filename: &str, max_bytes: usize) -> Option<String> {
     }
 
     let file = AppPaths::detect().root_dir().join("guide").join(filename);
-    let meta = fs::metadata(&file).ok()?;
-    if !meta.is_file() || meta.len() == 0 || meta.len() > max_bytes as u64 {
-        return None;
+    if let Ok(meta) = fs::metadata(&file) {
+        if meta.is_file() && meta.len() > 0 && meta.len() <= max_bytes as u64 {
+            if let Ok(bytes) = fs::read(&file) {
+                if let Ok(text) = String::from_utf8(bytes) {
+                    return Some(text);
+                }
+            }
+        }
     }
-    let bytes = fs::read(file).ok()?;
-    if bytes.is_empty() || bytes.len() > max_bytes {
-        return None;
-    }
-    String::from_utf8(bytes).ok()
+    // La descarga es asíncrona: guide funciona inmediatamente incluso si
+    // falta aún el fichero físico o el equipo no tiene conectividad.
+    crate::adapters::persistence::bundled_guide_asset(filename)
+        .filter(|bytes| !bytes.is_empty() && bytes.len() <= max_bytes)
+        .and_then(|bytes| String::from_utf8(bytes.to_vec()).ok())
 }
 
 fn valid_component(value: &str) -> bool {
