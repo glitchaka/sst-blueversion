@@ -556,6 +556,13 @@ fn sync_missing_guide_assets(directory: &std::path::Path) {
         {
             continue;
         }
+        // Una descarga anterior pudo dejar un archivo vacío. Repararlo antes
+        // de renombrar: en Windows el destino existente bloquea rename().
+        if fs::metadata(&destination)
+            .is_ok_and(|metadata| metadata.is_file() && metadata.len() == 0)
+        {
+            let _ = fs::remove_file(&destination);
+        }
 
         // A pinned snapshot prevents mismatched indexes and manuals. If offline,
         // fall back to the identical file embedded inside sst.exe.
@@ -584,7 +591,7 @@ fn download_missing_guide(
     let url = format!(
         "https://raw.githubusercontent.com/glitchaka/sst-blueversion/{GUIDE_SNAPSHOT_COMMIT}/guide/{filename}"
     );
-    let temporary = destination.with_extension("sst-download");
+    let temporary = destination.with_extension(format!("sst-download-{}", std::process::id()));
     let _ = fs::remove_file(&temporary);
 
     #[cfg(windows)]
@@ -637,7 +644,7 @@ fn write_guide_atomically(destination: &std::path::Path, contents: &[u8]) -> Res
     if destination.is_file() && fs::metadata(destination)?.len() > 0 {
         return Ok(());
     }
-    let temporary = destination.with_extension("sst-bundled");
+    let temporary = destination.with_extension(format!("sst-bundled-{}", std::process::id()));
     fs::write(&temporary, contents)?;
     let result = fs::rename(&temporary, destination)
         .with_context(|| format!("No se pudo restaurar {}", destination.display()));
