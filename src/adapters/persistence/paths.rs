@@ -1,4 +1,7 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::PathBuf, sync::OnceLock, thread};
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 use anyhow::{Context, Result};
 
@@ -60,6 +63,17 @@ alias cls='clear'
 
 // Generated at build time from the committed guide/ directory.
 include!(concat!(env!("OUT_DIR"), "/guide_assets.rs"));
+
+// La instantánea publicada contiene estas fichas exactas; una descarga distinta
+// no sustituye contenido por accidente.
+const GUIDE_SNAPSHOT_COMMIT: &str = "38e664f3d14467cdfd080c16991055c859c48b3a";
+static GUIDE_SYNC_STARTED: OnceLock<()> = OnceLock::new();
+
+pub(crate) fn bundled_guide_asset(filename: &str) -> Option<&'static [u8]> {
+    GUIDE_ASSETS.iter().find_map(|(name, bytes)| {
+        (*name == filename).then_some(*bytes)
+    })
+}
 
 const TOUR_SCRIPT: &str = include_str!("../../../tour.sh");
 const TOUR_EXAMPLES: &[(&str, &str)] = &[
@@ -195,27 +209,16 @@ impl AppPaths {
     }
 
     fn ensure_guide_assets(&self) -> Result<()> {
-        // Raw .exe updates must not strand guide without its companion folder.
-        // A snapshot stamp avoids rewriting user files on every launch.
         let directory = self.root.join("guide");
         fs::create_dir_all(&directory)?;
-        let stamp = directory.join(".sst-guide-snapshot");
-        let needs_update = fs::read_to_string(&stamp)
-            .map(|version| version.trim() != GUIDE_SNAPSHOT_ID)
-            .unwrap_or(true);
-        for &(name, contents) in GUIDE_ASSETS {
-            let destination = directory.join(name);
-            if needs_update || !destination.is_file() {
-                fs::write(&destination, contents).with_context(|| {
-                    format!("No se pudo instalar el tutorial local {}", destination.display())
-                })?;
-            }
-        }
-        if needs_update {
-            fs::write(&stamp, GUIDE_SNAPSHOT_ID).with_context(|| {
-                format!("No se pudo registrar el estado de la guía local {}", stamp.display())
-            })?;
-        }
+
+        // No bloquear el arranque, ni esperar a abrir guide para reparar faltantes.
+        // Las instancias GUI llaman ensure_layout varias veces: lanzar una sola vez.
+        GUIDE_SYNC_STARTED.get_or_init(|| {
+            let _ = thread::Builder::new()
+                .name("sst-guide-bootstrap".to_owned())
+                .spawn(move || sync_missing_guide_assets(&directory));
+        });
         Ok(())
     }
 
@@ -540,6 +543,106 @@ impl AppPaths {
     pub fn security_sources_file(&self) -> PathBuf { self.data_dir().join("security.sources") }
     pub fn intel_dir(&self) -> PathBuf { self.data_dir().join("intel") }
     pub fn bg_dir(&self) -> PathBuf { self.root.join("bg") }
+}
+
+fn sync_missing_guide_assets(directory: &std::path::Path) {
+    let mut network_available = true;
+    let mut installed = 0usize;
+
+    for &(filename, embedded) in GUIDE_ASSETS {
+        let destination = directory.join(filename);
+        if fs::metadata(&destination)
+            .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
+        {
+            continue;
+        }
+
+        // A pinned snapshot prevents mismatched indexes and manuals. If offline,
+        // fall back to the identical file embedded inside sst.exe.
+        if network_available {
+            if download_missing_guide(filename, embedded, &destination).is_ok() {
+                installed += 1;
+                continue;
+            }
+            network_available = false;
+        }
+
+        let _ = write_guide_atomically(&destination, embedded);
+        installed += 1;
+    }
+
+    if installed > 0 {
+        let _ = fs::write(directory.join(".sst-guide-snapshot"), GUIDE_SNAPSHOT_ID);
+    }
+}
+
+fn download_missing_guide(
+    filename: &str,
+    expected: &[u8],
+    destination: &std::path::Path,
+) -> Result<()> {
+    let url = format!(
+        "https://raw.githubusercontent.com/glitchaka/sst-blueversion/{GUIDE_SNAPSHOT_COMMIT}/guide/{filename}"
+    );
+    let temporary = destination.with_extension("sst-download");
+    let _ = fs::remove_file(&temporary);
+
+    #[cfg(windows)]
+    let program = crate::support::windows::system32_executable("curl.exe")?;
+    #[cfg(not(windows))]
+    let program = PathBuf::from("curl");
+
+    let mut command = std::process::Command::new(program);
+    command.args([
+        "--location",
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--proto",
+        "=https",
+        "--tlsv1.2",
+        "--connect-timeout",
+        "3",
+        "--max-time",
+        "12",
+        "--retry",
+        "0",
+        "--output",
+    ]);
+    command.arg(&temporary).arg(url);
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+
+    let result = (|| -> Result<()> {
+        let status = command.status()?;
+        anyhow::ensure!(status.success(), "No se pudo descargar el tutorial {filename}");
+        let downloaded = fs::read(&temporary)?;
+        anyhow::ensure!(
+            downloaded == expected,
+            "El tutorial {filename} no coincide con la instantánea publicada"
+        );
+        if destination.is_file() && fs::metadata(destination)?.len() > 0 {
+            return Ok(());
+        }
+        fs::rename(&temporary, destination)?;
+        Ok(())
+    })();
+    // No dejar parciales ni archivos de trabajo al fallar o al competir
+    // con la instalación portable.
+    let _ = fs::remove_file(&temporary);
+    result
+}
+
+fn write_guide_atomically(destination: &std::path::Path, contents: &[u8]) -> Result<()> {
+    if destination.is_file() && fs::metadata(destination)?.len() > 0 {
+        return Ok(());
+    }
+    let temporary = destination.with_extension("sst-bundled");
+    fs::write(&temporary, contents)?;
+    let result = fs::rename(&temporary, destination)
+        .with_context(|| format!("No se pudo restaurar {}", destination.display()));
+    let _ = fs::remove_file(&temporary);
+    result
 }
 
 fn is_background_image(path: &std::path::Path) -> bool {
