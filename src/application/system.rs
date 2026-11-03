@@ -192,6 +192,7 @@ fn system_help() -> CommandOutput {
            sys top                      monitor TUI de procesos\n\
            sys disks                    discos y uso\n\
            sys memory                   memoria y swap\n\
+           sys sensors                  temperaturas de hardware disponibles\n\
            sys uptime                   tiempo desde el último arranque\n\
            sys hostname                 nombre del equipo\n\
            sys whoami                   usuario actual\n\
