@@ -86,6 +86,9 @@ impl PackageService {
     pub fn search(&self, term: Option<&str>) -> Result<Vec<PackageManifest>> {
         let term = term.unwrap_or_default().trim().to_ascii_lowercase();
         let mut packages = self.catalog()?;
+        // Metasploit permanece definido en el repositorio, pero se excluye
+        // temporalmente del listado y de las búsquedas visibles de instp.
+        packages.retain(|package| !package.id.eq_ignore_ascii_case("metasploit"));
         if !term.is_empty() {
             packages.retain(|package| {
                 package.id.to_ascii_lowercase().contains(&term)
