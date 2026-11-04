@@ -10,6 +10,7 @@ pub enum Token {
     OrIf,
     Amp,
     Semi,
+    Newline,
     DblSemi,
     SemiAmp,
     DblSemiAmp,
@@ -164,6 +165,51 @@ pub fn lex(input: &str) -> Result<Vec<Token>> {
                 double = false;
             }
             i += 1;
+            continue;
+        }
+
+        // Bash treats the unquoted right-hand side of [[ value =~ REGEX ]]
+        // as one extended regular-expression operand. Parentheses, braces
+        // and alternation belong to the regex, not to shell control flow.
+        let previous = out.iter().rev().find(|token| !matches!(token, Token::Newline));
+        let regex_operand = word.is_empty()
+            && !ch.is_whitespace()
+            && matches!(previous, Some(Token::Word(operator)) if operator == "=~")
+            && out.iter().rev().find_map(|token| match token {
+                Token::Word(value) if value == "[[" => Some(true),
+                Token::Word(value) if value == "]]" => Some(false),
+                _ => None,
+            }).unwrap_or(false);
+        if regex_operand {
+            let start = i;
+            let mut regex_quote: Option<char> = None;
+            let mut regex_escape = false;
+            while i < chars.len() {
+                let current = chars[i];
+                if regex_escape {
+                    regex_escape = false;
+                    i += 1;
+                    continue;
+                }
+                if current == '\\' {
+                    regex_escape = true;
+                    i += 1;
+                    continue;
+                }
+                if let Some(quote) = regex_quote {
+                    if current == quote { regex_quote = None; }
+                    i += 1;
+                    continue;
+                }
+                if current == '\'' || current == '"' {
+                    regex_quote = Some(current);
+                    i += 1;
+                    continue;
+                }
+                if current.is_whitespace() { break; }
+                i += 1;
+            }
+            word.extend(&chars[start..i]);
             continue;
         }
 
@@ -361,7 +407,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>> {
                 while i < chars.len() && chars[i] != '\n' { i += 1; }
             }
             ' ' | '\t' | '\r' => { flush(&mut word, &mut out); i += 1; }
-            '\n' => { flush(&mut word, &mut out); out.push(Token::Semi); i += 1; }
+            '\n' => { flush(&mut word, &mut out); out.push(Token::Newline); i += 1; }
             ';' if chars.get(i + 1) == Some(&';') && chars.get(i + 2) == Some(&'&') => {
                 flush(&mut word, &mut out);
                 out.push(Token::DblSemiAmp);
@@ -505,6 +551,21 @@ mod tests {
         assert!(tokens.contains(&Token::Amp));
         assert!(tokens.contains(&Token::Redirect { fd: 2, variable: None, op: RedirectOp::DupOutput }));
         assert!(tokens.contains(&Token::Word("\"a b\"".into())));
+    }
+
+    #[test]
+    fn preserves_regex_operands_in_double_bracket_conditions() {
+        let tokens = lex(r#"[[ "$ip" =~ ([0-9]{1,3}\\.){3}[0-9]{1,3} ]]"#).unwrap();
+        assert!(tokens.contains(&Token::Word(r"([0-9]{1,3}\\.){3}[0-9]{1,3}".into())));
+        assert!(!tokens.contains(&Token::LParen));
+        assert!(!tokens.contains(&Token::LBrace));
+    }
+
+    #[test]
+    fn distinguishes_line_breaks_from_explicit_semicolons() {
+        let tokens = lex("echo uno; echo dos\\necho tres").unwrap();
+        assert!(tokens.contains(&Token::Semi));
+        assert!(tokens.contains(&Token::Newline));
     }
 
     #[test]
