@@ -1674,6 +1674,9 @@ pub fn run() -> Result<()> {
     let last_status = Rc::new(RefCell::new(Instant::now() - Duration::from_secs(2)));
     // None forces native DWM state to be applied once after the window is fully shown.
     let last_focus = Rc::new(RefCell::new(None::<bool>));
+    // The compositor may drop native composition state while the HWND is iconic.
+    // Track the native transition instead of relying on the focus state alone.
+    let last_minimized = Rc::new(Cell::new(false));
     // Winit/Windows can ignore a single activation request while the HWND is
     // still being shown. Retry briefly during startup so SST accepts typing
     // immediately without requiring a mouse click.
@@ -1684,6 +1687,7 @@ pub fn run() -> Result<()> {
         let metrics = metrics.clone();
         let last_status = last_status.clone();
         let last_focus = last_focus.clone();
+        let last_minimized = last_minimized.clone();
         let startup_focus_attempts = startup_focus_attempts.clone();
         let appearance_state = appearance_state.clone();
         let carousel_state = carousel_state.clone();
@@ -1746,7 +1750,18 @@ pub fn run() -> Result<()> {
             }
 
             if let Some(hwnd) = slint_hwnd(&ui) {
-                let mut focused = unsafe { GetForegroundWindow() == hwnd };
+                let minimized = unsafe { IsIconic(hwnd) != 0 };
+                if minimized {
+                    last_minimized.set(true);
+                } else if last_minimized.replace(false) {
+                    // On restore, Windows may have discarded the DWM accent and
+                    // nonclient corner state without any foreground-focus change.
+                    // Reapply the actual native effects and repaint the terminal.
+                    let appearance = appearance_state.borrow().clone();
+                    unsafe { apply_window_effects(hwnd, &appearance); }
+                    model.borrow_mut().dirty = true;
+                }
+                let mut focused = !minimized && unsafe { GetForegroundWindow() == hwnd };
 
                 if !focused && startup_focus_attempts.get() > 0 {
                     unsafe { focus_native_window(hwnd); }
