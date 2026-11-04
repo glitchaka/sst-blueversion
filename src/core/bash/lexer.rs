@@ -555,15 +555,15 @@ mod tests {
 
     #[test]
     fn preserves_regex_operands_in_double_bracket_conditions() {
-        let tokens = lex(r#"[[ "$ip" =~ ([0-9]{1,3}\\.){3}[0-9]{1,3} ]]"#).unwrap();
-        assert!(tokens.contains(&Token::Word(r"([0-9]{1,3}\\.){3}[0-9]{1,3}".into())));
+        let tokens = lex(r#"[[ "$ip" =~ ([0-9]{1,3}\.){3}[0-9]{1,3} ]]"#).unwrap();
+        assert!(tokens.contains(&Token::Word(r"([0-9]{1,3}\.){3}[0-9]{1,3}".into())));
         assert!(!tokens.contains(&Token::LParen));
         assert!(!tokens.contains(&Token::LBrace));
     }
 
     #[test]
     fn distinguishes_line_breaks_from_explicit_semicolons() {
-        let tokens = lex("echo uno; echo dos\\necho tres").unwrap();
+        let tokens = lex("echo uno; echo dos\necho tres").unwrap();
         assert!(tokens.contains(&Token::Semi));
         assert!(tokens.contains(&Token::Newline));
     }
