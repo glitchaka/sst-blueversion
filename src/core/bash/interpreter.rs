@@ -10181,67 +10181,43 @@ fn bash_shopt_options() -> &'static [&'static str] {
 fn bash_conditional_glob_matches(value: &str, pattern: &str) -> bool {
     if pattern.contains("[[:") {
         let chars: Vec<char> = pattern.chars().collect();
-        let mut regex = String::from("(?s)^");
+        let mut regex_pattern = String::from("(?s)^");
         let mut index = 0usize;
-        let mut converted_class = false;
-
         while index < chars.len() {
+            if chars[index] == '[' {
+                let rest: String = chars[index..].iter().collect();
+                if let Some(end) = rest.find(":]]") {
+                    if rest.starts_with("[[:") {
+                        let name = &rest[3..end];
+                        if matches!(name, "alnum" | "alpha" | "ascii" | "blank" | "cntrl" |
+                            "digit" | "graph" | "lower" | "print" | "punct" |
+                            "space" | "upper" | "word" | "xdigit")
+                        {
+                            regex_pattern.push_str(&rest[..end + 3]);
+                            index += rest[..end + 3].chars().count();
+                            continue;
+                        }
+                    }
+                }
+            }
             match chars[index] {
-                '*' => regex.push_str(".*"),
-                '?' => regex.push('.'),
-                '[' => {
-                    let remaining: String = chars[index..].iter().collect();
-                    if remaining.starts_with("[[:") {
-                        if let Some(end) = remaining.find(":]]") {
-                            let name = &remaining[3..end];
-                            if matches!(name,
-                                "alnum" | "alpha" | "ascii" | "blank" | "cntrl" |
-                                "digit" | "graph" | "lower" | "print" | "punct" |
-                                "space" | "upper" | "word" | "xdigit"
-                            ) {
-                                let class = &remaining[..end + 3];
-                                regex.push_str(class);
-                                index += class.chars().count();
-                                converted_class = true;
-                                continue;
-                            }
-                        }
-                    }
-
-                    // Regular shell character sets are still accepted when
-                    // they occur alongside POSIX classes.
-                    let mut end = index + 1;
-                    if end < chars.len() && chars[end] == ']' { end += 1; }
-                    while end < chars.len() && chars[end] != ']' { end += 1; }
-                    if end < chars.len() {
-                        regex.push('[');
-                        let mut start = index + 1;
-                        if start < end && chars[start] == '!' {
-                            regex.push('^');
-                            start += 1;
-                        }
-                        for ch in &chars[start..end] { regex.push(*ch); }
-                        regex.push(']');
-                        index = end + 1;
-                        continue;
-                    }
-                    regex.push_str(r"\[");
-                }
-                '\\' => {
-                    index += 1;
-                    if index < chars.len() {
-                        regex.push_str(&regex::escape(&chars[index].to_string()));
-                    } else {
-                        regex.push_str(r"\\");
-                    }
-                }
-                other => regex.push_str(&regex::escape(&other.to_string())),
+                '*' => regex_pattern.push_str(".*"),
+                '?' => regex_pattern.push('.'),
+                c => regex_pattern.push_str(&regex::escape(&c.to_string())),
             }
             index += 1;
         }
+        regex_pattern.push('$');
+        if let Ok(regex) = regex::Regex::new(&regex_pattern) {
+            return regex.is_match(value);
+        }
+    }
+    glob::Pattern::new(pattern)
+        .map(|matcher| matcher.matches(value))
+        .unwrap_or(value == pattern)
+}
 
-        if converted_class {
-            regex.push('
+fn normalize_glob_path(value: &str) -> String {
     value.replace('\\', "/")
 }
 
