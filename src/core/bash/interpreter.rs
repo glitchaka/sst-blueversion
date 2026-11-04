@@ -5185,7 +5185,7 @@ impl Interpreter {
                                 let Some(value) = args.get(index).cloned() else {
                                     return Ok(ExecutionResult::from_parts(
                                         String::new(),
-                                        format!("read: la opción -{option} requiere un argumento\\n"),
+                                        format!("read: la opción -{option} requiere un argumento\n"),
                                         2,
                                     ));
                                 };
@@ -5198,26 +5198,26 @@ impl Interpreter {
                                     let Ok(limit) = value.parse::<usize>() else {
                                         return Ok(ExecutionResult::from_parts(
                                             String::new(),
-                                            format!("read: valor inválido para -{option}: {value}\\n"),
+                                            format!("read: valor inválido para -{option}: {value}\n"),
                                             2,
                                         ));
                                     };
                                     max_chars = Some(limit);
                                 }
                                 'a' => array_name = Some(value),
-                                'd' => delimiter = value.chars().next().unwrap_or('\\0'),
+                                'd' => delimiter = value.chars().next().unwrap_or('\0'),
                                 't' => {
                                     let Ok(seconds) = value.parse::<f64>() else {
                                         return Ok(ExecutionResult::from_parts(
                                             String::new(),
-                                            format!("read: timeout inválido: {value}\\n"),
+                                            format!("read: timeout inválido: {value}\n"),
                                             2,
                                         ));
                                     };
                                     if !seconds.is_finite() || seconds < 0.0 {
                                         return Ok(ExecutionResult::from_parts(
                                             String::new(),
-                                            format!("read: timeout inválido: {value}\\n"),
+                                            format!("read: timeout inválido: {value}\n"),
                                             2,
                                         ));
                                     }
@@ -5227,7 +5227,7 @@ impl Interpreter {
                                     let Ok(descriptor) = value.parse::<i32>() else {
                                         return Ok(ExecutionResult::from_parts(
                                             String::new(),
-                                            format!("read: descriptor inválido: {value}\\n"),
+                                            format!("read: descriptor inválido: {value}\n"),
                                             2,
                                         ));
                                     };
@@ -5241,7 +5241,7 @@ impl Interpreter {
                         _ => {
                             return Ok(ExecutionResult::from_parts(
                                 String::new(),
-                                format!("read: opción no válida: -{option}\\n"),
+                                format!("read: opción no válida: -{option}\n"),
                                 2,
                             ));
                         }
@@ -10498,10 +10498,10 @@ mod tests {
     fn regex_operands_and_multiline_conditional_work_together() {
         let mut shell = Interpreter::new(Box::new(NullHost));
         let result = shell.execute_text(
-            "if [[ '192.168.1.70' =~ ([0-9]{1,3}\\\\.){3}[0-9]{1,3} &&\\n -n 'ok' ]]; then echo match; fi"
+            "if [[ '192.168.1.70' =~ ([0-9]{1,3}\\.){3}[0-9]{1,3} &&\n -n 'ok' ]]; then echo match; fi"
         ).unwrap();
         assert_eq!(result.status, 0);
-        assert_eq!(result.stdout, "match\\n");
+        assert_eq!(result.stdout, "match\n");
     }
 
     #[test]
