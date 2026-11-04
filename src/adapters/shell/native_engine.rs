@@ -868,6 +868,7 @@ impl ShellCommandHost for WindowsShellHost {
         &self,
         commands: &[String],
         stderr_to_pipe: &[bool],
+        raw_cat_stages: &[bool],
         cwd: &Path,
         env: &HashMap<String, String>,
         stdin: Option<&[u8]>,
@@ -882,6 +883,7 @@ impl ShellCommandHost for WindowsShellHost {
         let mut previous_stdout = None;
         let mut input_writer = None;
         let mut final_stdout = None;
+        let mut pipe_relays = Vec::new();
 
         for (index, source) in commands.iter().enumerate() {
             let pipe_stderr = stderr_to_pipe.get(index).copied().unwrap_or(false)
@@ -900,6 +902,11 @@ impl ShellCommandHost for WindowsShellHost {
                 .envs(env)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
+            if raw_cat_stages.get(index).copied().unwrap_or(false) {
+                command.env("__SST_NWASH_PIPE_RAW_CAT", "1");
+            } else {
+                command.env_remove("__SST_NWASH_PIPE_RAW_CAT");
+            }
 
             #[cfg(windows)]
             {
@@ -913,9 +920,8 @@ impl ShellCommandHost for WindowsShellHost {
                     command.stdin(Stdio::inherit());
                 }
             } else {
-                let upstream = previous_stdout.take()
-                    .ok_or_else(|| anyhow::anyhow!("pipeline: stdout anterior no disponible"))?;
-                command.stdin(Stdio::from(upstream));
+                // Explicit relay keeps Windows pipe handles out of child inheritance.
+                command.stdin(Stdio::piped());
             }
             if index > 0 || stdin.is_some() {
                 command.env("__SST_NWASH_PIPE_STDIN", "1");
@@ -923,6 +929,16 @@ impl ShellCommandHost for WindowsShellHost {
 
             let mut child = command.spawn()
                 .with_context(|| format!("no se pudo lanzar etapa {} del pipeline", index + 1))?;
+
+            if index > 0 {
+                let mut upstream = previous_stdout.take()
+                    .ok_or_else(|| anyhow::anyhow!("pipeline: stdout anterior no disponible"))?;
+                let mut writer = child.stdin.take()
+                    .ok_or_else(|| anyhow::anyhow!("pipeline: stdin de etapa {} no disponible", index + 1))?;
+                pipe_relays.push(std::thread::spawn(move || {
+                    let _ = std::io::copy(&mut upstream, &mut writer);
+                }));
+            }
 
             if index == 0 {
                 if let (Some(bytes), Some(mut writer)) = (stdin, child.stdin.take()) {
@@ -980,6 +996,9 @@ impl ShellCommandHost for WindowsShellHost {
 
         if let Some(writer) = input_writer {
             let _ = writer.join();
+        }
+        for relay in pipe_relays {
+            let _ = relay.join();
         }
 
         let stdout = final_stdout
