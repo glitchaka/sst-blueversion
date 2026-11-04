@@ -49,6 +49,24 @@ release exige validación propia del artefacto.
 7. **Blue.9 — HOJA DE RUTA ABIERTA.** Los 34 elementos de `TODO.md` son
    trabajo pendiente de blue.9, no características verificadas de blue.8.
 
+## Comprobaciones de CI verificadas el 4 de noviembre
+
+- Build Windows [#17](https://github.com/glitchaka/sst-blueversion/actions/runs/41745352492),
+  commit `23a8b53`: **éxito** (pruebas y build). El formato y Clippy siguen
+  siendo pasos informativos.
+- Black-box [#16](https://github.com/glitchaka/sst-blueversion/actions/runs/41745337354):
+  **196/197**, fallo específico de `cut -d: -f2`; corrección posterior en
+  `6149951`, pendiente de validar en la ejecución completa.
+- Build Windows [#18](https://github.com/glitchaka/sst-blueversion/actions/runs/41848658332):
+  fallo por timeout de descarga en vivo IEEE dentro de `build.rs`, no por
+  un error de compilación Rust. El workflow fue modificado en `b6221da`
+  para usar el snapshot IEEE fijado como en black-box; requiere nueva ejecución.
+- `v0.1.9-blue.8` conserva artefactos de publicación anteriores (30 de
+  octubre); **no representa automáticamente las correcciones de `main`**.
+
+El estado de cada run puede cambiar. Comprobar su conclusión y SHA antes
+de actualizar estas afirmaciones.
+
 ## Puerta de calidad para una demostración y release
 
 - Compilar y pasar pruebas Rust en Windows en el **commit distribuido**.
