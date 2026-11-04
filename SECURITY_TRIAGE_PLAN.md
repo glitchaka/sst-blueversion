@@ -1,5 +1,8 @@
 # SST Security Triage Plan
 
+> **Estado de implementación:** [SECURITY_TRIAGE_STATUS.md](SECURITY_TRIAGE_STATUS.md).
+> Este archivo es un diseño y una referencia de alcance, no una lista de funciones validadas.
+
 ## Propósito
 
 SST debe incorporar capacidades de **triage local, investigación y respuesta manual ante procesos potencialmente peligrosos**, sin convertirse en un antivirus autónomo ni en una herramienta que mate procesos automáticamente.
