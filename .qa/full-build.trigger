@@ -1,1 +1,1 @@
-2026-11-04 — Windows CI final: pruebas Rust, casos heredoc CRLF/case, compatibilidad CLI y build SST.
+2026-11-04 — QA final: compilar SST y verificar test Rust de cut -d: -f2 junto al resto de la suite.
