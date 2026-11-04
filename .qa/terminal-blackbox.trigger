@@ -1,1 +1,1 @@
-2026-11-04 — validar correcciones de Nwash, array length, heredoc/HereString, pipelines Unix, wc y cat binario en release.
+2026-11-04 — release QA final: Nwash heredoc CRLF, arrays, pipeline Windows, cat binario, wc flags, UNIX text; verificación de 197 casos.
