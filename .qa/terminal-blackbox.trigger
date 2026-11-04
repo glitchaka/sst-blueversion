@@ -1,1 +1,1 @@
-2026-11-03 — blackbox + resource test SST after offline guide download, LAN beacon disabled and triage fixes.
+2026-11-04 — validar correcciones de Nwash, array length, heredoc/HereString, pipelines Unix, wc y cat binario en release.
