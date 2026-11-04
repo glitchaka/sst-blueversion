@@ -149,7 +149,7 @@ fn ls(args: &[String], cwd: &Path) -> Result<CommandOutput> {
 
 fn cat(args: &[String], input: Option<&[u8]>, cwd: &Path) -> Result<CommandOutput> {
     // A binary cat in an OS pipeline must write original bytes, never lossy UTF-8.
-    if env::var("__SST_NWASH_PIPE_RAW_CAT").as_deref() == Ok("1") {
+    if matches!(env::var("__SST_NWASH_PIPE_RAW_CAT").as_deref(), Ok("1")) {
         let mut stdout = io::stdout().lock();
         if args.is_empty() {
             stdout.write_all(input.unwrap_or_default())?;
