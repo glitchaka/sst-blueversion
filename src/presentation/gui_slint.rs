@@ -52,6 +52,80 @@ const INITIAL_ROWS: u16 = 31;
 const ISLAND_TOP: f32 = 6.0;
 const ISLAND_HEIGHT: f32 = 34.0;
 
+// The frameless Slint window can briefly report an icon-sized client area
+// *before* IsIconic becomes true, or *after* it becomes false. Never send
+// those transient dimensions to the PTY: vt100 reflows its screen irreversibly.
+fn valid_terminal_viewport(width: u32, height: u32, scale: f32, minimized: bool) -> bool {
+    if minimized || !scale.is_finite() {
+        return false;
+    }
+    let scale = scale.max(0.5);
+    width as f32 >= 360.0 * scale && height as f32 >= 220.0 * scale
+}
+
+#[derive(Default)]
+struct RestoreViewportGuard {
+    // A minimized/transient viewport must be followed by two consecutive
+    // identical, valid frame sizes before resizing the PTY again.
+    restoring: bool,
+    candidate: Option<(u32, u32)>,
+    stable_frames: u8,
+}
+
+impl RestoreViewportGuard {
+    fn drawable(&mut self, width: u32, height: u32, scale: f32, minimized: bool) -> bool {
+        if !valid_terminal_viewport(width, height, scale, minimized) {
+            self.restoring = true;
+            self.candidate = None;
+            self.stable_frames = 0;
+            return false;
+        }
+        if !self.restoring {
+            return true;
+        }
+        if self.candidate == Some((width, height)) {
+            self.stable_frames = self.stable_frames.saturating_add(1);
+        } else {
+            self.candidate = Some((width, height));
+            self.stable_frames = 1;
+        }
+        if self.stable_frames < 2 {
+            return false;
+        }
+        self.restoring = false;
+        self.candidate = None;
+        self.stable_frames = 0;
+        true
+    }
+}
+
+#[cfg(test)]
+mod viewport_regression_tests {
+    use super::{RestoreViewportGuard, valid_terminal_viewport};
+
+    #[test]
+    fn reject_iconic_and_transient_window_sizes() {
+        assert!(!valid_terminal_viewport(0, 0, 1.0, false));
+        assert!(!valid_terminal_viewport(150, 30, 1.0, false));
+        assert!(!valid_terminal_viewport(980, 640, 1.0, true));
+        assert!(!valid_terminal_viewport(450, 260, 1.5, false));
+        assert!(valid_terminal_viewport(980, 640, 1.0, false));
+        assert!(valid_terminal_viewport(980, 640, 2.0, false));
+    }
+
+    #[test]
+    fn do_not_restore_pty_until_client_size_is_stable() {
+        let mut guard = RestoreViewportGuard::default();
+        assert!(guard.drawable(980, 640, 1.0, false));
+        assert!(!guard.drawable(0, 0, 1.0, true));
+        assert!(!guard.drawable(150, 30, 1.0, false));
+        assert!(!guard.drawable(420, 300, 1.0, false));
+        assert!(!guard.drawable(980, 640, 1.0, false));
+        assert!(guard.drawable(980, 640, 1.0, false));
+        assert!(guard.drawable(980, 640, 1.0, false));
+    }
+}
+
 const FG: Rgb = Rgb(0xDF, 0xE8, 0xEF);
 const BG: Rgb = Rgb(0x11, 0x16, 0x29);
 const CURSOR: Rgb = Rgb(0x69, 0xC7, 0xFF);
@@ -658,6 +732,10 @@ impl TerminalModel {
     }
 
     fn resize(&mut self, width: u32, height: u32, scale: f32) {
+        // Defensive guard, even for call paths outside the window-state timer.
+        if !valid_terminal_viewport(width, height, scale, false) {
+            return;
+        }
         let scale = scale.max(0.5);
         if self.width == width
             && self.height == height
@@ -1677,6 +1755,7 @@ pub fn run() -> Result<()> {
     // The compositor may drop native composition state while the HWND is iconic.
     // Track the native transition instead of relying on the focus state alone.
     let last_minimized = Rc::new(Cell::new(false));
+    let restore_viewport = Rc::new(RefCell::new(RestoreViewportGuard::default()));
     // Winit/Windows can ignore a single activation request while the HWND is
     // still being shown. Retry briefly during startup so SST accepts typing
     // immediately without requiring a mouse click.
@@ -1688,6 +1767,7 @@ pub fn run() -> Result<()> {
         let last_status = last_status.clone();
         let last_focus = last_focus.clone();
         let last_minimized = last_minimized.clone();
+        let restore_viewport = restore_viewport.clone();
         let startup_focus_attempts = startup_focus_attempts.clone();
         let appearance_state = appearance_state.clone();
         let carousel_state = carousel_state.clone();
@@ -1702,6 +1782,12 @@ pub fn run() -> Result<()> {
             let size = ui.window().size();
             let scale = ui.window().scale_factor();
             let minimized = slint_hwnd(&ui).is_some_and(|hwnd| unsafe { IsIconic(hwnd) != 0 });
+            let drawable = restore_viewport.borrow_mut().drawable(
+                size.width,
+                size.height,
+                scale,
+                minimized,
+            );
 
             let reload_requested = {
                 let model = model.borrow();
@@ -1751,7 +1837,7 @@ pub fn run() -> Result<()> {
             }
 
             if let Some(hwnd) = slint_hwnd(&ui) {
-                if minimized {
+                if !drawable {
                     last_minimized.set(true);
                 } else if last_minimized.replace(false) {
                     // On restore, Windows may have discarded the DWM accent and
@@ -1761,9 +1847,9 @@ pub fn run() -> Result<()> {
                     unsafe { apply_window_effects(hwnd, &appearance); }
                     model.borrow_mut().dirty = true;
                 }
-                let mut focused = !minimized && unsafe { GetForegroundWindow() == hwnd };
+                let mut focused = drawable && unsafe { GetForegroundWindow() == hwnd };
 
-                if !focused && startup_focus_attempts.get() > 0 {
+                if drawable && !focused && startup_focus_attempts.get() > 0 {
                     unsafe { focus_native_window(hwnd); }
                     startup_focus_attempts.set(startup_focus_attempts.get().saturating_sub(1));
                     focused = unsafe { GetForegroundWindow() == hwnd };
@@ -1827,7 +1913,6 @@ pub fn run() -> Result<()> {
                 // Never turn a live PTY into a 2x2 terminal on minimize: doing
                 // so can reflow or discard the rendered scrollback on restore.
                 // Continue collecting PTY output, but keep its last good size.
-                let drawable = !minimized && size.width > 0 && size.height > 0;
                 if drawable {
                     model.resize(size.width, size.height, scale);
                 }
