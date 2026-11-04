@@ -1,6 +1,6 @@
 # SST TODO
 
-## Hoja de ruta posterior a 0.1.9-blue.9 (planificada, NO incluida en la release correctiva)
+## Hoja de ruta posterior a 0.1.9-blue.10 (planificada, NO incluida en la release correctiva)
 
 ### Actualizaciones
 - [ ] Después de aplicar una actualización y relanzar SST, mostrar temporalmente las novedades de la versión aplicada antes de continuar al prompt normal.
