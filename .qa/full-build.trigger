@@ -1,1 +1,1 @@
-2026-11-04 — validar suite Rust y compilación Windows tras corrección de fixtures heredoc/case y pipelines.
+2026-11-04 — Windows CI final: pruebas Rust, casos heredoc CRLF/case, compatibilidad CLI y build SST.
