@@ -1327,7 +1327,7 @@ fn unzip_cmd(args: &[String], cwd: &Path) -> Result<CommandOutput> {
     if list_only {
         for index in 0..archive.len() {
             let entry = archive.by_index(index)?;
-            out.push_str(entry.name());
+            out.push_str(entry.name()?.as_ref());
             out.push('\n');
         }
         return Ok(CommandOutput::ok(out));
@@ -1337,9 +1337,9 @@ fn unzip_cmd(args: &[String], cwd: &Path) -> Result<CommandOutput> {
 
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
-        let Some(relative) = entry.enclosed_name().map(Path::to_path_buf) else {
+        let Some(relative) = entry.enclosed_name() else {
             return Ok(CommandOutput::error(
-                format!("unzip: ruta insegura en archivo: {}", entry.name()),
+                format!("unzip: ruta insegura en archivo: {:?}", entry.name()),
                 2,
             ));
         };

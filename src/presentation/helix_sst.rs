@@ -124,7 +124,7 @@ fn ensure_installed() -> Result<Install> {
 
             for index in 0..archive.len() {
                 let mut entry = archive.by_index(index)?;
-                let Some(relative) = entry.enclosed_name().map(Path::to_path_buf) else {
+                let Some(relative) = entry.enclosed_name() else {
                     continue;
                 };
                 let destination = root.join(relative);

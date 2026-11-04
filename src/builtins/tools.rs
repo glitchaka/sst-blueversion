@@ -507,7 +507,7 @@ fn extract_zip(zip_path: &Path, destination: &Path) -> Result<()> {
 
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
-        let Some(relative) = entry.enclosed_name().map(Path::to_path_buf) else {
+        let Some(relative) = entry.enclosed_name() else {
             bail!("el paquete contiene una ruta insegura");
         };
         let output = destination.join(relative);

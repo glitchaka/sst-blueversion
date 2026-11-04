@@ -74,7 +74,7 @@ fn extract_zip(source: &Path, destination: &Path) -> Result<()> {
     let mut archive = zip::ZipArchive::new(file)?;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index)?;
-        let Some(relative) = entry.enclosed_name().map(Path::to_path_buf) else {
+        let Some(relative) = entry.enclosed_name() else {
             continue;
         };
         let output = destination.join(relative);
