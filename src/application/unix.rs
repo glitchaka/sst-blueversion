@@ -369,6 +369,12 @@ fn cut(args: &[String], input: Option<&[u8]>, cwd: &Path) -> Result<CommandOutpu
                     field = value.parse::<usize>().unwrap_or(1).max(1);
                 }
             }
+            other if other.starts_with("-d") && other.len() > 2 => {
+                delimiter = other[2..].chars().next().unwrap_or('\t');
+            }
+            other if other.starts_with("-f") && other.len() > 2 => {
+                field = other[2..].parse::<usize>().unwrap_or(1).max(1);
+            }
             other if !other.starts_with('-') => file = Some(other),
             _ => {}
         }
@@ -1531,6 +1537,20 @@ mod archive_tests {
         ));
         fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    #[test]
+    fn cut_accepts_attached_delimiter_and_field_options() {
+        let input = b"a:b:c\n";
+        let cwd = env::temp_dir();
+        let attached = cut(&["-d:".into(), "-f2".into()], Some(input), &cwd).unwrap();
+        assert_eq!(attached.status, 0);
+        assert_eq!(attached.stdout, "b\n");
+        let separated = cut(
+            &["-d".into(), ":".into(), "-f".into(), "2".into()],
+            Some(input), &cwd,
+        ).unwrap();
+        assert_eq!(separated.stdout, attached.stdout);
     }
 
     #[test]
