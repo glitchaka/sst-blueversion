@@ -1,10 +1,14 @@
 name: Release SST
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.release/publish-0.1.9-blue.9.trigger'
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Crear también la GitHub Release privada del repositorio fuente'
+        description: 'Crear también la GitHub Release pública del repositorio fuente'
         required: true
         type: boolean
         default: true
@@ -31,7 +35,7 @@ jobs:
           }
           if ([string]::IsNullOrWhiteSpace($env:UPDATE_TOKEN)) {
             'can_publish=false' >> $env:GITHUB_OUTPUT
-            Write-Warning 'SST_UPDATE_PUBLISH_TOKEN no está configurado: se compilará y verificará la release, pero no se activará adm-toolbox.'
+            Write-Warning 'Falta SST_UPDATE_PUBLISH_TOKEN: se publicará el ejecutable en sst-blueversion; el manifiesto de adm-toolbox necesita activación externa.'
           } else {
             'can_publish=true' >> $env:GITHUB_OUTPUT
           }
@@ -104,6 +108,26 @@ jobs:
         shell: pwsh
         run: cargo build --release --bin sst --bin sst_sfx_packager --bin sst_sfx_stub
 
+      - name: Rust regression tests (blocking release)
+        shell: pwsh
+        run: cargo test --workspace --all-targets
+
+      - name: Verify release terminal black-box (blocking release)
+        shell: pwsh
+        run: python ./scripts/terminal_blackbox_stress.py --exe ./target/release/sst.exe --stress-scale 1
+
+      - name: Verify GUI idle resources (blocking release)
+        shell: pwsh
+        run: ./scripts/gui_idle_resource_probe.ps1 -Exe ./target/release/sst.exe
+
+      - name: Install RustSec scanner
+        shell: pwsh
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
+      - name: Security audit must pass before release
+        shell: pwsh
+        run: cargo audit --file Cargo.lock
+
       - name: Package final self-extracting release
         shell: pwsh
         run: ./scripts/package-release.ps1
@@ -155,6 +179,32 @@ jobs:
           name: SST-${{ steps.version.outputs.version }}
           path: dist/*
           if-no-files-found: error
+
+      - name: Publish source GitHub Release (public backup for updater)
+        if: ${{ github.event_name == 'push' || inputs.publish_release }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $tag = "v$env:VERSION"
+          $notes = ".release/$tag.md"
+          if (-not (Test-Path -LiteralPath $notes)) {
+            throw "Faltan notas de release: $notes"
+          }
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            if ($env:VERSION -match '-blue\.\d+$') {
+              git tag -f $tag $env:GITHUB_SHA
+              git push --force origin $tag
+            }
+            gh release edit $tag --title "Shell Shock Tool $env:VERSION" --notes-file $notes
+          } else {
+            gh release create $tag --target $env:GITHUB_SHA --title "Shell Shock Tool $env:VERSION" --notes-file $notes
+          }
+
+          gh release upload $tag dist/sst.exe dist/sst-update.json dist/version.txt "dist/SST-Setup-$env:VERSION.exe" --clobber
 
       - name: Publish public update payload
         if: ${{ steps.publisher.outputs.can_publish == 'true' }}
@@ -245,28 +295,3 @@ jobs:
 
           Write-Host "Canal blue activado en SST $env:VERSION"
 
-      - name: Create or refresh private source release
-        if: ${{ inputs.publish_release }}
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          $tag = "v$env:VERSION"
-          $notes = ".release/$tag.md"
-          if (-not (Test-Path -LiteralPath $notes)) {
-            throw "Faltan notas de release: $notes"
-          }
-
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            if ($env:VERSION -match '-blue\.\d+$') {
-              git tag -f $tag $env:GITHUB_SHA
-              git push --force origin $tag
-            }
-            gh release edit $tag --title "Shell Shock Tool $env:VERSION" --notes-file $notes
-          } else {
-            gh release create $tag --target $env:GITHUB_SHA --title "Shell Shock Tool $env:VERSION" --notes-file $notes
-          }
-
-          gh release upload $tag dist/sst.exe dist/sst-update.json dist/version.txt "dist/SST-Setup-$env:VERSION.exe" --clobber

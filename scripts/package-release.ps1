@@ -7,8 +7,10 @@ if (-not $versionMatch.Success) {
     throw 'No se pudo obtener la version desde Cargo.toml.'
 }
 $version = $versionMatch.Groups[1].Value
-$publicReleaseTag = "sst-v$version"
-$publicReleaseBase = "https://github.com/glitchaka/adm-toolbox/releases/download/$publicReleaseTag"
+$publicReleaseTag = "v$version"
+# La release fuente es pública y utiliza GITHUB_TOKEN; no depende de un PAT
+# cross-repo cuya ausencia dejó el canal adm-toolbox sin activar.
+$publicReleaseBase = "https://github.com/glitchaka/sst-blueversion/releases/download/$publicReleaseTag"
 $publicSstUrl = "$publicReleaseBase/sst.exe"
 $publicSetupUrl = "$publicReleaseBase/SST-Setup-$version.exe"
 

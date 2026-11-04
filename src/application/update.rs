@@ -90,10 +90,17 @@ where
 
     if !is_newer(&manifest.version, current_version())? {
         cleanup_obsolete_pending(paths)?;
-        notify(&format!(
-            "\x1b[38;5;250mActualizaciones: SST {} está al día.\x1b[0m\r\n\r\n",
-            current_version()
-        ));
+        if is_newer(current_version(), &manifest.version)? {
+            notify(&format!(
+                "\x1b[38;5;214mActualizaciones: canal desactualizado (publica {}, instalado {}).\x1b[0m\r\n\r\n",
+                manifest.version, current_version()
+            ));
+        } else {
+            notify(&format!(
+                "\x1b[38;5;250mActualizaciones: SST {} está al día.\x1b[0m\r\n\r\n",
+                current_version()
+            ));
+        }
         return Ok(());
     }
 
@@ -139,6 +146,12 @@ pub fn check_now(paths: &AppPaths, stage: bool) -> Result<String> {
     let manifest = fetch_manifest(paths)?;
     validate_manifest(&manifest)?;
     if !is_newer(&manifest.version, current_version())? {
+        if is_newer(current_version(), &manifest.version)? {
+            return Ok(format!(
+                "Canal de actualización desactualizado: publica {}, SST instalado {}.\n",
+                manifest.version, current_version()
+            ));
+        }
         return Ok(format!(
             "SST {} ya está actualizado. Última versión publicada: {}\n",
             current_version(), manifest.version
