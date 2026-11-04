@@ -257,7 +257,7 @@ impl Parser {
         while !matches!(self.peek(), Token::RParen | Token::Eof) {
             match self.peek().clone() {
                 Token::Word(word) => { self.pos += 1; words.push(word); }
-                Token::Semi => { self.pos += 1; }
+                Token::Semi | Token::Newline => { self.pos += 1; }
                 other => bail!("asignación de array: token inesperado {other:?}"),
             }
         }
@@ -321,7 +321,7 @@ impl Parser {
         let mut words = Vec::new();
         if self.word_is("in") {
             self.pos += 1;
-            while !matches!(self.peek(), Token::Semi | Token::Eof) {
+            while !matches!(self.peek(), Token::Semi | Token::Newline | Token::Eof) {
                 words.push(self.take_word()?);
             }
         }
@@ -339,7 +339,7 @@ impl Parser {
         let mut words = Vec::new();
         if self.word_is("in") {
             self.pos += 1;
-            while !matches!(self.peek(), Token::Semi | Token::Eof) {
+            while !matches!(self.peek(), Token::Semi | Token::Newline | Token::Eof) {
                 words.push(self.take_word()?);
             }
         }
@@ -374,7 +374,7 @@ impl Parser {
         let mut arms = Vec::new();
 
         while !self.word_is("esac") {
-            while matches!(self.peek(), Token::Semi) { self.pos += 1; }
+            while matches!(self.peek(), Token::Semi | Token::Newline) { self.pos += 1; }
             if self.word_is("esac") { break; }
 
             if matches!(self.peek(), Token::LParen) { self.pos += 1; }
@@ -411,6 +411,7 @@ impl Parser {
         while !self.word_is("]]") {
             match self.peek().clone() {
                 Token::Eof => bail!("[[: falta ']]'"),
+                Token::Newline => { self.pos += 1; }
                 Token::Word(word) => { self.pos += 1; expression.push(word); }
                 Token::AndIf => { self.pos += 1; expression.push("&&".to_owned()); }
                 Token::OrIf => { self.pos += 1; expression.push("||".to_owned()); }
@@ -434,6 +435,7 @@ impl Parser {
         loop {
             match self.peek().clone() {
                 Token::Eof => bail!("((: expresión sin cerrar"),
+                Token::Newline => { self.pos += 1; }
                 Token::LParen => { depth += 1; self.pos += 1; parts.push("(".to_owned()); }
                 Token::RParen if depth > 0 => { depth -= 1; self.pos += 1; parts.push(")".to_owned()); }
                 Token::RParen if self.tokens.get(self.pos + 1) == Some(&Token::RParen) => {
@@ -490,7 +492,7 @@ impl Parser {
                                 literal.push_str(&word);
                                 self.pos += 1;
                             }
-                            Token::Semi => {
+                            Token::Semi | Token::Newline => {
                                 literal.push(' ');
                                 self.pos += 1;
                             }
@@ -533,7 +535,7 @@ impl Parser {
     }
 
     fn skip_semi(&mut self) {
-        while matches!(self.peek(), Token::Semi) { self.pos += 1; }
+        while matches!(self.peek(), Token::Semi | Token::Newline) { self.pos += 1; }
     }
 
     fn is_stop(&self, stops: &[&str]) -> bool {
@@ -638,6 +640,27 @@ mod tests {
         assert!(matches!(
             Parser::new(lex(source).unwrap()).parse().unwrap(),
             AstNode::If { .. }
+        ));
+    }
+
+    #[test]
+    fn accepts_newlines_inside_bash_conditionals() {
+        let source = "if [[ \"one\" == \"one\" &&\\n \"two\" != \"three\" ]]; then echo yes; fi";
+        assert!(matches!(
+            Parser::new(lex(source).unwrap()).parse().unwrap(),
+            AstNode::If { .. }
+        ));
+
+        // An explicit semicolon is not equivalent to whitespace in [[ ]].
+        assert!(Parser::new(lex("[[ a == a; ]]").unwrap()).parse().is_err());
+    }
+
+    #[test]
+    fn parses_grouped_regular_expressions_inside_conditional() {
+        let source = r#"[[ "192.168.1.3" =~ ([0-9]{1,3}\\.){3}[0-9]{1,3} ]]"#;
+        assert!(matches!(
+            Parser::new(lex(source).unwrap()).parse().unwrap(),
+            AstNode::Conditional(_)
         ));
     }
 
