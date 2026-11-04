@@ -5152,64 +5152,103 @@ impl Interpreter {
         let mut variables = Vec::new();
         let mut index = 0usize;
 
+        // Bash accepts short options in groups, including flags followed
+        // by an attached value: read -rsn1 choice, read -p"Name: " name.
         while index < args.len() {
-            match args[index].as_str() {
-                "-p" => {
-                    index += 1;
-                    prompt = args.get(index).cloned().unwrap_or_default();
+            let arg = &args[index];
+            if arg == "--" {
+                variables.extend(args[index + 1..].iter().cloned());
+                break;
+            }
+            if arg.starts_with('-') && arg.len() > 1 {
+                let mut options = arg[1..].chars();
+                while let Some(option) = options.next() {
+                    match option {
+                        's' => silent = true,
+                        'r' => raw = true,
+                        'e' => {
+                            editing = true;
+                            bash_completion = false;
+                        }
+                        'E' => {
+                            editing = true;
+                            bash_completion = true;
+                        }
+                        'p' | 'n' | 'N' | 'a' | 'd' | 't' | 'u' | 'i' => {
+                            // The rest of the same option token is the value,
+                            // otherwise consume the next argument.
+                            let attached: String = options.collect();
+                            let value = if !attached.is_empty() {
+                                attached
+                            } else {
+                                index += 1;
+                                let Some(value) = args.get(index).cloned() else {
+                                    return Ok(ExecutionResult::from_parts(
+                                        String::new(),
+                                        format!("read: la opción -{option} requiere un argumento\\n"),
+                                        2,
+                                    ));
+                                };
+                                value
+                            };
+                            match option {
+                                'p' => prompt = value,
+                                'n' | 'N' => {
+                                    exact_chars = option == 'N';
+                                    let Ok(limit) = value.parse::<usize>() else {
+                                        return Ok(ExecutionResult::from_parts(
+                                            String::new(),
+                                            format!("read: valor inválido para -{option}: {value}\\n"),
+                                            2,
+                                        ));
+                                    };
+                                    max_chars = Some(limit);
+                                }
+                                'a' => array_name = Some(value),
+                                'd' => delimiter = value.chars().next().unwrap_or('\\0'),
+                                't' => {
+                                    let Ok(seconds) = value.parse::<f64>() else {
+                                        return Ok(ExecutionResult::from_parts(
+                                            String::new(),
+                                            format!("read: timeout inválido: {value}\\n"),
+                                            2,
+                                        ));
+                                    };
+                                    if !seconds.is_finite() || seconds < 0.0 {
+                                        return Ok(ExecutionResult::from_parts(
+                                            String::new(),
+                                            format!("read: timeout inválido: {value}\\n"),
+                                            2,
+                                        ));
+                                    }
+                                    timeout = Some(std::time::Duration::from_secs_f64(seconds));
+                                }
+                                'u' => {
+                                    let Ok(descriptor) = value.parse::<i32>() else {
+                                        return Ok(ExecutionResult::from_parts(
+                                            String::new(),
+                                            format!("read: descriptor inválido: {value}\\n"),
+                                            2,
+                                        ));
+                                    };
+                                    fd = descriptor;
+                                }
+                                'i' => initial = value,
+                                _ => unreachable!(),
+                            }
+                            break;
+                        }
+                        _ => {
+                            return Ok(ExecutionResult::from_parts(
+                                String::new(),
+                                format!("read: opción no válida: -{option}\\n"),
+                                2,
+                            ));
+                        }
+                    }
                 }
-                "-s" => silent = true,
-                "-r" => raw = true,
-                "-e" => {
-                    editing = true;
-                    bash_completion = false;
-                }
-                "-E" => {
-                    editing = true;
-                    bash_completion = true;
-                }
-                "-n" | "-N" => {
-                    exact_chars = args[index] == "-N";
-                    index += 1;
-                    max_chars = args.get(index).and_then(|v| v.parse::<usize>().ok());
-                }
-                "-a" => {
-                    index += 1;
-                    array_name = args.get(index).cloned();
-                }
-                "-d" => {
-                    index += 1;
-                    delimiter = args.get(index)
-                        .and_then(|value| value.chars().next())
-                        .unwrap_or('\0');
-                }
-                "-t" => {
-                    index += 1;
-                    let seconds = args.get(index)
-                        .and_then(|value| value.parse::<f64>().ok())
-                        .unwrap_or(0.0);
-                    timeout = Some(std::time::Duration::from_secs_f64(seconds.max(0.0)));
-                }
-                "-u" => {
-                    index += 1;
-                    fd = args.get(index).and_then(|value| value.parse::<i32>().ok()).unwrap_or(-1);
-                }
-                "-i" => {
-                    index += 1;
-                    initial = args.get(index).cloned().unwrap_or_default();
-                }
-                "--" => {
-                    variables.extend(args[index + 1..].iter().cloned());
-                    break;
-                }
-                value if value.starts_with('-') => {
-                    return Ok(ExecutionResult::from_parts(
-                        String::new(),
-                        format!("read: opción no válida: {value}\n"),
-                        2,
-                    ));
-                }
-                value => variables.push(value.to_owned()),
+            } else {
+                variables.push(arg.clone());
             }
             index += 1;
         }
@@ -10438,6 +10477,32 @@ mod tests {
         assert_eq!(shell.expand_scalar("${missing:-fallback}").unwrap(), "fallback");
     }
 
+
+    #[test]
+    fn read_accepts_grouped_short_options_and_attached_values() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let first = shell.execute_text("read -rsn1 choice <<< '123'").unwrap();
+        assert_eq!(first.status, 0);
+        assert_eq!(shell.env.get("choice"), "1");
+
+        let second = shell.execute_text("read -rp'Nombre: ' name <<< 'Ada Lovelace'").unwrap();
+        assert_eq!(second.status, 0);
+        assert_eq!(shell.env.get("name"), "Ada Lovelace");
+
+        let third = shell.execute_text("read -r -N2 pair <<< 'xyz'").unwrap();
+        assert_eq!(third.status, 0);
+        assert_eq!(shell.env.get("pair"), "xy");
+    }
+
+    #[test]
+    fn regex_operands_and_multiline_conditional_work_together() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell.execute_text(
+            "if [[ '192.168.1.70' =~ ([0-9]{1,3}\\\\.){3}[0-9]{1,3} &&\\n -n 'ok' ]]; then echo match; fi"
+        ).unwrap();
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "match\\n");
+    }
 
     #[test]
     fn case_conditional_and_arithmetic_commands_work() {
