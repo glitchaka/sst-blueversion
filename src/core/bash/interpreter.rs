@@ -218,6 +218,7 @@ pub trait ShellCommandHost: Send + Sync {
         &self,
         _commands: &[String],
         _stderr_to_pipe: &[bool],
+        _raw_cat_stages: &[bool],
         _cwd: &Path,
         _env: &HashMap<String, String>,
         _stdin: Option<&[u8]>,
@@ -1653,16 +1654,34 @@ impl Interpreter {
         let use_lastpipe = self.env.option_enabled("lastpipe")
             && !self.env.option_enabled("monitor")
             && parts.len() > 1;
+        // Nwash evaluates pipelines of native textual commands in process;
+        // external, redirected and binary pipelines retain OS pipe transport.
+        let native_text_pipeline = parts.iter().all(|part| match part {
+            AstNode::Simple(command) => command.redirects.is_empty()
+                && command.words.first().is_some_and(|name| {
+                    self.shell_builtin_name(name) || self.host.command_is_builtin(name)
+                })
+                && !(command.words.first().is_some_and(|name| name == "cat")
+                    && command.words.len() > 1),
+            _ => false,
+        });
+        let raw_cat_stages: Vec<bool> = parts.iter().enumerate().map(|(index, part)| {
+            index + 1 < parts.len() && matches!(part,
+                AstNode::Simple(command) if command.redirects.is_empty()
+                    && command.words.first().is_some_and(|name| name == "cat")
+                    && command.words.len() > 1)
+        }).collect();
         let prelude = self.shell_child_prelude();
         let commands: Vec<String> = parts
             .iter()
             .map(|part| format!("{prelude}{}", render_ast(part)))
             .collect();
         let child_env = self.shell_child_environment();
-        if !use_lastpipe {
+        if !use_lastpipe && !native_text_pipeline {
             if let Some((mut result, statuses)) = self.host.execute_shell_pipeline(
                 &commands,
                 stderr_to_pipe,
+                &raw_cat_stages,
                 &self.env.cwd,
                 &child_env,
                 stdin,
@@ -8086,7 +8105,7 @@ fn heredoc_specs(line: &str) -> Vec<HeredocSpec> {
             b'\\' => { i = (i + 2).min(bytes.len()); continue; }
             _ => {}
         }
-        if single || double || bytes[i] != b'<' || bytes[i + 1] != b'<' || bytes.get(i + 2) == Some(&b'<') {
+        if single || double || bytes[i] != b'<' || bytes[i + 1] != b'<' || bytes.get(i + 2) == Some(&b'<') || (i > 0 && bytes[i - 1] == b'<') {
             i += 1;
             continue;
         }
@@ -8509,6 +8528,8 @@ fn quoted_array_expansion(raw: &str, suffix: &str) -> Option<String> {
         return None;
     }
     let inner = &raw[PREFIX.len()..raw.len() - 2];
+    // Length and key expansions are not quoted-array value expansions.
+    if inner.starts_with('#') || inner.starts_with('!') { return None; }
     let needle = format!("[{suffix}]");
     inner.strip_suffix(&needle).map(str::to_owned)
 }
@@ -10369,8 +10390,14 @@ mod tests {
 
     impl ShellCommandHost for NullHost {
         fn execute_builtin(
-            &self, _name: &str, _args: &[String], _cwd: &Path, _stdin: Option<&[u8]>,
+            &self, name: &str, _args: &[String], _cwd: &Path, stdin: Option<&[u8]>,
         ) -> Result<Option<ExecutionResult>> {
+            if name == "cat" {
+                return Ok(Some(ExecutionResult::from_parts(
+                    String::from_utf8_lossy(stdin.unwrap_or_default()).into_owned(),
+                    String::new(), 0,
+                )));
+            }
             Ok(None)
         }
 
@@ -10417,7 +10444,7 @@ mod tests {
         let case_result = shell
             .execute_text("case $x in alpha) echo no ;; beta|gamma) echo yes ;; *) echo fallback ;; esac")
             .unwrap();
-        assert!(case_result.stdout.contains("external:echo"));
+        assert_eq!(case_result.stdout, "yes\n");
 
         assert_eq!(shell.execute_text("[[ -n $x && $x == beta ]]").unwrap().status, 0);
         assert_eq!(shell.execute_text("[[ $x == nope ]]").unwrap().status, 1);
@@ -10607,6 +10634,25 @@ esac"#,
 
         assert_eq!(result.status, 0);
         assert_eq!(result.stdout, "user=tester\nvalue=42\n");
+    }
+
+    #[test]
+    fn here_string_and_quoted_heredoc_remain_distinct() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let quoted = shell.execute_text("x=secret\ncat <<'EOF'\n$x\nEOF\n").unwrap();
+        assert_eq!(quoted.status, 0);
+        assert_eq!(quoted.stdout, "$x\n");
+        let here_string = shell.execute_text("cat <<< \"hello\"").unwrap();
+        assert_eq!(here_string.status, 0);
+        assert_eq!(here_string.stdout, "hello\n");
+    }
+
+    #[test]
+    fn array_length_expands_inside_quoted_argument() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell.execute_text("a=(zero one two); printf \"%s|%s|%s\\n\" \"${a[0]}\" \"${a[2]}\" \"${#a[@]}\"").unwrap();
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "zero|two|3\n");
     }
 
     #[test]
