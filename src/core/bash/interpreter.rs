@@ -9719,8 +9719,8 @@ fn expand_alias_tokens(
                     command_position = true;
                     force_next_alias = false;
                 }
-                Token::Semi => {
-                    out.push(Token::Semi);
+                Token::Semi | Token::Newline => {
+                    out.push(token);
                     command_position = true;
                     force_next_alias = false;
                 }
