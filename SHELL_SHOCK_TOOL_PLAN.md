@@ -1,5 +1,8 @@
 # Shell Shock Tool — Alcance y temas a cubrir
 
+> **Auditoría del código y pendientes reales:** [AUDIT_STATUS_2026-11-04.md](AUDIT_STATUS_2026-11-04.md). Para el estado del módulo de triage, ver [SECURITY_TRIAGE_STATUS.md](SECURITY_TRIAGE_STATUS.md).
+> La existencia de un requisito en este plan no implica que esté implementado ni probado.
+
 Shell Shock Tool será una consola portable de soporte técnico para Windows construida en Rust. Su shell base utiliza un motor Bash-compatible escrito en Rust y combina utilidades Unix integradas con herramientas y capacidades nativas de Windows.
 
 El foco es administración y diagnóstico de equipos y redes autorizadas. La consola será el centro del producto; la GUI, si existe, será complementaria.
