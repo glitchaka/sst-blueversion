@@ -1508,7 +1508,9 @@ impl Interpreter {
         let mut counter = 0usize;
 
         while index < lines.len() {
-            let line = lines[index];
+            // Windows stdin may contain CRLF. Bash here-document delimiters
+            // must not include the trailing carriage return.
+            let line = lines[index].trim_end_matches('\r');
             let specs = heredoc_specs(line);
             if specs.is_empty() {
                 output.push_str(line);
@@ -1525,10 +1527,11 @@ impl Interpreter {
                 let mut body = String::new();
                 let mut found = false;
                 while body_cursor < lines.len() {
+                    let body_line = lines[body_cursor].trim_end_matches('\r');
                     let candidate = if spec.strip_tabs {
-                        lines[body_cursor].trim_start_matches('\t')
+                        body_line.trim_start_matches('\t')
                     } else {
-                        lines[body_cursor]
+                        body_line
                     };
                     if candidate == spec.delimiter {
                         found = true;
@@ -10642,6 +10645,9 @@ esac"#,
         let quoted = shell.execute_text("x=secret\ncat <<'EOF'\n$x\nEOF\n").unwrap();
         assert_eq!(quoted.status, 0);
         assert_eq!(quoted.stdout, "$x\n");
+        let crlf = shell.execute_text("cat <<'EOF'\r\n$literal\r\nEOF\r\n").unwrap();
+        assert_eq!(crlf.status, 0);
+        assert_eq!(crlf.stdout, "$literal\n");
         let here_string = shell.execute_text("cat <<< \"hello\"").unwrap();
         assert_eq!(here_string.status, 0);
         assert_eq!(here_string.stdout, "hello\n");
