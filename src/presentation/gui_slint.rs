@@ -1701,6 +1701,7 @@ pub fn run() -> Result<()> {
 
             let size = ui.window().size();
             let scale = ui.window().scale_factor();
+            let minimized = slint_hwnd(&ui).is_some_and(|hwnd| unsafe { IsIconic(hwnd) != 0 });
 
             let reload_requested = {
                 let model = model.borrow();
@@ -1750,7 +1751,6 @@ pub fn run() -> Result<()> {
             }
 
             if let Some(hwnd) = slint_hwnd(&ui) {
-                let minimized = unsafe { IsIconic(hwnd) != 0 };
                 if minimized {
                     last_minimized.set(true);
                 } else if last_minimized.replace(false) {
@@ -1823,10 +1823,17 @@ pub fn run() -> Result<()> {
 
             {
                 let mut model = model.borrow_mut();
-                model.resize(size.width, size.height, scale);
+                // Windows may report a zero-sized client area while iconic.
+                // Never turn a live PTY into a 2x2 terminal on minimize: doing
+                // so can reflow or discard the rendered scrollback on restore.
+                // Continue collecting PTY output, but keep its last good size.
+                let drawable = !minimized && size.width > 0 && size.height > 0;
+                if drawable {
+                    model.resize(size.width, size.height, scale);
+                }
                 model.tick();
 
-                if model.dirty {
+                if drawable && model.dirty {
                     ui.set_terminal_image(model.render());
                 }
 
