@@ -1,0 +1,30 @@
+name: SST dependency security audit
+
+# Separate from the Windows functionality build: RustSec analyzes Cargo.lock
+# without compiling SST or treating formatting/Clippy as a security verdict.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/dependency-audit.yml'
+  schedule:
+    - cron: '0 12 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-audit:
+    name: RustSec / Cargo.lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Scan locked dependencies (do not suppress advisories)
+        run: cargo audit --file Cargo.lock
