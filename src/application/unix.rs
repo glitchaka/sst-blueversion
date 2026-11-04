@@ -148,6 +148,26 @@ fn ls(args: &[String], cwd: &Path) -> Result<CommandOutput> {
 }
 
 fn cat(args: &[String], input: Option<&[u8]>, cwd: &Path) -> Result<CommandOutput> {
+    // A binary cat in an OS pipeline must write original bytes, never lossy UTF-8.
+    if env::var("__SST_NWASH_PIPE_RAW_CAT").as_deref() == Ok("1") {
+        let mut stdout = io::stdout().lock();
+        if args.is_empty() {
+            stdout.write_all(input.unwrap_or_default())?;
+        } else {
+            for arg in args {
+                if arg == "-" {
+                    stdout.write_all(input.unwrap_or_default())?;
+                } else {
+                    let path = resolve_path(cwd, arg);
+                    let mut file = fs::File::open(&path)
+                        .with_context(|| format!("cat: no se pudo leer {}", path.display()))?;
+                    io::copy(&mut file, &mut stdout)?;
+                }
+            }
+        }
+        stdout.flush()?;
+        return Ok(CommandOutput::ok(""));
+    }
     if args.is_empty() {
         return Ok(CommandOutput::ok(input_text(input)));
     }
@@ -242,13 +262,59 @@ fn grep(args: &[String], input: Option<&[u8]>, cwd: &Path) -> Result<CommandOutp
 }
 
 fn wc(args: &[String], input: Option<&[u8]>, cwd: &Path) -> Result<CommandOutput> {
-    let text = source_text(args.first().map(String::as_str), input, cwd)?;
-    Ok(CommandOutput::ok(format!(
-        "{} {} {}\n",
-        text.lines().count(),
-        text.split_whitespace().count(),
-        text.as_bytes().len()
-    )))
+    let mut show_lines = false;
+    let mut show_words = false;
+    let mut show_bytes = false;
+    let mut show_chars = false;
+    let mut show_max_line = false;
+    let mut file = None;
+    let mut operands = false;
+
+    for arg in args {
+        if !operands && arg == "--" {
+            operands = true;
+        } else if !operands && arg.starts_with('-') && arg.len() > 1 {
+            for flag in arg[1..].chars() {
+                match flag {
+                    'l' => show_lines = true,
+                    'w' => show_words = true,
+                    'c' => show_bytes = true,
+                    'm' => show_chars = true,
+                    'L' => show_max_line = true,
+                    _ => return Ok(CommandOutput::error(format!("wc: opción desconocida -{flag}"), 2)),
+                }
+            }
+        } else {
+            file = Some(arg.as_str());
+        }
+    }
+
+    let bytes = if let Some(path) = file.filter(|path| *path != "-") {
+        fs::read(resolve_path(cwd, path))?
+    } else {
+        input.unwrap_or_default().to_vec()
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let lines = bytes.iter().filter(|byte| **byte == b'\n').count();
+    let words = text.split_whitespace().count();
+    let chars = text.chars().count();
+    let max_line = text.lines().map(|line| line.chars().count()).max().unwrap_or(0);
+
+    if !(show_lines || show_words || show_bytes || show_chars || show_max_line) {
+        show_lines = true;
+        show_words = true;
+        show_bytes = true;
+    }
+    let mut counts = Vec::new();
+    if show_lines { counts.push(lines.to_string()); }
+    if show_words { counts.push(words.to_string()); }
+    if show_chars { counts.push(chars.to_string()); }
+    if show_bytes { counts.push(bytes.len().to_string()); }
+    if show_max_line { counts.push(max_line.to_string()); }
+    if let Some(file) = file.filter(|path| *path != "-") {
+        counts.push(file.to_owned());
+    }
+    Ok(CommandOutput::ok(format!("{}\n", counts.join(" "))))
 }
 
 fn sort(args: &[String], input: Option<&[u8]>, cwd: &Path) -> Result<CommandOutput> {
