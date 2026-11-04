@@ -19,7 +19,7 @@ use tar::{Archive as TarArchive, Builder as TarBuilder};
 use zip::{
     ZipArchive,
     ZipWriter,
-    write::FileOptions,
+    write::SimpleFileOptions,
 };
 use crate::adapters::terminal::io as terminal_io;
 use sha2::{Digest, Sha256};
@@ -1263,7 +1263,7 @@ fn add_path_to_zip(
         } else {
             format!("{name}/")
         };
-        writer.add_directory(directory_name, FileOptions::default())?;
+        writer.add_directory(directory_name, SimpleFileOptions::default())?;
 
         for entry in fs::read_dir(source)? {
             let entry = entry?;
@@ -1276,7 +1276,7 @@ fn add_path_to_zip(
     } else {
         writer.start_file(
             name,
-            FileOptions::default()
+            SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated),
         )?;
         let mut input = fs::File::open(source)?;
