@@ -645,7 +645,7 @@ mod tests {
 
     #[test]
     fn accepts_newlines_inside_bash_conditionals() {
-        let source = "if [[ \"one\" == \"one\" &&\\n \"two\" != \"three\" ]]; then echo yes; fi";
+        let source = "if [[ \"one\" == \"one\" &&\n \"two\" != \"three\" ]]; then echo yes; fi";
         assert!(matches!(
             Parser::new(lex(source).unwrap()).parse().unwrap(),
             AstNode::If { .. }
@@ -657,7 +657,7 @@ mod tests {
 
     #[test]
     fn parses_grouped_regular_expressions_inside_conditional() {
-        let source = r#"[[ "192.168.1.3" =~ ([0-9]{1,3}\\.){3}[0-9]{1,3} ]]"#;
+        let source = r#"[[ "192.168.1.3" =~ ([0-9]{1,3}\.){3}[0-9]{1,3} ]]"#;
         assert!(matches!(
             Parser::new(lex(source).unwrap()).parse().unwrap(),
             AstNode::Conditional(_)
