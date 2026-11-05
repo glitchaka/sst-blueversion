@@ -8,6 +8,9 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - 'src/presentation/gui_slint_wrapper.rs'
+      - 'src/application/update.rs'
+      - 'src/bin/sst_updater.rs'
+      - 'scripts/test-independent-updater.ps1'
       - 'scripts/test-self-update.ps1'
       - 'scripts/test-self-update-failures.ps1'
       - '.github/workflows/self-update-regression.yml'
@@ -56,7 +59,7 @@ jobs:
 
       - name: Build SST for updater regression
         shell: pwsh
-        run: cargo build --bin sst
+        run: cargo build --bin sst --bin sst_updater
 
       - name: Exercise real self-update handoff
         shell: pwsh
@@ -65,3 +68,7 @@ jobs:
       - name: Exercise updater failure matrix
         shell: pwsh
         run: ./scripts/test-self-update-failures.ps1 -SstPath ./target/debug/sst.exe
+
+      - name: Exercise independent updater with error injection
+        shell: pwsh
+        run: ./scripts/test-independent-updater.ps1 -UpdaterPath ./target/debug/sst_updater.exe
