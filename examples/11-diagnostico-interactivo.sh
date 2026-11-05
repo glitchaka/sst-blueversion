@@ -33,39 +33,10 @@ pausa() {
 
 red() {
     titulo "INFORMACION DE RED"
-    local iface="" ip="" mac="" line
-    local encontrados=0
-
-    while IFS= read -r line; do
-        line=${line%$'\r'}
-        if [[ "$line" == *: && "$line" != [[:space:]]* ]]; then
-            if [[ -n "$iface" && ( -n "$ip" || -n "$mac" ) ]]; then
-                printf '%s%s%s\n' "$GREEN" "$iface" "$RESET"
-                printf '  IPv4 : %s\n  MAC  : %s\n\n' "${ip:--}" "${mac:--}"
-                ((encontrados+=1))
-            fi
-            iface=${line%:}
-            ip=""
-            mac=""
-            continue
-        fi
-        if [[ "$line" == *IPv4* && "$line" =~ ([0-9]{1,3}\.){3}[0-9]{1,3} ]]; then
-            ip="${BASH_REMATCH[0]}"
-        fi
-        if [[ "$line" =~ ([0-9A-Fa-f]{2}-){5}[0-9A-Fa-f]{2} ]]; then
-            mac="${BASH_REMATCH[0]}"
-        fi
-    done < <(ipconfig.exe /all)
-
-    if [[ -n "$iface" && ( -n "$ip" || -n "$mac" ) ]]; then
-        printf '%s%s%s\n' "$GREEN" "$iface" "$RESET"
-        printf '  IPv4 : %s\n  MAC  : %s\n\n' "${ip:--}" "${mac:--}"
-        ((encontrados+=1))
-    fi
-    if (( encontrados == 0 )); then
-        printf '%sNo se encontraron IP y MAC en ipconfig; adaptadores de SST:%s\n' "$RED" "$RESET"
-        net interfaces
-    fi
+    # SST consulta las interfaces por IP Helper API de Windows (IPv4, MAC,
+    # enlace y adaptadores). No depende de la configuración regional de
+    # ipconfig.exe ni de interpretar su salida mediante expresiones regulares.
+    net interfaces
 }
 
 equipo() {
