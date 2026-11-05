@@ -15,7 +15,6 @@ use crate::{adapters::persistence::AppPaths, application::update};
 
 
 const UPDATE_DIR: &str = "update";
-const UPDATE_TMP_DIR: &str = "tmp";
 const PENDING_FILE: &str = "pending.json";
 const APPLIED_STAGED_FILE: &str = "applied.pending.json";
 const APPLIED_FILE: &str = "applied.json";
@@ -39,6 +38,8 @@ struct PendingUpdate {
     version: String,
     sha256: String,
     staged_path: String,
+    #[serde(default)]
+    updater_sha256: Option<String>,
     #[serde(default)]
     changes: Vec<String>,
 }
@@ -150,7 +151,26 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
     }
 
     let staged = PathBuf::from(&pending.staged_path);
+    // A previous update may have consumed the staged executable before
+    // recording completion. Broken staging must not prevent GUI startup.
+    if !staged.is_file() {
+        let _ = fs::remove_file(&pending_path);
+        return Ok(false);
+    }
     verify_staged(&staged, &pending.sha256)?;
+
+    // The separate updater is mandatory for new handoffs. Legacy pending
+    // data has no updater SHA-256; don't apply it using a copy of SST.
+    let Some(updater_sha256) = pending.updater_sha256.as_deref() else {
+        return Ok(false);
+    };
+    let updater = match update::verified_independent_updater(paths, &pending.version, updater_sha256) {
+        Ok(worker) => worker,
+        Err(error) => {
+            let _ = fs::write(update_dir.join("updater-error.log"), format!("{error:#}\n"));
+            return Ok(false);
+        }
+    };
 
     fs::create_dir_all(&update_dir)?;
     let target = env::current_exe().context("no se pudo resolver sst.exe")?;
@@ -171,10 +191,8 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
     }
     verify_staged(&ready, &pending.sha256)?;
 
-    // ReplaceFileW creates BACKUP atomically from TARGET on success. Do not
-    // create or rename TARGET away beforehand: TARGET must always remain a
-    // runnable SST until Windows commits the replacement.
-    let _ = fs::remove_file(&backup);
+    // Keep the current and previous rollback copies until the independent
+    // updater has atomically committed the replacement.
 
     let from_version = if pending.from_version.trim().is_empty() {
         update::current_version().to_owned()
@@ -194,33 +212,20 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-        let helper_dir = update_dir.join(UPDATE_TMP_DIR);
-        fs::create_dir_all(&helper_dir)?;
-        let helper = helper_dir.join(format!(
-            "sst-update-helper-{}-{}.exe",
-            std::process::id(),
-            Utc::now().timestamp_millis()
-        ));
-        let _ = fs::remove_file(&helper);
-        fs::copy(&target, &helper).with_context(|| {
-            format!("no se pudo crear el helper temporal {}", helper.display())
-        })?;
-
-        Command::new(&helper)
-            .arg("--gui")
-            .env(HELPER_MODE_ENV, "1")
-            .env(HELPER_PARENT_PID_ENV, std::process::id().to_string())
-            .env(HELPER_TARGET_ENV, &target)
-            .env(HELPER_READY_ENV, &ready)
-            .env(HELPER_BACKUP_ENV, &backup)
-            .env(HELPER_PENDING_ENV, &pending_path)
-            .env(HELPER_APPLIED_PENDING_ENV, &applied_staged)
-            .env(HELPER_APPLIED_ENV, &applied_file)
-            .env(HELPER_STAGED_ENV, &staged)
-            .env(HELPER_HASH_ENV, pending.sha256.trim())
+        Command::new(&updater)
+            .arg("--apply")
+            .env("SST_UPDATER_PARENT_PID", std::process::id().to_string())
+            .env("SST_UPDATER_TARGET", &target)
+            .env("SST_UPDATER_READY", &ready)
+            .env("SST_UPDATER_BACKUP", &backup)
+            .env("SST_UPDATER_PENDING", &pending_path)
+            .env("SST_UPDATER_APPLIED_PENDING", &applied_staged)
+            .env("SST_UPDATER_APPLIED", &applied_file)
+            .env("SST_UPDATER_STAGED", &staged)
+            .env("SST_UPDATER_SHA256", pending.sha256.trim())
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
-            .context("no se pudo iniciar el helper temporal de actualización")?;
+            .context("no se pudo iniciar sst-updater.exe")?;
     }
 
     #[cfg(not(windows))]
