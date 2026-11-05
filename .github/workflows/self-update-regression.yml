@@ -11,6 +11,10 @@ on:
       - 'src/application/update.rs'
       - 'src/bin/sst_updater.rs'
       - 'src/core/bash/interpreter.rs'
+      - 'src/core/bash/diagnostic_tests.rs'
+      - 'src/core/bash/mod.rs'
+      - 'src/application/system.rs'
+      - 'examples/11-diagnostico-interactivo.sh'
       - 'src/adapters/shell/native_engine.rs'
       - 'scripts/test-nwash-process-substitution.ps1'
       - 'scripts/test-independent-updater.ps1'
@@ -75,6 +79,19 @@ jobs:
       - name: Exercise real Windows Bash process substitution and read EOF
         shell: pwsh
         run: ./scripts/test-nwash-process-substitution.ps1 -SstPath ./target/debug/sst.exe
+
+      - name: Exercise native printer and top-memory process reports
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $processes = & ./target/debug/sst.exe -c 'sys processes --sort ram --top 8' 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "Falló sys processes: $processes" }
+          if (($processes -join "`n") -notmatch 'PID') { throw 'sys processes no devolvió columnas de procesos.' }
+          $printers = & ./target/debug/sst.exe -c 'sys printers' 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "Falló sys printers: $printers" }
+          if (($printers -join "`n") -notmatch 'IMPRESORAS|No hay impresoras') {
+            throw "sys printers devolvió salida inesperada: $printers"
+          }
 
       - name: Exercise independent updater with error injection
         shell: pwsh
