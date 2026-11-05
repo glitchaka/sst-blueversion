@@ -10695,6 +10695,54 @@ mod tests {
     }
 
     #[test]
+    fn bundled_tour_displays_menu_instead_of_skipping_to_final_line() {
+        use std::sync::Mutex;
+
+        struct TourHost(Mutex<bool>);
+        impl ShellCommandHost for TourHost {
+            fn read_input(
+                &self,
+                _prompt: &str,
+                _silent: bool,
+                _delimiter: char,
+                _max_chars: Option<usize>,
+                _timeout: Option<std::time::Duration>,
+                _initial: &str,
+            ) -> Result<Option<String>> {
+                let mut used = self.0.lock().unwrap();
+                if *used {
+                    Ok(None)
+                } else {
+                    *used = true;
+                    Ok(Some("0".to_string()))
+                }
+            }
+
+            fn execute_builtin(
+                &self, _name: &str, _args: &[String], _cwd: &Path,
+                _stdin: Option<&[u8]>,
+            ) -> Result<Option<ExecutionResult>> {
+                Ok(None)
+            }
+
+            fn execute_external(
+                &self, _program: &str, _args: &[String], _cwd: &Path,
+                _env: &HashMap<String, String>, _stdin: Option<&[u8]>,
+            ) -> Result<ExecutionResult> {
+                Ok(ExecutionResult::success())
+            }
+        }
+
+        let mut shell = Interpreter::new(Box::new(TourHost(Mutex::new(false))));
+        let result = shell.execute_text(include_str!("../../../tour.sh")).unwrap();
+        assert_eq!(result.status, 0, "{}", result.stderr);
+        assert!(result.stdout.contains("SST TOUR"), "{}", result.stdout);
+        assert!(result.stdout.contains("1) Lenguaje Bash"), "{}", result.stdout);
+        assert!(result.stdout.contains("0) Salir"), "{}", result.stdout);
+        assert!(result.stdout.contains("SST Tour finalizado."), "{}", result.stdout);
+    }
+
+    #[test]
     fn read_accepts_grouped_short_options_and_attached_values() {
         let mut shell = Interpreter::new(Box::new(NullHost));
         let first = shell.execute_text("read -rsn1 choice <<< '123'").unwrap();
