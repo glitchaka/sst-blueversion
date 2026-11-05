@@ -106,7 +106,7 @@ jobs:
 
       - name: Build SST, native SFX packager and stub
         shell: pwsh
-        run: cargo build --release --bin sst --bin sst_sfx_packager --bin sst_sfx_stub
+        run: cargo build --release --bin sst --bin sst_updater --bin sst_sfx_packager --bin sst_sfx_stub
 
       - name: Rust regression tests (blocking release)
         shell: pwsh
@@ -151,6 +151,15 @@ jobs:
           }
 
           $extracted = Join-Path $extract 'sst.exe'
+          $extractedUpdater = Join-Path $extract 'sst-updater.exe'
+          if (-not (Test-Path -LiteralPath $extractedUpdater -PathType Leaf)) {
+            throw 'El autoextraible no extrajo sst-updater.exe'
+          }
+          $updaterExpected = (Get-FileHash -Algorithm SHA256 -LiteralPath 'dist/sst-updater.exe').Hash
+          $updaterActual = (Get-FileHash -Algorithm SHA256 -LiteralPath $extractedUpdater).Hash
+          if ($updaterExpected -ne $updaterActual) {
+            throw "El actualizador independiente extraído no coincide: $updaterActual != $updaterExpected"
+          }
           if (-not (Test-Path -LiteralPath $extracted -PathType Leaf)) {
             throw 'El autoextraible no extrajo sst.exe'
           }
@@ -172,6 +181,10 @@ jobs:
           if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) {
             throw 'La verificación consumió el artefacto original de distribución.'
           }
+
+      - name: Exercise standalone updater e2e and failure paths
+        shell: pwsh
+        run: ./scripts/test-independent-updater.ps1 -UpdaterPath ./target/release/sst_updater.exe
 
       - name: Upload private workflow artifact
         uses: actions/upload-artifact@v4
@@ -204,7 +217,7 @@ jobs:
             gh release create $tag --target $env:GITHUB_SHA --title "Shell Shock Tool $env:VERSION" --notes-file $notes
           }
 
-          gh release upload $tag dist/sst.exe dist/sst-update.json dist/version.txt "dist/SST-Setup-$env:VERSION.exe" --clobber
+          gh release upload $tag dist/sst.exe dist/sst-updater.exe dist/sst-update.json dist/version.txt "dist/SST-Setup-$env:VERSION.exe" --clobber
 
       - name: Publish public update payload
         if: ${{ steps.publisher.outputs.can_publish == 'true' }}
@@ -225,7 +238,7 @@ jobs:
             gh release create $tag --repo $env:UPDATE_REPO --target main --title "SST $env:VERSION" --notes-file $notes
           }
 
-          gh release upload $tag --repo $env:UPDATE_REPO dist/sst.exe $setup --clobber
+          gh release upload $tag --repo $env:UPDATE_REPO dist/sst.exe dist/sst-updater.exe $setup --clobber
           if ($LASTEXITCODE -ne 0) {
             throw 'No se pudo publicar el payload público de actualización.'
           }
@@ -256,6 +269,17 @@ jobs:
             throw 'El tamaño del binario público no coincide con el manifiesto.'
           }
 
+          if ($manifest.updater_asset_url) {
+            $updaterDownload = Join-Path $env:RUNNER_TEMP "sst-updater-$env:VERSION-public.exe"
+            & curl.exe -L --fail --silent --show-error --proto '=https' --tlsv1.2 `
+                --connect-timeout 10 --max-time 180 $manifest.updater_asset_url -o $updaterDownload
+            if ($LASTEXITCODE -ne 0) { throw 'No se pudo descargar el actualizador independiente.' }
+            $actualUpdaterHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $updaterDownload).Hash.ToLowerInvariant()
+            if ($actualUpdaterHash -ne $manifest.updater_sha256.ToLowerInvariant() -or
+                (Get-Item -LiteralPath $updaterDownload).Length -ne [int64]$manifest.updater_size) {
+              throw 'El actualizador independiente no coincide con el manifiesto.'
+            }
+          }
           Write-Host "Payload público verificado: $($manifest.asset_url)"
 
       - name: Publish update manifest last
