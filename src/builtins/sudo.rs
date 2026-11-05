@@ -776,13 +776,34 @@ fn token_has_trustedinstaller_sid() -> bool {
 // Report the CURRENT PROCESS TOKEN, not the command used to launch the
 // window. --gui-admin by itself is not proof that UAC elevation succeeded.
 pub(crate) fn gui_privilege_indicator() -> Result<&'static str> {
-    let level = current_sudo_level()?;
-    Ok(match level {
+    Ok(indicator_for_level(current_sudo_level()?))
+}
+
+fn indicator_for_level(level: SudoLevel) -> &'static str {
+    match level {
         SudoLevel::User | SudoLevel::AdministratorFiltered => "",
         SudoLevel::Administrator => "ADMIN",
         SudoLevel::System => "SYSTEM",
         SudoLevel::TrustedInstaller => "TRUSTED",
-    })
+    }
+}
+
+#[cfg(test)]
+mod privilege_indicator_tests {
+    use super::{indicator_for_level, SudoLevel};
+
+    #[test]
+    fn no_admin_label_for_standard_or_filtered_token() {
+        assert_eq!(indicator_for_level(SudoLevel::User), "");
+        assert_eq!(indicator_for_level(SudoLevel::AdministratorFiltered), "");
+    }
+
+    #[test]
+    fn names_each_actually_elevated_token() {
+        assert_eq!(indicator_for_level(SudoLevel::Administrator), "ADMIN");
+        assert_eq!(indicator_for_level(SudoLevel::System), "SYSTEM");
+        assert_eq!(indicator_for_level(SudoLevel::TrustedInstaller), "TRUSTED");
+    }
 }
 
 fn current_sudo_level() -> Result<SudoLevel> {
