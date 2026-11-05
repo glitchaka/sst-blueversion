@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -1883,7 +1883,7 @@ impl Interpreter {
                 if redirect.kind == RedirectKind::ReadWrite && !path.exists() {
                     OpenOptions::new().create(true).write(true).open(&path)?;
                 }
-                let bytes = fs::read(&path).unwrap_or_default();
+                let bytes = read_redirect_input(&path)?;
                 self.managed_input_fds.insert(
                     redirect.fd,
                     ManagedInputFd::Data { bytes, offset: 0 },
@@ -1962,7 +1962,7 @@ impl Interpreter {
                     if redirect.kind == RedirectKind::ReadWrite && !path.exists() {
                         OpenOptions::new().create(true).write(true).open(&path)?;
                     }
-                    local_stdin = Some(fs::read(path)?);
+                    local_stdin = Some(read_redirect_input(&path)?);
                 }
                 RedirectKind::DupInput => {
                     let target = self.expand_scalar(&redirect.target)?;
@@ -2040,7 +2040,7 @@ impl Interpreter {
                     if redirect.kind == RedirectKind::ReadWrite && !path.exists() {
                         OpenOptions::new().create(true).write(true).open(&path)?;
                     }
-                    local_stdin = Some(fs::read(path)?);
+                    local_stdin = Some(read_redirect_input(&path)?);
                 }
                 RedirectKind::DupInput => {
                     let target = self.expand_scalar(&redirect.target)?;
@@ -8120,6 +8120,36 @@ impl Interpreter {
 
 
 
+// Windows reports ERROR_BROKEN_PIPE (109) or ERROR_PIPE_NOT_CONNECTED
+// (233) when a named-pipe producer closes after writing its output.
+// For a Bash process substitution this is the normal end of input, not
+// a command failure. fs::read/read_to_end discards already received bytes
+// when the final read returns an error, so retain the bytes ourselves.
+fn read_redirect_input(path: &Path) -> Result<Vec<u8>> {
+    #[cfg(windows)]
+    let is_named_pipe = path.to_string_lossy().to_ascii_lowercase()
+        .starts_with(r"\\.\pipe\");
+
+    #[cfg(windows)]
+    if is_named_pipe {
+        let mut input = fs::File::open(path)?;
+        let mut contents = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            match input.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(count) => contents.extend_from_slice(&chunk[..count]),
+                Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe
+                    || matches!(error.raw_os_error(), Some(109 | 233)) => break,
+                Err(error) => return Err(error.into()),
+            }
+        }
+        return Ok(contents);
+    }
+
+    fs::read(path).map_err(Into::into)
+}
+
 #[derive(Debug, Clone)]
 struct HeredocSpec {
     start: usize,
@@ -10514,6 +10544,16 @@ mod tests {
         assert_eq!(shell.expand_scalar("${missing:-fallback}").unwrap(), "fallback");
     }
 
+
+    #[test]
+    fn process_substitution_preserves_all_lines_in_while_read() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let output = shell.execute_text(
+            "while IFS= read -r line; do printf '<%s>\\n' \"$line\"; done < <(printf 'uno\\ndos\\n')"
+        ).unwrap();
+        assert_eq!(output.status, 0, "stderr: {}", output.stderr);
+        assert_eq!(output.stdout, "<uno>\n<dos>\n");
+    }
 
     #[test]
     fn read_accepts_grouped_short_options_and_attached_values() {
