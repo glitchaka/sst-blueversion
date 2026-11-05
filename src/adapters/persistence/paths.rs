@@ -88,6 +88,7 @@ const TOUR_EXAMPLES: &[(&str, &str)] = &[
     ("08-config-and-backgrounds.sh", include_str!("../../../examples/08-config-and-backgrounds.sh")),
     ("09-advanced-bash.sh", include_str!("../../../examples/09-advanced-bash.sh")),
     ("10-full-showcase.sh", include_str!("../../../examples/10-full-showcase.sh")),
+    ("11-diagnostico-interactivo.sh", include_str!("../../../examples/11-diagnostico-interactivo.sh")),
 ];
 
 const DEFAULT_SECURITY_SOURCES: &str = r#"# SST security intelligence source registry
