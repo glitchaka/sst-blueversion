@@ -18,7 +18,6 @@ const PENDING_FILE: &str = "pending.json";
 const APPLIED_STAGED_FILE: &str = "applied.pending.json";
 const APPLIED_FILE: &str = "applied.json";
 const STAGED_EXE: &str = "sst.exe.new";
-const APPLY_SCRIPT: &str = "apply-update.cmd";
 const CURL_USER_AGENT: &str = "Shell-Shock-Tool-updater";
 const MAX_CHANGES: usize = 32;
 const MAX_CHANGE_LEN: usize = 240;
@@ -184,9 +183,8 @@ pub fn check_now(paths: &AppPaths, stage: bool) -> Result<String> {
     Ok(output)
 }
 
-/// Starts a hidden one-shot Windows batch helper that waits until this SST
-/// process releases sst.exe, replaces it with the already verified staged
-/// binary and relaunches SST. No permanent updater executable is installed.
+/// Schedule the verified standalone updater. No copy of sst.exe is ever
+/// executed as an updater: the worker runs outside the target process.
 pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
     let Some(pending) = load_pending(paths)? else {
         return Ok(false);
@@ -197,24 +195,41 @@ pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
     }
 
     let staged = PathBuf::from(&pending.staged_path);
-    verify_file(&staged, &pending.sha256, None)?;
-    let target = std::env::current_exe().context("no se pudo resolver sst.exe")?;
-    let swap_new = target.with_extension("exe.new");
-    let backup = target.with_extension("exe.old");
-    if swap_new != staged {
-        let _ = fs::remove_file(&swap_new);
-        fs::copy(&staged, &swap_new)
-            .context("no se pudo preparar sst.exe.new junto al ejecutable activo")?;
+    if !staged.is_file() {
+        // A previous update can have consumed this file and left a stale
+        // pending receipt. Never make SST impossible to start.
+        let _ = fs::remove_file(pending_path(paths));
+        return Ok(false);
     }
-    verify_file(&swap_new, &pending.sha256, None)?;
+    verify_file(&staged, &pending.sha256, None)?;
 
-    let update_dir = update_dir(paths);
-    fs::create_dir_all(&update_dir)?;
-    let script = update_dir.join(APPLY_SCRIPT);
-    let pending_file = pending_path(paths);
-    let applied_staged = update_dir.join(APPLIED_STAGED_FILE);
-    let applied_file = update_dir.join(APPLIED_FILE);
-    let applied = AppliedUpdate {
+    let Some(updater_sha) = pending.updater_sha256.as_deref() else {
+        // Old pending.json records have no independently verified worker.
+        // Let SST run and restage from the public channel.
+        return Ok(false);
+    };
+    let worker = match verified_independent_updater(paths, &pending.version, updater_sha) {
+        Ok(worker) => worker,
+        Err(error) => {
+            let _ = fs::write(update_dir(paths).join("updater-error.log"), format!("{error:#}\n"));
+            return Ok(false);
+        }
+    };
+
+    let target = std::env::current_exe().context("no se pudo resolver sst.exe")?;
+    let ready = target.with_extension("exe.new");
+    let backup = target.with_extension("exe.old");
+    if ready != staged {
+        let _ = fs::remove_file(&ready);
+        fs::copy(&staged, &ready)
+            .context("no se pudo preparar sst.exe.new para el actualizador independiente")?;
+    }
+    verify_file(&ready, &pending.sha256, None)?;
+
+    let dir = update_dir(paths);
+    fs::create_dir_all(&dir)?;
+    let applied_staged = dir.join(APPLIED_STAGED_FILE);
+    let receipt = AppliedUpdate {
         from_version: if pending.from_version.trim().is_empty() {
             current_version().to_owned()
         } else {
@@ -224,67 +239,34 @@ pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
         applied_at: Utc::now().to_rfc3339(),
         changes: pending.changes.clone(),
     };
-    fs::write(&applied_staged, serde_json::to_vec_pretty(&applied)?)?;
+    fs::write(&applied_staged, serde_json::to_vec_pretty(&receipt)?)?;
 
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let cmd = system32_executable("cmd.exe")?;
-        let ping = system32_executable("ping.exe")?;
-        let body = format!(
-            "@echo off\r\n\
-             setlocal DisableDelayedExpansion\r\n\
-             set \"TARGET={}\"\r\n\
-             set \"NEW={}\"\r\n\
-             set \"BACKUP={}\"\r\n\
-             set \"PENDING={}\"\r\n\
-             set \"APPLIED_PENDING={}\"\r\n\
-             set \"APPLIED={}\"\r\n\
-             set \"PING={}\"\r\n\
-             if exist \"%BACKUP%\" del /Q \"%BACKUP%\" >nul 2>&1\r\n\
-             for /L %%I in (1,1,120) do (\r\n\
-               move /Y \"%TARGET%\" \"%BACKUP%\" >nul 2>&1 && goto replace\r\n\
-               \"%PING%\" -n 2 127.0.0.1 >nul\r\n\
-             )\r\n\
-             exit /b 10\r\n\
-             :replace\r\n\
-             move /Y \"%NEW%\" \"%TARGET%\" >nul 2>&1\r\n\
-             if errorlevel 1 goto rollback\r\n\
-             if not exist \"%TARGET%\" goto rollback\r\n\
-             move /Y \"%APPLIED_PENDING%\" \"%APPLIED%\" >nul 2>&1\r\n\
-             del /Q \"%PENDING%\" >nul 2>&1\r\n\
-             del /Q \"%BACKUP%\" >nul 2>&1\r\n\
-             start \"\" \"%TARGET%\"\r\n\
-             del /Q \"%~f0\" >nul 2>&1\r\n\
-             exit /b 0\r\n\
-             :rollback\r\n\
-             if exist \"%BACKUP%\" move /Y \"%BACKUP%\" \"%TARGET%\" >nul 2>&1\r\n\
-             exit /b 11\r\n",
-            batch_value(&target),
-            batch_value(&swap_new),
-            batch_value(&backup),
-            batch_value(&pending_file),
-            batch_value(&applied_staged),
-            batch_value(&applied_file),
-            batch_value(&ping),
-        );
-        fs::write(&script, body)?;
-        Command::new(cmd)
-            .args(["/D", "/S", "/C"])
-            .arg(&script)
+        Command::new(&worker)
+            .arg("--apply")
+            .env("SST_UPDATER_PARENT_PID", std::process::id().to_string())
+            .env("SST_UPDATER_TARGET", &target)
+            .env("SST_UPDATER_READY", &ready)
+            .env("SST_UPDATER_BACKUP", &backup)
+            .env("SST_UPDATER_PENDING", pending_path(paths))
+            .env("SST_UPDATER_APPLIED_PENDING", &applied_staged)
+            .env("SST_UPDATER_APPLIED", dir.join(APPLIED_FILE))
+            .env("SST_UPDATER_STAGED", &staged)
+            .env("SST_UPDATER_SHA256", pending.sha256.trim())
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
-            .context("no se pudo iniciar el aplicador de actualización")?;
+            .context("no se pudo iniciar el actualizador independiente")?;
+        Ok(true)
     }
 
     #[cfg(not(windows))]
     {
-        let _ = (&script, &swap_new, &backup);
+        let _ = (&worker, &target, &ready, &backup, &applied_staged);
         bail!("la aplicación automática de updates sólo está disponible en Windows");
     }
-
-    Ok(true)
 }
 
 pub fn configured_manifest_url(paths: &AppPaths) -> Option<String> {
@@ -628,6 +610,3 @@ fn append_plain_changes(output: &mut String, changes: &[String]) {
     }
 }
 
-fn batch_value(path: &Path) -> String {
-    path.to_string_lossy().replace('%', "%%").replace('"', "\"\"")
-}
