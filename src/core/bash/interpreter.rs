@@ -1,12 +1,15 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, OpenOptions},
-    io::{Read, Write},
+    io::Write,
+
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use anyhow::{anyhow, bail, Result};
+#[cfg(windows)]
+use std::io::Read;
 
 use super::{
     ast::{AstNode, CaseTerminator, RedirectKind, SimpleCommand},
@@ -302,6 +305,7 @@ pub struct Interpreter {
     last_mail_check: std::time::Instant,
     mail_state: HashMap<PathBuf, (u64, std::time::SystemTime)>,
     managed_input_fds: HashMap<i32, ManagedInputFd>,
+    redirected_stdin: Vec<ManagedInputFd>,
     next_variable_fd: i32,
     stream_script_output: bool,
     capture_output_depth: usize,
@@ -357,6 +361,7 @@ impl Interpreter {
                 .unwrap_or_else(std::time::Instant::now),
             mail_state: HashMap::new(),
             managed_input_fds: HashMap::new(),
+            redirected_stdin: Vec::new(),
             next_variable_fd: 10,
             stream_script_output: inherited_streaming,
             capture_output_depth: 0,
@@ -1848,26 +1853,20 @@ impl Interpreter {
         match source {
             ManagedInputFd::Host(target) => self.host.read_fd(*target, delimiter, max_chars, None),
             ManagedInputFd::Data { bytes, offset } => {
-                if *offset >= bytes.len() { return Ok(None); }
-                let remaining = String::from_utf8_lossy(&bytes[*offset..]).into_owned();
-                let mut value = String::new();
-                let mut consumed = 0usize;
-                let mut count = 0usize;
-                for ch in remaining.chars() {
-                    if ch == delimiter {
-                        consumed += ch.len_utf8();
-                        break;
-                    }
-                    if max_chars.is_some_and(|max| count >= max) {
-                        break;
-                    }
-                    value.push(ch);
-                    consumed += ch.len_utf8();
-                    count += 1;
-                }
-                *offset = offset.saturating_add(consumed);
-                Ok(Some(value))
+                Ok(read_buffered_input(bytes, offset, delimiter, max_chars))
             }
+        }
+    }
+
+    fn read_redirected_stdin(
+        &mut self,
+        delimiter: char,
+        max_chars: Option<usize>,
+    ) -> Option<String> {
+        match self.redirected_stdin.last_mut()? {
+            ManagedInputFd::Data { bytes, offset } =>
+                read_buffered_input(bytes, offset, delimiter, max_chars),
+            ManagedInputFd::Host(_) => None,
         }
     }
 
@@ -1989,9 +1988,29 @@ impl Interpreter {
             }
         }
 
-        let mut result = self.with_captured_output(|shell| {
+        // Keep a per-redirection input cursor for compound constructs such as
+        // while read ...; done < <(producer). Each read consumes the next line
+        // and reports EOF when the producer's stream is exhausted.
+        let has_input_redirect = redirects.iter().any(|redirect| {
+            redirect.fd == 0 && matches!(
+                redirect.kind,
+                RedirectKind::Read | RedirectKind::ReadWrite
+                    | RedirectKind::HereString | RedirectKind::DupInput
+            )
+        });
+        if has_input_redirect {
+            self.redirected_stdin.push(ManagedInputFd::Data {
+                bytes: local_stdin.clone().unwrap_or_default(),
+                offset: 0,
+            });
+        }
+        let execution = self.with_captured_output(|shell| {
             shell.execute(body, local_stdin.as_deref())
-        })?;
+        });
+        if has_input_redirect {
+            self.redirected_stdin.pop();
+        }
+        let mut result = execution?;
         let command = SimpleCommand {
             words: Vec::new(),
             redirects,
@@ -5253,7 +5272,11 @@ impl Interpreter {
             index += 1;
         }
 
-        let source = if fd != 0 && stdin.is_none() {
+        let source = if fd == 0 && !self.redirected_stdin.is_empty() {
+            // Redirected while/read loops share a single advancing stream.
+            // Never reopen stdin or start reading interactively on EOF.
+            self.read_redirected_stdin(delimiter, max_chars)
+        } else if fd != 0 && stdin.is_none() {
             if self.managed_input_fds.contains_key(&fd) {
                 self.read_managed_fd(fd, delimiter, max_chars)?
             } else {
@@ -8120,6 +8143,40 @@ impl Interpreter {
 
 
 
+// Advances a redirected Bash input stream exactly once per read call.
+// The byte offset is shared between repeated commands in a while loop.
+fn read_buffered_input(
+    bytes: &[u8],
+    offset: &mut usize,
+    delimiter: char,
+    max_chars: Option<usize>,
+) -> Option<String> {
+    if *offset >= bytes.len() {
+        return None;
+    }
+    let remaining = String::from_utf8_lossy(&bytes[*offset..]);
+    let mut value = String::new();
+    let mut consumed = 0usize;
+    let mut count = 0usize;
+    for ch in remaining.chars() {
+        if ch == delimiter {
+            consumed += ch.len_utf8();
+            break;
+        }
+        if max_chars.is_some_and(|limit| count >= limit) {
+            break;
+        }
+        value.push(ch);
+        consumed += ch.len_utf8();
+        count += 1;
+    }
+    if consumed == 0 {
+        return None;
+    }
+    *offset = offset.saturating_add(consumed);
+    Some(value)
+}
+
 // Windows reports ERROR_BROKEN_PIPE (109) or ERROR_PIPE_NOT_CONNECTED
 // (233) when a named-pipe producer closes after writing its output.
 // For a Bash process substitution this is the normal end of input, not
@@ -10544,6 +10601,346 @@ mod tests {
         assert_eq!(shell.expand_scalar("${missing:-fallback}").unwrap(), "fallback");
     }
 
+
+    #[test]
+    fn redirected_read_consumes_lines_and_returns_eof() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell.execute_text(
+            "while IFS= read -r line; do printf '[%s]\\n' \"$line\"; done <<< 
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let output = shell.execute_text(
+            "while IFS= read -r line; do printf '<%s>\\n' \"$line\"; done < <(printf 'uno\\ndos\\n')"
+        ).unwrap();
+        assert_eq!(output.status, 0, "stderr: {}", output.stderr);
+        assert_eq!(output.stdout, "<uno>\n<dos>\n");
+    }
+
+    #[test]
+    fn read_accepts_grouped_short_options_and_attached_values() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let first = shell.execute_text("read -rsn1 choice <<< '123'").unwrap();
+        assert_eq!(first.status, 0);
+        assert_eq!(shell.env.get("choice"), "1");
+
+        let second = shell.execute_text("read -rp'Nombre: ' name <<< 'Ada Lovelace'").unwrap();
+        assert_eq!(second.status, 0);
+        assert_eq!(shell.env.get("name"), "Ada Lovelace");
+
+        let third = shell.execute_text("read -r -N2 pair <<< 'xyz'").unwrap();
+        assert_eq!(third.status, 0);
+        assert_eq!(shell.env.get("pair"), "xy");
+    }
+
+    #[test]
+    fn regex_operands_and_multiline_conditional_work_together() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell.execute_text(
+            "if [[ '192.168.1.70' =~ ([0-9]{1,3}\\.){3}[0-9]{1,3} &&\n -n 'ok' ]]; then echo match; fi"
+        ).unwrap();
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "match\n");
+    }
+
+    #[test]
+    fn conditional_globs_support_posix_character_classes() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        assert_eq!(shell.execute_text("[[ '  hello' == [[:space:]]* ]]").unwrap().status, 0);
+        assert_eq!(shell.execute_text("[[ '192' == [[:digit:]][[:digit:]][[:digit:]] ]]").unwrap().status, 0);
+        assert_eq!(shell.execute_text("[[ 'Eth' != [[:space:]]* ]]").unwrap().status, 0);
+    }
+
+    #[test]
+    fn case_conditional_and_arithmetic_commands_work() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+
+        shell.execute_text("x=beta").unwrap();
+        let case_result = shell
+            .execute_text("case $x in alpha) echo no ;; beta|gamma) echo yes ;; *) echo fallback ;; esac")
+            .unwrap();
+        assert_eq!(case_result.stdout, "yes\n");
+
+        assert_eq!(shell.execute_text("[[ -n $x && $x == beta ]]").unwrap().status, 0);
+        assert_eq!(shell.execute_text("[[ $x == nope ]]").unwrap().status, 1);
+
+        shell.execute_text("n=1").unwrap();
+        assert_eq!(shell.execute_text("(( n += 2 ))").unwrap().status, 0);
+        assert_eq!(shell.env.get("n"), "3");
+        assert_eq!(shell.execute_text("(( n > 2 ))").unwrap().status, 0);
+    }
+
+    #[test]
+    fn break_continue_return_and_local_are_native() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+
+        shell.execute_text("x=outer").unwrap();
+        shell.execute_text("f() { local x=inner; return 7; x=never; }").unwrap();
+        let result = shell.execute_text("f").unwrap();
+        assert_eq!(result.status, 7);
+        assert_eq!(shell.env.get("x"), "outer");
+
+        shell.execute_text("count=0").unwrap();
+        shell.execute_text("for i in 1 2 3 4; do (( count += 1 )); if [[ $i == 2 ]]; then continue; fi; if [[ $i == 3 ]]; then break; fi; done").unwrap();
+        assert_eq!(shell.env.get("count"), "3");
+    }
+
+    #[test]
+    fn tour_language_contract_covers_arrays_functions_and_elif() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let source = r#"
+targets=("localhost" "127.0.0.1" "example.com")
+declare -A capability
+capability[language]="Bash-compatible"
+capability[platform]="Windows"
+
+score() {
+    local base="$1"
+    local bonus="${2:-0}"
+    local total=$((base + bonus))
+    printf "%d" "$total"
+}
+
+result="$(score 8 3)"
+if (( result >= 10 )); then
+    bucket=alto
+elif (( result >= 6 )); then
+    bucket=medio
+else
+    bucket=bajo
+fi
+"#;
+
+        let result = shell.execute_text(source).unwrap();
+        assert_eq!(result.status, 0);
+        assert_eq!(shell.env.array_values("targets"), vec![
+            "localhost".to_owned(),
+            "127.0.0.1".to_owned(),
+            "example.com".to_owned(),
+        ]);
+        assert_eq!(shell.env.get("capability[language]"), "Bash-compatible");
+        assert_eq!(shell.env.get("capability[platform]"), "Windows");
+        assert_eq!(shell.env.get("result"), "11");
+        assert_eq!(shell.env.get("bucket"), "alto");
+    }
+
+    struct XargsHost;
+
+    impl ShellCommandHost for XargsHost {
+        fn execute_builtin(
+            &self, _name: &str, _args: &[String], _cwd: &Path, _stdin: Option<&[u8]>,
+        ) -> Result<Option<ExecutionResult>> {
+            Ok(None)
+        }
+
+        fn execute_external(
+            &self, program: &str, args: &[String], _cwd: &Path,
+            _env: &HashMap<String, String>, _stdin: Option<&[u8]>,
+        ) -> Result<ExecutionResult> {
+            if program == "echo" {
+                Ok(ExecutionResult::from_parts(
+                    format!("{}\n", args.join(" ")),
+                    String::new(),
+                    0,
+                ))
+            } else {
+                Ok(ExecutionResult::from_parts(
+                    String::new(),
+                    format!("unknown:{program}\n"),
+                    127,
+                ))
+            }
+        }
+    }
+
+    #[test]
+    fn xargs_consumes_pipeline_input() {
+        let mut shell = Interpreter::new(Box::new(XargsHost));
+        let ast = parse("xargs -n 1 echo").unwrap();
+        let result = shell.execute(&ast, Some(b"uno dos tres\n")).unwrap();
+        assert_eq!(result.stdout, "uno\ndos\ntres\n");
+        assert_eq!(result.status, 0);
+    }
+
+    #[test]
+    fn elif_chain_uses_one_final_fi() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text(
+                "x=7; if (( x >= 10 )); then echo high; elif (( x >= 6 )); then echo medium; else echo low; fi",
+            )
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "medium\n");
+    }
+
+    #[test]
+    fn indexed_and_associative_arrays_follow_bash_expansion() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text(
+                r#"targets=("localhost" "127.0.0.1" "example.com")
+declare -A capability
+capability[language]="Bash-compatible"
+capability[platform]="Windows"
+printf "%s|%s|%s|%s\n" "${targets[0]}" "${targets[2]}" "${capability[language]}" "${capability[platform]}""#,
+            )
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(
+            result.stdout,
+            "localhost|example.com|Bash-compatible|Windows\n"
+        );
+    }
+
+    #[test]
+    fn local_command_substitution_and_arithmetic_are_composable() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text(
+                r#"score() {
+    local base="$1"
+    local bonus="${2:-0}"
+    local total=$((base + bonus))
+    printf "%d" "$total"
+}
+result="$(score 8 3)"
+printf "%s\n" "$result""#,
+            )
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "11\n");
+    }
+
+    #[test]
+    fn conditional_patterns_and_case_are_native() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text(
+                r#"sample="informe.txt"
+if [[ "$sample" == *.txt && -n "$sample" ]]; then
+    echo text
+fi
+mode=demo
+case "$mode" in
+    demo|showcase) echo demo ;;
+    quiet) echo quiet ;;
+    *) echo other ;;
+esac"#,
+            )
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "text\ndemo\n");
+    }
+
+    #[test]
+    fn heredoc_expands_shell_variables() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        shell.env.set("USER_FOR_TEST", "tester");
+        let result = shell
+            .execute_text(
+                "cat <<EOF\nuser=$USER_FOR_TEST\nvalue=$((40+2))\nEOF\n",
+            )
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "user=tester\nvalue=42\n");
+    }
+
+    #[test]
+    fn here_string_and_quoted_heredoc_remain_distinct() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let quoted = shell.execute_text("x=secret\ncat <<'EOF'\n$x\nEOF\n").unwrap();
+        assert_eq!(quoted.status, 0);
+        assert_eq!(quoted.stdout, "$x\n");
+        let crlf = shell.execute_text("cat <<'EOF'\r\n$literal\r\nEOF\r\n").unwrap();
+        assert_eq!(crlf.status, 0);
+        assert_eq!(crlf.stdout, "$literal\n");
+        let here_string = shell.execute_text("cat <<< \"hello\"").unwrap();
+        assert_eq!(here_string.status, 0);
+        assert_eq!(here_string.stdout, "hello\n");
+    }
+
+    #[test]
+    fn array_length_expands_inside_quoted_argument() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell.execute_text("a=(zero one two); printf \"%s|%s|%s\\n\" \"${a[0]}\" \"${a[2]}\" \"${#a[@]}\"").unwrap();
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "zero|two|3\n");
+    }
+
+    #[test]
+    fn pipefail_uses_the_failing_pipeline_status() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell.execute_text("set -o pipefail; false | true").unwrap();
+        assert_eq!(result.status, 1);
+        assert_eq!(shell.env.array_values("PIPESTATUS"), vec!["1", "0"]);
+    }
+
+    #[test]
+    fn nested_command_substitution_preserves_quoted_value() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text(r#"x="$(printf "%s" "$(printf nested)")"; printf "<%s>\n" "$x""#)
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "<nested>\n");
+    }
+
+    #[test]
+    fn subshell_changes_do_not_leak_to_parent_environment() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let result = shell
+            .execute_text("x=before; (x=inside; printf \"%s\\n\" \"$x\"); printf \"%s\\n\" \"$x\"")
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert_eq!(result.stdout, "inside\nbefore\n");
+        assert_eq!(shell.env.get("x"), "before");
+    }
+
+    #[test]
+    fn redirected_builtin_output_is_not_echoed_to_stdout() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let path = std::env::temp_dir().join(format!(
+            "sst-nwash-redirection-{}-{}.txt",
+            std::process::id(),
+            shell.env.get("RANDOM"),
+        ));
+        let quoted = shell_quote(&path.to_string_lossy());
+        let result = shell
+            .execute_text(&format!("printf \"hello\\n\" > {quoted}"))
+            .unwrap();
+
+        assert_eq!(result.status, 0);
+        assert!(result.stdout.is_empty());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn language_tour_is_an_acceptance_fixture_for_nwash() {
+        let mut shell = Interpreter::new(Box::new(NullHost));
+        let source = include_str!("../../../examples/01-language-tour.sh");
+        let result = shell.execute_text(source).unwrap();
+
+        assert_eq!(result.status, 0);
+        assert!(result.stdout.contains("=== Identidad de la shell ==="));
+        assert!(result.stdout.contains("=== Arrays indexados ==="));
+        assert!(result.stdout.contains("=== Array asociativo ==="));
+        assert!(result.stdout.contains("=== Here-document ==="));
+        assert!(result.stdout.contains("Fin de 01-language-tour.sh"));
+    }
+
+}
+alpha\\nbeta'"
+        ).unwrap();
+        assert_eq!(result.status, 0, "{}", result.stderr);
+        assert_eq!(result.stdout, "[alpha]\\n[beta]\\n");
+    }
 
     #[test]
     fn process_substitution_preserves_all_lines_in_while_read() {
