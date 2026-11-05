@@ -4,6 +4,9 @@ pub mod interpreter;
 pub mod lexer;
 pub mod parser;
 
+#[cfg(test)]
+mod diagnostic_tests;
+
 pub use interpreter::{ExecutionResult, Interpreter, JobInfo, ReadCompletionMode, ShellCommandHost};
 
 use anyhow::Result;
