@@ -10623,6 +10623,78 @@ mod tests {
     }
 
     #[test]
+    fn interactive_diagnostic_menu_returns_to_selection_after_process_substitution() {
+        use std::collections::VecDeque;
+        use std::sync::Mutex;
+
+        struct ScriptedMenuHost(Mutex<VecDeque<String>>);
+
+        impl ShellCommandHost for ScriptedMenuHost {
+            fn read_input(
+                &self,
+                _prompt: &str,
+                _silent: bool,
+                _delimiter: char,
+                _max_chars: Option<usize>,
+                _timeout: Option<std::time::Duration>,
+                _initial: &str,
+            ) -> Result<Option<String>> {
+                Ok(self.0.lock().unwrap().pop_front())
+            }
+
+            fn execute_builtin(
+                &self,
+                _name: &str,
+                _args: &[String],
+                _cwd: &Path,
+                _stdin: Option<&[u8]>,
+            ) -> Result<Option<ExecutionResult>> {
+                Ok(None)
+            }
+
+            fn execute_external(
+                &self,
+                _program: &str,
+                _args: &[String],
+                _cwd: &Path,
+                _env: &HashMap<String, String>,
+                _stdin: Option<&[u8]>,
+            ) -> Result<ExecutionResult> {
+                Ok(ExecutionResult::success())
+            }
+        }
+
+        let host = ScriptedMenuHost(Mutex::new(
+            ["Alejandro", "1", "x", "0"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect::<VecDeque<_>>(),
+        ));
+        let mut shell = Interpreter::new(Box::new(host));
+        let result = shell.execute_text(r#"
+            IFS= read -r nombre
+            printf 'Hola %s\n' "$nombre"
+            red() {
+                while IFS= read -r line; do
+                    printf 'RED:%s\n' "$line"
+                done < <(printf 'Ethernet\n192.168.1.70\n')
+            }
+            while true; do
+                IFS= read -rsn1 opcion
+                case "$opcion" in
+                    1) red; IFS= read -rsn1 _ ;;
+                    0) printf 'FINALIZADO\n'; break ;;
+                esac
+            done
+        "#).unwrap();
+        assert_eq!(result.status, 0, "{}", result.stderr);
+        assert!(result.stdout.contains("Hola Alejandro\n"), "{}", result.stdout);
+        assert!(result.stdout.contains("RED:Ethernet\n"), "{}", result.stdout);
+        assert!(result.stdout.contains("RED:192.168.1.70\n"), "{}", result.stdout);
+        assert!(result.stdout.contains("FINALIZADO\n"), "{}", result.stdout);
+    }
+
+    #[test]
     fn read_accepts_grouped_short_options_and_attached_values() {
         let mut shell = Interpreter::new(Box::new(NullHost));
         let first = shell.execute_text("read -rsn1 choice <<< '123'").unwrap();
