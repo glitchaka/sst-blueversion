@@ -151,6 +151,7 @@ slint::slint! {
         in property <image> background-image;
         in property <float> background-image-opacity: 0.0;
         in property <string> background-image-fit-mode: "cover";
+        in property <string> privilege-label: "";
         in property <string> cpu-text: "CPU 0%";
         in property <string> ram-text: "RAM 0.0 GiB";
         in property <string> clock-text: "00:00";
@@ -296,9 +297,38 @@ slint::slint! {
                     vertical-alignment: center;
                 }
 
+                // Always visible when an actual elevated Windows token was
+                // detected, including when the window is narrow or unfocused.
+                // We do not infer this from the argv/--gui-admin flag.
+                Rectangle {
+                    visible: root.privilege-label != "";
+                    x: 68px;
+                    y: 5px;
+                    width: 100px;
+                    height: 24px;
+                    border-radius: 7px;
+                    background: #392517;
+                    border-width: 1px;
+                    border-color: #e5a55b;
+
+                    Text {
+                        x: 2px;
+                        y: 0;
+                        width: parent.width - 4px;
+                        height: parent.height;
+                        text: root.privilege-label;
+                        color: #ffcf8a;
+                        font-family: "Segoe UI Variable";
+                        font-size: 11px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
                 Text {
                     visible: island.width >= 670px;
-                    x: 102px;
+                    x: root.privilege-label != "" ? 184px : 102px;
                     y: 0;
                     width: 92px;
                     height: parent.height;
@@ -311,7 +341,7 @@ slint::slint! {
 
                 Text {
                     visible: island.width >= 670px;
-                    x: 205px;
+                    x: root.privilege-label != "" ? 281px : 205px;
                     y: 0;
                     width: 128px;
                     height: parent.height;
@@ -1669,6 +1699,18 @@ pub fn run() -> Result<()> {
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new()));
     let ui = SstBlueWindow::new()?;
+
+    // The sudo command starts a NEW Windows process for each privilege
+    // escalation. Its token is immutable during this GUI session. Query that
+    // token directly once and retain the visible indicator for the window's
+    // entire lifetime, including unfocused and restored states.
+    match crate::builtins::gui_privilege_indicator() {
+        Ok(label) => ui.set_privilege_label(label.into()),
+        Err(error) => {
+            eprintln!("No se pudo determinar el token de privilegios de SST: {error}");
+            ui.set_privilege_label("TOKEN ?".into());
+        }
+    }
 
     if let Some(image) = background_image {
         ui.set_background_image(image);
