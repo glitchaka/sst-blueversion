@@ -1,1 +1,1 @@
-2026-11-05 — blocking validation after repairs: preserve custom scripts, restore valid Nwash interpreter, native sys printer/process diagnostic, real four-option interactive fixture, no release until all tests succeed.
+2026-11-05 — Validate SST 0.1.9-blue.23: script preservation, diagnostic four options, native Windows network/printers/processes, UAC token-derived persistent ADMIN/SYSTEM/TRUSTED GUI indicator. Do not publish on failure.
