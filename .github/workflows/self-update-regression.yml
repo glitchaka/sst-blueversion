@@ -84,13 +84,27 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $processes = & ./target/debug/sst.exe -c 'sys processes --sort ram --top 8' 2>&1
-          if ($LASTEXITCODE -ne 0) { throw "Falló sys processes: $processes" }
-          if (($processes -join "`n") -notmatch 'PID') { throw 'sys processes no devolvió columnas de procesos.' }
-          $printers = & ./target/debug/sst.exe -c 'sys printers' 2>&1
-          if ($LASTEXITCODE -ne 0) { throw "Falló sys printers: $printers" }
-          if (($printers -join "`n") -notmatch 'IMPRESORAS|No hay impresoras') {
-            throw "sys printers devolvió salida inesperada: $printers"
+          # The native SST GUI subsystem does not always attach stdout in
+          # Windows runner PowerShell. Exercise through a Bash script file,
+          # with both commands and output checks inside the same Nwash shell.
+          $fixture = Join-Path $env:RUNNER_TEMP 'sst-native-diagnostics.sh'
+          $output = Join-Path $env:RUNNER_TEMP 'sst-native-diagnostics.out'
+          $errorLog = Join-Path $env:RUNNER_TEMP 'sst-native-diagnostics.err'
+          [IO.File]::WriteAllText($fixture, @'
+          sys processes --sort ram --top 8
+          sys printers
+          '@, [Text.UTF8Encoding]::new($false))
+          $job = Start-Process -FilePath ./target/debug/sst.exe -ArgumentList $fixture -PassThru -Wait -RedirectStandardOutput $output -RedirectStandardError $errorLog
+          $result = Get-Content -Raw -LiteralPath $output
+          $errors = Get-Content -Raw -LiteralPath $errorLog
+          if ($job.ExitCode -ne 0) {
+            throw "Diagnóstico nativo terminó con estado $($job.ExitCode): $errors | $result"
+          }
+          if ($result -notmatch 'PID\\s+PPID\\s+CPU%\\s+RAM MiB') {
+            throw "Falta tabla de procesos: $result"
+          }
+          if ($result -notmatch 'IMPRESORAS|No hay impresoras') {
+            throw "Falta informe de impresoras: $result"
           }
 
       - name: Exercise independent updater with error injection
