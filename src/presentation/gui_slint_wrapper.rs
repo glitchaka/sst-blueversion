@@ -45,7 +45,14 @@ struct PendingUpdate {
 
 pub fn run() -> Result<()> {
     if env::var_os(HELPER_MODE_ENV).is_some() {
-        return run_update_helper();
+        // An older updater launches its newly installed SST while retaining
+        // its own helper environment. That new SST must boot normally, not
+        // try to apply sst.exe.new a second time after it was consumed.
+        if inherited_update_helper_mode() {
+            clear_inherited_update_helper_mode();
+        } else {
+            return run_update_helper();
+        }
     }
 
     schedule_helper_cleanup();
@@ -71,6 +78,59 @@ pub fn run() -> Result<()> {
         schedule_pending_update(&paths)?;
     }
     result
+}
+
+// The helper executable runs from update/tmp, while a successful update
+// re-launches the installed executable at SST_UPDATE_TARGET. Check the
+// identity of the running executable before trusting the inherited mode flag.
+fn inherited_update_helper_mode() -> bool {
+    let Some(target) = env::var_os(HELPER_TARGET_ENV) else {
+        return false;
+    };
+    let Ok(actual) = env::current_exe() else {
+        return false;
+    };
+    same_installed_executable(&actual, Path::new(&target))
+}
+
+fn same_installed_executable(actual: &Path, target: &Path) -> bool {
+    match (fs::canonicalize(actual), fs::canonicalize(target)) {
+        (Ok(actual), Ok(target)) => {
+            #[cfg(windows)]
+            {
+                actual.to_string_lossy().eq_ignore_ascii_case(&target.to_string_lossy())
+            }
+            #[cfg(not(windows))]
+            {
+                actual == target
+            }
+        }
+        _ => false,
+    }
+}
+
+// Must execute before creating GUI threads. Preserve the one-shot cleanup
+// instruction but remove the helper's arguments and mode from the main SST.
+fn clear_inherited_update_helper_mode() {
+    // SAFETY: This function runs at GUI startup before launching threads.
+    // Mutating the process environment in this single-threaded startup phase
+    // prevents stale updater variables leaking into future subprocesses.
+    unsafe {
+        for variable in [
+            HELPER_MODE_ENV,
+            HELPER_PARENT_PID_ENV,
+            HELPER_TARGET_ENV,
+            HELPER_READY_ENV,
+            HELPER_BACKUP_ENV,
+            HELPER_PENDING_ENV,
+            HELPER_APPLIED_PENDING_ENV,
+            HELPER_APPLIED_ENV,
+            HELPER_STAGED_ENV,
+            HELPER_HASH_ENV,
+        ] {
+            env::remove_var(variable);
+        }
+    }
 }
 
 fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
@@ -432,6 +492,16 @@ fn is_newer(candidate: &str, current: &str) -> Result<bool> {
 #[cfg(test)]
 mod updater_relaunch_tests {
     use super::*;
+
+    #[test]
+    fn identifies_the_installed_binary_in_an_old_helper_relaunch() {
+        let current = std::env::current_exe().expect("current exe");
+        assert!(same_installed_executable(&current, &current));
+        assert!(!same_installed_executable(
+            &current,
+            &current.with_file_name("missing-sst-update-helper.exe")
+        ));
+    }
 
     #[test]
     fn relaunched_app_does_not_inherit_update_helper_mode() {
