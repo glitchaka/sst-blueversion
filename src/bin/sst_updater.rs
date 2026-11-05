@@ -75,6 +75,17 @@ fn run() -> Result<()> {
     #[cfg(windows)]
     {
         wait_for_parent(parent)?;
+        // Preserve the previous rollback across successive updates instead
+        // of deleting an existing sst.exe.old before a new attempt.
+        if backup.is_file() {
+            let previous_backup = backup.with_extension("exe.old.previous");
+            if previous_backup.exists() {
+                // Never silently overwrite the user's previous known-good copy.
+                bail!("ya existe una copia de seguridad anterior: {}", previous_backup.display());
+            }
+            fs::rename(&backup, &previous_backup)
+                .context("no se pudo conservar la copia de seguridad previa")?;
+        }
         let mut committed = false;
         let mut last_error = None;
         for _ in 0..40 {
@@ -145,8 +156,9 @@ fn validate_paths(target: &Path, ready: &Path, backup: &Path) -> Result<()> {
     let canonical_target_dir = fs::canonicalize(
         target.parent().context("sst.exe no tiene carpeta")?
     )?;
-    if canonical_root != canonical_target_dir {
-        bail!("el actualizador sólo puede sustituir SST en su propia carpeta");
+    let updater_workspace = canonical_target_dir.join("data").join("update");
+    if canonical_root != canonical_target_dir && canonical_root != updater_workspace {
+        bail!("el actualizador debe ejecutarse desde la instalación SST o su carpeta de actualización");
     }
     let target_name = target.file_name().and_then(|s| s.to_str()).unwrap_or("");
     let ready_name = ready.file_name().and_then(|s| s.to_str()).unwrap_or("");
