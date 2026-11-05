@@ -103,7 +103,7 @@ jobs:
           if ($job.ExitCode -ne 0) {
             throw "Diagnóstico nativo terminó con estado $($job.ExitCode): $errors | $result"
           }
-          if ($result -notmatch 'PID\\s+PPID\\s+CPU%\\s+RAM MiB') {
+          if ($result -notmatch 'PID\s+PPID\s+CPU%\s+RAM MiB') {
             throw "Falta tabla de procesos: $result"
           }
           if ($result -notmatch 'IMPRESORAS|No hay impresoras') {
