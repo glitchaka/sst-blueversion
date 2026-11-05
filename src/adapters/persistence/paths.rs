@@ -1,4 +1,4 @@
-use std::{env, fs, path::PathBuf, sync::OnceLock, thread};
+use std::{env, fs, io::Write, path::PathBuf, sync::OnceLock, thread};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -468,26 +468,13 @@ impl AppPaths {
         let examples = self.examples_dir();
         fs::create_dir_all(&examples)?;
 
-        // tour.sh and examples/ are bundled demonstration assets, not user
-        // configuration. Keep the runtime copies synchronized with the binary so
-        // rebuilding SST actually updates fixes to the tour instead of leaving
-        // stale scripts beside an older executable.
+        // These files are user-editable scripts once they exist. Never replace
+        // them on startup or during an update: an earlier implementation
+        // silently destroyed user-written tour.sh scripts on every launch.
         for (name, contents) in TOUR_EXAMPLES {
-            let path = examples.join(name);
-            let current = fs::read_to_string(&path).ok();
-            if current.as_deref() != Some(*contents) {
-                fs::write(&path, contents)
-                    .with_context(|| format!("No se pudo actualizar {}", path.display()))?;
-            }
+            write_bundled_script_if_missing(&examples.join(name), contents)?;
         }
-
-        let tour = self.tour_file();
-        let current = fs::read_to_string(&tour).ok();
-        if current.as_deref() != Some(TOUR_SCRIPT) {
-            fs::write(&tour, TOUR_SCRIPT)
-                .with_context(|| format!("No se pudo actualizar {}", tour.display()))?;
-        }
-
+        write_bundled_script_if_missing(&self.tour_file(), TOUR_SCRIPT)?;
         Ok(())
     }
 
@@ -650,6 +637,59 @@ fn write_guide_atomically(destination: &std::path::Path, contents: &[u8]) -> Res
         .with_context(|| format!("No se pudo restaurar {}", destination.display()));
     let _ = fs::remove_file(&temporary);
     result
+}
+
+fn write_bundled_script_if_missing(path: &std::path::Path, contents: &str) -> Result<()> {
+    // create_new avoids a TOCTOU race and never truncates existing user files.
+    match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(mut file) => file.write_all(contents.as_bytes())
+            .with_context(|| format!("No se pudo instalar {}", path.display())),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(error)
+            .with_context(|| format!("No se pudo crear {}", path.display())),
+    }
+}
+
+#[cfg(test)]
+mod tour_preservation_tests {
+    use super::*;
+
+    #[test]
+    fn startup_never_overwrites_a_custom_tour_or_example() {
+        let root = std::env::temp_dir().join(format!(
+            "sst-tour-preservation-{}-{}", std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir_all(root.join("examples")).unwrap();
+        let user_tour = root.join("tour.sh");
+        let user_example = root.join("examples/01-language-tour.sh");
+        fs::write(&user_tour, "echo 'MENU PERSONALIZADO'\n").unwrap();
+        fs::write(&user_example, "echo 'EJEMPLO PERSONALIZADO'\n").unwrap();
+        let paths = AppPaths { root: root.clone() };
+        paths.ensure_tour_assets().unwrap();
+        paths.ensure_tour_assets().unwrap();
+        assert_eq!(fs::read_to_string(&user_tour).unwrap(), "echo 'MENU PERSONALIZADO'\n");
+        assert_eq!(fs::read_to_string(&user_example).unwrap(), "echo 'EJEMPLO PERSONALIZADO'\n");
+        assert!(root.join("examples/02-windows-operator-report.sh").is_file());
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn bundled_tour_is_created_only_when_absent() {
+        let root = std::env::temp_dir().join(format!(
+            "sst-tour-install-{}-{}", std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let paths = AppPaths { root: root.clone() };
+        paths.ensure_tour_assets().unwrap();
+        assert_eq!(fs::read_to_string(paths.tour_file()).unwrap(), TOUR_SCRIPT);
+        fs::write(paths.tour_file(), "echo 'USER EDIT'\n").unwrap();
+        paths.ensure_tour_assets().unwrap();
+        assert_eq!(fs::read_to_string(paths.tour_file()).unwrap(), "echo 'USER EDIT'\n");
+        fs::remove_dir_all(&root).unwrap();
+    }
 }
 
 fn is_background_image(path: &std::path::Path) -> bool {
