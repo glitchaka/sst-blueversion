@@ -1,1 +1,1 @@
-2026-11-05 — Validate Windows Rust build and tests for Nwash process substitution EOF handling, redirected read cursor, and independent updater integration. Do not publish on validation failure.
+2026-11-05 — blocking validation after repairs: preserve custom scripts, restore valid Nwash interpreter, native sys printer/process diagnostic, real four-option interactive fixture, no release until all tests succeed.
