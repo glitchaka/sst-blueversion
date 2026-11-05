@@ -34,6 +34,12 @@ pub struct UpdateManifest {
     #[serde(default)]
     pub size: Option<u64>,
     #[serde(default)]
+    pub updater_asset_url: Option<String>,
+    #[serde(default)]
+    pub updater_sha256: Option<String>,
+    #[serde(default)]
+    pub updater_size: Option<u64>,
+    #[serde(default)]
     pub previous_version: Option<String>,
     #[serde(default)]
     pub changes: Vec<String>,
@@ -47,6 +53,8 @@ struct PendingUpdate {
     sha256: String,
     staged_path: String,
     staged_at: String,
+    #[serde(default)]
+    updater_sha256: Option<String>,
     #[serde(default)]
     changes: Vec<String>,
 }
@@ -311,6 +319,9 @@ fn fetch_manifest(paths: &AppPaths) -> Result<UpdateManifest> {
     let mut manifest: UpdateManifest = serde_json::from_slice(&bytes)
         .context("sst-update.json no es un manifiesto válido")?;
     manifest.asset_url = resolve_asset_url(&url, &manifest.asset_url)?;
+    if let Some(updater_url) = manifest.updater_asset_url.as_deref() {
+        manifest.updater_asset_url = Some(resolve_asset_url(&url, updater_url)?);
+    }
     Ok(manifest)
 }
 
@@ -330,6 +341,28 @@ where
     fs::create_dir_all(&dir)?;
     let partial = dir.join("sst.exe.part");
     let staged = dir.join(STAGED_EXE);
+
+    // Download and authenticate the independent updater BEFORE marking the
+    // SST binary as pending. An existing SST installation might not have an
+    // updater yet if it was installed through the old single-exe channel.
+    if let (Some(url), Some(hash), Some(size)) = (
+        manifest.updater_asset_url.as_deref(),
+        manifest.updater_sha256.as_deref(),
+        manifest.updater_size,
+    ) {
+        let updater_path = independent_updater_path(paths, &manifest.version);
+        let updater_partial = updater_path.with_extension("exe.part");
+        let _ = fs::remove_file(&updater_partial);
+        download(url, &updater_partial)?;
+        verify_file(&updater_partial, hash, Some(size))?;
+        if updater_path.is_file() {
+            let _ = fs::remove_file(&updater_path);
+        }
+        fs::rename(&updater_partial, &updater_path)
+            .context("no se pudo activar el actualizador independiente verificado")?;
+    } else {
+        bail!("el canal de actualización no incluye un actualizador independiente verificable");
+    }
     let _ = fs::remove_file(&partial);
     download(&manifest.asset_url, &partial)?;
     notify("\x1b[38;5;250mActualizaciones: verificando tamaño y SHA-256...\x1b[0m\r\n");
@@ -343,6 +376,7 @@ where
         sha256: manifest.sha256.to_ascii_lowercase(),
         staged_path: staged.to_string_lossy().into_owned(),
         staged_at: Utc::now().to_rfc3339(),
+        updater_sha256: manifest.updater_sha256.clone(),
         changes: manifest.changes.clone(),
     };
     fs::write(pending_path(paths), serde_json::to_vec_pretty(&pending)?)?;
@@ -365,6 +399,20 @@ fn validate_manifest(manifest: &UpdateManifest) -> Result<()> {
         bail!("canal de actualización inválido en el manifiesto");
     }
     ensure_https(&manifest.asset_url)?;
+    let updater = (
+        manifest.updater_asset_url.as_ref(),
+        manifest.updater_sha256.as_ref(),
+        manifest.updater_size,
+    );
+    match updater {
+        (Some(url), Some(hash), Some(size)) if size > 0 => {
+            ensure_https(url)?;
+            if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                bail!("SHA-256 del actualizador independiente inválido");
+            }
+        }
+        _ => bail!("el manifiesto debe publicar URL, SHA-256 y tamaño del actualizador independiente"),
+    }
     let hash = manifest.sha256.trim();
     if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         bail!("SHA-256 inválido en el manifiesto");
@@ -492,6 +540,23 @@ fn is_newer(candidate: &str, current: &str) -> Result<bool> {
     let current = parse_version(current)
         .with_context(|| format!("versión local inválida: {current}"))?;
     Ok(candidate > current)
+}
+
+pub(crate) fn independent_updater_path(paths: &AppPaths, version: &str) -> PathBuf {
+    // The version is validated with parse_version before it reaches staging.
+    // Keep one worker per update to avoid replacing a still-running worker.
+    update_dir(paths).join(format!("sst-updater-{version}.exe"))
+}
+
+pub(crate) fn verified_independent_updater(
+    paths: &AppPaths,
+    version: &str,
+    expected_hash: &str,
+) -> Result<PathBuf> {
+    let worker = independent_updater_path(paths, version);
+    verify_file(&worker, expected_hash, None)
+        .context("actualizador independiente ausente o modificado")?;
+    Ok(worker)
 }
 
 fn update_dir(paths: &AppPaths) -> PathBuf {
