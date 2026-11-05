@@ -24,7 +24,10 @@ titulo() {
 
 pausa() {
     printf '\n%sPresiona una tecla para volver...%s' "$YELLOW" "$RESET"
-    IFS= read -rsn1 _
+    if ! IFS= read -rsn1 _; then
+        printf '\n'
+        return 1
+    fi
     printf '\n'
 }
 
@@ -82,7 +85,10 @@ impresoras() {
 }
 
 printf '%s¿Cómo te llamas? %s' "$CYAN" "$RESET"
-IFS= read -r nombre
+if ! IFS= read -r nombre; then
+    printf '\nNo se recibió el nombre. Fin de entrada.\n'
+    exit 1
+fi
 [[ -n "$nombre" ]] || nombre="Invitado"
 panel "¡Hola, $nombre! Bienvenido a SST"
 
@@ -94,7 +100,10 @@ while true; do
     printf '%s[4]%s Impresoras instaladas e IP\n' "$CYAN" "$RESET"
     printf '%s[0]%s Salir\n\n' "$RED" "$RESET"
     printf '%sSelecciona una opción: %s' "$YELLOW" "$RESET"
-    IFS= read -rsn1 opcion
+    if ! IFS= read -rsn1 opcion; then
+        printf '\nFin de entrada.\n'
+        break
+    fi
     printf '\n'
     case "$opcion" in
         1) red; pausa ;;
