@@ -12,6 +12,7 @@ $publicReleaseTag = "v$version"
 # cross-repo cuya ausencia dejó el canal adm-toolbox sin activar.
 $publicReleaseBase = "https://github.com/glitchaka/sst-blueversion/releases/download/$publicReleaseTag"
 $publicSstUrl = "$publicReleaseBase/sst.exe"
+$publicUpdaterUrl = "$publicReleaseBase/sst-updater.exe"
 $publicSetupUrl = "$publicReleaseBase/SST-Setup-$version.exe"
 
 $releaseNotesPath = Join-Path $root ".release\v$version.md"
@@ -47,7 +48,8 @@ $release = Join-Path $root 'target\release'
 $sst = Join-Path $release 'sst.exe'
 $stub = Join-Path $release 'sst_sfx_stub.exe'
 $packager = Join-Path $release 'sst_sfx_packager.exe'
-foreach ($required in @($sst, $stub, $packager)) {
+$updater = Join-Path $release 'sst_updater.exe'
+foreach ($required in @($sst, $stub, $packager, $updater)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Falta $required. Compile sst, sst_sfx_stub y sst_sfx_packager en release."
     }
@@ -61,6 +63,7 @@ if (Test-Path -LiteralPath $dist) {
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 Copy-Item -LiteralPath $sst -Destination (Join-Path $stage 'sst.exe')
+Copy-Item -LiteralPath $updater -Destination (Join-Path $stage 'sst-updater.exe')
 $guide = Join-Path $release 'guide'
 if (-not (Test-Path -LiteralPath (Join-Path $guide 'guide-index.json') -PathType Leaf)) {
     throw 'Falta la guía local del build: target/release/guide/guide-index.json'
@@ -116,12 +119,16 @@ try {
 
 $rawExe = Join-Path $dist 'sst.exe'
 Copy-Item -LiteralPath $sst -Destination $rawExe
+$rawUpdater = Join-Path $dist 'sst-updater.exe'
+Copy-Item -LiteralPath $updater -Destination $rawUpdater
 # La distribución portable conserva exactamente la misma guía sin Internet.
 Copy-Item -Recurse -LiteralPath $guide -Destination (Join-Path $dist 'guide')
 
 $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $rawExe).Hash.ToLowerInvariant()
 $setupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash.ToLowerInvariant()
 $exeSize = (Get-Item -LiteralPath $rawExe).Length
+$updaterHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $rawUpdater).Hash.ToLowerInvariant()
+$updaterSize = (Get-Item -LiteralPath $rawUpdater).Length
 
 $updateManifest = [ordered]@{
     schema = 1
@@ -131,6 +138,9 @@ $updateManifest = [ordered]@{
     asset_url = $publicSstUrl
     sha256 = $exeHash
     size = $exeSize
+    updater_asset_url = $publicUpdaterUrl
+    updater_sha256 = $updaterHash
+    updater_size = $updaterSize
     changes = $changes
     setup = [ordered]@{
         name = $setupName
@@ -159,7 +169,8 @@ Remove-Item -Recurse -Force -LiteralPath $stage
 Write-Host "SST $version empaquetado en $dist"
 Write-Host "  Cambios publicados: $($changes.Count)"
 Write-Host "  Update binario: $publicSstUrl"
+Write-Host "  Actualizador independiente: $publicUpdaterUrl"
 Write-Host "  $setupName ($setupSize bytes, single-use, id=$packageId)"
-Write-Host '  sst.exe + guide/ (portable, offline)'
+Write-Host '  sst.exe + sst-updater.exe + guide/ (portable, offline)'
 Write-Host '  sst-update.json'
 Write-Host '  version.txt'
