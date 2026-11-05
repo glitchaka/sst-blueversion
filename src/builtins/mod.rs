@@ -28,6 +28,7 @@ pub use nwash::{AclBuiltin, EventLogBuiltin, FirewallBuiltin, PnpBuiltin, PowerB
 pub use security::{IntelBuiltin, TriageBuiltin};
 pub use system::SystemBuiltin;
 pub use sudo::SudoBuiltin;
+pub(crate) use sudo::gui_privilege_indicator;
 pub use unix::{UNIX_COMMANDS, UnixBuiltin};
 pub use guide_new::GuideBuiltin as WikiBuiltin;
 pub use update::UpdateBuiltin;
