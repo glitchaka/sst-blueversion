@@ -54,7 +54,7 @@ impl SystemService {
 
         match sub {
             "info" => info(),
-            "processes" | "ps" => processes(),
+            "processes" | "ps" => processes(&args[1..]),
             "top" => self.top(),
             "disks" | "df" => disks(),
             "memory" | "free" => memory(),
@@ -97,7 +97,7 @@ impl SystemService {
 
     pub fn execute_alias(&self, name: &str, args: &[String]) -> anyhow::Result<CommandOutput> {
         match name {
-            "ps" => processes(),
+            "ps" => processes(args),
             "top" => self.top(),
             "df" => disks(),
             "free" => memory(),
@@ -1094,27 +1094,75 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     Ok(CommandOutput::ok(out))
 }
 
-fn processes() -> anyhow::Result<CommandOutput> {
-    let mut system = System::new_all();
-    system.refresh_all();
-
-    let rows = process_tree_rows(&system, true);
-    let mut out = String::from("PID      PPID     CPU%     RAM MiB   PROCESS\n");
-
-    for (pid, tree_prefix) in rows.into_iter().take(160) {
-        let Some(process) = system.process(pid) else { continue; };
-        let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
-        out.push_str(&format!(
-            "{:<8} {:<8} {:>6.1} {:>10.1}   {}{}\n",
-            pid,
-            ppid,
-            process.cpu_usage(),
-            process.memory() as f64 / 1024.0 / 1024.0,
-            tree_prefix,
-            process.name().to_string_lossy()
+fn processes(args: &[String]) -> anyhow::Result<CommandOutput> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        return Ok(CommandOutput::ok(
+            "sys processes [--sort cpu|ram] [--top N]: sin opciones árbol de procesos, con opciones orden global.\n",
         ));
     }
+    let mut limit = 160usize;
+    let mut sort = "cpu";
+    let mut flat = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--sort" => {
+                i += 1;
+                sort = args.get(i).map(String::as_str)
+                    .ok_or_else(|| anyhow::anyhow!("sys processes: --sort requiere cpu o ram"))?;
+                anyhow::ensure!(matches!(sort, "cpu" | "ram"),
+                    "sys processes: orden inválido: {sort}");
+                flat = true;
+            }
+            "--top" => {
+                i += 1;
+                let count = args.get(i)
+                    .ok_or_else(|| anyhow::anyhow!("sys processes: --top requiere un número"))?;
+                limit = count.parse::<usize>()
+                    .map_err(|_| anyhow::anyhow!("sys processes: --top inválido: {count}"))?;
+                anyhow::ensure!((1..=1000).contains(&limit),
+                    "sys processes: --top debe estar entre 1 y 1000");
+                flat = true;
+            }
+            other => anyhow::bail!("sys processes: opción desconocida: {other}"),
+        }
+        i += 1;
+    }
 
+    let mut system = System::new_all();
+    system.refresh_all();
+    let mut out = String::from("PID      PPID     CPU%     RAM MiB   PROCESS\n");
+    if flat {
+        let mut rows: Vec<_> = system.processes().iter().collect();
+        rows.sort_by(|(pa, a), (pb, b)| {
+            let order = if sort == "ram" {
+                b.memory().cmp(&a.memory())
+            } else {
+                b.cpu_usage().total_cmp(&a.cpu_usage())
+            };
+            order.then_with(|| pa.as_u32().cmp(&pb.as_u32()))
+        });
+        for (pid, process) in rows.into_iter().take(limit) {
+            let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
+            writeln!(
+                out, "{:<8} {:<8} {:>6.1} {:>10.1}   {}",
+                pid, ppid, process.cpu_usage(),
+                process.memory() as f64 / 1024.0 / 1024.0,
+                process.name().to_string_lossy(),
+            )?;
+        }
+    } else {
+        for (pid, tree_prefix) in process_tree_rows(&system, true).into_iter().take(limit) {
+            let Some(process) = system.process(pid) else { continue; };
+            let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
+            writeln!(
+                out, "{:<8} {:<8} {:>6.1} {:>10.1}   {}{}",
+                pid, ppid, process.cpu_usage(),
+                process.memory() as f64 / 1024.0 / 1024.0,
+                tree_prefix, process.name().to_string_lossy(),
+            )?;
+        }
+    }
     Ok(CommandOutput::ok(out))
 }
 
