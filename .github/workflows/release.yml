@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - '.release/publish-0.1.9-blue.16.trigger'
+      - '.release/publish-0.1.9-blue.17.trigger'
   workflow_dispatch:
     inputs:
       publish_release:
