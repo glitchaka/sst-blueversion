@@ -302,9 +302,9 @@ slint::slint! {
                 // We do not infer this from the argv/--gui-admin flag.
                 Rectangle {
                     visible: root.privilege-label != "";
-                    x: 68px;
+                    x: 65px;
                     y: 5px;
-                    width: 100px;
+                    width: 95px;
                     height: 24px;
                     border-radius: 7px;
                     background: #392517;
