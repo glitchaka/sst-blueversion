@@ -37,7 +37,7 @@ use windows_sys::Win32::{
         Input::KeyboardAndMouse::{SetActiveWindow, SetFocus},
         WindowsAndMessaging::{
             BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsZoomed,
-            SetForegroundWindow, ShowWindow, SW_RESTORE,
+            SetForegroundWindow, SetWindowTextW, ShowWindow, SW_RESTORE,
         },
     },
 };
@@ -151,7 +151,7 @@ slint::slint! {
         in property <image> background-image;
         in property <float> background-image-opacity: 0.0;
         in property <string> background-image-fit-mode: "cover";
-        in property <string> privilege-label: "";
+        in property <string> privilege-label: "TOKEN ?";
         in property <string> cpu-text: "CPU 0%";
         in property <string> ram-text: "RAM 0.0 GiB";
         in property <string> clock-text: "00:00";
@@ -297,19 +297,20 @@ slint::slint! {
                     vertical-alignment: center;
                 }
 
-                // Always visible when an actual elevated Windows token was
-                // detected, including when the window is narrow or unfocused.
-                // We do not infer this from the argv/--gui-admin flag.
+                // Always display the real process-token level, including a
+                // normal/filtered session. Only elevated tokens use amber.
                 Rectangle {
-                    visible: root.privilege-label != "";
-                    x: 65px;
+                    visible: true;
+                    x: 70px;
                     y: 5px;
-                    width: 95px;
+                    width: 96px;
                     height: 24px;
                     border-radius: 7px;
-                    background: #392517;
+                    background: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
+                        ? #202b39 : #392517;
                     border-width: 1px;
-                    border-color: #e5a55b;
+                    border-color: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
+                        ? #607085 : #e5a55b;
 
                     Text {
                         x: 2px;
@@ -317,7 +318,8 @@ slint::slint! {
                         width: parent.width - 4px;
                         height: parent.height;
                         text: root.privilege-label;
-                        color: #ffcf8a;
+                        color: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
+                            ? #dfe8ef : #ffcf8a;
                         font-family: "Segoe UI Variable";
                         font-size: 11px;
                         font-weight: 700;
@@ -327,8 +329,8 @@ slint::slint! {
                 }
 
                 Text {
-                    visible: island.width >= 670px;
-                    x: root.privilege-label != "" ? 184px : 102px;
+                    visible: island.width >= 705px;
+                    x: 184px;
                     y: 0;
                     width: 92px;
                     height: parent.height;
@@ -340,8 +342,8 @@ slint::slint! {
                 }
 
                 Text {
-                    visible: island.width >= 670px;
-                    x: root.privilege-label != "" ? 281px : 205px;
+                    visible: island.width >= 705px;
+                    x: 281px;
                     y: 0;
                     width: 128px;
                     height: parent.height;
@@ -353,6 +355,7 @@ slint::slint! {
                 }
 
                 Text {
+                    visible: island.width >= 525px;
                     x: island.width - 296px;
                     y: 0;
                     width: 62px;
@@ -1612,6 +1615,15 @@ fn slint_hwnd(ui: &SstBlueWindow) -> Option<HWND> {
     Some(win32.hwnd.get() as HWND)
 }
 
+// Expose the verified token level to the OS task switcher as well.
+fn set_native_privilege_title(hwnd: HWND, privilege_label: &str) {
+    let title: Vec<u16> = format!("Shell Shock Tool [{}]", privilege_label)
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    unsafe { SetWindowTextW(hwnd, title.as_ptr()); }
+}
+
 unsafe fn focus_native_window(hwnd: HWND) {
     unsafe {
         let foreground = GetForegroundWindow();
@@ -1704,13 +1716,14 @@ pub fn run() -> Result<()> {
     // escalation. Its token is immutable during this GUI session. Query that
     // token directly once and retain the visible indicator for the window's
     // entire lifetime, including unfocused and restored states.
-    match crate::builtins::gui_privilege_indicator() {
-        Ok(label) => ui.set_privilege_label(label.into()),
+    let privilege_label = match crate::builtins::gui_privilege_indicator() {
+        Ok(label) => label.to_owned(),
         Err(error) => {
             eprintln!("No se pudo determinar el token de privilegios de SST: {error}");
-            ui.set_privilege_label("TOKEN ?".into());
+            "TOKEN ?".to_owned()
         }
-    }
+    };
+    ui.set_privilege_label(privilege_label.clone().into());
 
     if let Some(image) = background_image {
         ui.set_background_image(image);
@@ -1780,10 +1793,12 @@ pub fn run() -> Result<()> {
     {
         let weak = ui.as_weak();
         let appearance = appearance.clone();
+        let privilege_label = privilege_label.clone();
         Timer::single_shot(Duration::ZERO, move || {
             if let Some(ui) = weak.upgrade() {
                 apply_slint_window_effects(&ui, &appearance);
                 if let Some(hwnd) = slint_hwnd(&ui) {
+                    set_native_privilege_title(hwnd, &privilege_label);
                     unsafe { focus_native_window(hwnd); }
                 }
             }

@@ -1,7 +1,7 @@
 [package]
 name = "sst"
 # Única fuente canónica de versión: releases, manifiestos y binarios derivan de este valor.
-version = "0.1.9-blue.23"
+version = "0.1.9-blue.24"
 edition = "2024"
 description = "Portable Bash-compatible administration shell for Windows"
 
