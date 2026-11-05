@@ -254,8 +254,7 @@ fn run_update_helper() -> Result<()> {
     }
 
     let helper = env::current_exe().context("no se pudo resolver el helper temporal")?;
-    Command::new(&target)
-        .env(HELPER_CLEANUP_ENV, &helper)
+    updated_sst_command(&target, &helper)
         .spawn()
         .context("la actualización se aplicó, pero no se pudo relanzar SST")?;
 
@@ -338,6 +337,30 @@ fn replace_file_atomic(target: &Path, replacement: &Path, backup: Option<&Path>)
     Ok(())
 }
 
+// An update helper inherits SST_INTERNAL_APPLY_UPDATE=1 to apply the
+// replacement. NEVER pass that mode or its one-shot arguments to the
+// relaunched application: sst.exe.new is consumed by ReplaceFileW.
+fn updated_sst_command(target: &Path, helper: &Path) -> Command {
+    let mut command = Command::new(target);
+    for variable in [
+        HELPER_MODE_ENV,
+        HELPER_PARENT_PID_ENV,
+        HELPER_TARGET_ENV,
+        HELPER_READY_ENV,
+        HELPER_BACKUP_ENV,
+        HELPER_PENDING_ENV,
+        HELPER_APPLIED_PENDING_ENV,
+        HELPER_APPLIED_ENV,
+        HELPER_STAGED_ENV,
+        HELPER_HASH_ENV,
+        HELPER_CLEANUP_ENV,
+    ] {
+        command.env_remove(variable);
+    }
+    command.env(HELPER_CLEANUP_ENV, helper);
+    command
+}
+
 fn schedule_helper_cleanup() {
     let Some(path) = env::var_os(HELPER_CLEANUP_ENV) else {
         return;
@@ -404,4 +427,36 @@ fn is_newer(candidate: &str, current: &str) -> Result<bool> {
     let current = parse_version(current)
         .with_context(|| format!("versión local inválida: {current}"))?;
     Ok(candidate > current)
+}
+
+#[cfg(test)]
+mod updater_relaunch_tests {
+    use super::*;
+
+    #[test]
+    fn relaunched_app_does_not_inherit_update_helper_mode() {
+        let target = Path::new("sst.exe");
+        let helper = Path::new("sst-update-helper.exe");
+        let cmd = updated_sst_command(target, helper);
+        let variables: std::collections::HashMap<_, _> = cmd.get_envs().collect();
+
+        for variable in [
+            HELPER_MODE_ENV,
+            HELPER_PARENT_PID_ENV,
+            HELPER_TARGET_ENV,
+            HELPER_READY_ENV,
+            HELPER_BACKUP_ENV,
+            HELPER_PENDING_ENV,
+            HELPER_APPLIED_PENDING_ENV,
+            HELPER_APPLIED_ENV,
+            HELPER_STAGED_ENV,
+            HELPER_HASH_ENV,
+        ] {
+            assert_eq!(variables.get(std::ffi::OsStr::new(variable)), Some(&None));
+        }
+        assert_eq!(
+            variables.get(std::ffi::OsStr::new(HELPER_CLEANUP_ENV)),
+            Some(&Some(helper.as_os_str()))
+        );
+    }
 }
