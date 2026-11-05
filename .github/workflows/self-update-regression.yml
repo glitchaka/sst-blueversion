@@ -10,6 +10,9 @@ on:
       - 'src/presentation/gui_slint_wrapper.rs'
       - 'src/application/update.rs'
       - 'src/bin/sst_updater.rs'
+      - 'src/core/bash/interpreter.rs'
+      - 'src/adapters/shell/native_engine.rs'
+      - 'scripts/test-nwash-process-substitution.ps1'
       - 'scripts/test-independent-updater.ps1'
       - 'scripts/test-self-update.ps1'
       - 'scripts/test-self-update-failures.ps1'
@@ -68,6 +71,10 @@ jobs:
       - name: Exercise updater failure matrix
         shell: pwsh
         run: ./scripts/test-self-update-failures.ps1 -SstPath ./target/debug/sst.exe
+
+      - name: Exercise real Windows Bash process substitution and read EOF
+        shell: pwsh
+        run: ./scripts/test-nwash-process-substitution.ps1 -SstPath ./target/debug/sst.exe
 
       - name: Exercise independent updater with error injection
         shell: pwsh
