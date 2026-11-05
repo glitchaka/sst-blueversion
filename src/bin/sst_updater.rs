@@ -75,16 +75,21 @@ fn run() -> Result<()> {
     #[cfg(windows)]
     {
         wait_for_parent(parent)?;
-        // Preserve the previous rollback across successive updates instead
-        // of deleting an existing sst.exe.old before a new attempt.
+        // ReplaceFileW requires the backup destination to be free.
+        // Preserve any existing rollback in a separate timestamped file,
+        // rather than removing a previously working SST.
         if backup.is_file() {
-            let previous_backup = backup.with_extension("exe.old.previous");
-            if previous_backup.exists() {
-                // Never silently overwrite the user's previous known-good copy.
-                bail!("ya existe una copia de seguridad anterior: {}", previous_backup.display());
-            }
-            fs::rename(&backup, &previous_backup)
-                .context("no se pudo conservar la copia de seguridad previa")?;
+            let suffix = format!(
+                "sst.exe.old.{}.{}.bak",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis(),
+                std::process::id()
+            );
+            let archived = backup.with_file_name(suffix);
+            fs::rename(&backup, &archived)
+                .context("no se pudo conservar el rollback anterior")?;
         }
         let mut committed = false;
         let mut last_error = None;
