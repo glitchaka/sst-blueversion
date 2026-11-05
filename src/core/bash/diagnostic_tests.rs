@@ -26,7 +26,7 @@ impl ShellCommandHost for DiagnosticHost {
             }
             ("sys", Some("hostname")) => Some("EQUIPO-IT\n".to_owned()),
             ("sys", Some("whoami")) => Some("DOMINIO\\usuario\n".to_owned()),
-            ("net", Some("interfaces")) => Some("Ethernet 192.168.1.70\n".to_owned()),
+            ("net", Some("interfaces")) => Some("Ethernet\n  IP: 192.168.1.70/24\n  MAC: AA:BB:CC:DD:EE:FF\n  Enlace: UP\n".to_owned()),
             _ => None,
         };
         Ok(result.map(|stdout| ExecutionResult::from_parts(stdout, String::new(), 0)))
@@ -60,8 +60,8 @@ fn diagnostic_keeps_name_and_executes_all_four_options_before_exit() {
     let result = shell.execute_text(script).expect("Nwash must execute the diagnostic");
     assert_eq!(result.status, 0, "{}", result.stderr);
     assert!(result.stdout.contains("¡Hola, Alejandro! Bienvenido a SST"), "{:?}", result.stdout);
-    assert!(result.stdout.contains("IPv4 : 192.168.1.70"), "{:?}", result.stdout);
-    assert!(result.stdout.contains("AA-BB-CC-DD-EE-FF"), "{:?}", result.stdout);
+    assert!(result.stdout.contains("IP: 192.168.1.70/24"), "{:?}", result.stdout);
+    assert!(result.stdout.contains("MAC: AA:BB:CC:DD:EE:FF"), "{:?}", result.stdout);
     assert!(result.stdout.contains("EQUIPO-IT"), "{:?}", result.stdout);
     assert!(result.stdout.contains("DOMINIO\\usuario"), "{:?}", result.stdout);
     assert!(result.stdout.contains("899.0 proceso-test.exe"), "{:?}", result.stdout);
