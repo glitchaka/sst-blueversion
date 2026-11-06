@@ -1384,7 +1384,7 @@ fn which(args: &[String]) -> Result<CommandOutput> {
 }
 
 fn find_in_path(name: &str) -> Option<PathBuf> {
-    let path = env::var_os("PATH")?;
+    let path = env::var_os("PATH").unwrap_or_default();
     let extensions: Vec<String> = env::var("PATHEXT")
         .unwrap_or_else(|_| ".EXE;.CMD;.BAT;.COM".to_owned())
         .split(';')
@@ -1403,6 +1403,22 @@ fn find_in_path(name: &str) -> Option<PathBuf> {
                 if candidate.is_file() {
                     return Some(candidate);
                 }
+            }
+        }
+    }
+
+    // Keep system utilities discoverable when a GUI/portable PATH is incomplete.
+    #[cfg(windows)]
+    if !name.contains('/') && !name.contains('\\') {
+        let names = if Path::new(name).extension().is_some() {
+            vec![name.to_owned()]
+        } else {
+            vec![format!("{name}.exe"), format!("{name}.com"),
+                 format!("{name}.cmd"), format!("{name}.bat")]
+        };
+        for executable in names {
+            if let Ok(path) = crate::support::windows::system32_executable(&executable) {
+                return Some(path);
             }
         }
     }
