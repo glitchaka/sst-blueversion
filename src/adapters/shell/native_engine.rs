@@ -794,17 +794,19 @@ impl ShellCommandHost for WindowsShellHost {
         env: &HashMap<String, String>,
         stdin: Option<&[u8]>,
     ) -> Result<ExecutionResult> {
+        let spawn_cwd = super::native_process::working_directory(cwd)?;
+        let resolved_program = super::native_process::resolve_program(program, &spawn_cwd, env);
         let script = resolve_shell_script(program, cwd);
         let mut command = if let Some(script) = &script {
             let mut command = Command::new(std::env::current_exe()?);
             command.arg(script);
             command
         } else {
-            Command::new(program)
+            Command::new(&resolved_program)
         };
         command
             .args(args)
-            .current_dir(cwd)
+            .current_dir(&spawn_cwd)
             .envs(env)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -829,7 +831,10 @@ impl ShellCommandHost for WindowsShellHost {
                     "{program}: Windows exige elevación para este ejecutable; usa 'sudo {program} ...'"
                 )
             } else {
-                anyhow::anyhow!("no se pudo ejecutar {program}: {error}")
+                anyhow::anyhow!(
+                    "no se pudo ejecutar {program} ({}) desde {}: {error}",
+                    resolved_program.display(), spawn_cwd.display(),
+                )
             }
         })?;
 
@@ -1188,17 +1193,19 @@ impl ShellCommandHost for WindowsShellHost {
         cwd: &Path,
         env: &HashMap<String, String>,
     ) -> Result<u32> {
+        let spawn_cwd = super::native_process::working_directory(cwd)?;
+        let resolved_program = super::native_process::resolve_program(program, &spawn_cwd, env);
         let script = resolve_shell_script(program, cwd);
         let mut command = if let Some(script) = &script {
             let mut command = Command::new(std::env::current_exe()?);
             command.arg(script);
             command
         } else {
-            Command::new(program)
+            Command::new(&resolved_program)
         };
         command
             .args(args)
-            .current_dir(cwd)
+            .current_dir(&spawn_cwd)
             .envs(env)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -1213,7 +1220,10 @@ impl ShellCommandHost for WindowsShellHost {
         }
 
         let mut child = command.spawn()
-            .with_context(|| format!("no se pudo ejecutar {program} en background"))?;
+            .with_context(|| format!(
+                "no se pudo ejecutar {program} ({}) desde {} en background",
+                resolved_program.display(), spawn_cwd.display(),
+            ))?;
         let pid = child.id();
         let display = crate::adapters::terminal::io::output_sender();
         if let Some(mut stdout) = child.stdout.take() {
