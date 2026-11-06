@@ -1,6 +1,7 @@
 //! Local, non-network sudo audit spool. Never collect access tokens or argv.
 use std::{
     env,
+    path::Path,
     fs::{self, OpenOptions},
     io::Write,
     path::PathBuf,
@@ -21,6 +22,7 @@ pub(super) struct AuditEvent {
     computer: String,
     privilege: String,
     command: String,
+    executable: String,
 }
 
 impl AuditEvent {
@@ -40,12 +42,19 @@ impl AuditEvent {
             computer: env::var("COMPUTERNAME").unwrap_or_else(|_| "UNKNOWN".to_owned()),
             privilege: privilege.to_owned(),
             command: command.to_owned(),
+            executable: executable_label(args),
         }
     }
 
-    pub(super) fn record(&self, stage: &str, exit_status: Option<i32>) -> Result<()> {
+    pub(super) fn event_id(&self) -> &str { &self.id }
+
+    pub(super) fn operation(&self) -> &str { self.category }
+
+    pub(super) fn event_json(
+        &self, stage: &str, exit_status: Option<i32>,
+    ) -> serde_json::Value {
         let now = Local::now();
-        let value = json!({
+        json!({
             "schema": 1,
             "event_id": self.id,
             "event": "sudo",
@@ -59,10 +68,14 @@ impl AuditEvent {
             "session_privilege": self.privilege,
             "invoked_as": self.command,
             "operation": self.category,
+            "executable": self.executable,
             "exit_status": exit_status,
             "sst_version": env!("CARGO_PKG_VERSION"),
-        });
-        let mut bytes = serde_json::to_vec(&value)?;
+        })
+    }
+
+    pub(super) fn record(&self, stage: &str, exit_status: Option<i32>) -> Result<()> {
+        let mut bytes = serde_json::to_vec(&self.event_json(stage, exit_status))?;
         bytes.push(b'\n');
         let path = audit_file();
         if let Some(parent) = path.parent() {
@@ -80,6 +93,24 @@ impl AuditEvent {
 fn audit_file() -> PathBuf {
     crate::adapters::persistence::AppPaths::detect()
         .data_dir().join("sudo-audit.jsonl")
+}
+
+/// Keep the public record useful without leaking command-line secrets.
+fn executable_label(args: &[String]) -> String {
+    let first = args.first().map(String::as_str);
+    let index = match first {
+        Some("--system" | "--trustedinstaller" | "--system-internal" |
+             "--trustedinstaller-internal" | "--admin-internal") => 1,
+        Some(_) => 0,
+        None => return "sst".to_owned(),
+    };
+    let value = args.get(index).map(String::as_str).unwrap_or("sst");
+    let first_word = value.split_whitespace().next().unwrap_or("sst");
+    Path::new(first_word).file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("external")
+        .chars().filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_'))
+        .take(80).collect::<String>()
 }
 
 fn category(args: &[String]) -> &'static str {

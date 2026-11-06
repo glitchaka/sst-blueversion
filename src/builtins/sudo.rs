@@ -68,7 +68,9 @@ impl BuiltinCommand for SudoBuiltin {
             arg.as_str(),
             "--admin-internal" | "--system-internal" | "--trustedinstaller-internal"
         ));
-        let audit = (!internal).then(|| super::sudo_audit::AuditEvent::new(
+        let audit = (!internal || args.first().is_some_and(|arg| matches!(
+            arg.as_str(), "--system-internal" | "--trustedinstaller-internal"
+        ))).then(|| super::sudo_audit::AuditEvent::new(
             _invoked_name, args, current_identity(),
             gui_privilege_indicator().unwrap_or("UNKNOWN"),
         ));
@@ -77,7 +79,15 @@ impl BuiltinCommand for SudoBuiltin {
                 eprintln!("sudo: no se pudo registrar auditoría: {error}");
             }
         }
+        let mut remote_receipt = None;
         let outcome = (|| -> Result<CommandOutput> {
+        // Fail closed before any SYSTEM/TrustedInstaller operation. Internal
+        // UAC entrypoints are gated too, so they cannot bypass the receipt.
+        if needs_remote_audit(args, current_sudo_level()?) {
+            let event = audit.as_ref()
+                .context("sudo: falta el contexto de auditoría para la elevación")?;
+            remote_receipt = Some(super::sudo_remote_audit::authorize(event)?);
+        }
         if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
             return Ok(CommandOutput::ok(
                 "sudo — elevación nativa activa de Shell Shock Tool\n\n\
@@ -193,6 +203,16 @@ impl BuiltinCommand for SudoBuiltin {
             if let Err(error) = audit.record("finished", Some(status)) {
                 eprintln!("sudo: no se pudo registrar resultado: {error}");
             }
+            if let Some(receipt) = &remote_receipt {
+                if let Err(error) = super::sudo_remote_audit::report_result(
+                    audit, receipt, status
+                ) {
+                    // The operation may already have executed. Preserve the
+                    // unsent result locally instead of claiming remote delivery.
+                    let _ = audit.record("remote_result_pending", Some(status));
+                    eprintln!("sudo: resultado pendiente de auditoría remota: {error}");
+                }
+            }
         }
         outcome
     }
@@ -235,6 +255,21 @@ impl SudoLevel {
             Self::System => "TRUSTEDINSTALLER",
             Self::TrustedInstaller => "MAX",
         }
+    }
+}
+
+/// Remote audit is mandatory for requests reaching SYSTEM or TrustedInstaller.
+/// A non-elevated UAC wrapper is not the authority: its elevated child will
+/// perform the remote check immediately before trying the privileged action.
+fn needs_remote_audit(args: &[String], level: SudoLevel) -> bool {
+    match args.first().map(String::as_str) {
+        None => matches!(
+            level, SudoLevel::Administrator | SudoLevel::System | SudoLevel::TrustedInstaller
+        ),
+        Some("--system-internal" | "--trustedinstaller-internal") => true,
+        Some("--system" | "--trustedinstaller") =>
+            level.rank() >= SudoLevel::Administrator.rank(),
+        _ => false,
     }
 }
 

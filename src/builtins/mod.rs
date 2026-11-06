@@ -10,6 +10,7 @@ mod security;
 mod system;
 mod sudo;
 mod sudo_audit;
+mod sudo_remote_audit;
 mod unix;
 mod guide_new;
 mod guide_remote;
