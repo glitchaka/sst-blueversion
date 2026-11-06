@@ -9,6 +9,7 @@ mod nwash;
 mod security;
 mod system;
 mod sudo;
+mod sudo_audit;
 mod unix;
 mod guide_new;
 mod guide_remote;

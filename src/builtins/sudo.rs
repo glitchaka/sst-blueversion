@@ -63,6 +63,21 @@ impl BuiltinCommand for SudoBuiltin {
         args: &[String],
         context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
+        // Audit the request, never the operating-system token or arguments.
+        let internal = args.first().is_some_and(|arg| matches!(
+            arg.as_str(),
+            "--admin-internal" | "--system-internal" | "--trustedinstaller-internal"
+        ));
+        let audit = (!internal).then(|| super::sudo_audit::AuditEvent::new(
+            _invoked_name, args, current_identity(),
+            gui_privilege_indicator().unwrap_or("UNKNOWN"),
+        ));
+        if let Some(audit) = &audit {
+            if let Err(error) = audit.record("requested", None) {
+                eprintln!("sudo: no se pudo registrar auditoría: {error}");
+            }
+        }
+        let outcome = (|| -> Result<CommandOutput> {
         if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
             return Ok(CommandOutput::ok(
                 "sudo — elevación nativa activa de Shell Shock Tool\n\n\
@@ -172,6 +187,14 @@ impl BuiltinCommand for SudoBuiltin {
 
         let command = args.iter().map(|arg| shell_quote(arg)).collect::<Vec<_>>().join(" ");
         execute_with_elevation(&command, context.cwd)
+        })();
+        if let Some(audit) = &audit {
+            let status = outcome.as_ref().map(|output| output.status).unwrap_or(-1);
+            if let Err(error) = audit.record("finished", Some(status)) {
+                eprintln!("sudo: no se pudo registrar resultado: {error}");
+            }
+        }
+        outcome
     }
 }
 
