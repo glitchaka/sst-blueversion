@@ -1,9 +1,11 @@
 SST — Gestor de paquetes: instp
 
-Catálogo interactivo:
-  instp
-  instp browse
-  instp catalog               alias de browse
+Gestor CLI (sin TUI):
+  instp                      muestra ayuda
+  instp PAQUETE              consulta instalado/disponible
+
+Interfaz interactiva independiente:
+  pkgui                      nombre provisional de la TUI
 
 Ayuda:
   instp help
@@ -19,7 +21,9 @@ Información:
   instp show PAQUETE          alias
 
 Instalar:
-  instp install PAQUETE
+  instp install PAQUETE       temporal por defecto
+  instp install PAQUETE -p    persistente
+  instp install PAQUETE --persistent
   instp add PAQUETE           alias
 
 Eliminar:
@@ -32,7 +36,9 @@ Listar instalados:
   instp ls
 
 Actualizar índices de repositorios:
-  instp update
+  instp update               actualiza catálogo, no instala paquetes
+  instp upgrade              actualiza los paquetes instalados
+  instp upgrade PAQUETE      actualiza un paquete instalado
 
 Localizar qué paquete instaló un comando:
   instp which COMANDO
@@ -62,3 +68,8 @@ Modelo de aislamiento:
   - fuentes pueden provenir de GitHub Releases o URL según descriptor
 
 No confundir `instp update` (repositorios de paquetes) con `update` (actualización de SST).
+
+Caducidad: los paquetes temporales se retiran de SST al cambiar la versión
+funcional de la edición Blue (por ejemplo 0.1.9 → 0.1.10); un cambio del
+contador de correcciones blue.N no los retira. Instp elimina también las
+copias del paquete descargado de su caché después de la instalación.

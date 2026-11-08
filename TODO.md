@@ -32,7 +32,7 @@
 
 ### `instp`: un solo motor de gestión de paquetes
 - [ ] `instp` debe ser el único motor de gestión de paquetes de SST. No crear un segundo gestor independiente para la interfaz TUI.
-- [ ] Mantener `instp` como comando/CLI y motor de paquetes; la TUI de catálogo/gestión debe tener un nombre propio diferente, aún por definir.
+- [ ] Mantener `instp` como comando/CLI y motor de paquetes; la TUI de catálogo/gestión debe tener un nombre propio diferente. Nombre provisional implementado: `pkgui`; no se encontró un nombre definitivo aprobado.
 - [ ] La TUI con nombre propio debe usar exactamente el mismo motor `instp`: mismo catálogo, resolver de dependencias, estado instalado, verificación, transacciones y operaciones. Solo cambia la interfaz.
 - [ ] `instp` sin argumentos no debe abrir la TUI por defecto; seguirá siendo la interfaz CLI de `instp`.
 - [ ] `instp <paquete>` sin verbo de instalación/actualización debe ser una consulta de estado, nunca una instalación implícita.

@@ -63,6 +63,7 @@ SST siempre puede usarlo como fallback. El repositorio remoto por defecto apunta
 
 ```bash
 instp update
+instp upgrade [PAQUETE]
 ```
 
 sin recompilar `sst.exe`.
@@ -118,12 +119,22 @@ Backends previstos: PyPI/uv, RubyGems, npm, crates.io/Cargo, Packagist/Composer 
 
 Los tipos `system` quedan en el catálogo para búsqueda/planificación, pero esta fase no los instala automáticamente.
 
+## Separación de interfaces y retención
+
+- `instp` es exclusivamente CLI, comparable al motor de pacman. Sin argumentos muestra su ayuda y `instp PAQUETE` solo consulta el estado.
+- `pkgui` es el nombre **provisional** del comando TUI, independiente, que usa el mismo `PackageService`. No se ha localizado un nombre definitivo aprobado en el historial.
+- `instp install PAQUETE` instala temporalmente. `-p` o `--persistent` indica explícitamente que debe conservarse al actualizar la versión funcional.
+- La edición `blue` identifica SST TI. El número `blue.N` identifica revisiones de corrección; no debe interpretarse como otra edición ni como frontera de caducidad.
+- La versión funcional se deriva de la versión oficial `Cargo.toml` (por ejemplo `0.1.9-blue.27` pertenece a la generación `0.1.9`). Cuando cambia esa generación, se limpian los paquetes temporales y sus archivos, manteniendo los persistentes. La migración inicial respeta los paquetes existentes hasta una actualización futura.
+- `instp update` refresca índices. `instp upgrade [PAQUETE]` busca las versiones publicadas actualmente y actualiza las herramientas ya instaladas, conservando la política temporal/persistente.
+
 ## Comandos
 
 ```text
+instp [PAQUETE]
 instp search [TEXTO]
 instp info PAQUETE
-instp install PAQUETE
+instp install PAQUETE [-p|--persistent]
 instp remove PAQUETE
 instp list
 instp update
