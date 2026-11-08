@@ -117,7 +117,12 @@ impl InstpBuiltin {
             Err(error) => return Ok(CommandOutput::error(error, 2)),
         };
 
-        match self.service.install_with_persistence(id, persistent) {
+        let installation = if persistent {
+            self.service.install_with_persistence(id, true)
+        } else {
+            self.service.install(id)
+        };
+        match installation {
             Ok(report) => {
                 let commands = if report.package.commands.is_empty() {
                     "(ninguno)".to_owned()
