@@ -11,8 +11,6 @@ use std::{
 
 use anyhow::Result;
 
-use crate::adapters::persistence::AppPaths;
-
 use super::embedded_inner;
 
 const TERMINAL_ERROR_MARKER: &[u8] = b"Error de terminal:";
@@ -40,15 +38,11 @@ pub struct EmbeddedSession {
     pub output: mpsc::Receiver<Vec<u8>>,
     worker_failed: Arc<AtomicBool>,
     exit_seen_at: Mutex<Option<Instant>>,
-    paths: AppPaths,
-    update_scheduled: AtomicBool,
 }
 
 impl EmbeddedSession {
     pub fn start(cols: u16, rows: u16) -> Result<Self> {
         let mut inner = embedded_inner::EmbeddedSession::start(cols, rows)?;
-        let paths = AppPaths::detect();
-
         // Move the worker output receiver into a relay. Besides supervising fatal
         // worker errors, this keeps the visual startup compact: neofetch remains
         // visible while the security preload runs silently in the background.
@@ -57,7 +51,6 @@ impl EmbeddedSession {
         let (relay_tx, output) = mpsc::channel();
         let worker_failed = Arc::new(AtomicBool::new(false));
         let relay_failed = Arc::clone(&worker_failed);
-        let update_paths = paths.clone();
 
         thread::spawn(move || {
             let mut startup = StartupRelayState::WaitingForFetch;
@@ -98,25 +91,8 @@ impl EmbeddedSession {
                                 break;
                             }
 
-                            // The updater belongs to the real terminal lifecycle,
-                            // not to a silent background task. Run it after the
-                            // compact startup footer and relay progress directly
-                            // into the same SST console.
-                            let update_result = crate::application::update::startup_update(
-                                &update_paths,
-                                |text| {
-                                    let _ = relay_tx.send(text.as_bytes().to_vec());
-                                },
-                            );
-                            if let Err(error) = update_result {
-                                let message = format!(
-                                    "\r\n\x1b[1;38;5;203mActualizaciones: no se pudo completar la comprobación: {error}\x1b[0m\r\n\r\n"
-                                );
-                                if relay_tx.send(message.into_bytes()).is_err() {
-                                    break;
-                                }
-                            }
-
+                            // The prompt is ready. Update checks are exclusively
+                            // operator-initiated via "update check/install".
                             startup = StartupRelayState::Complete;
                         }
                         // All preload progress and the verbose startup report are
@@ -137,8 +113,6 @@ impl EmbeddedSession {
             output,
             worker_failed,
             exit_seen_at: Mutex::new(None),
-            paths,
-            update_scheduled: AtomicBool::new(false),
         })
     }
 
@@ -165,10 +139,7 @@ impl EmbeddedSession {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         match *seen {
-            Some(instant) if instant.elapsed() >= EXIT_SETTLE_TIME => {
-                self.schedule_update_once();
-                true
-            }
+            Some(instant) if instant.elapsed() >= EXIT_SETTLE_TIME => true,
             Some(_) => false,
             None => {
                 *seen = Some(Instant::now());
@@ -177,27 +148,6 @@ impl EmbeddedSession {
         }
     }
 
-    fn schedule_update_once(&self) {
-        if self
-            .update_scheduled
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
-            return;
-        }
-
-        if crate::application::update::schedule_pending_update(&self.paths).is_err() {
-            self.update_scheduled.store(false, Ordering::SeqCst);
-        }
-    }
-}
-
-impl Drop for EmbeddedSession {
-    fn drop(&mut self) {
-        // Closing the native window bypasses the shell's `exit` command. Schedule
-        // a pending update here too so both exit paths apply the staged binary.
-        self.schedule_update_once();
-    }
 }
 
 impl Deref for EmbeddedSession {

@@ -95,20 +95,8 @@ impl EmbeddedSession {
             let result = (|| -> Result<()> {
                 let paths = crate::adapters::persistence::AppPaths::detect();
                 paths.ensure_layout()?;
-                if let Err(error) = crate::application::update::startup_update(&paths, |line| {
-                    let _ = io::write(line.as_bytes());
-                }) {
-                    io::write(format!(
-                        "\r\nActualizaciones: no se pudo comprobar el canal ({error}).\r\n\r\n"
-                    ).as_bytes())?;
-                }
-                if crate::application::update::schedule_pending_update(&paths)? {
-                    // The swap helper cannot replace the running executable while this
-                    // GUI process still owns it. Startup has no user session to preserve,
-                    // so terminate immediately; the verified helper relaunches SST.
-                    std::process::exit(0);
-                }
-
+                // No network update checks, downloads, or automatic replacement
+                // are permitted during interactive terminal startup.
                 let (mut engine, _, _) = crate::composition::build_engine()?;
                 engine.set_interactive(true);
 
