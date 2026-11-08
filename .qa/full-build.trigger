@@ -1,1 +1,1 @@
-2026-11-05 — Validate SST 0.1.9-blue.23: script preservation, diagnostic four options, native Windows network/printers/processes, UAC token-derived persistent ADMIN/SYSTEM/TRUSTED GUI indicator. Do not publish on failure.
+2026-11-08 — Validate instp CLI/TUI split, pkgui, functional-version expiry, temporary default, -p/--persistent, upstream upgrade and cache hygiene. Build/test only; do not publish releases.
