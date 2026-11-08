@@ -16,7 +16,6 @@ const UPDATE_DIR: &str = "update";
 const CHANNEL_FILE: &str = "update-channel.txt";
 const REMOTE_MANIFEST_FILE: &str = "remote-manifest.json";
 const PENDING_FILE: &str = "pending.json";
-const APPLIED_STAGED_FILE: &str = "applied.pending.json";
 const APPLIED_FILE: &str = "applied.json";
 const STAGED_EXE: &str = "sst.exe.new";
 const CURL_USER_AGENT: &str = "Shell-Shock-Tool-updater";
@@ -149,92 +148,6 @@ pub fn check_now(paths: &AppPaths, stage: bool) -> Result<String> {
         manifest.version
     ));
     Ok(output)
-}
-
-/// Schedule the verified standalone updater. No copy of sst.exe is ever
-/// executed as an updater: the worker runs outside the target process.
-pub fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
-    let Some(pending) = load_pending(paths)? else {
-        return Ok(false);
-    };
-    if !is_newer(&pending.version, current_version())? {
-        cleanup_obsolete_pending(paths)?;
-        return Ok(false);
-    }
-
-    let staged = PathBuf::from(&pending.staged_path);
-    if !staged.is_file() {
-        // A previous update can have consumed this file and left a stale
-        // pending receipt. Never make SST impossible to start.
-        let _ = fs::remove_file(pending_path(paths));
-        return Ok(false);
-    }
-    verify_file(&staged, &pending.sha256, None)?;
-
-    let Some(updater_sha) = pending.updater_sha256.as_deref() else {
-        // Old pending.json records have no independently verified worker.
-        // Let SST run and restage from the public channel.
-        return Ok(false);
-    };
-    let worker = match verified_independent_updater(paths, &pending.version, updater_sha) {
-        Ok(worker) => worker,
-        Err(error) => {
-            let _ = fs::write(update_dir(paths).join("updater-error.log"), format!("{error:#}\n"));
-            return Ok(false);
-        }
-    };
-
-    let target = std::env::current_exe().context("no se pudo resolver sst.exe")?;
-    let ready = target.with_extension("exe.new");
-    let backup = target.with_extension("exe.old");
-    if ready != staged {
-        let _ = fs::remove_file(&ready);
-        fs::copy(&staged, &ready)
-            .context("no se pudo preparar sst.exe.new para el actualizador independiente")?;
-    }
-    verify_file(&ready, &pending.sha256, None)?;
-
-    let dir = update_dir(paths);
-    fs::create_dir_all(&dir)?;
-    let applied_staged = dir.join(APPLIED_STAGED_FILE);
-    let receipt = AppliedUpdate {
-        from_version: if pending.from_version.trim().is_empty() {
-            current_version().to_owned()
-        } else {
-            pending.from_version.clone()
-        },
-        version: pending.version.clone(),
-        applied_at: Utc::now().to_rfc3339(),
-        changes: pending.changes.clone(),
-    };
-    fs::write(&applied_staged, serde_json::to_vec_pretty(&receipt)?)?;
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        Command::new(&worker)
-            .arg("--apply")
-            .env("SST_UPDATER_PARENT_PID", std::process::id().to_string())
-            .env("SST_UPDATER_TARGET", &target)
-            .env("SST_UPDATER_READY", &ready)
-            .env("SST_UPDATER_BACKUP", &backup)
-            .env("SST_UPDATER_PENDING", pending_path(paths))
-            .env("SST_UPDATER_APPLIED_PENDING", &applied_staged)
-            .env("SST_UPDATER_APPLIED", dir.join(APPLIED_FILE))
-            .env("SST_UPDATER_STAGED", &staged)
-            .env("SST_UPDATER_SHA256", pending.sha256.trim())
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .context("no se pudo iniciar el actualizador independiente")?;
-        Ok(true)
-    }
-
-    #[cfg(not(windows))]
-    {
-        let _ = (&worker, &target, &ready, &backup, &applied_staged);
-        bail!("la aplicación automática de updates sólo está disponible en Windows");
-    }
 }
 
 pub fn configured_manifest_url(paths: &AppPaths) -> Option<String> {
@@ -538,19 +451,6 @@ fn take_applied_receipt(paths: &AppPaths) -> Result<Option<AppliedUpdate>> {
         .context("applied.json de update está dañado")?;
     let _ = fs::remove_file(path);
     Ok(Some(receipt))
-}
-
-fn cleanup_obsolete_pending(paths: &AppPaths) -> Result<()> {
-    let Some(pending) = load_pending(paths)? else {
-        return Ok(());
-    };
-    if is_newer(&pending.version, current_version())? {
-        return Ok(());
-    }
-    let _ = fs::remove_file(&pending.staged_path);
-    let _ = fs::remove_file(pending_path(paths));
-    let _ = fs::remove_file(update_dir(paths).join(APPLIED_STAGED_FILE));
-    Ok(())
 }
 
 fn append_plain_changes(output: &mut String, changes: &[String]) {
