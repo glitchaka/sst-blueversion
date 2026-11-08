@@ -99,7 +99,8 @@ pub fn run_catalog(
                 category_index = (category_index + 1) % categories.len().max(1);
                 selected = 0;
             }
-            TerminalKey::Char('i') | TerminalKey::Char('I') => {
+            TerminalKey::Char('i') | TerminalKey::Char('I') | TerminalKey::Char('p') | TerminalKey::Char('P') => {
+                let persistent = matches!(key, TerminalKey::Char('p') | TerminalKey::Char('P'));
                 let Some(package) = visible.get(selected).copied() else {
                     message = "No hay un paquete seleccionado.".to_owned();
                     continue;
@@ -133,7 +134,7 @@ pub fn run_catalog(
                     active_category,
                     &message,
                 )?;
-                match service.install(&package.id) {
+                match service.install_with_persistence(&package.id, persistent) {
                     Ok(report) => {
                         installed.insert(report.package.id.to_ascii_lowercase());
                         let commands = if report.package.commands.is_empty() {
@@ -148,8 +149,10 @@ pub fn run_catalog(
                                 .join(", ")
                         };
                         message = format!(
-                            "Instalado {} {}. Comandos: {}. Reinicia SST para incorporarlos al PATH actual.",
-                            report.package.name, report.package.version, commands
+                            "Instalado {} {} ({}). Comandos: {}. Reinicia SST para incorporarlos al PATH actual.",
+                            report.package.name, report.package.version,
+                            if report.package.persistent { "persistente" } else { "temporal" },
+                            commands
                         );
                         if !report.missing_exposed_commands.is_empty() {
                             message.push_str(&format!(
@@ -303,7 +306,7 @@ fn render(
 
     terminal.clear()?;
     let mut out = String::new();
-    out.push_str("INSTP · Catálogo de paquetes SST\n");
+    out.push_str("PKGUI · Catálogo de paquetes SST\n");
     out.push_str(&format!(
         "Categoría: {:<12}  Paquetes: {:<3}  Buscar: {}{}\n",
         category,
@@ -375,7 +378,7 @@ fn render(
         out.push('\n');
     }
     out.push_str(&clip(
-        "↑↓ navegar · / buscar · c categoría · i instalar · r quitar · u actualizar · q/Esc salir",
+        "↑↓ navegar · / buscar · c categoría · i temporal · p persistente · r quitar · u actualizar · q/Esc salir",
         width,
     ));
     out.push('\n');
