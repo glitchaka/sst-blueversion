@@ -20,7 +20,7 @@ use crate::adapters::persistence::AppPaths;
 pub use model::{InstallReport, InstalledPackage, PackageManifest, RepoSource};
 
 use installer::{command_name_from_exposed, find_file, install_payload};
-use lifecycle::{FUNCTIONAL_GENERATION, expires_on_generation};
+use lifecycle::{functional_generation, expires_on_generation};
 use model::{
     InstalledCommand, PackageIndex, validate_identifier, validate_index, validate_https,
 };
@@ -97,7 +97,7 @@ impl PackageService {
         // everything on the first startup with the new manager.
         for package in &mut state.packages {
             if package.functional_generation.is_empty() {
-                package.functional_generation = FUNCTIONAL_GENERATION.to_owned();
+                package.functional_generation = functional_generation().to_owned();
                 migrated = true;
             }
         }
@@ -107,7 +107,7 @@ impl PackageService {
             self.store.clean_cache()?;
         }
         let expired = state.packages.iter()
-            .filter(|package| expires_on_generation(package, FUNCTIONAL_GENERATION))
+            .filter(|package| expires_on_generation(package, functional_generation()))
             .cloned()
             .collect::<Vec<_>>();
         for package in &expired {
@@ -127,7 +127,7 @@ impl PackageService {
         }
         if migrated || !expired.is_empty() {
             state.packages.retain(|package| {
-                !expires_on_generation(package, FUNCTIONAL_GENERATION)
+                !expires_on_generation(package, functional_generation())
             });
             self.store.save_installed_state(&state)?;
         }
@@ -262,7 +262,7 @@ impl PackageService {
             commands,
             path_entries,
             persistent: effective_persistent,
-            functional_generation: FUNCTIONAL_GENERATION.to_owned(),
+            functional_generation: functional_generation().to_owned(),
         };
 
         state
