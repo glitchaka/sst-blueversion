@@ -124,6 +124,24 @@ impl PackageStore {
         }
     }
 
+    /// Purge downloaded archives for a temporary package when its functional
+    /// generation expires. Do not touch other packages' cache entries.
+    pub fn clean_package_cache(&self, id: &str) -> Result<usize> {
+        self.ensure_layout()?;
+        let prefix = format!("{id}-");
+        let mut removed = 0usize;
+        for item in fs::read_dir(self.cache_dir())? {
+            let item = item?;
+            if item.path().is_file()
+                && item.file_name().to_string_lossy().starts_with(&prefix)
+            {
+                fs::remove_file(item.path())?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
+    }
+
     pub fn clean_cache(&self) -> Result<usize> {
         self.ensure_layout()?;
         let mut removed = 0usize;
