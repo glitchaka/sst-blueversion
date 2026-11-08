@@ -1,1 +1,1 @@
-2026-11-08 — Confirm Rust Windows build/tests for instp CLI-only, pkgui, canonical Blue release semantics, -p/--persistent retention, functional update expiry, upgrade and package cache cleanup. Do not publish.
+2026-11-08 — Windows pre-demo QA: SST GUI startup MUST NOT check/download/schedule/apply updates; explicit update install only; verify embedded shell + supervisor, instp, sigsour, tests and compile. Build only; no release.
