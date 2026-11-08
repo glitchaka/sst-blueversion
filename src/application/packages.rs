@@ -9,7 +9,7 @@ use std::{
     env,
     fs::{self, File},
     io::Read,
-    path::PathBuf,
+    path::{Component, PathBuf},
 };
 
 use anyhow::{Context, Result};
@@ -101,6 +101,11 @@ impl PackageService {
                 migrated = true;
             }
         }
+        if migrated {
+            // Old versions left archives in the cache indefinitely.
+            // They are never necessary for packages that are already installed.
+            self.store.clean_cache()?;
+        }
         let expired = state.packages.iter()
             .filter(|package| expires_on_generation(package, FUNCTIONAL_GENERATION))
             .cloned()
@@ -108,8 +113,9 @@ impl PackageService {
         for package in &expired {
             let target = self.store.resolve_root_relative(&package.install_dir);
             anyhow::ensure!(
-                target.starts_with(self.store.tools_dir())
-                    || target.starts_with(self.store.runtimes_dir()),
+                !target.components().any(|component| matches!(component, Component::ParentDir))
+                    && (target.starts_with(self.store.tools_dir())
+                    || target.starts_with(self.store.runtimes_dir())),
                 "instp: ruta de paquete fuera de su área aislada: {}",
                 target.display()
             );
@@ -332,6 +338,7 @@ impl PackageService {
                 .with_context(|| format!("no se pudo eliminar {}", install_dir.display()))?;
         }
         self.store.save_installed_state(&state)?;
+        self.store.clean_package_cache(id)?;
         Ok(true)
     }
 
@@ -472,7 +479,7 @@ impl PackageService {
         source: &ResolvedSource,
     ) -> Result<PathBuf> {
         let safe_name = format!(
-            "{}-{}-{}",
+            "{}__{}__{}",
             package.id,
             model::sanitize_file_name(&source.version),
             model::sanitize_file_name(&source.file_name)

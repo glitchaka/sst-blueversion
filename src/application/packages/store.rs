@@ -128,7 +128,9 @@ impl PackageStore {
     /// generation expires. Do not touch other packages' cache entries.
     pub fn clean_package_cache(&self, id: &str) -> Result<usize> {
         self.ensure_layout()?;
-        let prefix = format!("{id}-");
+        // Double underscores delimit the package ID unambiguously.
+        // "foo" must never delete cached archives belonging to "foo-bar".
+        let prefix = format!("{id}__");
         let mut removed = 0usize;
         for item in fs::read_dir(self.cache_dir())? {
             let item = item?;
