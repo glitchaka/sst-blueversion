@@ -1,1 +1,1 @@
-2026-11-08 — Windows pre-demo QA: SST GUI startup MUST NOT check/download/schedule/apply updates; explicit update install only; verify embedded shell + supervisor, instp, sigsour, tests and compile. Build only; no release.
+2026-11-08 — Final Windows demo regression for GUI, embedded worker and terminal supervisor: no updater on open, manual update authorization only, SST CLI and sigsour, Rust tests + Windows build. No release publish.
