@@ -78,6 +78,12 @@ pub struct InstalledPackage {
     pub install_dir: String,
     pub commands: Vec<InstalledCommand>,
     pub path_entries: Vec<String>,
+    /// Explicit authorization to retain this package between functional SST releases.
+    #[serde(default)]
+    pub persistent: bool,
+    /// Functional generation when it was installed or migrated into the catalog.
+    #[serde(default)]
+    pub functional_generation: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
