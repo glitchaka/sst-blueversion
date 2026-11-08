@@ -5,9 +5,17 @@
 //! release that intentionally expires temporary packages.
 use super::model::InstalledPackage;
 
-/// Update this ONLY when shipping a new functional SST generation.
-/// Keep the same value for rebuilds, security fixes, and blue.N revisions.
-pub const FUNCTIONAL_GENERATION: &str = "0.1.9";
+/// The edition suffix (e.g. "-blue.27") identifies Blue and its
+/// corrections. The functional version is the numeric SST base before it.
+/// Derive it from the existing canonical version; never invent a second
+/// manually maintained version counter.
+pub fn functional_generation() -> &'static str {
+    functional_version(env!("CARGO_PKG_VERSION"))
+}
+
+fn functional_version(version: &str) -> &str {
+    version.split_once('-').map_or(version, |(base, _)| base)
+}
 
 pub fn expires_on_generation(package: &InstalledPackage, current: &str) -> bool {
     !package.persistent
@@ -36,6 +44,13 @@ mod tests {
             persistent,
             functional_generation: generation.into(),
         }
+    }
+
+    #[test]
+    fn blue_editions_keep_correct_canonical_version_boundaries() {
+        assert_eq!(functional_version("0.1.9-blue.27"), "0.1.9");
+        assert_eq!(functional_version("0.1.9-blue.28"), "0.1.9");
+        assert_eq!(functional_version("0.1.10-blue.0"), "0.1.10");
     }
 
     #[test]
