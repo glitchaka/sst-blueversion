@@ -1,4 +1,5 @@
 mod installer;
+mod lifecycle;
 mod model;
 mod store;
 mod transport;
@@ -19,6 +20,7 @@ use crate::adapters::persistence::AppPaths;
 pub use model::{InstallReport, InstalledPackage, PackageManifest, RepoSource};
 
 use installer::{command_name_from_exposed, find_file, install_payload};
+use lifecycle::{FUNCTIONAL_GENERATION, expires_on_generation};
 use model::{
     InstalledCommand, PackageIndex, validate_identifier, validate_index, validate_https,
 };
@@ -44,7 +46,7 @@ impl PackageService {
     }
 
     pub fn activate_process_environment(&self) -> Result<()> {
-        self.ensure_layout()?;
+        self.reconcile_for_functional_release()?;
         let state = self.store.load_installed_state()?;
         let mut entries = vec![self.store.bin_dir()];
         for package in &state.packages {
@@ -83,6 +85,49 @@ impl PackageService {
         Ok(())
     }
 
+    /// Before building the shell's PATH, remove all non-persistent packages
+    /// belonging to an earlier functional generation. This removes their
+    /// extracted payloads AND their downloaded package archives.
+    pub fn reconcile_for_functional_release(&self) -> Result<Vec<String>> {
+        self.ensure_layout()?;
+        let mut state = self.store.load_installed_state()?;
+        let mut migrated = false;
+        // Older installed.json files do not contain lifetime metadata.
+        // Migrate them to this generation rather than destructively deleting
+        // everything on the first startup with the new manager.
+        for package in &mut state.packages {
+            if package.functional_generation.is_empty() {
+                package.functional_generation = FUNCTIONAL_GENERATION.to_owned();
+                migrated = true;
+            }
+        }
+        let expired = state.packages.iter()
+            .filter(|package| expires_on_generation(package, FUNCTIONAL_GENERATION))
+            .cloned()
+            .collect::<Vec<_>>();
+        for package in &expired {
+            let target = self.store.resolve_root_relative(&package.install_dir);
+            anyhow::ensure!(
+                target.starts_with(self.store.tools_dir())
+                    || target.starts_with(self.store.runtimes_dir()),
+                "instp: ruta de paquete fuera de su área aislada: {}",
+                target.display()
+            );
+            if target.exists() {
+                fs::remove_dir_all(&target)
+                    .with_context(|| format!("no se pudo limpiar {}", package.id))?;
+            }
+            self.store.clean_package_cache(&package.id)?;
+        }
+        if migrated || !expired.is_empty() {
+            state.packages.retain(|package| {
+                !expires_on_generation(package, FUNCTIONAL_GENERATION)
+            });
+            self.store.save_installed_state(&state)?;
+        }
+        Ok(expired.into_iter().map(|package| package.id).collect())
+    }
+
     pub fn search(&self, term: Option<&str>) -> Result<Vec<PackageManifest>> {
         let term = term.unwrap_or_default().trim().to_ascii_lowercase();
         let mut packages = self.catalog()?;
@@ -116,7 +161,11 @@ impl PackageService {
     }
 
     pub fn install(&self, id: &str) -> Result<InstallReport> {
-        self.ensure_layout()?;
+        self.install_with_persistence(id, false)
+    }
+
+    pub fn install_with_persistence(&self, id: &str, persistent: bool) -> Result<InstallReport> {
+        self.reconcile_for_functional_release()?;
         validate_identifier(id)?;
         let package = self
             .info(id)?
@@ -191,6 +240,12 @@ impl PackageService {
         path_entries.sort();
         path_entries.dedup();
 
+        let mut state = self.store.load_installed_state()?;
+        // Reinstalling/upgrading without -p must never silently remove an
+        // earlier explicit choice to make the package persistent.
+        let effective_persistent = persistent || state.packages.iter().any(|existing| {
+            existing.id.eq_ignore_ascii_case(&package.id) && existing.persistent
+        });
         let installed = InstalledPackage {
             id: package.id.clone(),
             name: package.name.clone(),
@@ -200,20 +255,63 @@ impl PackageService {
             install_dir: self.store.root_relative(&install_dir),
             commands,
             path_entries,
+            persistent: effective_persistent,
+            functional_generation: FUNCTIONAL_GENERATION.to_owned(),
         };
 
-        let mut state = self.store.load_installed_state()?;
         state
             .packages
             .retain(|existing| !existing.id.eq_ignore_ascii_case(&installed.id));
         state.packages.push(installed.clone());
         self.store.save_installed_state(&state)?;
+        // Installed payload is stored in its own directory. Never leave
+        // additional downloaded archives behind after a successful install.
+        self.store.clean_package_cache(&package.id)?;
 
         Ok(InstallReport {
             package: installed,
             missing_exposed_commands: missing,
             source_url: resolved.url,
         })
+    }
+
+    /// Upgrade installed packages against the currently published upstream
+    /// releases. Retains their existing temporary/persistent lifetime.
+    /// No package is installed implicitly when only consulting its status.
+    pub fn upgrade(&self, selected: Option<&str>) -> Result<Vec<String>> {
+        self.reconcile_for_functional_release()?;
+        let installed = self.installed()?;
+        let targets = if let Some(id) = selected {
+            let found = installed.into_iter()
+                .find(|pkg| pkg.id.eq_ignore_ascii_case(id))
+                .ok_or_else(|| anyhow::anyhow!("instp upgrade: {id} no está instalado"))?;
+            vec![found]
+        } else {
+            installed
+        };
+        let mut output = Vec::new();
+        for installed in targets {
+            let Some(manifest) = self.info(&installed.id)? else {
+                output.push(format!("{}: no figura en el catálogo actual", installed.id));
+                continue;
+            };
+            let latest = resolve_source(&manifest)?;
+            // For direct URLs with "latest", there is no published release
+            // identifier to compare; always refresh the actual payload.
+            let refresh = latest.version != installed.version
+                || (manifest.source.kind == "url" && manifest.version == "latest");
+            if !refresh {
+                output.push(format!("{}: ya tiene la última versión ({})",
+                    installed.id, installed.version));
+                continue;
+            }
+            let previous = installed.version.clone();
+            let report = self.install_with_persistence(&installed.id, installed.persistent)?;
+            output.push(format!("{}: {} -> {} ({})",
+                installed.id, previous, report.package.version,
+                if report.package.persistent { "persistente" } else { "temporal" }));
+        }
+        Ok(output)
     }
 
     pub fn remove(&self, id: &str) -> Result<bool> {
@@ -374,15 +472,18 @@ impl PackageService {
         source: &ResolvedSource,
     ) -> Result<PathBuf> {
         let safe_name = format!(
-            "{}-{}",
+            "{}-{}-{}",
             package.id,
+            model::sanitize_file_name(&source.version),
             model::sanitize_file_name(&source.file_name)
         );
         let destination = self.store.cache_dir().join(safe_name);
         if destination.is_file() {
+            // Without a trustworthy digest the cached archive may be an
+            // obsolete package with the same asset filename: fetch afresh.
             let valid = match source.sha256.as_deref() {
                 Some(expected) => sha256_matches(&destination, expected)?,
-                None => true,
+                None => false,
             };
             if valid {
                 return Ok(destination);
