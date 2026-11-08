@@ -6,43 +6,37 @@ use crate::{
     application::packages::PackageService,
     core::{
         CommandContext, CommandOutput,
-        ports::TerminalFactory,
     },
 };
 
-use super::{instp_ui, BuiltinCommand};
+use super::BuiltinCommand;
 
 pub struct InstpBuiltin {
     service: Arc<PackageService>,
-    terminal: Arc<dyn TerminalFactory>,
-}
+ }
 
 impl InstpBuiltin {
-    pub fn new(service: Arc<PackageService>, terminal: Arc<dyn TerminalFactory>) -> Self {
-        Self { service, terminal }
-    }
+    pub fn new(service: Arc<PackageService>) -> Self { Self { service } }
 
     fn usage() -> &'static str {
         "Uso:\n\
-         instp                       abre el catálogo interactivo\n\
-         instp browse                abre el catálogo interactivo\n\
+         instp                         muestra ayuda (CLI, no TUI)\n\
+         instp PAQUETE                 consulta el estado sin instalar\n\
          instp search [TEXTO]\n\
          instp info PAQUETE\n\
-         instp install PAQUETE\n\
+         instp install PAQUETE [-p|--persistent]\n\
          instp remove PAQUETE\n\
          instp list\n\
-         instp update\n\
+         instp update                  actualiza índices\n\
+         instp upgrade [PAQUETE]       obtiene la versión más reciente\n\
          instp which COMANDO\n\
          instp repo list\n\
          instp repo add NOMBRE URL [PRIORIDAD]\n\
          instp repo remove NOMBRE\n\
          instp repo update\n\
          instp cache clean\n\
-         instp doctor\n"
-    }
-
-    fn browse(&self) -> Result<CommandOutput> {
-        instp_ui::run_catalog(self.service.as_ref(), self.terminal.as_ref())
+         instp doctor\n\
+         pkgui                         TUI independiente de paquetes\n"
     }
 
     fn search(&self, args: &[String]) -> Result<CommandOutput> {
@@ -118,11 +112,12 @@ impl InstpBuiltin {
     }
 
     fn install(&self, args: &[String]) -> Result<CommandOutput> {
-        let Some(id) = args.first() else {
-            return Ok(CommandOutput::error("instp install: falta PAQUETE", 2));
+        let (id, persistent) = match parse_install_args(args) {
+            Ok(parsed) => parsed,
+            Err(error) => return Ok(CommandOutput::error(error, 2)),
         };
 
-        match self.service.install(id) {
+        match self.service.install_with_persistence(id, persistent) {
             Ok(report) => {
                 let commands = if report.package.commands.is_empty() {
                     "(ninguno)".to_owned()
@@ -139,12 +134,14 @@ impl InstpBuiltin {
                 let mut out = format!(
                     "Instalado: {} {}\n\
                      ámbito: SST solamente ({})\n\
+                     retención: {}\n\
                      carpeta: {}\n\
                      comandos: {}\n\
                      fuente: {}\n",
                     report.package.name,
                     report.package.version,
                     report.package.portability.to_ascii_uppercase(),
+                    if report.package.persistent { "PERSISTENTE" } else { "TEMPORAL (hasta próxima generación funcional)" },
                     report.package.install_dir,
                     commands,
                     report.source_url
@@ -191,9 +188,10 @@ impl InstpBuiltin {
         let mut out = String::new();
         for package in packages {
             out.push_str(&format!(
-                "{:<18} {:<20} {:<10} {}\n",
+                "{:<18} {:<20} {:<12} {:<10} {}\n",
                 package.id,
                 package.version,
+                if package.persistent { "PERSISTENTE" } else { "TEMPORAL" },
                 package.portability.to_ascii_uppercase(),
                 package.install_dir
             ));
@@ -210,6 +208,40 @@ impl InstpBuiltin {
                 "Repositorios actualizados:\n  {}\n",
                 updated.join("\n  ")
             ))),
+            Err(error) => Ok(CommandOutput::error(format!("{error:#}"), 1)),
+        }
+    }
+
+    fn status(&self, id: &str) -> Result<CommandOutput> {
+        let installed = self.service.installed()?.into_iter()
+            .find(|pkg| pkg.id.eq_ignore_ascii_case(id));
+        let available = self.service.info(id)?;
+        match (installed, available) {
+            (Some(found), available) => {
+                let version = available.map(|pkg| pkg.version)
+                    .unwrap_or_else(|| "(ya no está en el catálogo)".to_owned());
+                Ok(CommandOutput::ok(format!(
+                    "{}: instalado\n  versión: {}\n  catálogo: {}\n  retención: {}\n",
+                    found.id, found.version, version,
+                    if found.persistent { "PERSISTENTE" } else { "TEMPORAL" }
+                )))
+            }
+            (None, Some(pkg)) => Ok(CommandOutput::ok(format!(
+                "{}: disponible, no instalado (versión {})\n", pkg.id, pkg.version
+            ))),
+            (None, None) => Ok(CommandOutput::error(
+                format!("instp: paquete no encontrado: {id}"), 1
+            )),
+        }
+    }
+
+    fn upgrade(&self, args: &[String]) -> Result<CommandOutput> {
+        if args.len() > 1 {
+            return Ok(CommandOutput::error("Uso: instp upgrade [PAQUETE]", 2));
+        }
+        match self.service.upgrade(args.first().map(String::as_str)) {
+            Ok(rows) if rows.is_empty() => Ok(CommandOutput::ok("No hay paquetes instalados.\n")),
+            Ok(rows) => Ok(CommandOutput::ok(format!("{}\n", rows.join("\n")))),
             Err(error) => Ok(CommandOutput::error(format!("{error:#}"), 1)),
         }
     }
@@ -306,13 +338,32 @@ impl InstpBuiltin {
     }
 }
 
+fn parse_install_args(args: &[String]) -> std::result::Result<(&str, bool), &'static str> {
+    let mut package = None;
+    let mut persistent = false;
+    for arg in args {
+        match arg.as_str() {
+            "-p" | "--persistent" => persistent = true,
+            value if value.starts_with('-') => return Err(
+                "instp install: modificador desconocido (válidos: -p, --persistent)"
+            ),
+            name if package.is_none() => package = Some(name),
+            _ => return Err("Uso: instp install PAQUETE [-p|--persistent]"),
+        }
+    }
+    Ok((
+        package.ok_or("Uso: instp install PAQUETE [-p|--persistent]")?,
+        persistent
+    ))
+}
+
 impl BuiltinCommand for InstpBuiltin {
     fn name(&self) -> &'static str {
         "instp"
     }
 
     fn help(&self) -> &'static str {
-        "instp — catálogo y gestor de paquetes portables y aislados de SST"
+        "instp — gestor exclusivamente CLI de paquetes de SST"
     }
 
     fn execute(
@@ -322,8 +373,10 @@ impl BuiltinCommand for InstpBuiltin {
         _context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
         match args.first().map(String::as_str) {
-            None => self.browse(),
-            Some("browse") | Some("catalog") => self.browse(),
+            None => Ok(CommandOutput::ok(Self::usage())),
+            Some("browse") | Some("catalog") => Ok(CommandOutput::error(
+                "instp no abre una TUI; utiliza pkgui.", 2
+            )),
             Some("help") | Some("--help") | Some("-h") => {
                 Ok(CommandOutput::ok(Self::usage()))
             }
@@ -334,15 +387,43 @@ impl BuiltinCommand for InstpBuiltin {
                 self.remove(args.get(1..).unwrap_or_default())
             }
             Some("list") | Some("ls") => self.list(),
-            Some("update") => self.update(),
+            Some("update") if args.len() == 1 => self.update(),
+            Some("upgrade") => self.upgrade(args.get(1..).unwrap_or_default()),
             Some("which") => self.which(args.get(1..).unwrap_or_default()),
             Some("repo") => self.repo(args.get(1..).unwrap_or_default()),
             Some("cache") => self.cache(args.get(1..).unwrap_or_default()),
-            Some("doctor") => self.doctor(),
-            Some(other) => Ok(CommandOutput::error(
-                format!("instp: subcomando desconocido: {other}\n{}", Self::usage()),
-                2,
-            )),
+            Some("doctor") if args.len() == 1 => self.doctor(),
+            Some(other) if args.len() == 1 && !other.starts_with('-') =>
+                self.status(other),
+            _ => Ok(CommandOutput::error(Self::usage(), 2)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn install_is_temporary_by_default() {
+        let args = vec!["ripgrep".to_owned()];
+        assert_eq!(parse_install_args(&args), Ok(("ripgrep", false)));
+    }
+
+    #[test]
+    fn persistent_flag_accepted_before_or_after_name() {
+        for args in [
+            vec!["ripgrep".to_owned(), "-p".to_owned()],
+            vec!["--persistent".to_owned(), "ripgrep".to_owned()],
+        ] {
+            assert_eq!(parse_install_args(&args), Ok(("ripgrep", true)));
+        }
+    }
+
+    #[test]
+    fn invalid_install_flags_are_rejected() {
+        assert!(parse_install_args(&["ripgrep".into(), "--force".into()]).is_err());
+        assert!(parse_install_args(&["one".into(), "two".into()]).is_err());
+        assert!(parse_install_args(&[]).is_err());
     }
 }
