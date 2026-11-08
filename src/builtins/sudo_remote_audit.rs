@@ -17,7 +17,6 @@ use windows_sys::Win32::{
 
 use super::sudo_audit::AuditEvent;
 
-const REPOSITORY: &str = "glitchaka/adm-toolbox";
 const ISSUE_ENDPOINT: &str = "https://api.github.com/repos/glitchaka/adm-toolbox/issues";
 const CREDENTIAL_TARGET: &str = "SST/GitHubAudit";
 
