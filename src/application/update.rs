@@ -465,3 +465,32 @@ fn append_plain_changes(output: &mut String, changes: &[String]) {
     }
 }
 
+
+#[cfg(test)]
+mod startup_policy_tests {
+    #[test]
+    fn embedded_terminal_does_not_launch_background_updates() {
+        let worker = include_str!("../adapters/terminal/embedded.rs");
+        let supervisor = include_str!("../adapters/terminal/embedded_supervised.rs");
+        for source in [worker, supervisor] {
+            assert!(!source.contains("application::update::startup_update("));
+            assert!(!source.contains("application::update::schedule_pending_update("));
+            assert!(!source.contains("update::startup_update("));
+            assert!(!source.contains("update::schedule_pending_update("));
+        }
+    }
+
+    #[test]
+    fn native_window_only_applies_updates_explicitly_authorized_in_session() {
+        let gui = include_str!("../presentation/gui_slint_wrapper.rs");
+        let entry = gui.split("pub fn run() -> Result<()> {").nth(1)
+            .expect("GUI startup entrypoint is present");
+        let entry = entry.split("// The helper executable runs").next()
+            .expect("startup function boundary is present");
+
+        assert!(!entry.contains("startup_update("));
+        assert!(!entry.contains("configured_manifest_url("));
+        assert!(entry.contains("take_explicit_install_authorization()"));
+        assert!(entry.contains("if result.is_ok() && update::take_explicit_install_authorization()"));
+    }
+}
