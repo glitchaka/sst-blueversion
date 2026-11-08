@@ -122,7 +122,7 @@ Los tipos `system` quedan en el catálogo para búsqueda/planificación, pero es
 ## Separación de interfaces y retención
 
 - `instp` es exclusivamente CLI, comparable al motor de pacman. Sin argumentos muestra su ayuda y `instp PAQUETE` solo consulta el estado.
-- `pkgui` es el nombre **provisional** del comando TUI, independiente, que usa el mismo `PackageService`. No se ha localizado un nombre definitivo aprobado en el historial.
+- `sigsour` es el comando independiente de la TUI de paquetes de SST y utiliza el mismo `PackageService` que `instp`. El nombre fue elegido explícitamente para la interfaz visual.
 - `instp install PAQUETE` instala temporalmente. `-p` o `--persistent` indica explícitamente que debe conservarse al actualizar la versión funcional.
 - La edición `blue` identifica SST TI. El número `blue.N` identifica revisiones de corrección; no debe interpretarse como otra edición ni como frontera de caducidad.
 - La versión funcional se deriva de la versión oficial `Cargo.toml` (por ejemplo `0.1.9-blue.27` pertenece a la generación `0.1.9`). Cuando cambia esa generación, se limpian los paquetes temporales y sus archivos, manteniendo los persistentes. La migración inicial respeta los paquetes existentes hasta una actualización futura.

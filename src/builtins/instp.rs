@@ -36,7 +36,7 @@ impl InstpBuiltin {
          instp repo update\n\
          instp cache clean\n\
          instp doctor\n\
-         pkgui                         TUI independiente de paquetes\n"
+         sigsour                         TUI independiente de paquetes\n"
     }
 
     fn search(&self, args: &[String]) -> Result<CommandOutput> {
@@ -380,7 +380,7 @@ impl BuiltinCommand for InstpBuiltin {
         match args.first().map(String::as_str) {
             None => Ok(CommandOutput::ok(Self::usage())),
             Some("browse") | Some("catalog") => Ok(CommandOutput::error(
-                "instp no abre una TUI; utiliza pkgui.", 2
+                "instp no abre una TUI; utiliza sigsour.", 2
             )),
             Some("help") | Some("--help") | Some("-h") => {
                 Ok(CommandOutput::ok(Self::usage()))

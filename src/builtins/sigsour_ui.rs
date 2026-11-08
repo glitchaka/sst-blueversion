@@ -306,7 +306,7 @@ fn render(
 
     terminal.clear()?;
     let mut out = String::new();
-    out.push_str("PKGUI · Catálogo de paquetes SST\n");
+    out.push_str("SIGSOUR · Catálogo de paquetes SST\n");
     out.push_str(&format!(
         "Categoría: {:<12}  Paquetes: {:<3}  Buscar: {}{}\n",
         category,

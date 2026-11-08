@@ -9,24 +9,24 @@ use crate::{
         ports::TerminalFactory,
     },
 };
-use super::{BuiltinCommand, instp_ui};
+use super::{BuiltinCommand, sigsour_ui};
 
-pub struct PkgUiBuiltin {
+pub struct SigSourBuiltin {
     service: Arc<PackageService>,
     terminal: Arc<dyn TerminalFactory>,
 }
 
-impl PkgUiBuiltin {
+impl SigSourBuiltin {
     pub fn new(service: Arc<PackageService>, terminal: Arc<dyn TerminalFactory>) -> Self {
         Self { service, terminal }
     }
 }
 
-impl BuiltinCommand for PkgUiBuiltin {
-    fn name(&self) -> &'static str { "pkgui" }
+impl BuiltinCommand for SigSourBuiltin {
+    fn name(&self) -> &'static str { "sigsour" }
 
     fn help(&self) -> &'static str {
-        "pkgui — catálogo interactivo de paquetes; utiliza el motor instp"
+        "sigsour — catálogo interactivo de paquetes; utiliza el motor instp"
     }
 
     fn execute(
@@ -36,8 +36,8 @@ impl BuiltinCommand for PkgUiBuiltin {
         _context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
         if !args.is_empty() {
-            return Ok(CommandOutput::error("Uso: pkgui", 2));
+            return Ok(CommandOutput::error("Uso: sigsour", 2));
         }
-        instp_ui::run_catalog(self.service.as_ref(), self.terminal.as_ref())
+        sigsour_ui::run_catalog(self.service.as_ref(), self.terminal.as_ref())
     }
 }

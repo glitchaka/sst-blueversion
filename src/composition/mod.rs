@@ -47,7 +47,7 @@ use crate::{
         DomainBuiltin,
         EditorBuiltin,
         InstpBuiltin,
-        PkgUiBuiltin,
+        SigSourBuiltin,
         NetworkBuiltin,
         PathBuiltin,
         SwitchBuiltin,
@@ -185,7 +185,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(InstpBuiltin::new(
         Arc::clone(&package_service),
     )))?;
-    registry.register(Arc::new(PkgUiBuiltin::new(
+    registry.register(Arc::new(SigSourBuiltin::new(
         Arc::clone(&package_service),
         Arc::clone(&terminal),
     )))?;

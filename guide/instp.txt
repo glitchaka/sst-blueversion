@@ -5,7 +5,7 @@ Gestor CLI (sin TUI):
   instp PAQUETE              consulta instalado/disponible
 
 Interfaz interactiva independiente:
-  pkgui                      nombre provisional de la TUI
+  sigsour                    interfaz TUI de paquetes SST
 
 Ayuda:
   instp help
