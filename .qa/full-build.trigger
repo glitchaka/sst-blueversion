@@ -1,1 +1,1 @@
-2026-11-08 — Validate instp CLI/TUI split, pkgui, functional-version expiry, temporary default, -p/--persistent, upstream upgrade and cache hygiene. Build/test only; do not publish releases.
+2026-11-08 — Confirm Rust Windows build/tests for instp CLI-only, pkgui, canonical Blue release semantics, -p/--persistent retention, functional update expiry, upgrade and package cache cleanup. Do not publish.
