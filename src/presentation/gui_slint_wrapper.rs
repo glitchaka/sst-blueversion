@@ -61,21 +61,13 @@ pub fn run() -> Result<()> {
     let paths = AppPaths::detect();
     paths.ensure_layout()?;
 
-    if schedule_pending_update(&paths)? {
-        return Ok(());
-    }
-
-    if update::configured_manifest_url(&paths).is_some()
-        && update::startup_update(&paths, |_| {}).is_ok()
-        && schedule_pending_update(&paths)?
-    {
-        return Ok(());
-    }
-
-    // Demo de soporte: sin baliza UDP, sin anuncio ni búsqueda de otras SST.
+    // Opening SST must be deterministic and offline-safe: never fetch, stage,
+    // apply, or schedule an update before the terminal is shown.
+    // A previous pending.json is inert unless the operator explicitly invokes
+    // "update install" in THIS GUI session.
     let result = super::gui_slint_base::run();
 
-    if result.is_ok() {
+    if result.is_ok() && update::take_explicit_install_authorization() {
         schedule_pending_update(&paths)?;
     }
     result
@@ -152,7 +144,8 @@ fn schedule_pending_update(paths: &AppPaths) -> Result<bool> {
 
     let staged = PathBuf::from(&pending.staged_path);
     // A previous update may have consumed the staged executable before
-    // recording completion. Broken staging must not prevent GUI startup.
+    // recording completion. Broken staging must not prevent an explicitly
+    // requested update after the operator closes this session.
     if !staged.is_file() {
         let _ = fs::remove_file(&pending_path);
         return Ok(false);

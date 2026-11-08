@@ -17,7 +17,7 @@ Ayuda:
   update -h
   update --help
 
-`check` consulta el canal configurado. `install` descarga/verifica la actualización y la deja preparada para aplicarse al cerrar SST según el mecanismo de update del programa.
+`check` consulta el canal solamente cuando el operador lo solicita. `install` descarga y verifica una actualización de forma explícita, y autoriza aplicarla al cerrar esa misma sesión gráfica de SST. Abrir SST nunca comprueba, descarga ni aplica automáticamente actualizaciones pendientes. Una actualización previamente descargada no se aplica por el mero hecho de reiniciar SST.
 
 No confundir:
   update                    actualiza SST

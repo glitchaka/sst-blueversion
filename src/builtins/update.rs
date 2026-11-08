@@ -21,7 +21,7 @@ impl UpdateBuiltin {
         "update [status|check|install]\n\
          update status   muestra versión y estado del canal\n\
          update check    consulta si existe una versión nueva\n\
-         update install  descarga/verifica y la aplica al cerrar SST\n"
+         update install  descarga/verifica y autoriza aplicar al cerrar esta sesión\n"
     }
 }
 

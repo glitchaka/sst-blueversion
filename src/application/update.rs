@@ -2,6 +2,7 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
     process::Command,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use anyhow::{Context, Result, bail};
@@ -71,64 +72,27 @@ pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-/// Runs the startup update flow and emits user-facing progress into the caller's
-/// terminal. Nothing is printed when no update channel has been configured,
-/// except a one-shot receipt for an update that was just applied.
-pub fn startup_update<F>(paths: &AppPaths, mut notify: F) -> Result<()>
-where
-    F: FnMut(&str),
-{
-    if let Some(applied) = take_applied_receipt(paths)? {
-        notify(&format!(
-            "\r\n\x1b[1;38;5;117mSST actualizado: {} -> {}\x1b[0m\r\n",
-            applied.from_version, applied.version
-        ));
-        write_changes(&applied.changes, &mut notify);
-        notify("\r\n");
-    }
+// Authorization is deliberately process-local. A pending.json left behind
+// from another run must never trigger an automatic update on the next launch.
+// Only an explicit "update install" in this GUI session authorizes handoff
+// when the terminal is closed.
+static EXPLICIT_INSTALL_AUTHORIZATION: AtomicBool = AtomicBool::new(false);
 
-    if configured_manifest_url(paths).is_none() {
-        return Ok(());
-    }
-
-    notify("\r\n\x1b[38;5;250mActualizaciones: comprobando canal...\x1b[0m\r\n");
-    let manifest = fetch_manifest(paths)?;
-    validate_manifest(&manifest)?;
-
-    if !is_newer(&manifest.version, current_version())? {
-        cleanup_obsolete_pending(paths)?;
-        if is_newer(current_version(), &manifest.version)? {
-            notify(&format!(
-                "\x1b[38;5;214mActualizaciones: canal desactualizado (publica {}, instalado {}).\x1b[0m\r\n\r\n",
-                manifest.version, current_version()
-            ));
-        } else {
-            notify(&format!(
-                "\x1b[38;5;250mActualizaciones: SST {} está al día.\x1b[0m\r\n\r\n",
-                current_version()
-            ));
-        }
-        return Ok(());
-    }
-
-    notify(&format!(
-        "\x1b[1;38;5;117mNueva versión: {} -> {}\x1b[0m\r\n",
-        current_version(), manifest.version
-    ));
-    write_changes(&manifest.changes, &mut notify);
-    notify("\x1b[38;5;250mActualizaciones: descargando sst.exe...\x1b[0m\r\n");
-    stage_manifest_with_progress(paths, &manifest, &mut notify)?;
-    notify(&format!(
-        "\x1b[1;38;5;114mActualización {} preparada y verificada. Aplicando actualización...\x1b[0m\r\n\r\n",
-        manifest.version
-    ));
-    Ok(())
+pub fn take_explicit_install_authorization() -> bool {
+    EXPLICIT_INSTALL_AUTHORIZATION.swap(false, Ordering::SeqCst)
 }
 
 pub fn status(paths: &AppPaths) -> Result<String> {
     let pending = load_pending(paths)?;
     let channel = configured_manifest_url(paths);
     let mut output = format!("SST {}\n", current_version());
+    if let Some(applied) = take_applied_receipt(paths)? {
+        output.push_str(&format!(
+            "Última actualización aplicada: {} -> {}\n",
+            applied.from_version, applied.version
+        ));
+        append_plain_changes(&mut output, &applied.changes);
+    }
     match channel {
         Some(url) => output.push_str(&format!("Canal de actualización: {url}\n")),
         None => output.push_str("Canal de actualización: no configurado\n"),
@@ -136,7 +100,7 @@ pub fn status(paths: &AppPaths) -> Result<String> {
     if let Some(pending) = pending {
         if is_newer(&pending.version, current_version())? {
             output.push_str(&format!(
-                "Actualización preparada: {} (se aplicará al cerrar SST)\n",
+                "Actualización preparada: {} (requiere 'update install' para autorizar su aplicación)\n",
                 pending.version
             ));
             append_plain_changes(&mut output, &pending.changes);
@@ -176,8 +140,12 @@ pub fn check_now(paths: &AppPaths, stage: bool) -> Result<String> {
     }
 
     stage_manifest(paths, &manifest)?;
+    // Grant handoff only AFTER the asset and updater are downloaded and
+    // verified. Browsing the channel or opening the application does not
+    // grant this authorization.
+    EXPLICIT_INSTALL_AUTHORIZATION.store(true, Ordering::SeqCst);
     output.push_str(&format!(
-        "Actualización {} descargada y verificada. Se aplicará al cerrar SST.\n",
+        "Actualización {} descargada y verificada. Se aplicará al cerrar esta sesión de SST.\n",
         manifest.version
     ));
     Ok(output)
@@ -583,19 +551,6 @@ fn cleanup_obsolete_pending(paths: &AppPaths) -> Result<()> {
     let _ = fs::remove_file(pending_path(paths));
     let _ = fs::remove_file(update_dir(paths).join(APPLIED_STAGED_FILE));
     Ok(())
-}
-
-fn write_changes<F>(changes: &[String], notify: &mut F)
-where
-    F: FnMut(&str),
-{
-    if changes.is_empty() {
-        return;
-    }
-    notify("\x1b[38;5;250mCambios:\x1b[0m\r\n");
-    for change in changes {
-        notify(&format!("  + {}\r\n", change.trim()));
-    }
 }
 
 fn append_plain_changes(output: &mut String, changes: &[String]) {
