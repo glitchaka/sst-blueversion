@@ -1,1 +1,1 @@
-2026-11-09 — SST Blue 0.1.9-blue.28: validate notsh no-arg command index, explicit interfaces/wlan/lan queries, cargo tests and Windows build. No release.
+2026-11-09 — Windows regression: notsh lan show interfaces displays physical Ethernet NICs only; rejects Wi-Fi, WAN miniports, WFP filters and virtual endpoints; distinguishes cable link, IP and NAC. Compile and test; do not publish release.
