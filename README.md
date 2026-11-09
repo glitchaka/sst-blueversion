@@ -15,7 +15,7 @@ SST está pensado para poder llevarse como herramienta portable y trabajar desde
 
 ### Guía de comandos local
 
-`guide` utiliza el índice y los 35 manuales de `guide/` (133 fichas de soporte SST; Arch no aparece en esta edición). Al ejecutar solamente `sst.exe`, SST crea la carpeta y descarga automáticamente en segundo plano los archivos que falten desde una instantánea fija de GitHub, verificando que sean idénticos a los incluidos en el ejecutable. Si no hay conexión, recupera esas fichas de la copia integrada. Nunca reemplaza un manual existente, y la búsqueda/lectura funciona sin red.
+`guide` permite consultar 133 fichas de soporte SST organizadas en 35 manuales locales de `guide/`. Al ejecutar solamente `sst.exe`, SST crea la carpeta y descarga automáticamente en segundo plano los archivos que falten desde una instantánea fija de GitHub, verificando que sean idénticos a los incluidos en el ejecutable. Si no hay conexión, recupera esas fichas de la copia integrada. Nunca reemplaza un manual existente, y la búsqueda/lectura funciona sin red.
 
 La baliza de presencia LAN entre instancias SST está desactivada en esta edición: no se abre UDP/43838 ni se realiza un broadcast para localizar otras SST. Los comandos habituales de red permanecen disponibles.
 
@@ -65,26 +65,24 @@ help
 help COMANDO
 ```
 
-## Cambios recientes de `main`
+## Capacidades destacadas
 
-Esta documentación refleja el código actual, incluidos estos cambios:
+Entre las capacidades de SST se encuentran:
 
 - **Descubrimiento de red por evidencia múltiple:** `net scan` y `net monitor` usan ARP activo, ICMP y TCP. Una respuesta ARP basta para detectar teléfonos/IoT aunque bloqueen ping o no tengan servicios TCP.
 - **Identificación MAC local:** cada host se clasifica como `global`, `local/private`, `multicast`, `broadcast` o `unknown`. Las MAC globales se resuelven contra los registros IEEE **MA-L, MA-M y MA-S**; las MAC privadas/aleatorias no reciben un fabricante inventado.
 - **Monitor con histéresis:** un host debe faltar en tres ciclos consecutivos antes de generar un evento de desconexión, reduciendo falsos `+/-` por una respuesta perdida.
 - **Mensajes SST interactivos entre monitores:** con `net monitor` abierto, `Enter` abre `Mensaje>`; se escribe el texto y otro `Enter` lo publica por UDP broadcast. Otros SST con `net monitor` abierto muestran la IP emisora y el texto. Sirve como easter egg y como comprobación práctica de comunicación LAN/broadcast/firewall.
-- **Tiempo de respuesta corregido:** la columna de respuesta mide el probe que confirmó presencia y ya no incluye el tiempo de reverse DNS.
+- **Medición de respuesta:** la columna muestra el tiempo del sondeo que confirmó presencia, sin incluir la consulta DNS inversa.
 - **`net identify`:** identifica por IP, MAC o nombre inventariado y reúne hostname, MAC, scope, fabricante IEEE, inventario, método de descubrimiento y último avistamiento.
 - **Registro directo por IP:** `device add IP NOMBRE` resuelve la MAC por ARP y la incorpora al inventario.
 - **`net traffic --unsigned`:** añade estado Authenticode por proceso y permite filtrar ejecutables cuya firma no sea válida.
 - **`net usage` operativo para HTTP JSON normalizado:** los proveedores `generic` y `openwrt` pueden entregar contadores por cliente; existen filtros, JSON/CSV y modo watch.
 - **Credenciales de `intel` desde `config/sstrc`:** las claves pueden declararse con `export`; SST consulta primero el entorno de Windows y después `sstrc`.
 - **`intel update` y caché TTL:** limpia entradas expiradas y muestra el estado/capacidad de las fuentes habilitadas.
-- **Terminal Slint:** restaurada y ampliada la selección/copia; arrastre, doble clic por palabra, triple clic por línea, `Ctrl+C` contextual, `Ctrl+Shift+C/V`, `Ctrl+Insert`, `Shift+Insert` y clic derecho contextual.
+- **Terminal Slint:** selección y copia de texto mediante arrastre, doble clic por palabra, triple clic por línea, `Ctrl+C` contextual, `Ctrl+Shift+C/V`, `Ctrl+Insert`, `Shift+Insert` y clic derecho contextual.
 - **Helix-SST 0.2.1:** tema Gruvbox Dark, corrector ortográfico offline es-CL para texto/Markdown, sugerencias con `F2` y `Alt+d` para insertar `—`.
 - **Nwash Windows:** están registrados y exportados `eventlog`, `service`, `registry`, `process`, `acl`, `pnp`, `task`, `session`, `share`, `firewall` y `power`.
-- **Integridad de terminal:** restaurados `AlternateScreenGuard` y `output_sender()`, requeridos por consumidores reales del editor/TUI.
-- **Correcciones de integración:** corregidos el escape Authenticode y el mensaje de formato del backend de `net usage`.
 
 ## Referencia rápida de comandos SST/Nwash
 
@@ -173,7 +171,7 @@ fastfetch
 
 Al abrir la terminal gráfica de SST, `fetch` se ejecuta automáticamente antes del preload de seguridad y del primer prompt. El logo mostrado está construido como arte ANSI coloreado a partir de `assets/sst-neofetch.png` y conserva la paleta del branding SST.
 
-La ventana solicita foco de teclado al crearse y, en Windows, refuerza la activación/foco nativo tras `show()`; no debería requerir un clic previo para comenzar a escribir. El ejecutable usa `assets/sst-icon.ico`, generado desde el icono oficial `assets/sst-icon.png`.
+La terminal activa el foco de teclado al abrirse para permitir escribir sin realizar un clic adicional. El ejecutable utiliza el icono `assets/sst-icon.ico`.
 
 ### Servicios de Windows
 
@@ -1636,7 +1634,7 @@ test.sh
 sst.exe test.sh
 ```
 
-En el estado actual de `main`, un script local Bash/sh puede ejecutarse directamente dentro del intérprete activo. Esto evita relanzar otra instancia de SST y permite que `read` utilice el transporte de entrada de la terminal actual.
+Los scripts locales Bash/sh se ejecutan directamente dentro del intérprete activo. Esto evita relanzar otra instancia de SST y permite que `read` utilice el transporte de entrada de la terminal actual.
 
 SST acepta deliberadamente un `.sh` del directorio actual por nombre, por ejemplo `test.sh`.
 
