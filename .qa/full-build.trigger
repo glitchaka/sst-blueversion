@@ -1,1 +1,1 @@
-2026-11-09 — Windows regression: notsh lan show interfaces displays physical Ethernet NICs only; rejects Wi-Fi, WAN miniports, WFP filters and virtual endpoints; distinguishes cable link, IP and NAC. Compile and test; do not publish release.
+2026-11-09 — Re-run Windows test and build: correct NDIS endpoint bit-7 fixture; ensure LAN reports only physical Ethernet (not WFP/WAN/WLAN) and clear link status. Do not publish.
