@@ -1,1 +1,1 @@
-2026-11-08 — Final Windows demo regression for GUI, embedded worker and terminal supervisor: no updater on open, manual update authorization only, SST CLI and sigsour, Rust tests + Windows build. No release publish.
+2026-11-09 — Verify optional read-only background SST update notice, no auto-download/apply, prompt-preserving alert; Windows cargo test and build. Do not publish a release.
