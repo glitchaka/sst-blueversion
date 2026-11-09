@@ -17,6 +17,12 @@ use crate::core::{
 
 pub trait NetworkProbe: Send + Sync {
     fn interfaces(&self) -> Result<String>;
+    fn lan_interfaces(&self) -> Result<String> {
+        anyhow::bail!("LAN física no disponible en este adaptador")
+    }
+    fn wlan_interfaces(&self) -> Result<String> {
+        anyhow::bail!("WLAN no disponible en este adaptador")
+    }
     fn connections(&self) -> Result<Vec<ConnectionRow>>;
     fn routes(&self) -> Result<String>;
     fn neighbors(&self) -> Result<HashMap<std::net::Ipv4Addr, String>>;

@@ -39,6 +39,12 @@ net lan show interfaces
 net show interfaces
 ```
 
+### Interfaces LAN físicas
+
+La consulta `notsh lan show interfaces` selecciona únicamente adaptadores Ethernet físicos mediante los metadatos de Windows IP Helper/NDIS. No incluye Wi-Fi, miniports WAN, filtros WFP ni conexiones virtuales aunque el sistema las clasifique genéricamente como Ethernet. El resumen distingue adaptadores deshabilitados, enlace desconectado, enlace con IP y enlace sin IP. Una señal física activa no confirma por sí sola autenticación NAC, direccionamiento válido ni acceso a recursos.
+
+`notsh show interfaces` mantiene la vista completa, incluida la conectividad virtual.
+
 ### Wi-Fi sin permiso de ubicación
 
 `notsh wlan show interfaces` no ejecuta `netsh.exe` ni usa `WlanQueryInterface` para consultar SSID/BSSID.

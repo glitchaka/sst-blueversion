@@ -47,6 +47,8 @@ impl NetworkService {
 
         match sub {
             "interfaces" => self.diagnostics.interfaces(),
+            "lan-interfaces" => self.diagnostics.lan_interfaces(),
+            "wlan-interfaces" => self.diagnostics.wlan_interfaces(),
             "connections" => self.diagnostics.connections(),
             "routes" => self.diagnostics.routes(),
             "dns" => self.diagnostics.dns(args.get(1..).unwrap_or_default()),

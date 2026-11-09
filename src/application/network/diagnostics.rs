@@ -54,6 +54,14 @@ impl NetworkDiagnosticsService {
         Ok(CommandOutput::ok(self.probe.interfaces()?))
     }
 
+    pub fn lan_interfaces(&self) -> Result<CommandOutput> {
+        Ok(CommandOutput::ok(self.probe.lan_interfaces()?))
+    }
+
+    pub fn wlan_interfaces(&self) -> Result<CommandOutput> {
+        Ok(CommandOutput::ok(self.probe.wlan_interfaces()?))
+    }
+
     pub fn connections(&self) -> Result<CommandOutput> {
         let mut output = String::from("PROTO LOCAL                         REMOTE                        STATE          PID\n");
         for row in self.probe.connections()? {

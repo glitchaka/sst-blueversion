@@ -29,37 +29,17 @@ impl NetworkBuiltin {
         self.service.execute(&["interfaces".to_owned()])
     }
 
-    fn filter_interfaces(&self, interface_type: &str, context: &str) -> Result<CommandOutput> {
-        let output = self.interfaces()?;
-        if output.status != 0 {
-            return Ok(output);
-        }
+    fn lan_interfaces(&self) -> Result<CommandOutput> {
+        self.service.execute(&["lan-interfaces".to_owned()])
+    }
 
-        let needle = format!("Tipo: {interface_type}");
-        let mut filtered = String::new();
-        for block in output.stdout.split("\n\n") {
-            if block.contains(&needle) {
-                if !filtered.is_empty() {
-                    filtered.push('\n');
-                }
-                filtered.push_str(block.trim_end());
-                filtered.push('\n');
-            }
-        }
-
-        if filtered.is_empty() {
-            return Ok(CommandOutput::error(
-                format!("notsh {context}: no se encontró una interfaz {interface_type}"),
-                1,
-            ));
-        }
-
-        Ok(CommandOutput::ok(filtered))
+    fn wlan_interfaces(&self) -> Result<CommandOutput> {
+        self.service.execute(&["wlan-interfaces".to_owned()])
     }
 
     fn wlan(&self, args: &[String]) -> Result<CommandOutput> {
         match args {
-            [] => self.filter_interfaces("Wi-Fi", "wlan"),
+            [] => self.wlan_interfaces(),
             [show, interfaces]
                 if show.eq_ignore_ascii_case("show")
                     && interfaces.eq_ignore_ascii_case("interfaces") =>
@@ -69,7 +49,7 @@ impl NetworkBuiltin {
                 // gate SSID/BSSID behind the Location permission; adapter state,
                 // link state, speed, MAC and assigned IPs do not require those
                 // location-sensitive WLAN fields.
-                self.filter_interfaces("Wi-Fi", "wlan")
+                self.wlan_interfaces()
             }
             _ => Ok(CommandOutput::error(
                 "Uso: notsh wlan show interfaces",
@@ -80,12 +60,12 @@ impl NetworkBuiltin {
 
     fn lan(&self, args: &[String]) -> Result<CommandOutput> {
         match args {
-            [] => self.filter_interfaces("Ethernet", "lan"),
+            [] => self.lan_interfaces(),
             [show, interfaces]
                 if show.eq_ignore_ascii_case("show")
                     && interfaces.eq_ignore_ascii_case("interfaces") =>
             {
-                self.filter_interfaces("Ethernet", "lan")
+                self.lan_interfaces()
             }
             _ => Ok(CommandOutput::error(
                 "Uso: notsh lan show interfaces",
