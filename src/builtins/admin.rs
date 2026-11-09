@@ -29,49 +29,13 @@ impl NetworkBuiltin {
         self.service.execute(&["interfaces".to_owned()])
     }
 
-    fn lan_interfaces(&self) -> Result<CommandOutput> {
-        self.service.execute(&["lan-interfaces".to_owned()])
-    }
-
-    fn wlan_interfaces(&self) -> Result<CommandOutput> {
-        self.service.execute(&["wlan-interfaces".to_owned()])
-    }
-
-    fn wlan(&self, args: &[String]) -> Result<CommandOutput> {
-        match args {
-            [] => self.wlan_interfaces(),
-            [show, interfaces]
-                if show.eq_ignore_ascii_case("show")
-                    && interfaces.eq_ignore_ascii_case("interfaces") =>
-            {
-                // Deliberately use SST's IP Helper based interface probe instead
-                // of Native Wi-Fi WlanQueryInterface. Recent Windows releases can
-                // gate SSID/BSSID behind the Location permission; adapter state,
-                // link state, speed, MAC and assigned IPs do not require those
-                // location-sensitive WLAN fields.
-                self.wlan_interfaces()
-            }
-            _ => Ok(CommandOutput::error(
-                "Uso: notsh wlan show interfaces",
-                2,
-            )),
-        }
-    }
-
-    fn lan(&self, args: &[String]) -> Result<CommandOutput> {
-        match args {
-            [] => self.lan_interfaces(),
-            [show, interfaces]
-                if show.eq_ignore_ascii_case("show")
-                    && interfaces.eq_ignore_ascii_case("interfaces") =>
-            {
-                self.lan_interfaces()
-            }
-            _ => Ok(CommandOutput::error(
-                "Uso: notsh lan show interfaces",
-                2,
-            )),
-        }
+    fn windows_context(
+        &self,
+        namespace: &str,
+        args: &[String],
+        cwd: &std::path::Path,
+    ) -> Result<CommandOutput> {
+        crate::adapters::network::netsh_compat::execute(namespace, args, cwd)
     }
 
     fn show(&self, args: &[String]) -> Result<CommandOutput> {
@@ -96,8 +60,11 @@ impl NetworkBuiltin {
          \n\
          INTERFACES Y CONECTIVIDAD\n\
            notsh interfaces                 listar todos los adaptadores\n\
-           notsh wlan show interfaces      consultar adaptadores Wi-Fi\n\
-           notsh lan show interfaces       consultar adaptadores Ethernet\n\
+           notsh wlan show interfaces      estado Wi-Fi, SSID y autenticación\n\
+           notsh lan show interfaces       estado cableado y 802.1X\n\
+           notsh lan show profiles         perfiles cableados\n\
+           notsh wlan show profiles        perfiles inalámbricos\n\
+           notsh interface ipv4 show interfaces   interfaces IPv4\n\
            notsh routes                    tabla de rutas\n\
            notsh connections               conexiones TCP/UDP y PID\n\
            notsh neighbors                 vecinos IP/MAC\n\
@@ -124,7 +91,7 @@ impl NetworkBuiltin {
          'notsh' muestra este índice. 'notsh interfaces' muestra los adaptadores.\n"
     }
 
-    fn dispatch(&self, args: &[String]) -> Result<CommandOutput> {
+    fn dispatch(&self, args: &[String], cwd: &std::path::Path) -> Result<CommandOutput> {
         if Self::show_usage(args) {
             return Ok(CommandOutput::ok(Self::usage()));
         }
@@ -132,8 +99,15 @@ impl NetworkBuiltin {
         let rest = args.get(1..).unwrap_or_default();
 
         match sub {
-            "wlan" | "wifi" | "wireless" => self.wlan(rest),
-            "lan" | "ethernet" => self.lan(rest),
+            "wlan" | "wifi" | "wireless" => self.windows_context("wlan", rest, cwd),
+            "lan" | "ethernet" => self.windows_context("lan", rest, cwd),
+            "interface" => self.windows_context("interface", rest, cwd),
+            "ipv4" | "ipv6" => self.windows_context("interface", args, cwd),
+            "advfirewall" | "winhttp" | "winsock" | "http" =>
+                self.windows_context(sub, rest, cwd),
+            "trace" if rest.first().is_some_and(|word| matches!(
+                word.as_str(), "show" | "start" | "stop" | "convert" | "diagnose" | "help" | "?"
+            )) => self.windows_context("trace", rest, cwd),
             "show" => self.show(rest),
             "link" | "addr" => self.service.execute(&["interfaces".to_owned()]),
             "route" => self.service.execute(&["routes".to_owned()]),
@@ -167,9 +141,9 @@ impl BuiltinCommand for NetworkBuiltin {
         &self,
         _invoked_name: &str,
         args: &[String],
-        _context: CommandContext<'_>,
+        context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
-        self.dispatch(args)
+        self.dispatch(args, context.cwd)
     }
 }
 
