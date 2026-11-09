@@ -813,6 +813,9 @@ impl TerminalModel {
     }
 
     fn tick(&mut self) {
+        // The background manifest check can alert the user without pausing
+        // startup or overwriting an in-progress command line.
+        self.session.poll_update_notification();
         while let Ok(data) = self.session.output.try_recv() {
             self.parser.process(&data);
             self.dirty = true;

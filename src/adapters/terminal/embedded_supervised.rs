@@ -38,6 +38,9 @@ pub struct EmbeddedSession {
     pub output: mpsc::Receiver<Vec<u8>>,
     worker_failed: Arc<AtomicBool>,
     exit_seen_at: Mutex<Option<Instant>>,
+    startup_ready: Arc<AtomicBool>,
+    available_update: mpsc::Receiver<String>,
+    pending_update: Option<String>,
 }
 
 impl EmbeddedSession {
@@ -51,6 +54,17 @@ impl EmbeddedSession {
         let (relay_tx, output) = mpsc::channel();
         let worker_failed = Arc::new(AtomicBool::new(false));
         let relay_failed = Arc::clone(&worker_failed);
+        let startup_ready = Arc::new(AtomicBool::new(false));
+        let relay_ready = Arc::clone(&startup_ready);
+        let (notice_tx, available_update) = mpsc::channel();
+        // Never block opening the GUI or the Nwash prompt on the network.
+        // A manifest check is allowed, but downloading/applying a release isn't.
+        thread::spawn(move || {
+            let paths = crate::adapters::persistence::AppPaths::detect();
+            if let Ok(Some(message)) = crate::application::update::available_update_notice(&paths) {
+                let _ = notice_tx.send(message);
+            }
+        });
 
         thread::spawn(move || {
             let mut startup = StartupRelayState::WaitingForFetch;
@@ -91,9 +105,10 @@ impl EmbeddedSession {
                                 break;
                             }
 
-                            // The prompt is ready. Update checks are exclusively
-                            // operator-initiated via "update check/install".
+                            // Only the read-only availability notice runs at startup;
+                            // downloading and applying still require "update install".
                             startup = StartupRelayState::Complete;
+                            relay_ready.store(true, Ordering::SeqCst);
                         }
                         // All preload progress and the verbose startup report are
                         // intentionally swallowed. `triage` remains fully verbose
@@ -113,7 +128,26 @@ impl EmbeddedSession {
             output,
             worker_failed,
             exit_seen_at: Mutex::new(None),
+            startup_ready,
+            available_update,
+            pending_update: None,
         })
+    }
+
+    /// Called by the GUI event loop. Display only when the startup banner is
+    /// finished and the shell can redraw the editable input line safely.
+    pub fn poll_update_notification(&mut self) {
+        if !self.startup_ready.load(Ordering::SeqCst) {
+            return;
+        }
+        if self.pending_update.is_none() {
+            self.pending_update = self.available_update.try_recv().ok();
+        }
+        if let Some(message) = self.pending_update.as_deref() {
+            if self.inner.show_notification(message) {
+                self.pending_update = None;
+            }
+        }
     }
 
     pub fn exited(&self) -> bool {

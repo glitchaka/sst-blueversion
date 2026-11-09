@@ -23,3 +23,9 @@ No confundir:
   update                    actualiza SST
   instp update              actualiza repositorios de paquetes instp
   intel update              limpia/actualiza estado de fuentes/caché de inteligencia
+
+Aviso de nueva versión al abrir SST:
+  - SST consulta el manifiesto remoto en segundo plano, sin bloquear la consola.
+  - Si existe una versión superior, muestra un aviso dentro de SST.
+  - No descarga ni aplica una actualización automáticamente.
+  - Solo 'update install' autoriza descargar y aplicar la versión.

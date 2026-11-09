@@ -231,6 +231,21 @@ impl EmbeddedSession {
         self.config_reload_requested.swap(false, Ordering::SeqCst)
     }
     pub fn raw_mode(&self) -> bool { self.raw.load(Ordering::SeqCst) }
+
+    /// Present an asynchronous notice without losing the user's current
+    /// editable command line. Defer while another command or TUI is running.
+    pub fn show_notification(&mut self, message: &str) -> bool {
+        if self.busy.load(Ordering::SeqCst) || self.raw_mode() || self.exited() {
+            return false;
+        }
+        self.emit("\r\x1b[2K");
+        self.emit(&format!(
+            "\x1b[1;38;5;117m[Aviso de actualización]\x1b[0m\r\n{}\r\n",
+            message.replace('\n', "\r\n")
+        ));
+        self.redraw();
+        true
+    }
     pub fn send_raw_key(&self, key: KeyEvent) -> Result<()> {
         self.keys.send(Event::Key(key))?;
         Ok(())

@@ -150,6 +150,25 @@ pub fn check_now(paths: &AppPaths, stage: bool) -> Result<String> {
     Ok(output)
 }
 
+/// Read-only update discovery for the terminal's non-blocking startup notice.
+/// It checks the channel manifest, but never downloads an executable,
+/// grants install authorization, or schedules a replacement.
+pub fn available_update_notice(paths: &AppPaths) -> Result<Option<String>> {
+    if configured_manifest_url(paths).is_none() {
+        return Ok(None);
+    }
+    let manifest = fetch_manifest(paths)?;
+    validate_manifest(&manifest)?;
+    if !is_newer(&manifest.version, current_version())? {
+        return Ok(None);
+    }
+    Ok(Some(format!(
+        "Nueva versión de SST disponible: {} -> {}.\nPara actualizar cuando lo decidas: update install",
+        current_version(),
+        manifest.version
+    )))
+}
+
 pub fn configured_manifest_url(paths: &AppPaths) -> Option<String> {
     std::env::var("SST_UPDATE_MANIFEST_URL")
         .ok()
