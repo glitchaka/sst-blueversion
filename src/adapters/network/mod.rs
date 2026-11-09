@@ -1,3 +1,4 @@
+pub mod netsh_compat;
 pub mod snmp_switch;
 pub mod wake_on_lan;
 
