@@ -9,6 +9,20 @@ notsh ...
 net ...      # alias del mismo comando
 ```
 
+## Comportamiento al ejecutar `notsh` sin argumentos
+
+`notsh` muestra un índice de funciones agrupadas por conectividad, diagnóstico e inventario. No ejecuta automáticamente una consulta de interfaces ni termina la ayuda al llegar a Wi-Fi.
+
+Para consultar el equipo se utilizan subcomandos explícitos:
+
+```text
+notsh                 # índice de comandos de red
+notsh interfaces      # todos los adaptadores
+notsh wlan            # adaptadores Wi-Fi
+notsh lan             # adaptadores Ethernet
+notsh help            # índice de comandos de red
+```
+
 ## Compatibilidad tipo netsh
 
 ```text
