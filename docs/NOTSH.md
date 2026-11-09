@@ -23,44 +23,30 @@ notsh lan             # adaptadores Ethernet
 notsh help            # índice de comandos de red
 ```
 
-## Compatibilidad tipo netsh
+## Contextos de Windows: compatibilidad con Netsh
+
+NOTSH conserva las operaciones propias de SST y las rutas de comandos de Windows. No son la misma cosa.
+
+Los contextos `lan`, `wlan`, `interface`, `advfirewall`, `winhttp`, `winsock`, `http` y las funciones de seguimiento de `trace` utilizan el **backend de compatibilidad oficial `netsh.exe`** ubicado en System32. Se invoca directamente, **sin CMD ni PowerShell**, con los permisos y las restricciones que tenga el proceso SST. Esto garantiza que el resultado y las reglas de cada subcomando corresponden a Windows; no se sustituyen por un listado genérico de interfaces.
 
 ```text
-notsh wlan show interfaces
-notsh lan show interfaces
-notsh show interfaces
+notsh lan show interfaces                → netsh lan show interfaces
+notsh lan show profiles                  → netsh lan show profiles
+notsh lan show settings                  → netsh lan show settings
+notsh wlan show interfaces               → netsh wlan show interfaces
+notsh wlan show profiles                 → netsh wlan show profiles
+notsh wlan show networks                 → netsh wlan show networks
+notsh interface ipv4 show interfaces     → netsh interface ipv4 show interfaces
+notsh interface ipv6 show interfaces     → netsh interface ipv6 show interfaces
 ```
 
-Como `net` es alias, también funcionan:
+`notsh lan show interfaces` presenta el estado del sistema de autenticación cableada de Windows, incluida 802.1X cuando corresponde. No deduce una autorización NAC a partir de la presencia de cable o dirección IP. Si Wired AutoConfig está detenido, restringido o no entrega el estado, se muestra el resultado correspondiente de Windows.
 
-```text
-net wlan show interfaces
-net lan show interfaces
-net show interfaces
-```
+`notsh wlan show interfaces` presenta el estado Wi-Fi, SSID/BSSID, perfil y modo de autenticación cuando Windows permite consultarlos. Se respetan los permisos de privacidad, como Ubicación.
 
-### Interfaces LAN físicas
+Los contextos sin argumentos muestran ayuda, sin abrir una sesión interactiva adicional. Las operaciones de modificación de configuración mantienen los requisitos de elevación de Windows. Las políticas de bloqueo de ejecutables también pueden restringir este backend.
 
-La consulta `notsh lan show interfaces` selecciona únicamente adaptadores Ethernet físicos mediante los metadatos de Windows IP Helper/NDIS. No incluye Wi-Fi, miniports WAN, filtros WFP ni conexiones virtuales aunque el sistema las clasifique genéricamente como Ethernet. El resumen distingue adaptadores deshabilitados, enlace desconectado, enlace con IP y enlace sin IP. Una señal física activa no confirma por sí sola autenticación NAC, direccionamiento válido ni acceso a recursos.
-
-`notsh show interfaces` mantiene la vista completa, incluida la conectividad virtual.
-
-### Wi-Fi sin permiso de ubicación
-
-`notsh wlan show interfaces` no ejecuta `netsh.exe` ni usa `WlanQueryInterface` para consultar SSID/BSSID.
-
-El estado básico del adaptador se obtiene mediante el `WindowsNetworkProbe` de SST usando IP Helper (`GetIfTable2`) y las direcciones locales ya disponibles para SST. Por tanto puede mostrar, sin pedir Ubicación:
-
-- adaptador Wi-Fi;
-- estado administrativo;
-- estado operativo;
-- enlace;
-- velocidad reportada;
-- MAC;
-- direcciones IP.
-
-SSID, BSSID y escaneo de puntos de acceso son datos separados. Windows puede protegerlos detrás del permiso de Ubicación, por lo que `notsh wlan show interfaces` **no los consulta** y nunca activa ni solicita ese permiso automáticamente.
-
+`notsh interfaces` es **una operación distinta**, implementada con IP Helper: muestra el inventario completo de adaptadores y conexiones lógicas. No equivale a `netsh lan show interfaces`.
 ## Funciones existentes de SST
 
 Toda la funcionalidad que antes se invocaba mediante `net` sigue disponible porque `net` y `notsh` son el mismo builtin:
@@ -135,7 +121,7 @@ notsh / net(alias)
                     +-- IP Helper APIs
 ```
 
-No se llama a `netsh.exe` para obtener interfaces.
+La vista nativa `notsh interfaces` no ejecuta procesos externos; los contextos compatibles con Netsh sí utilizan directamente el ejecutable de Windows.
 
 ## Siguientes capacidades
 
