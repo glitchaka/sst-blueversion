@@ -101,33 +101,55 @@ impl NetworkBuiltin {
         }
     }
 
-    fn dispatch(&self, args: &[String]) -> Result<CommandOutput> {
-        let Some(sub) = args.first().map(String::as_str) else {
-            return self.service.execute(&[]);
-        };
-        let rest = args.get(1..).unwrap_or_default();
+    /// A bare "notsh" is command discovery, not an implicit enumeration of
+    /// adapters. Adapter output remains available through "notsh interfaces".
+    fn show_usage(args: &[String]) -> bool {
+        args.is_empty()
+            || (args.len() == 1
+                && matches!(args[0].as_str(), "help" | "--help" | "-h"))
+    }
 
-        if matches!(sub, "help" | "--help" | "-h") {
-            return Ok(CommandOutput::ok(
-                "notsh — shell de red de SST\n\n\
-                 Sintaxis compatible con netsh:\n\
-                   notsh wlan show interfaces   estado Wi-Fi sin consultar SSID/BSSID\n\
-                   notsh lan show interfaces    estado Ethernet/cableado\n\
-                   notsh show interfaces        todas las interfaces\n\n\
-                 Sintaxis tipo Unix/SST:\n\
-                   notsh link                   interfaces y enlace\n\
-                   notsh addr                   direcciones e interfaces\n\
-                   notsh route                  tabla de rutas\n\
-                   notsh neigh                  vecinos IP/MAC\n\
-                   notsh ss                     sockets TCP/UDP y PID\n\
-                   notsh dns HOST|IP            resolución DNS\n\
-                   notsh ping HOST [-c N]       eco ICMP\n\
-                   notsh trace HOST             trazado\n\
-                   notsh scan [RED]             descubrimiento SST\n\
-                   notsh monitor [RED]          monitor SST\n\n\
-                 'net' se conserva como alias de compatibilidad.\n",
-            ));
+    fn usage() -> &'static str {
+        "notsh — herramientas de red SST\n\
+         \n\
+         Uso: notsh SUBCOMANDO [argumentos]\n\
+         \n\
+         INTERFACES Y CONECTIVIDAD\n\
+           notsh interfaces                 listar todos los adaptadores\n\
+           notsh wlan show interfaces      consultar adaptadores Wi-Fi\n\
+           notsh lan show interfaces       consultar adaptadores Ethernet\n\
+           notsh routes                    tabla de rutas\n\
+           notsh connections               conexiones TCP/UDP y PID\n\
+           notsh neighbors                 vecinos IP/MAC\n\
+           notsh dns HOST|IP               resolución directa/inversa\n\
+           notsh ping HOST [-c N]          eco ICMP\n\
+           notsh trace HOST                ruta de red\n\
+           notsh ports HOST [PUERTOS]      comprobación TCP\n\
+         \n\
+         DIAGNÓSTICO E INVENTARIO\n\
+           notsh conflicts [IP]            posibles direcciones duplicadas\n\
+           notsh scan [RED]                descubrir equipos\n\
+           notsh monitor [RED]             monitor de presencia\n\
+           notsh presence                  historial de presencia\n\
+           notsh identify OBJETIVO         datos de equipo por IP/MAC/nombre\n\
+           notsh traffic                   tráfico de red por proceso\n\
+           notsh usage                     consumo por proveedor\n\
+           notsh provider ...              proveedores configurados\n\
+         \n\
+         ALIAS\n\
+           link / addr -> interfaces; route -> routes\n\
+           neigh -> neighbors; ss -> connections; resolve -> dns\n\
+           wifi -> wlan; net -> notsh\n\
+         \n\
+         'notsh' muestra este índice. 'notsh interfaces' muestra los adaptadores.\n"
+    }
+
+    fn dispatch(&self, args: &[String]) -> Result<CommandOutput> {
+        if Self::show_usage(args) {
+            return Ok(CommandOutput::ok(Self::usage()));
         }
+        let sub = args[0].as_str();
+        let rest = args.get(1..).unwrap_or_default();
 
         match sub {
             "wlan" | "wifi" | "wireless" => self.wlan(rest),
@@ -168,6 +190,40 @@ impl BuiltinCommand for NetworkBuiltin {
         _context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
         self.dispatch(args)
+    }
+}
+
+
+#[cfg(test)]
+mod notsh_usage_tests {
+    use super::NetworkBuiltin;
+
+    #[test]
+    fn bare_notsh_displays_command_index_instead_of_wifi_listing() {
+        assert!(NetworkBuiltin::show_usage(&[]));
+        assert!(NetworkBuiltin::show_usage(&["help".to_owned()]));
+        assert!(NetworkBuiltin::show_usage(&["--help".to_owned()]));
+        assert!(!NetworkBuiltin::show_usage(&["interfaces".to_owned()]));
+        assert!(!NetworkBuiltin::show_usage(&["wlan".to_owned()]));
+    }
+
+    #[test]
+    fn command_index_exposes_the_full_network_surface() {
+        let usage = NetworkBuiltin::usage();
+        for command in [
+            "notsh interfaces",
+            "notsh wlan show interfaces",
+            "notsh lan show interfaces",
+            "notsh routes",
+            "notsh neighbors",
+            "notsh scan",
+            "notsh monitor",
+            "notsh identify",
+            "notsh traffic",
+            "notsh provider",
+        ] {
+            assert!(usage.contains(command), "Missing command: {command}");
+        }
     }
 }
 
