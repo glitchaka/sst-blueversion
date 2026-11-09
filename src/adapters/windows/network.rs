@@ -232,7 +232,7 @@ mod network_interface_scope_tests {
         assert!(!in_scope(InterfaceScope::Lan, 71, 1, 0b0101));
         assert!(!in_scope(InterfaceScope::Lan, 6, 0, 0));
         assert!(!in_scope(InterfaceScope::Lan, 6, 14, 0b0111));
-        assert!(!in_scope(InterfaceScope::Lan, 6, 14, 0b1101));
+        assert!(!in_scope(InterfaceScope::Lan, 6, 14, 0b1000_0101));
         assert!(!in_scope(InterfaceScope::Lan, 6, 14, 0));
     }
 
