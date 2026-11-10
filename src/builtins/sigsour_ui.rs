@@ -273,6 +273,43 @@ fn exposed_command_names(package: &PackageManifest) -> String {
         .join(", ")
 }
 
+// SIGSOUR occupies its own alternate screen. The only filled row is the
+// selected package; the rest stays transparent over the user's SST background.
+// Never draw terminal-character frames around arbitrary command output.
+fn catalog_row(
+    package: &PackageManifest,
+    installed: &HashSet<String>,
+    active: bool,
+    width: usize,
+) -> String {
+    let installed = installed.contains(&package.id.to_ascii_lowercase());
+    let restricted = matches!(package.portability.as_str(), "system" | "driver")
+        || package.install.kind == "system";
+    let state = if installed { "INSTALADO" } else if restricted { "SISTEMA" } else { "DISPONIBLE" };
+    let state_color = if installed { "\x1b[38;2;114;229;171m" }
+        else if restricted { "\x1b[38;2;237;192;120m" }
+        else { "\x1b[38;2;129;177;208m" };
+    let marker = if active { "▌" } else { " " };
+    let label = if width >= 84 {
+        format!(
+            "{marker} {:<10}  {:<19}  {:<12}  {}",
+            state, clip(&package.name, 19),
+            clip(&package.category, 12), package.description,
+        )
+    } else {
+        format!("{marker} {:<10}  {:<21}  {}", state, clip(&package.name, 21), package.description)
+    };
+    let line = clip(&label, width.saturating_sub(1));
+    if active {
+        // A single row highlight. No fill, box or background on other rows.
+        format!("\x1b[1;38;2;245;250;255;48;2;20;69;115m{line:<width$}\x1b[0m", width=width.saturating_sub(1))
+    } else {
+        let prefix = &line[..line.char_indices().nth(2).map_or(line.len(), |(i,_)| i)];
+        let rest = &line[prefix.len()..];
+        format!("\x1b[38;2;151;168;191m{prefix}\x1b[0m{state_color}{rest}\x1b[0m")
+    }
+}
+
 fn render(
     terminal: &mut dyn TerminalSession,
     packages: &[&PackageManifest],
@@ -286,105 +323,91 @@ fn render(
     let (width, height) = terminal.size()?;
     let width = usize::from(width.max(40));
     let height = usize::from(height.max(14));
+    let columns = width.saturating_sub(2).min(148);
 
     let command_lines = packages
         .get(selected)
         .copied()
-        .map(|package| wrap_text(&format!("Comandos: {}", exposed_command_names(package)), width))
+        .map(|package| wrap_text(&format!("Comandos: {}", exposed_command_names(package)), columns))
         .unwrap_or_default();
-    let message_lines = wrap_text(message, width);
+    let message_lines = wrap_text(message, columns);
     let fixed_rows = 9usize
         .saturating_add(command_lines.len())
         .saturating_add(message_lines.len());
     let list_rows = height.saturating_sub(fixed_rows).max(3);
-    let start = if selected >= list_rows {
-        selected + 1 - list_rows
-    } else {
-        0
-    };
+    let start = selected.saturating_add(1).saturating_sub(list_rows);
     let end = (start + list_rows).min(packages.len());
 
     terminal.clear()?;
     let mut out = String::new();
-    out.push_str("SIGSOUR · Catálogo de paquetes SST\n");
+    out.push_str("\x1b[1;38;2;90;216;254m  SIGSOUR\x1b[0m");
+    out.push_str("  \x1b[38;2;141;157;181m/  Catálogo de paquetes SST\x1b[0m\n");
     out.push_str(&format!(
-        "Categoría: {:<12}  Paquetes: {:<3}  Buscar: {}{}\n",
-        category,
-        packages.len(),
-        if search_mode { "> " } else { "" },
-        if query.is_empty() { "-" } else { query }
-    ));
-    out.push_str(&format!("{}\n", "─".repeat(width.min(120))));
-
-    if packages.is_empty() {
-        out.push_str("  No hay paquetes que coincidan con el filtro.\n");
-        for _ in 1..list_rows {
-            out.push('\n');
-        }
-    } else {
-        for index in start..end {
-            let package = packages[index];
-            let mark = if index == selected { '>' } else { ' ' };
-            let state = if installed.contains(&package.id.to_ascii_lowercase()) {
-                "INSTALADO"
-            } else if matches!(package.portability.as_str(), "system" | "driver")
-                || package.install.kind == "system"
-            {
-                "SISTEMA"
-            } else {
-                "DISPONIBLE"
-            };
-            let line = format!(
-                "{} {:<10} {:<18} {:<12} {:<10} {}",
-                mark,
-                state,
-                clip(&package.id, 18),
-                clip(&package.category, 12),
-                clip(&package.portability.to_ascii_uppercase(), 10),
-                package.description
-            );
-            out.push_str(&clip(&line, width));
-            out.push('\n');
-        }
-        for _ in end - start..list_rows {
-            out.push('\n');
-        }
-    }
-
-    out.push_str(&format!("{}\n", "─".repeat(width.min(120))));
-    if let Some(package) = packages.get(selected).copied() {
-        out.push_str(&clip(
-            &format!(
-                "{} {} · {} · {}",
-                package.name,
-                package.version,
-                package.category,
-                package.portability.to_ascii_uppercase()
-            ),
-            width,
-        ));
-        out.push('\n');
-        out.push_str(&clip(&package.description, width));
-        out.push('\n');
-        for line in &command_lines {
-            out.push_str(line);
-            out.push('\n');
-        }
-    } else {
-        out.push_str("Sin selección.\n\n");
-    }
-    for line in &message_lines {
-        out.push_str(line);
-        out.push('\n');
-    }
-    out.push_str(&clip(
-        "↑↓ navegar · / buscar · c categoría · i temporal · p persistente · r quitar · u actualizar · q/Esc salir",
-        width,
+        "  \x1b[38;2;141;157;181mCategoría\x1b[0m  \x1b[38;2;183;228;247m{:<12}\x1b[0m  \
+         \x1b[38;2;141;157;181mPaquetes\x1b[0m  {}    \
+         \x1b[38;2;141;157;181mFiltro\x1b[0m  {}{}\n",
+        category, packages.len(),
+        if search_mode { "\x1b[1;38;2;90;216;254m› \x1b[0m" } else { "" },
+        if query.is_empty() { "todos" } else { query },
     ));
     out.push('\n');
 
+    if packages.is_empty() {
+        out.push_str("  \x1b[38;2;237;192;120mNo hay paquetes para este filtro.\x1b[0m\n");
+        for _ in 1..list_rows { out.push('\n'); }
+    } else {
+        for index in start..end {
+            out.push_str(&catalog_row(packages[index], installed, index == selected, columns));
+            out.push('\n');
+        }
+        for _ in end - start..list_rows { out.push('\n'); }
+    }
+
+    out.push('\n');
+    if let Some(package) = packages.get(selected).copied() {
+        out.push_str(&format!(
+            "  \x1b[1;38;2;90;216;254m{}\x1b[0m  \
+             \x1b[38;2;155;175;199m{} · {} · {}\x1b[0m\n",
+            clip(&package.name, columns.saturating_sub(28)),
+            clip(&package.version, 12), clip(&package.category, 13),
+            package.portability.to_ascii_uppercase(),
+        ));
+        out.push_str(&format!("  \x1b[38;2;213;223;238m{}\x1b[0m\n",clip(&package.description, columns)));
+        for line in &command_lines {
+            out.push_str(&format!("  \x1b[38;2;142;190;215m{}\x1b[0m\n",clip(line, columns)));
+        }
+    } else {
+        out.push_str("  Sin selección.\n\n");
+    }
+    for line in &message_lines {
+        out.push_str(&format!("  \x1b[38;2;179;195;214m{}\x1b[0m\n",clip(line, columns)));
+    }
+    out.push_str("\x1b[38;2;117;151;182m  ↑↓ Mover    / Buscar    C Categoría    I Temporal    P Persistente    R Quitar    U Actualizar    Esc Salir\x1b[0m\n");
     terminal.write(&out)?;
     terminal.flush()
+}
+
+#[cfg(test)]
+mod catalog_style_tests {
+    use super::{catalog_row, PackageManifest};
+    use std::collections::HashSet;
+
+    #[test]
+    fn only_selected_package_has_a_colored_background() {
+        let package: PackageManifest = serde_json::from_str(r#"{
+            "id":"test", "name":"Test", "version":"1.0", "description":"Un paquete",
+            "category":"cli", "portability":"pure",
+            "source":{"type":"url","url":"https://example.com/test"},
+            "install":{"type":"zip","expose":["test.exe"]}
+        }"#).unwrap();
+        let installed = HashSet::new();
+        let selected = catalog_row(&package, &installed, true, 100);
+        let other = catalog_row(&package, &installed, false, 100);
+        assert!(selected.contains("48;2;20;69;115"));
+        assert!(!other.contains("48;2;"));
+        assert!(selected.contains("Test"));
+        assert!(!selected.contains("----"));
+    }
 }
 
 fn wrap_text(value: &str, width: usize) -> Vec<String> {
