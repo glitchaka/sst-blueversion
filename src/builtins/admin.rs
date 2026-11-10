@@ -69,7 +69,8 @@ impl NetworkBuiltin {
             },
             "winhttp"=>crate::adapters::network::winhttp_native::execute(args),
             "winsock"=>crate::adapters::network::winsock_native::execute(args),
-            "advfirewall"|"http"|"trace"=>Ok(CommandOutput::error(
+            "advfirewall"=>crate::adapters::network::firewall_native::execute(args),
+            "http"|"trace"=>Ok(CommandOutput::error(
                 format!("notsh {namespace}: falta implementar este backend nativo. No se ejecutará netsh.exe."),2
             )),
             _=>Ok(CommandOutput::error(format!("notsh: contexto desconocido: {namespace}"),2)),
@@ -103,6 +104,7 @@ impl NetworkBuiltin {
            notsh lan show profiles         consulta de perfil nativo Dot3 por Ethernet\n\
            notsh winhttp show proxy       proxy WinHTTP del equipo\n\
            notsh winsock show catalog     protocolos Winsock2 visibles\n\
+           notsh advfirewall show allprofiles   perfiles Windows Firewall\n\
            notsh wlan show profiles        perfiles inalámbricos\n\
            notsh interface ipv4 show interfaces   interfaces IPv4\n\
            notsh routes                    tabla de rutas\n\
