@@ -73,7 +73,7 @@ pub fn current_version() -> &'static str {
 
 // Authorization is deliberately process-local. A pending.json left behind
 // from another run must never trigger an automatic update on the next launch.
-// Only an explicit "update install" in this GUI session authorizes handoff
+// Only an explicit "instp upgrade sst" in this GUI session authorizes handoff
 // when the terminal is closed.
 static EXPLICIT_INSTALL_AUTHORIZATION: AtomicBool = AtomicBool::new(false);
 
@@ -99,7 +99,7 @@ pub fn status(paths: &AppPaths) -> Result<String> {
     if let Some(pending) = pending {
         if is_newer(&pending.version, current_version())? {
             output.push_str(&format!(
-                "Actualización preparada: {} (requiere 'update install' para autorizar su aplicación)\n",
+                "Actualización preparada: {} (requiere 'instp upgrade sst' para autorizar su aplicación)\n",
                 pending.version
             ));
             append_plain_changes(&mut output, &pending.changes);
@@ -163,7 +163,7 @@ pub fn available_update_notice(paths: &AppPaths) -> Result<Option<String>> {
         return Ok(None);
     }
     Ok(Some(format!(
-        "Nueva versión de SST disponible: {} -> {}.\nPara actualizar cuando lo decidas: update install",
+        "Nueva versión de SST disponible: {} -> {}.\nPara actualizar cuando lo decidas: instp upgrade sst",
         current_version(),
         manifest.version
     )))

@@ -19,7 +19,7 @@ fn suitable(command: &str, stdout: &str) -> bool {
     }
     matches!(
         command.split_whitespace().next().unwrap_or(""),
-        "notsh" | "net" | "sys" | "fetch" | "help" | "diag" | "diagnose"
+        "notsh" | "net" | "instp" | "sys" | "fetch" | "help" | "diag" | "diagnose"
             | "domain" | "device" | "tools" | "sigsour" | "service"
             | "process" | "firewall" | "eventlog"
     )

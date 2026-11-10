@@ -15,7 +15,6 @@ mod sudo_remote_audit;
 mod unix;
 mod guide_new;
 mod guide_remote;
-mod update;
 mod tools;
 
 pub use admin::{
@@ -35,5 +34,4 @@ pub use sudo::SudoBuiltin;
 pub(crate) use sudo::gui_privilege_indicator;
 pub use unix::{UNIX_COMMANDS, UnixBuiltin};
 pub use guide_new::GuideBuiltin as WikiBuiltin;
-pub use update::UpdateBuiltin;
 pub use tools::ToolsBuiltin;
