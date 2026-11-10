@@ -498,7 +498,7 @@ impl PackageService {
             fs::remove_file(&destination)?;
         }
 
-        download(&source.url, &destination)?;
+        download(&source.url, &destination, source.size)?;
         if let Some(expected) = source.sha256.as_deref() {
             if !sha256_matches(&destination, expected)? {
                 let _ = fs::remove_file(&destination);
