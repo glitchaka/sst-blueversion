@@ -95,8 +95,8 @@ impl NetworkBuiltin {
          INTERFACES Y CONECTIVIDAD\n\
            notsh interfaces                 listar todos los adaptadores\n\
            notsh wlan show interfaces      estado Wi-Fi, SSID y autenticación\n\
-           notsh lan show interfaces       estado cableado y 802.1X\n\
-           notsh lan show profiles         perfiles cableados\n\
+           notsh lan show interfaces       enlace físico Ethernet; 802.1X NO verificado\n\
+           notsh lan show profiles         pendiente implementación nativa Dot3\n\
            notsh wlan show profiles        perfiles inalámbricos\n\
            notsh interface ipv4 show interfaces   interfaces IPv4\n\
            notsh routes                    tabla de rutas\n\

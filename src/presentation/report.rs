@@ -31,9 +31,9 @@ fn canvas_title(command: &str) -> Option<String> {
     let title: String = command.chars().take(62).collect();
     let width = (title.chars().count() as i32 + 6).clamp(36, 76);
     let mut canvas = Canvas::new(width, 3).ok()?;
-    canvas.set_color_ansi(Color::LightCyan, Color::Black).ok()?;
-    canvas.draw_thin_box(0, 0, width, 3);
-    canvas.set_color_ansi(Color::White, Color::Black).ok()?;
+    canvas.set_color_ansi(Color::LightCyan, Color::Default).ok()?;
+    canvas.draw_thin_box(0, 0, width - 1, 2);
+    canvas.set_color_ansi(Color::White, Color::Default).ok()?;
     canvas.put_str(2, 1, &title);
     let ansi = canvas.export_to_memory("ansi").ok()?;
     String::from_utf8(ansi).ok()
@@ -46,11 +46,14 @@ fn emphasis(line: &str) -> Option<&'static str> {
     if uppercase.contains("ERROR") || uppercase.contains("FALLO")
         || uppercase.contains("SIN ENLACE") || uppercase.contains("DENEGAD")
         || uppercase.contains("DESHABILITAD") || uppercase.contains("NO DISPONIBLE")
+        || uppercase.contains("DESCONECTADO") || uppercase.contains("DETENIDO")
+        || uppercase.contains("NO OPERATIV") || uppercase.contains("NO ACTIVO")
     {
         Some(FAILURE)
     } else if uppercase.contains("ADVERTENCIA") || uppercase.contains("PENDIENTE")
         || uppercase.contains("INDETERMINADO") || uppercase.contains("SIN IP")
         || uppercase.contains("NO CONFIRMA") || uppercase.contains("NO SE PUDO")
+        || uppercase.contains("NO VERIFICADO")
     {
         Some(WARNING)
     } else if uppercase.contains("ACTIVO") || uppercase.contains("CONECTADO")

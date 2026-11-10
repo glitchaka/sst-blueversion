@@ -30,7 +30,7 @@ Notsh no ejecuta procesos Netsh, CMD ni PowerShell. Los contextos actualmente im
 | Consulta | API | Interpretación |
 | --- | --- | --- |
 | `notsh interfaces` | IP Helper | Inventario completo, incluidos adaptadores virtuales |
-| `notsh lan show interfaces` | IP Helper + NDIS | Enlace Ethernet físico e IP; no demuestra autenticación NAC |
+| `notsh lan show interfaces` | IP Helper + NDIS + Service Control Manager | Ethernet físico, enlace, IP y estado de dot3svc; no demuestra autenticación NAC |
 | `notsh wlan show interfaces` | WLAN API | Estado Wi-Fi, conexión, SSID, BSSID, señal, configuración 802.1X |
 | `notsh wlan show profiles` | WLAN API | Nombres de perfiles guardados sin exponer claves |
 | `notsh wlan show networks` | WLAN API | Redes visibles si Windows permite la consulta |
