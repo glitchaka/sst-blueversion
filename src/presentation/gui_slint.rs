@@ -1041,27 +1041,6 @@ impl TerminalModel {
             let font_key = font_px.round() as u16;
             let default_fg = parse_rgb(&self.appearance.font_color).unwrap_or(FG);
 
-            // A translucent reading surface follows the *occupied text rows*.
-            // This is part of the native pixel compositor, not a fake framed
-            // overlay or a change to the user's wallpaper/background settings.
-            // It keeps white / pastel status text legible over SST's imagery.
-            for row in 0..rows {
-                let has_text = (0..cols).any(|col| screen.cell(row, col).is_some_and(
-                    |cell| !cell.is_wide_continuation()
-                        && cell.contents().chars().any(|ch| !ch.is_whitespace())
-                ));
-                if has_text {
-                    let y = (top_pad + row as f32 * cell_height).round() as i32;
-                    fill_rect_translucent(
-                        pixels, width, height,
-                        left_pad.round() as i32 - 3, y,
-                        (cols as f32 * cell_width).ceil() as i32 + 6,
-                        cell_height.ceil() as i32,
-                        Rgb(5, 11, 24), 202,
-                    );
-                }
-            }
-
             for row in 0..rows {
                 for col in 0..cols {
                     let Some(cell) = screen.cell(row, col) else {
@@ -1212,51 +1191,6 @@ fn fill_rect(
                 b: color.2,
                 a: 255,
             };
-        }
-    }
-}
-
-/// Premultiplied-alpha dark reading surface, composited before glyph painting.
-/// Preserves the caller's background image and custom transparency settings.
-fn fill_rect_translucent(
-    pixels: &mut [Rgba8Pixel],
-    width: u32, height: u32,
-    x: i32, y: i32, w: i32, h: i32,
-    color: Rgb, alpha: u8,
-) {
-    let left = x.max(0) as u32;
-    let top = y.max(0) as u32;
-    let right = (x + w).max(0).min(width as i32) as u32;
-    let bottom = (y + h).max(0).min(height as i32) as u32;
-    if left >= right || top >= bottom { return; }
-    let a = u16::from(alpha);
-    let remainder = 255 - a;
-    for py in top..bottom {
-        for px in left..right {
-            let p = &mut pixels[(py * width + px) as usize];
-            p.r = ((u16::from(color.0) * a + u16::from(p.r) * remainder) / 255) as u8;
-            p.g = ((u16::from(color.1) * a + u16::from(p.g) * remainder) / 255) as u8;
-            p.b = ((u16::from(color.2) * a + u16::from(p.b) * remainder) / 255) as u8;
-            p.a = (a + u16::from(p.a) * remainder / 255).min(255) as u8;
-        }
-    }
-}
-
-#[cfg(test)]
-mod reading_surface_tests {
-    use super::*;
-    #[test]
-    fn reading_surface_is_translucent_and_does_not_cover_empty_rows() {
-        let mut pixels: Vec<Rgba8Pixel> = std::iter::repeat_with(|| Rgba8Pixel {
-            r: 0, g: 0, b: 0, a: 0,
-        }).take(8).collect();
-        fill_rect_translucent(&mut pixels, 4, 2, 0, 0, 4, 1, Rgb(5, 11, 24), 202);
-        for pixel in &pixels[..4] {
-            assert_eq!(pixel.a, 202);
-            assert!(pixel.r <= 5 && pixel.g <= 11 && pixel.b <= 24);
-        }
-        for pixel in &pixels[4..] {
-            assert_eq!(pixel.a, 0);
         }
     }
 }
