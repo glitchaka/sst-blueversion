@@ -37,6 +37,8 @@ Notsh no ejecuta procesos Netsh, CMD ni PowerShell. Los contextos actualmente im
 | `notsh interface ipv4 show interfaces` | IP Helper | Tabla IPv4 por interfaz |
 | `notsh interface ipv6 show interfaces` | IP Helper | Tabla IPv6 por interfaz |
 
+La vista LAN incluye el estado real del servicio Wired AutoConfig (`dot3svc`) consultado mediante el gestor de servicios de Windows. Este estado NO demuestra una autenticación exitosa.
+
 **Límites explícitos:** La autorización 802.1X cableada precisa APIs Dot3 que aún no están implementadas; `notsh lan show profiles` y `notsh lan show settings` devuelven un error específico. Los contextos `advfirewall`, `winhttp`, `winsock`, `http` y controles de `trace` quedan pendientes de implementación nativa. No se presentan adaptadores genéricos como datos de autenticación, ni se usa un envoltorio de `netsh.exe`. Las consultas Wi-Fi respetan permisos de Ubicación y las políticas de Windows.
 
 ## Funciones existentes de SST

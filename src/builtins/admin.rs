@@ -43,8 +43,10 @@ impl NetworkBuiltin {
                     let mut result=self.service.execute(&["lan-interfaces".into()])?;
                     result.stdout=format!(
                         "LAN — WINDOWS IP HELPER\n\
+                         {}\n\
                          802.1X cableado: NO VERIFICADO\n\
                          NAC: NO VERIFICADO. Enlace e IP no acreditan autorización.\n\n{}",
+                        crate::adapters::network::lan_native::autoconfig_state(),
                         result.stdout);
                     Ok(result)
                 },
