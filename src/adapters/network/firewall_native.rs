@@ -71,7 +71,7 @@ mod native {
     struct Apartment { uninitialize: bool }
     impl Apartment {
         fn start() -> std::result::Result<Self, CommandOutput> {
-            let status = unsafe { CoInitializeEx(ptr::null(), COINIT_MULTITHREADED) };
+            let status = unsafe { CoInitializeEx(ptr::null(), COINIT_MULTITHREADED as u32) };
             // RPC_E_CHANGED_MODE means COM was already initialized by the host
             // using another threading apartment; do not call CoUninitialize then.
             if status < 0 && status != 0x80010106u32 as i32 {
