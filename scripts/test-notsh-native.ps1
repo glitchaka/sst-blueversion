@@ -18,6 +18,12 @@ notsh interface ipv4 show interfaces
 echo SST_NOTSH_IPV4_RETURNED
 notsh interface ipv6 show interfaces
 echo SST_NOTSH_IPV6_RETURNED
+notsh winhttp show proxy
+echo SST_NOTSH_WINHTTP_RETURNED
+notsh winsock show catalog
+echo SST_NOTSH_WINSOCK_RETURNED
+notsh advfirewall show allprofiles
+echo SST_NOTSH_FIREWALL_RETURNED
 '@
 [IO.File]::WriteAllText($fixture, $commands, [Text.UTF8Encoding]::new($false))
 $process = Start-Process -FilePath $exe -ArgumentList ('"' + $fixture + '"') -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
@@ -34,7 +40,9 @@ try {
     }
     foreach ($marker in @(
         'SST_NOTSH_LAN_RETURNED', 'SST_NOTSH_WLAN_RETURNED',
-        'SST_NOTSH_IPV4_RETURNED', 'SST_NOTSH_IPV6_RETURNED'
+        'SST_NOTSH_IPV4_RETURNED', 'SST_NOTSH_IPV6_RETURNED',
+        'SST_NOTSH_WINHTTP_RETURNED', 'SST_NOTSH_WINSOCK_RETURNED',
+        'SST_NOTSH_FIREWALL_RETURNED'
     )) {
         if (-not $result.Contains($marker)) {
             throw "No regresó de $marker. STDOUT: $result; STDERR: $errors"
@@ -43,7 +51,7 @@ try {
     if ($result -notmatch 'LAN|Dot3|Ethernet') { throw "Diagnóstico LAN sin contexto: $result" }
     if ($result -notmatch 'WLAN|Wi-Fi|WiFi') { throw "Diagnóstico WLAN sin contexto: $result" }
     if ($result -notmatch 'IPv4|interface') { throw "Diagnóstico IPv4 sin contexto: $result" }
-    Write-Host 'NOTSH Windows smoke: LAN, WLAN, IPv4 e IPv6 regresaron a SST.'
+    Write-Host 'NOTSH Windows smoke: LAN, WLAN, IPv4, IPv6, WinHTTP, Winsock y Firewall regresaron a SST.'
 } finally {
     if (-not $process.HasExited) { $process.Kill() }
     Remove-Item -Recurse -Force -LiteralPath $dir -ErrorAction SilentlyContinue
