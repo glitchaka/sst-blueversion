@@ -266,9 +266,6 @@ fn top_screen_line(
     buffer.push_str("\x1b[0m\r\n");
 }
 
-}
-
-
 fn system_help() -> CommandOutput {
     CommandOutput::ok(
         "sys — información y administración local de Windows\n\n\
