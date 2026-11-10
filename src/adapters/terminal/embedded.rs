@@ -84,6 +84,7 @@ impl EmbeddedSession {
             interrupt.clone(),
             force_abort.clone(),
         );
+        let worker_size = size.clone();
         let worker_busy = busy.clone(); let worker_exited = exited.clone();
         let worker_config_reload_requested = config_reload_requested.clone();
         let worker_bindings = bindings.clone();
@@ -153,7 +154,12 @@ impl EmbeddedSession {
                             if !ps0.is_empty() { io::write(ps0.as_bytes())?; }
                             match engine.execute(&command) {
                                 Ok(result) => {
-                                    io::write(crate::presentation::report::decorate(&command, &result.stdout).as_bytes())?;
+                                    let width = worker_size.lock()
+                                        .unwrap_or_else(|e| e.into_inner()).0;
+                                    let output = crate::presentation::report::decorate_at_width(
+                                        &command, &result.stdout, width,
+                                    );
+                                    io::write(output.as_bytes())?;
                                     io::write(result.stderr.as_bytes())?;
                                     if result.status == 0 {
                                         let normalized = command.split_whitespace().collect::<Vec<_>>().join(" ");
