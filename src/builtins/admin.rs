@@ -175,6 +175,12 @@ impl NetworkBuiltin {
                 Some("lan") => Ok(CommandOutput::ok(
                     crate::adapters::windows::network::interfaces_csv("lan")?)),
                 Some("wlan") => crate::adapters::network::wlan_native::interfaces_csv(),
+                // Existing network scan/traffic/presence/usage exporters must
+                // continue through NetworkService; they already own their CSV.
+                None if matches!(args.first().map(String::as_str),
+                    Some("scan" | "traffic" | "presence" | "usage")) => {
+                    self.service.execute(args)
+                }
                 _ => Ok(CommandOutput::error(
                     "notsh: --csv no está disponible para este subcomando.", 2)),
             };
