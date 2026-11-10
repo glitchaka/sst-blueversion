@@ -120,6 +120,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test-nwash-process-substitution.ps1 -SstPath ./target/release/sst.exe
 
+      - name: Verify native NOTSH contexts (blocking release)
+        shell: pwsh
+        run: ./scripts/test-notsh-native.ps1 -SstPath ./target/release/sst.exe
+
       - name: Verify GUI idle resources (blocking release)
         shell: pwsh
         run: ./scripts/gui_idle_resource_probe.ps1 -Exe ./target/release/sst.exe
