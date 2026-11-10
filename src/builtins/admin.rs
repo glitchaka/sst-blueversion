@@ -37,21 +37,23 @@ impl NetworkBuiltin {
                 []|["help"]|["--help"]|["?"]=>Ok(CommandOutput::ok(
                     "notsh lan — Ethernet físico por IP Helper\n\
                      notsh lan show interfaces    enlace, IP y diagnóstico físico\n\
-                     Los datos de autorización cableada 802.1X requieren el backend Dot3 pendiente.\n"
+                     notsh lan show profiles      perfil 802.1X por Windows Dot3 API; sin secretos.\n"
                 )),
                 ["show","interfaces"]=>{
                     let mut result=self.service.execute(&["lan-interfaces".into()])?;
+                    let dot3=crate::adapters::network::dot3_native::interfaces()?;
                     result.stdout=format!(
-                        "LAN — WINDOWS IP HELPER\n\
+                        "LAN — WINDOWS IP HELPER + DOT3\n\
                          {}\n\
-                         802.1X cableado: NO VERIFICADO\n\
-                         NAC: NO VERIFICADO. Enlace e IP no acreditan autorización.\n\n{}",
+                         Enlace e IP no acreditan autorización NAC.\n\n{}\n{}",
                         crate::adapters::network::lan_native::autoconfig_state(),
-                        result.stdout);
+                        result.stdout,
+                        if dot3.status==0 {dot3.stdout} else {dot3.stderr});
                     Ok(result)
                 },
-                ["show","profiles"]|["show","settings"]=>Ok(CommandOutput::error(
-                    "notsh lan: el backend Dot3/802.1X aún no está implementado; no se devolverán perfiles ficticios.",2
+                ["show","profiles"]=>crate::adapters::network::dot3_native::profiles(),
+                ["show","settings"]=>Ok(CommandOutput::error(
+                    "notsh lan: opciones avanzadas de Dot3 todavía no disponibles.",2
                 )),
                 _=>Ok(CommandOutput::error(
                     "notsh lan: opción nativa no implementada; usa 'notsh lan help'.",2
@@ -96,7 +98,7 @@ impl NetworkBuiltin {
            notsh interfaces                 listar todos los adaptadores\n\
            notsh wlan show interfaces      estado Wi-Fi, SSID y autenticación\n\
            notsh lan show interfaces       enlace físico Ethernet; 802.1X NO verificado\n\
-           notsh lan show profiles         pendiente implementación nativa Dot3\n\
+           notsh lan show profiles         consulta de perfil nativo Dot3 por Ethernet\n\
            notsh wlan show profiles        perfiles inalámbricos\n\
            notsh interface ipv4 show interfaces   interfaces IPv4\n\
            notsh routes                    tabla de rutas\n\
