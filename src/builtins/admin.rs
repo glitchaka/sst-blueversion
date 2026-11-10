@@ -71,9 +71,7 @@ impl NetworkBuiltin {
             "winsock"=>crate::adapters::network::winsock_native::execute(args),
             "advfirewall"=>crate::adapters::network::firewall_native::execute(args),
             "http"=>crate::adapters::network::http_native::execute(args),
-            "trace"=>Ok(CommandOutput::error(
-                format!("notsh {namespace}: falta implementar este backend nativo. No se ejecutará netsh.exe."),2
-            )),
+            "trace"=>crate::adapters::network::trace_native::execute(args),
             _=>Ok(CommandOutput::error(format!("notsh: contexto desconocido: {namespace}"),2)),
         }
     }
@@ -116,6 +114,7 @@ impl NetworkBuiltin {
            notsh dns HOST|IP               resolución directa/inversa\n\
            notsh ping HOST [-c N]          eco ICMP\n\
            notsh trace HOST                ruta de red\n\
+           notsh trace show sessions       sesiones de seguimiento ETW (sólo lectura)\n\
            notsh ports HOST [PUERTOS]      comprobación TCP\n\
          \n\
          DIAGNÓSTICO E INVENTARIO\n\
