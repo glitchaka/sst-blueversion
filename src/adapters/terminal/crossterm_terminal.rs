@@ -4,7 +4,7 @@ use anyhow::Result;
 use crossterm::event::{Event, KeyCode};
 use super::io;
 
-use crate::core::ports::{TerminalFactory, TerminalKey, TerminalSession};
+use crate::core::ports::{TerminalFactory, TerminalKey, TerminalPanel, TerminalSession};
 
 pub struct CrosstermTerminalFactory;
 
@@ -33,6 +33,13 @@ impl TerminalSession for CrosstermTerminalSession {
     }
 
     fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    fn set_panels(&mut self, panels: Vec<TerminalPanel>) -> Result<()> {
+        // Graphical Slint rendering on native SST; terminal fallback uses ANSI
+        // headings without attempting to emulate boxes with characters.
+        io::set_panels(panels);
         Ok(())
     }
 
