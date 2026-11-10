@@ -1083,7 +1083,7 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(CommandOutput::ok(
             "fetch — muestra información del sistema con el logo de Shell Shock Tool\n\
-             uso: fetch [--small|--full] [--plain|--stdout] (compacto por defecto)\n\
+             uso: fetch [--small|--full] [--plain|--stdout] (completo por defecto)\n\
              --plain/--stdout: salida sin secuencias ANSI, apta para archivos y pipes\n\
              alias: neofetch, fastfetch\n",
         ));
@@ -1115,7 +1115,7 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         format!("{hours}h {minutes}m")
     };
 
-    let small = !args.iter().any(|arg| arg == "--full");
+    let small = args.iter().any(|arg| arg == "--small") && !args.iter().any(|arg| arg == "--full");
     let plain = args.iter().any(|arg| matches!(arg.as_str(), "--plain" | "--stdout"));
     let logo = render_fetch_logo(small, !plain);
     let logo_width = if small { 16 } else { 32 };
@@ -1124,14 +1124,14 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         vec![
             format!("{user}@{host}"),
             "────────────────────────────────────────".to_owned(),
-            format!("OS: {}", truncate_fetch(&os, 47)),
+            format!("OS: {}", truncate_fetch(&os, 58)),
             format!("Host: {host}"),
             format!("Kernel: {kernel}"),
             format!("Uptime: {uptime_text}"),
             "Shell: Shell Shock Tool / Nwash".to_owned(),
             format!("Version: {}", env!("CARGO_PKG_VERSION")),
             "Terminal: Shell Shock Native Terminal".to_owned(),
-            format!("CPU: {}", truncate_fetch(&cpu, 47)),
+            format!("CPU: {}", truncate_fetch(&cpu, 58)),
             format!("Memory: {used:.2} GiB / {total:.2} GiB"),
             format!("Arch: {arch}"),
         ]
@@ -1145,14 +1145,14 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         vec![
             title,
             "\x1b[38;2;35;52;106m────────────────────────────────────────\x1b[0m".to_owned(),
-            format!("{label}OS:{reset} {}", truncate_fetch(&os, 47)),
+            format!("{label}OS:{reset} {}", truncate_fetch(&os, 58)),
             format!("{label}Host:{reset} {host}"),
             format!("{label}Kernel:{reset} {kernel}"),
             format!("{label}Uptime:{reset} {uptime_text}"),
             format!("{label}Shell:{reset} Shell Shock Tool / Nwash"),
             format!("{label}Version:{reset} {}", env!("CARGO_PKG_VERSION")),
             format!("{label}Terminal:{reset} Shell Shock Native Terminal"),
-            format!("{label}CPU:{reset} {}", truncate_fetch(&cpu, 47)),
+            format!("{label}CPU:{reset} {}", truncate_fetch(&cpu, 58)),
             format!("{label}Memory:{reset} {used:.2} GiB / {total:.2} GiB"),
             format!("{label}Arch:{reset} {arch}"),
             "\x1b[48;2;17;30;70m  \x1b[48;2;35;52;106m  \x1b[48;2;6;48;185m  \x1b[48;2;186;189;198m  \x1b[48;2;251;242;54m  \x1b[0m".to_owned(),
