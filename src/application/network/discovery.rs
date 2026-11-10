@@ -1292,7 +1292,7 @@ fn render_monitor_screen(
     }
     screen.section("MENSAJES SST", &note_body);
 
-    let max_events = (height / 7).clamp(1, 4);
+    let max_events = (height / 9).clamp(1, 4);
     let event_body = if events.is_empty() {
         format!("{}Sin eventos todavía; esperando el escaneo…{}", tui_style::LABEL, tui_style::RESET)
     } else {
@@ -1344,13 +1344,20 @@ fn render_lan_notes(
         } else {
             String::new()
         };
-        let prefix = format!(
-            "{:<16} {:<28} {:<3}s  {}",
-            ip,
-            shorten(name, 28),
-            note.last_seen.elapsed().as_secs(),
-            channel,
-        );
+        let seconds = note.last_seen.elapsed().as_secs();
+        let prefix = if terminal_width >= 100 {
+            format!(
+                "{:<16} {:<25} {:<3}s  {}",
+                ip, tui_style::shorten(name, 25), seconds, channel,
+            )
+        } else if terminal_width >= 70 {
+            format!(
+                "{:<16} {:<13} {:<3}s  {}",
+                ip, tui_style::shorten(name, 13), seconds, channel,
+            )
+        } else {
+            format!("{ip}  {seconds}s  {channel}")
+        };
         out.push_str(&wrap_with_prefix(
             &prefix,
             &note.message,
