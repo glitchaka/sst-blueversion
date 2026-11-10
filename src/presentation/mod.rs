@@ -14,3 +14,4 @@ mod gui_slint_base;
 pub mod gui_slint;
 pub mod shell;
 pub mod report;
+pub mod tui_style;
