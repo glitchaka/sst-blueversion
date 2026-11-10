@@ -73,13 +73,46 @@ mod native {
         logger_name_offset: u32,
     }
 
-    #[link(name = "sechost")]
-    unsafe extern "system" {
-        fn QueryAllTracesW(
-            properties: *mut *mut TraceProperties,
-            capacity: u32,
-            count: *mut u32,
-        ) -> u32;
+    // Sechost.lib is not distributed in every Windows build environment.
+    // Resolve the documented export from trusted System32 at runtime instead.
+    type QueryAllTraces = unsafe extern "system" fn(
+        *mut *mut TraceProperties, u32, *mut u32
+    ) -> u32;
+
+    struct EtwLibrary {
+        module: *mut std::ffi::c_void,
+        query: QueryAllTraces,
+    }
+    impl EtwLibrary {
+        fn open() -> std::result::Result<Self, CommandOutput> {
+            use windows_sys::Win32::Foundation::FreeLibrary;
+            use windows_sys::Win32::System::LibraryLoader::{
+                GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32
+            };
+            for name in ["sechost.dll", "advapi32.dll"] {
+                let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+                let module = unsafe {
+                    LoadLibraryExW(wide.as_ptr(), std::ptr::null_mut(), LOAD_LIBRARY_SEARCH_SYSTEM32)
+                };
+                if module.is_null() { continue; }
+                let proc = unsafe { GetProcAddress(module, b"QueryAllTracesW\0".as_ptr()) };
+                if let Some(pointer) = proc {
+                    // Both are pointer-sized; the ABI is documented as WMIAPI/stdcall.
+                    let query: QueryAllTraces = unsafe { std::mem::transmute_copy(&pointer) };
+                    return Ok(Self { module, query });
+                }
+                unsafe { FreeLibrary(module); }
+            }
+            Err(CommandOutput::error(
+                "NOTSH ETW: Windows no expone QueryAllTracesW en las DLL oficiales de System32.",
+                1
+            ))
+        }
+    }
+    impl Drop for EtwLibrary {
+        fn drop(&mut self) {
+            unsafe { windows_sys::Win32::Foundation::FreeLibrary(self.module); }
+        }
     }
 
     fn wide_at(storage: &[u64], offset: u32) -> Option<String> {
@@ -103,6 +136,7 @@ mod native {
                 "NOTSH ETW: el diseño ABI no coincide con EVENT_TRACE_PROPERTIES de x64.", 1
             ));
         }
+        let etw = match EtwLibrary::open() { Ok(api) => api, Err(err) => return Ok(err) };
         let mut capacity = 64usize;
         loop {
             let bytes_per_session = size_of::<TraceProperties>()
@@ -124,7 +158,7 @@ mod native {
 
             let mut count = 0u32;
             let result = unsafe {
-                QueryAllTracesW(addresses.as_mut_ptr(), capacity as u32, &mut count)
+                (etw.query)(addresses.as_mut_ptr(), capacity as u32, &mut count)
             };
             if result == ERROR_MORE_DATA && count as usize > capacity && count as usize <= MAX_SESSIONS {
                 capacity = count as usize;
