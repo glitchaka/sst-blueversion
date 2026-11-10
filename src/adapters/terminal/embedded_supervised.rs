@@ -61,9 +61,21 @@ impl EmbeddedSession {
         // A manifest check is allowed, but downloading/applying a release isn't.
         thread::spawn(move || {
             let paths = crate::adapters::persistence::AppPaths::detect();
-            if let Ok(Some(message)) = crate::application::update::available_update_notice(&paths) {
-                let _ = notice_tx.send(message);
-            }
+            let version = crate::application::update::current_version();
+            let notice = match crate::application::update::available_update_notice(&paths) {
+                Ok(Some(message)) => message,
+                Ok(None) if crate::application::update::configured_manifest_url(&paths).is_some() => {
+                    format!("SST {version}: no hay una versión más reciente publicada en el canal configurado.")
+                }
+                Ok(None) => format!(
+                    "SST {version}: no hay canal de actualización configurado. Usa 'instp sst' para revisarlo."
+                ),
+                Err(error) => format!(
+                    "SST {version}: no se pudo consultar el canal de actualizaciones ({error}). \
+                     Puedes reintentar con 'instp check sst'."
+                ),
+            };
+            let _ = notice_tx.send(notice);
         });
 
         thread::spawn(move || {
@@ -106,7 +118,7 @@ impl EmbeddedSession {
                             }
 
                             // Only the read-only availability notice runs at startup;
-                            // downloading and applying still require "update install".
+                            // downloading and applying still require "instp upgrade sst".
                             startup = StartupRelayState::Complete;
                             relay_ready.store(true, Ordering::SeqCst);
                         }

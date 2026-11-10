@@ -117,53 +117,121 @@ impl SystemService {
     fn top(&self) -> anyhow::Result<CommandOutput> {
         let mut terminal = self.terminal.alternate_screen()?;
         let mut sort_cpu = true;
+        // Keep the same process sampler across frames. Reconstructing System on
+        // every refresh produces misleading CPU% values near zero.
+        let mut system = System::new_all();
+        system.refresh_all();
 
         loop {
-            let mut system = System::new_all();
             system.refresh_all();
-
             let rows = process_tree_rows(&system, sort_cpu);
-            let (width, height) = terminal.size()?;
-            let max_rows = height.saturating_sub(6) as usize;
+            let (columns, height) = terminal.size()?;
+            // Leave a column free to prevent the terminal's automatic wrap.
+            let width = usize::from(columns.saturating_sub(1)).max(1);
+            let max_rows = usize::from(height.saturating_sub(7));
             let mut screen = String::new();
 
-            writeln!(
-                screen,
-                "SST top  uptime {}s  CPU {} cores  Mem {} / {} MiB",
-                System::uptime(),
-                system.cpus().len(),
-                system.used_memory() / 1024 / 1024,
-                system.total_memory() / 1024 / 1024
-            )?;
-            writeln!(
-                screen,
-                "árbol de procesos · hermanos por {}   [c] CPU  [m] memoria  [q] salir",
-                if sort_cpu { "CPU" } else { "MEM" }
-            )?;
-            writeln!(screen)?;
-            writeln!(screen, "PID      PPID     CPU%     RAM MiB   PROCESS")?;
+            top_screen_line(
+                &mut screen,
+                "  SST  /  MONITOR DE PROCESOS",
+                width,
+                "\x1b[1;38;2;142;205;255m",
+                "\x1b[48;2;17;34;57m",
+            );
+            let used = system.used_memory() / 1024 / 1024;
+            let total = system.total_memory() / 1024 / 1024;
+            top_screen_line(
+                &mut screen,
+                &format!(
+                    "  EN EJECUCIÓN: {}   ·   CPU: {} núcleos   ·   RAM: {} / {} MiB   ·   Uptime: {}m",
+                    system.processes().len(),
+                    system.cpus().len(),
+                    used,
+                    total,
+                    System::uptime() / 60
+                ),
+                width,
+                "\x1b[38;2;219;232;247m",
+                "\x1b[48;2;13;24;40m",
+            );
+            top_screen_line(
+                &mut screen,
+                &format!(
+                    "  Orden: {}   ·   [c] CPU  [m] Memoria  [q/Esc] Volver",
+                    if sort_cpu { "CPU (activo)" } else { "MEMORIA (activo)" }
+                ),
+                width,
+                "\x1b[38;2;173;191;214m",
+                "\x1b[48;2;13;24;40m",
+            );
+            top_screen_line(
+                &mut screen,
+                "",
+                width,
+                "\x1b[38;2;213;226;242m",
+                "\x1b[48;2;10;17;29m",
+            );
+            top_screen_line(
+                &mut screen,
+                "  PID      PPID     CPU %     RAM MiB   PROCESO / JERARQUÍA",
+                width,
+                "\x1b[1;38;2;143;203;255m",
+                "\x1b[48;2;24;44;68m",
+            );
 
+            let mut shown = 0usize;
             for (pid, tree_prefix) in rows.into_iter().take(max_rows) {
                 let Some(process) = system.process(pid) else { continue; };
                 let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
                 let mut name = format!("{tree_prefix}{}", process.name().to_string_lossy());
-                let name_width = width.saturating_sub(41) as usize;
-
+                let name_width = width.saturating_sub(43);
                 if name.chars().count() > name_width && name_width > 3 {
-                    name = name.chars().take(name_width - 3).collect();
-                    name.push_str("...");
+                    name = name.chars().take(name_width - 1).collect();
+                    name.push('…');
                 }
 
-                writeln!(
-                    screen,
-                    "{:<8} {:<8} {:>6.1} {:>10.1}   {}",
-                    pid,
-                    ppid,
-                    process.cpu_usage(),
-                    process.memory() as f64 / 1024.0 / 1024.0,
-                    name
-                )?;
+                let cpu = process.cpu_usage();
+                let memory = process.memory() as f64 / 1024.0 / 1024.0;
+                let content = format!(
+                    "  {:<8} {:<8} {:>6.1} {:>11.1}   {}",
+                    pid, ppid, cpu, memory, name
+                );
+                let foreground = if cpu >= 50.0 {
+                    "\x1b[1;38;2;255;183;119m"
+                } else if memory >= 1024.0 {
+                    "\x1b[38;2;149;222;186m"
+                } else {
+                    "\x1b[38;2;222;232;245m"
+                };
+                let background = if shown % 2 == 0 {
+                    "\x1b[48;2;10;17;29m"
+                } else {
+                    "\x1b[48;2;16;25;41m"
+                };
+                top_screen_line(&mut screen, &content, width, foreground, background);
+                shown += 1;
             }
+            // Draw a full opaque alternate screen; the desktop wallpaper must
+            // not obscure process names, headings, or empty parts of the table.
+            for _ in shown..max_rows {
+                top_screen_line(
+                    &mut screen, "", width,
+                    "\x1b[38;2;222;232;245m",
+                    "\x1b[48;2;10;17;29m",
+                );
+            }
+            top_screen_line(
+                &mut screen, "", width,
+                "\x1b[38;2;222;232;245m",
+                "\x1b[48;2;10;17;29m",
+            );
+            top_screen_line(
+                &mut screen,
+                "  SST top   ·   Actualización automática de métricas   ·   q para cerrar",
+                width,
+                "\x1b[38;2;162;186;210m",
+                "\x1b[48;2;17;34;57m",
+            );
 
             terminal.clear()?;
             terminal.write(&screen)?;
@@ -179,6 +247,25 @@ impl SystemService {
 
         Ok(CommandOutput::ok(""))
     }
+}
+
+/// Style a whole terminal row, including empty cells. This ensures the
+/// alternate-screen TUI has readable contrast independently of the wallpaper.
+fn top_screen_line(
+    buffer: &mut String,
+    text: &str,
+    width: usize,
+    foreground: &str,
+    background: &str,
+) {
+    let visible: String = text.chars().take(width).collect();
+    buffer.push_str(background);
+    buffer.push_str(foreground);
+    buffer.push_str(&visible);
+    buffer.push_str(&" ".repeat(width.saturating_sub(visible.chars().count())));
+    buffer.push_str("\x1b[0m\r\n");
+}
+
 }
 
 
@@ -999,7 +1086,7 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(CommandOutput::ok(
             "fetch — muestra información del sistema con el logo de Shell Shock Tool\n\
-             uso: fetch [--small|--full] [--plain|--stdout]\n\
+             uso: fetch [--small|--full] [--plain|--stdout] (compacto por defecto)\n\
              --plain/--stdout: salida sin secuencias ANSI, apta para archivos y pipes\n\
              alias: neofetch, fastfetch\n",
         ));
@@ -1031,7 +1118,7 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         format!("{hours}h {minutes}m")
     };
 
-    let small = args.iter().any(|arg| arg == "--small");
+    let small = !args.iter().any(|arg| arg == "--full");
     let plain = args.iter().any(|arg| matches!(arg.as_str(), "--plain" | "--stdout"));
     let logo = render_fetch_logo(small, !plain);
     let logo_width = if small { 16 } else { 32 };
