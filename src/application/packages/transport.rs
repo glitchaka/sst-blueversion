@@ -14,6 +14,7 @@ pub(super) struct ResolvedSource {
     pub file_name: String,
     pub version: String,
     pub sha256: Option<String>,
+    pub size: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -28,6 +29,8 @@ struct GitHubAsset {
     browser_download_url: String,
     #[serde(default)]
     digest: Option<String>,
+    #[serde(default)]
+    size: Option<u64>,
 }
 
 pub(super) fn resolve_source(package: &PackageManifest) -> Result<ResolvedSource> {
@@ -51,6 +54,7 @@ pub(super) fn resolve_source(package: &PackageManifest) -> Result<ResolvedSource
                 file_name,
                 version: package.version.clone(),
                 sha256: package.source.sha256.clone(),
+                size: None,
             })
         }
         "github_release" => resolve_github_release(package),
@@ -105,6 +109,7 @@ fn resolve_github_release(package: &PackageManifest) -> Result<ResolvedSource> {
         file_name: asset.name.clone(),
         version: release.tag_name,
         sha256,
+        size: asset.size,
     })
 }
 
@@ -134,7 +139,7 @@ pub(super) fn get(url: &str) -> Result<Vec<u8>> {
     Ok(output.stdout)
 }
 
-pub(super) fn download(url: &str, destination: &Path) -> Result<()> {
+pub(super) fn download(url: &str, destination: &Path, size: Option<u64>) -> Result<()> {
     validate_https(url)?;
     let mut command = Command::new(curl_program()?);
     command.args([
@@ -151,7 +156,7 @@ pub(super) fn download(url: &str, destination: &Path) -> Result<()> {
     ]);
     command.arg(destination).arg(url);
     configure_hidden(&mut command);
-    let output = command.output().context("instp: no se pudo ejecutar curl")?;
+    let output = crate::support::transfer::run(&mut command, destination, size, "INSTP")?;
     if !output.status.success() {
         let _ = std::fs::remove_file(destination);
         anyhow::bail!(
