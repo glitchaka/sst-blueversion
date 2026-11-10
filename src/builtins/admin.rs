@@ -67,7 +67,8 @@ impl NetworkBuiltin {
                 ["ipv6","show","interfaces"]=>crate::adapters::network::ip_native::show_interfaces(true),
                 _=>Ok(CommandOutput::error("notsh interface: opción nativa no implementada.",2)),
             },
-            "advfirewall"|"winhttp"|"winsock"|"http"|"trace"=>Ok(CommandOutput::error(
+            "winhttp"=>crate::adapters::network::winhttp_native::execute(args),
+            "advfirewall"|"winsock"|"http"|"trace"=>Ok(CommandOutput::error(
                 format!("notsh {namespace}: falta implementar este backend nativo. No se ejecutará netsh.exe."),2
             )),
             _=>Ok(CommandOutput::error(format!("notsh: contexto desconocido: {namespace}"),2)),
@@ -99,6 +100,7 @@ impl NetworkBuiltin {
            notsh wlan show interfaces      estado Wi-Fi, SSID y autenticación\n\
            notsh lan show interfaces       enlace físico Ethernet; 802.1X NO verificado\n\
            notsh lan show profiles         consulta de perfil nativo Dot3 por Ethernet\n\
+           notsh winhttp show proxy       proxy WinHTTP del equipo\n\
            notsh wlan show profiles        perfiles inalámbricos\n\
            notsh interface ipv4 show interfaces   interfaces IPv4\n\
            notsh routes                    tabla de rutas\n\
