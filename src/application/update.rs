@@ -235,7 +235,7 @@ where
         let updater_path = independent_updater_path(paths, &manifest.version);
         let updater_partial = updater_path.with_extension("exe.part");
         let _ = fs::remove_file(&updater_partial);
-        download(url, &updater_partial)?;
+        download_tracked(url, &updater_partial, Some(size), "SST updater")?;
         verify_file(&updater_partial, hash, Some(size))?;
         if updater_path.is_file() {
             let _ = fs::remove_file(&updater_path);
@@ -246,7 +246,7 @@ where
         bail!("el canal de actualización no incluye un actualizador independiente verificable");
     }
     let _ = fs::remove_file(&partial);
-    download(&manifest.asset_url, &partial)?;
+    download_tracked(&manifest.asset_url, &partial, manifest.size, "SST")?;
     notify("\x1b[38;5;250mActualizaciones: verificando tamaño y SHA-256...\x1b[0m\r\n");
     verify_file(&partial, &manifest.sha256, manifest.size)?;
     let _ = fs::remove_file(&staged);
@@ -312,6 +312,23 @@ fn validate_manifest(manifest: &UpdateManifest) -> Result<()> {
 }
 
 fn download(url: &str, destination: &Path) -> Result<()> {
+    download_impl(url, destination, None)
+}
+
+fn download_tracked(
+    url: &str,
+    destination: &Path,
+    expected_size: Option<u64>,
+    title: &str,
+) -> Result<()> {
+    download_impl(url, destination, Some((expected_size, title)))
+}
+
+fn download_impl(
+    url: &str,
+    destination: &Path,
+    progress: Option<(Option<u64>, &str)>,
+) -> Result<()> {
     ensure_https(url)?;
     #[cfg(windows)]
     let program = system32_executable("curl.exe")?;
@@ -345,9 +362,16 @@ fn download(url: &str, destination: &Path) -> Result<()> {
         command.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let status = command.status().context("no se pudo ejecutar curl")?;
-    if !status.success() {
-        bail!("curl no pudo descargar {url}");
+    if let Some((total, label)) = progress {
+        let output = crate::support::transfer::run(&mut command, destination, total, label)?;
+        if !output.status.success() {
+            bail!("curl no pudo descargar: {}", String::from_utf8_lossy(&output.stderr).trim());
+        }
+    } else {
+        let status = command.status().context("no se pudo ejecutar curl")?;
+        if !status.success() {
+            bail!("curl no pudo descargar {url}");
+        }
     }
     Ok(())
 }
