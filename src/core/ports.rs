@@ -161,11 +161,22 @@ pub enum TerminalKey {
     Other,
 }
 
+/// Outlines that the native renderer draws as vector shapes on the active
+/// alternate screen. Coordinates are measured in terminal cells, not pixels.
+/// A console without native Slint support ignores them (text stays readable).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminalPanel {
+    pub start_row: u16,
+    pub rows: u16,
+}
+
 pub trait TerminalSession: Send {
     fn size(&self) -> Result<(u16, u16)>;
     fn clear(&mut self) -> Result<()>;
     fn write(&mut self, text: &str) -> Result<()>;
     fn flush(&mut self) -> Result<()>;
+    /// Semantic outlines, separate from console output and from SST wallpaper.
+    fn set_panels(&mut self, _panels: Vec<TerminalPanel>) -> Result<()> { Ok(()) }
     fn poll_key(&mut self, timeout: std::time::Duration) -> Result<Option<TerminalKey>>;
 }
 
