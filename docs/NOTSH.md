@@ -38,10 +38,11 @@ Notsh no ejecuta procesos Netsh, CMD ni PowerShell. Los contextos actualmente im
 | `notsh interface ipv6 show interfaces` | IP Helper | Tabla IPv6 por interfaz |
 | `notsh winhttp show proxy` | WinHTTP API | Proxy predeterminado de equipo (no de navegador) |
 | `notsh winsock show catalog` | Winsock2 API | Protocolos visibles, no el SPI oculto |
+| `notsh advfirewall show allprofiles` | INetFwPolicy2 (COM) | Estado local de perfiles de firewall, no la política efectiva GPO |
 
 La vista LAN incluye el estado real del servicio Wired AutoConfig (`dot3svc`) consultado mediante el gestor de servicios de Windows. Este estado NO demuestra una autenticación exitosa.
 
-**Límites explícitos:** Las interfaces y perfiles cableados se consultan ahora mediante Dot3 API sin exponer el XML del perfil ni secretos. El estado real de autorización de 802.1X/NAC no se infiere de un perfil configurado. `notsh lan show settings` todavía requiere un backend especializado. Las operaciones de modificación del proxy siguen pendientes. El restablecimiento Winsock sigue pendiente. Los contextos `advfirewall`, `http` y controles de `trace` quedan pendientes de implementación nativa. No se presentan adaptadores genéricos como datos de autenticación, ni se usa un envoltorio de `netsh.exe`. Las consultas Wi-Fi respetan permisos de Ubicación y las políticas de Windows.
+**Límites explícitos:** Las interfaces y perfiles cableados se consultan ahora mediante Dot3 API sin exponer el XML del perfil ni secretos. El estado real de autorización de 802.1X/NAC no se infiere de un perfil configurado. `notsh lan show settings` todavía requiere un backend especializado. Las operaciones de modificación del proxy siguen pendientes. El restablecimiento Winsock sigue pendiente. La administración de reglas y los cambios de firewall siguen pendientes. Los contextos `http` y controles de `trace` quedan pendientes de implementación nativa. No se presentan adaptadores genéricos como datos de autenticación, ni se usa un envoltorio de `netsh.exe`. Las consultas Wi-Fi respetan permisos de Ubicación y las políticas de Windows.
 
 ## Funciones existentes de SST
 
