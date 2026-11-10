@@ -20,10 +20,16 @@ pub fn execute(args: &[String]) -> Result<CommandOutput> {
         )),
     }
 }
+/// CSV produced from WLAN API attributes, with no ANSI or report decorations.
+pub fn interfaces_csv() -> Result<CommandOutput> {
+    platform::interfaces_csv()
+}
+
 #[cfg(not(windows))]
 mod platform {
     use super::*;
     pub fn interfaces() -> Result<CommandOutput> { Ok(no_windows()) }
+    pub fn interfaces_csv() -> Result<CommandOutput> { Ok(no_windows()) }
     pub fn profiles() -> Result<CommandOutput> { Ok(no_windows()) }
     pub fn networks() -> Result<CommandOutput> { Ok(no_windows()) }
     fn no_windows() -> CommandOutput { CommandOutput::error("notsh wlan: requiere Windows", 2) }
@@ -130,6 +136,70 @@ mod platform {
         }
         Ok(CommandOutput {stdout:output,stderr:String::new(),status:if errors==adapters.len(){1}else{0}})
     }
+
+    pub fn interfaces_csv() -> Result<CommandOutput> {
+        let (client, adapters) = match session() { Ok(s) => s, Err(e) => return Ok(e) };
+        let mut output = String::from(
+            "Adaptador,Estado,Perfil,SSID,BSSID,Senal_pct,RX_Kbps,TX_Kbps,Autenticacion,8021X\n"
+        );
+        let mut errors = 0usize;
+        for adapter in &adapters {
+            let mut fields = vec![
+                wide(&adapter.strInterfaceDescription),
+                "DESCONECTADO".to_owned(),
+                String::new(), String::new(), String::new(), String::new(),
+                String::new(), String::new(), String::new(), String::new(),
+            ];
+            if adapter.isState == wlan_interface_state_connected {
+                let (mut size, mut buffer, mut kind) = (0u32, ptr::null_mut::<c_void>(), 0);
+                let rc = unsafe { WlanQueryInterface(
+                    client.0, &adapter.InterfaceGuid, wlan_intf_opcode_current_connection,
+                    ptr::null(), &mut size, &mut buffer, &mut kind
+                ) };
+                if rc != 0 {
+                    errors += 1;
+                    fields[1] = format!("NO DISPONIBLE (Win32 {rc})");
+                } else if buffer.is_null()
+                    || size < std::mem::size_of::<WLAN_CONNECTION_ATTRIBUTES>() as u32 {
+                    errors += 1;
+                    fields[1] = "INFORME INCOMPLETO".to_owned();
+                } else {
+                    let attributes = unsafe {
+                        (buffer as *const WLAN_CONNECTION_ATTRIBUTES).read_unaligned()
+                    };
+                    if attributes.isState == wlan_interface_state_connected {
+                        let assoc = &attributes.wlanAssociationAttributes;
+                        fields[1] = "CONECTADO".to_owned();
+                        fields[2] = wide(&attributes.strProfileName);
+                        fields[3] = ssid(&assoc.dot11Ssid);
+                        fields[4] = assoc.dot11Bssid.iter()
+                            .map(|byte| format!("{byte:02X}"))
+                            .collect::<Vec<_>>().join(":");
+                        fields[5] = assoc.wlanSignalQuality.min(100).to_string();
+                        fields[6] = assoc.ulRxRate.to_string();
+                        fields[7] = assoc.ulTxRate.to_string();
+                        fields[8] = attributes.wlanSecurityAttributes.dot11AuthAlgorithm.to_string();
+                        fields[9] = if attributes.wlanSecurityAttributes.bOneXEnabled != 0 {
+                            "SI".to_owned()
+                        } else {
+                            "NO".to_owned()
+                        };
+                    }
+                }
+                if !buffer.is_null() { unsafe { WlanFreeMemory(buffer); } }
+            }
+            output.push_str(&fields.iter()
+                .map(|value| crate::support::csv::escape(value))
+                .collect::<Vec<_>>().join(","));
+            output.push('\n');
+        }
+        Ok(CommandOutput {
+            stdout: output,
+            stderr: String::new(),
+            status: if adapters.is_empty() || errors < adapters.len() { 0 } else { 1 },
+        })
+    }
+
     pub fn profiles() -> Result<CommandOutput> {
         let (client, adapters) = match session() { Ok(s) => s, Err(e) => return Ok(e) };
         if adapters.is_empty() { return Ok(none()); }
