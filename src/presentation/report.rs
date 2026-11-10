@@ -1,6 +1,6 @@
 //! Visual treatment for direct interactive SST reports.
 //! This layer never changes the shell's data stream, files, redirections or pipes.
-//! libcaca is a native, pure-Rust canvas renderer; Slint/vt100 remains the terminal.
+//! libcaca renders the frame; Slint/vt100 remains the terminal.
 use libcaca::{Canvas, Color};
 
 const RESET: &str = "\x1b[0m";
@@ -39,6 +39,29 @@ fn canvas_title(command: &str) -> Option<String> {
     String::from_utf8(ansi).ok()
 }
 
+// Keep the value legible and emphasize only its real state; muted entire rows
+// made the operational details harder to read against SST's dark theme.
+fn render_field(line: &str) -> Option<String> {
+    let (field, value) = line.split_once(": ")?;
+    let label = field.trim_start();
+    if label.is_empty() || label.len() > 42 || label.contains("  ") {
+        return None;
+    }
+    let indent_len = field.len() - label.len();
+    let style = emphasis(value).unwrap_or(RESET);
+    let mut result = String::new();
+    result.push_str(&line[..indent_len]);
+    result.push_str(MUTED);
+    result.push_str(label);
+    result.push(':');
+    result.push_str(RESET);
+    result.push(' ');
+    if style != RESET { result.push_str(style); }
+    result.push_str(value);
+    if style != RESET { result.push_str(RESET); }
+    Some(result)
+}
+
 fn emphasis(line: &str) -> Option<&'static str> {
     let trimmed = line.trim();
     if trimmed.is_empty() { return None; }
@@ -67,8 +90,6 @@ fn emphasis(line: &str) -> Option<&'static str> {
             && trimmed.chars().count() < 90)
     {
         Some(HEADER)
-    } else if line.starts_with("  ") {
-        Some(MUTED)
     } else {
         None
     }
@@ -87,7 +108,9 @@ pub fn decorate(command: &str, stdout: &str) -> String {
             Some(line) => (line, "\n"),
             None => (chunk, ""),
         };
-        if let Some(color) = emphasis(line) {
+        if let Some(field) = render_field(line) {
+            result.push_str(&field);
+        } else if let Some(color) = emphasis(line) {
             result.push_str(color);
             result.push_str(line);
             result.push_str(RESET);
@@ -115,6 +138,16 @@ mod tests {
         let ansi = "\x1b[31mError\x1b[0m\n";
         assert_eq!(decorate("sys info", ansi), ansi);
     }
+    #[test]
+    fn field_labels_are_muted_but_readings_remain_legible() {
+        let rendered = render_field("  Señal: 82%").expect("field parsed");
+        assert!(rendered.starts_with(&format!("  {MUTED}Señal:")));
+        assert!(rendered.ends_with(" 82%"));
+        assert!(!rendered.ends_with(MUTED));
+        let state = render_field("  Estado: SIN ENLACE").expect("status parsed");
+        assert!(state.contains(FAILURE));
+    }
+
     #[test]
     fn visually_distinguishes_diagnostics_without_destroying_columns() {
         let text = "ESTADO   DETALLE\n  Estado: ACTIVO\n  Estado: SIN ENLACE\n";

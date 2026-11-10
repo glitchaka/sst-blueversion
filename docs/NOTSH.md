@@ -18,8 +18,8 @@ Para consultar el equipo se utilizan subcomandos explícitos:
 ```text
 notsh                 # índice de comandos de red
 notsh interfaces      # todos los adaptadores
-notsh wlan            # adaptadores Wi-Fi
-notsh lan             # adaptadores Ethernet
+notsh wlan            # ayuda del contexto Wi-Fi
+notsh lan             # ayuda del contexto Ethernet
 notsh help            # índice de comandos de red
 ```
 
@@ -115,7 +115,7 @@ notsh / net(alias)
                     +-- IP Helper APIs
 ```
 
-La vista nativa `notsh interfaces` no ejecuta procesos externos; los contextos compatibles con Netsh sí utilizan directamente el ejecutable de Windows.
+La vista nativa `notsh interfaces` y los subcomandos de red implementados se comunican directamente con Windows; no invocan el ejecutable de Netsh.
 
 ## Siguientes capacidades
 
