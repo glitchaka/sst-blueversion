@@ -140,6 +140,24 @@ const NERD_FONT_BYTES: &[u8] = include_bytes!(concat!(
 ));
 
 slint::slint! {
+    // Rendered vector outlines, never made of VT100/ASCII characters.
+    // Transparent interiors preserve the user's terminal artwork and logo.
+    component TerminalSectionFrame inherits Rectangle {
+        background: transparent;
+        border-width: 1px;
+        border-color: #35647c;
+        border-radius: 10px;
+
+        Rectangle {
+            x: 1px;
+            y: 7px;
+            width: 3px;
+            height: min(24px, parent.height - 14px);
+            border-radius: 2px;
+            background: #4bc7e9;
+        }
+    }
+
     // The download panel is independent of the VT100 pixel surface.
     // It appears only during a transfer and never paints over fetch or
     // modifies the user's background/transparency/terminal rows.
@@ -268,6 +286,19 @@ slint::slint! {
         background: transparent;
 
         in property <image> terminal-image;
+        in property <int> monitor-panel-count: 0;
+        in property <float> monitor-grid-left: 0.0;
+        in property <float> monitor-grid-top: 0.0;
+        in property <float> monitor-grid-width: 0.0;
+        in property <float> monitor-line-height: 18.0;
+        in property <float> monitor-a-row: 0.0;
+        in property <float> monitor-a-rows: 0.0;
+        in property <float> monitor-b-row: 0.0;
+        in property <float> monitor-b-rows: 0.0;
+        in property <float> monitor-c-row: 0.0;
+        in property <float> monitor-c-rows: 0.0;
+        in property <float> monitor-d-row: 0.0;
+        in property <float> monitor-d-rows: 0.0;
         in property <image> background-image;
         in property <float> background-image-opacity: 0.0;
         in property <string> background-image-fit-mode: "cover";
@@ -327,6 +358,40 @@ slint::slint! {
                 height: 100%;
                 source: root.terminal-image;
                 image-fit: fill;
+            }
+
+            // Draw only for a TUI that explicitly supplies semantic sections.
+            // The normal terminal (and its logo) has no vector overlays.
+            TerminalSectionFrame {
+                visible: root.monitor-panel-count > 0;
+                x: root.monitor-grid-left * 1px;
+                y: (root.monitor-grid-top + root.monitor-a-row * root.monitor-line-height) * 1px;
+                width: root.monitor-grid-width * 1px;
+                height: (root.monitor-a-rows * root.monitor-line-height) * 1px;
+            }
+
+            TerminalSectionFrame {
+                visible: root.monitor-panel-count > 1;
+                x: root.monitor-grid-left * 1px;
+                y: (root.monitor-grid-top + root.monitor-b-row * root.monitor-line-height) * 1px;
+                width: root.monitor-grid-width * 1px;
+                height: (root.monitor-b-rows * root.monitor-line-height) * 1px;
+            }
+
+            TerminalSectionFrame {
+                visible: root.monitor-panel-count > 2;
+                x: root.monitor-grid-left * 1px;
+                y: (root.monitor-grid-top + root.monitor-c-row * root.monitor-line-height) * 1px;
+                width: root.monitor-grid-width * 1px;
+                height: (root.monitor-c-rows * root.monitor-line-height) * 1px;
+            }
+
+            TerminalSectionFrame {
+                visible: root.monitor-panel-count > 3;
+                x: root.monitor-grid-left * 1px;
+                y: (root.monitor-grid-top + root.monitor-d-row * root.monitor-line-height) * 1px;
+                width: root.monitor-grid-width * 1px;
+                height: (root.monitor-d-rows * root.monitor-line-height) * 1px;
             }
 
         terminal-focus := FocusScope {
@@ -2141,6 +2206,35 @@ pub fn run() -> Result<()> {
                     model.resize(size.width, size.height, scale);
                 }
                 model.tick();
+
+                let panels = model.session.panels_snapshot();
+                ui.set_monitor_panel_count(panels.len().min(4) as i32);
+                if !panels.is_empty() {
+                    let (left, top, cell_width, cell_height) = model.geometry();
+                    let factor = model.scale.max(0.5);
+                    let (_, cols) = model.parser.screen().size();
+                    ui.set_monitor_grid_left((left + 0.35 * cell_width) / factor);
+                    ui.set_monitor_grid_top((top - 0.05 * cell_height) / factor);
+                    ui.set_monitor_grid_width(
+                        (cols.saturating_sub(1) as f32 * cell_width) / factor,
+                    );
+                    ui.set_monitor_line_height(cell_height / factor);
+                    let mut iter = panels.iter();
+                    let mut next = || iter.next().map(|p| (f32::from(p.start_row), f32::from(p.rows)))
+                        .unwrap_or((0.0, 0.0));
+                    let (row, rows) = next();
+                    ui.set_monitor_a_row(row);
+                    ui.set_monitor_a_rows(rows);
+                    let (row, rows) = next();
+                    ui.set_monitor_b_row(row);
+                    ui.set_monitor_b_rows(rows);
+                    let (row, rows) = next();
+                    ui.set_monitor_c_row(row);
+                    ui.set_monitor_c_rows(rows);
+                    let (row, rows) = next();
+                    ui.set_monitor_d_row(row);
+                    ui.set_monitor_d_rows(rows);
+                }
 
                 // Shared transfer metrics are read by the Slint event loop.
                 // No ANSI progress bar, global reading layer, or window texture
