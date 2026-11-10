@@ -220,6 +220,88 @@ fn render_interfaces(scope: InterfaceScope) -> Result<String> {
     }
 }
 
+
+/*
+ * CSV is built from the original MIB_IF_ROW2 records, never scraped from the
+ * terminal report. It is safe for redirection, scripts and spreadsheet import.
+ */
+pub fn interfaces_csv(scope: &str) -> Result<String> {
+    let scope = match scope {
+        "lan" => InterfaceScope::Lan,
+        "wlan" => InterfaceScope::Wlan,
+        _ => InterfaceScope::All,
+    };
+    let networks = sysinfo::Networks::new_with_refreshed_list();
+    let ip_by_name = networks.iter()
+        .map(|(name, data)| (
+            name.to_lowercase(),
+            data.ip_networks().iter().map(ToString::to_string).collect::<Vec<_>>(),
+        ))
+        .collect::<HashMap<_, _>>();
+
+    unsafe {
+        let mut table = std::ptr::null_mut();
+        check(GetIfTable2(&mut table))?;
+        let mut output = String::from(
+            "Nombre,Tipo,Estado,Administrativo,Enlace,Operativo,Velocidad_bps,MAC,IP,Adaptador,Diagnostico\n"
+        );
+        if table.is_null() { return Ok(output); }
+        let rows = std::slice::from_raw_parts(
+            std::ptr::addr_of!((*table).Table).cast::<MIB_IF_ROW2>(),
+            (*table).NumEntries as usize,
+        );
+        for row in rows {
+            let flags = std::ptr::addr_of!(row.InterfaceAndOperStatusFlags).cast::<u8>().read();
+            let medium = row.PhysicalMediumType as u32;
+            if !in_scope(scope, row.Type, medium, flags) { continue; }
+            let alias = wide(&row.Alias);
+            let description = wide(&row.Description);
+            let physical = is_wired_nic(row.Type, medium, flags);
+            let ips = ip_by_name.get(&alias.to_lowercase())
+                .map(|values| values.join(";")).unwrap_or_default();
+            let media = media_status(row.MediaConnectState as u32);
+            let (summary, diagnosis) = if physical {
+                wired_diagnosis(
+                    row.AdminStatus as u32,
+                    row.MediaConnectState as u32,
+                    row.OperStatus as u32,
+                    !ips.is_empty(),
+                )
+            } else if row.AdminStatus as u32 == 2 {
+                ("DESHABILITADO", "Interfaz deshabilitada.")
+            } else if row.OperStatus as u32 == 1 {
+                ("OPERATIVA", "Estado lógico activo; no acredita enlace Ethernet físico.")
+            } else {
+                ("NO OPERATIVA", "Estado lógico no operativo; no implica un fallo de cable.")
+            };
+            let mac_len = (row.PhysicalAddressLength as usize).min(row.PhysicalAddress.len());
+            let mac = row.PhysicalAddress[..mac_len].iter()
+                .map(|byte| format!("{byte:02X}")).collect::<Vec<_>>().join(":");
+            let fields = [
+                if alias.is_empty() { description.clone() } else { alias },
+                if physical { "Ethernet físico".to_owned() }
+                  else if is_wireless(row.Type, medium) { "Wi-Fi".to_owned() }
+                  else { interface_type(row.Type).to_owned() },
+                summary.to_owned(),
+                admin_status(row.AdminStatus as u32).to_owned(),
+                media.to_owned(),
+                oper_status(row.OperStatus as u32).to_owned(),
+                if media == "UP" { row.ReceiveLinkSpeed.to_string() } else { "0".to_owned() },
+                mac,
+                ips,
+                description,
+                diagnosis.to_owned(),
+            ];
+            output.push_str(&fields.iter()
+                .map(|value| crate::support::csv::escape(value))
+                .collect::<Vec<_>>().join(","));
+            output.push('\n');
+        }
+        FreeMibTable(table.cast());
+        Ok(output)
+    }
+}
+
 #[cfg(test)]
 mod network_interface_scope_tests {
     use super::*;
