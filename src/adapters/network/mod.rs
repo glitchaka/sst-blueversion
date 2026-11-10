@@ -4,6 +4,7 @@ pub mod dot3_native;
 pub mod winhttp_native;
 pub mod winsock_native;
 pub mod firewall_native;
+pub mod http_native;
 pub mod ip_native;
 pub mod snmp_switch;
 pub mod wake_on_lan;

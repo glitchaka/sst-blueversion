@@ -24,6 +24,10 @@ notsh winsock show catalog
 echo SST_NOTSH_WINSOCK_RETURNED
 notsh advfirewall show allprofiles
 echo SST_NOTSH_FIREWALL_RETURNED
+notsh http show iplisten
+echo SST_NOTSH_HTTP_IP_RETURNED
+notsh http show urlacl
+echo SST_NOTSH_HTTP_URL_RETURNED
 '@
 [IO.File]::WriteAllText($fixture, $commands, [Text.UTF8Encoding]::new($false))
 $process = Start-Process -FilePath $exe -ArgumentList ('"' + $fixture + '"') -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
@@ -42,7 +46,8 @@ try {
         'SST_NOTSH_LAN_RETURNED', 'SST_NOTSH_WLAN_RETURNED',
         'SST_NOTSH_IPV4_RETURNED', 'SST_NOTSH_IPV6_RETURNED',
         'SST_NOTSH_WINHTTP_RETURNED', 'SST_NOTSH_WINSOCK_RETURNED',
-        'SST_NOTSH_FIREWALL_RETURNED'
+        'SST_NOTSH_FIREWALL_RETURNED',
+        'SST_NOTSH_HTTP_IP_RETURNED', 'SST_NOTSH_HTTP_URL_RETURNED'
     )) {
         if (-not $result.Contains($marker)) {
             throw "No regresó de $marker. STDOUT: $result; STDERR: $errors"
