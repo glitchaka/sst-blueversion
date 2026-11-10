@@ -1242,6 +1242,25 @@ fn fill_rect_translucent(
     }
 }
 
+#[cfg(test)]
+mod reading_surface_tests {
+    use super::*;
+    #[test]
+    fn reading_surface_is_translucent_and_does_not_cover_empty_rows() {
+        let mut pixels: Vec<Rgba8Pixel> = std::iter::repeat_with(|| Rgba8Pixel {
+            r: 0, g: 0, b: 0, a: 0,
+        }).take(8).collect();
+        fill_rect_translucent(&mut pixels, 4, 2, 0, 0, 4, 1, Rgb(5, 11, 24), 202);
+        for pixel in &pixels[..4] {
+            assert_eq!(pixel.a, 202);
+            assert!(pixel.r <= 5 && pixel.g <= 11 && pixel.b <= 24);
+        }
+        for pixel in &pixels[4..] {
+            assert_eq!(pixel.a, 0);
+        }
+    }
+}
+
 fn draw_glyph(
     pixels: &mut [Rgba8Pixel],
     width: u32,
