@@ -1,6 +1,7 @@
 //! Download metrics shared by the native Slint UI and terminal fallback.
 //! Metrics come exclusively from the bytes written by curl to its destination.
-//! The graphic lives in Slint, not in the terminal image compositor.
+//! The graphic is drawn by Slint *on rows reserved in the terminal*;
+//! it is not a popup, overlay card, detached window or part of a title bar.
 use std::{
     fs,
     io::IsTerminal,
@@ -172,6 +173,14 @@ pub fn run(
     let mut last = Instant::now() - Duration::from_secs(1);
 
     if embedded {
+        // Reserve exactly three rows in the actual terminal output. Slint draws
+        // the bar in the first two blanks; the third is where the next status
+        // line naturally starts. No separate card can obscure the wallpaper.
+        let name = label.chars().filter(|ch| !ch.is_control())
+            .take(48).collect::<String>();
+        io::write_raw(format!(
+            "\r\n\x1b[1;38;2;69;209;241m   DESCARGA\x1b[0m  {name}\r\n\r\n\r\n"
+        ).as_bytes())?;
         publish(TransferSnapshot::new(label, 0, expected, 0.0));
     }
     if cli_terminal {
@@ -201,6 +210,14 @@ pub fn run(
             end.finished = true;
             end.success = output.status.success();
             publish(end);
+            // Written into the same terminal stream, below the graphic. Never
+            // sent to a side panel, notification popup, or other window.
+            let message = if output.status.success() {
+                format!("\x1b[1;38;2;133;226;173m   ✓ Descarga finalizada\x1b[0m  {}\r\n", human_bytes(current))
+            } else {
+                format!("\x1b[1;38;2;248;142;148m   ✕ Descarga fallida\x1b[0m  {}\r\n", human_bytes(current))
+            };
+            io::write_raw(message.as_bytes())?;
         } else {
             let line = draw(label, current, expected, rate, cols);
             let suffix = if output.status.success() { "\x1b[92m✓\x1b[0m" } else { "\x1b[91m✕\x1b[0m" };
