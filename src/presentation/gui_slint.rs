@@ -142,6 +142,24 @@ const NERD_FONT_BYTES: &[u8] = include_bytes!(concat!(
 slint::slint! {
     // Rendered vector outlines, never made of VT100/ASCII characters.
     // Transparent interiors preserve the user's terminal artwork and logo.
+    // Text-report section headings are individual native vector outlines,
+    // derived from semantic RGB markers in the VT100 viewport. No fake lines.
+    component ReportHeadingBand inherits Rectangle {
+        background: transparent;
+        border-width: 1px;
+        border-color: #305b78;
+        border-radius: 8px;
+
+        Rectangle {
+            x: 1px;
+            y: 3px;
+            width: 3px;
+            height: max(4px, parent.height - 6px);
+            border-radius: 2px;
+            background: #45d1f1;
+        }
+    }
+
     component TerminalSectionFrame inherits Rectangle {
         background: transparent;
         border-width: 1px;
@@ -286,6 +304,18 @@ slint::slint! {
         background: transparent;
 
         in property <image> terminal-image;
+        in property <int> report-heading-count: 0;
+        in property <float> report-grid-left: 0.0;
+        in property <float> report-grid-top: 0.0;
+        in property <float> report-grid-width: 0.0;
+        in property <float> report-line-height: 18.0;
+        in property <float> report-a-row: 0.0;
+        in property <float> report-b-row: 0.0;
+        in property <float> report-c-row: 0.0;
+        in property <float> report-d-row: 0.0;
+        in property <float> report-e-row: 0.0;
+        in property <float> report-f-row: 0.0;
+
         in property <int> monitor-panel-count: 0;
         in property <float> monitor-grid-left: 0.0;
         in property <float> monitor-grid-top: 0.0;
@@ -358,6 +388,56 @@ slint::slint! {
                 height: 100%;
                 source: root.terminal-image;
                 image-fit: fill;
+            }
+
+            // Ordinary SST help and reports receive the same genuine native
+            // section accents. No box characters enter the command stream.
+            ReportHeadingBand {
+                visible: root.report-heading-count > 0;
+                x: root.report-grid-left * 1px;
+                y: (root.report-grid-top + root.report-a-row * root.report-line-height) * 1px;
+                width: root.report-grid-width * 1px;
+                height: root.report-line-height * 1px;
+            }
+
+            ReportHeadingBand {
+                visible: root.report-heading-count > 1;
+                x: root.report-grid-left * 1px;
+                y: (root.report-grid-top + root.report-b-row * root.report-line-height) * 1px;
+                width: root.report-grid-width * 1px;
+                height: root.report-line-height * 1px;
+            }
+
+            ReportHeadingBand {
+                visible: root.report-heading-count > 2;
+                x: root.report-grid-left * 1px;
+                y: (root.report-grid-top + root.report-c-row * root.report-line-height) * 1px;
+                width: root.report-grid-width * 1px;
+                height: root.report-line-height * 1px;
+            }
+
+            ReportHeadingBand {
+                visible: root.report-heading-count > 3;
+                x: root.report-grid-left * 1px;
+                y: (root.report-grid-top + root.report-d-row * root.report-line-height) * 1px;
+                width: root.report-grid-width * 1px;
+                height: root.report-line-height * 1px;
+            }
+
+            ReportHeadingBand {
+                visible: root.report-heading-count > 4;
+                x: root.report-grid-left * 1px;
+                y: (root.report-grid-top + root.report-e-row * root.report-line-height) * 1px;
+                width: root.report-grid-width * 1px;
+                height: root.report-line-height * 1px;
+            }
+
+            ReportHeadingBand {
+                visible: root.report-heading-count > 5;
+                x: root.report-grid-left * 1px;
+                y: (root.report-grid-top + root.report-f-row * root.report-line-height) * 1px;
+                width: root.report-grid-width * 1px;
+                height: root.report-line-height * 1px;
             }
 
             // Draw only for a TUI that explicitly supplies semantic sections.
@@ -2208,6 +2288,45 @@ pub fn run() -> Result<()> {
                 model.tick();
 
                 let panels = model.session.panels_snapshot();
+                // Only ordinary SST reports use semantic inline heading bands;
+                // alternate-screen monitors have their own section geometry.
+                let mut headings = Vec::<f32>::new();
+                if panels.is_empty() {
+                    let screen = model.parser.screen();
+                    let (rows, cols) = screen.size();
+                    for row in 0..rows {
+                        let is_heading = (0..cols.min(12)).any(|col| {
+                            screen.cell(row, col).is_some_and(|cell| {
+                                matches!(cell.fgcolor(),
+                                    vt100::Color::Rgb(69, 209, 241))
+                                    && cell.contents().chars().any(char::is_alphabetic)
+                            })
+                        });
+                        if is_heading {
+                            headings.push(f32::from(row));
+                            if headings.len() == 6 { break; }
+                        }
+                    }
+                }
+                ui.set_report_heading_count(headings.len() as i32);
+                if !headings.is_empty() {
+                    let (left, top, cell_width, cell_height) = model.geometry();
+                    let factor = model.scale.max(0.5);
+                    let (_, cols) = model.parser.screen().size();
+                    ui.set_report_grid_left(left / factor);
+                    ui.set_report_grid_top(top / factor);
+                    ui.set_report_grid_width(
+                        (cols.saturating_sub(1) as f32 * cell_width) / factor
+                    );
+                    ui.set_report_line_height(cell_height / factor);
+                    let mut items = headings.into_iter();
+                    ui.set_report_a_row(items.next().unwrap_or_default());
+                    ui.set_report_b_row(items.next().unwrap_or_default());
+                    ui.set_report_c_row(items.next().unwrap_or_default());
+                    ui.set_report_d_row(items.next().unwrap_or_default());
+                    ui.set_report_e_row(items.next().unwrap_or_default());
+                    ui.set_report_f_row(items.next().unwrap_or_default());
+                }
                 ui.set_monitor_panel_count(panels.len().min(4) as i32);
                 if !panels.is_empty() {
                     let (left, top, cell_width, cell_height) = model.geometry();
