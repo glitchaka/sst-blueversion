@@ -6,7 +6,6 @@ use libcaca::{Canvas, Color};
 const RESET: &str = "\x1b[0m";
 // Unique semantic heading tint: the native Slint window locates these rows
 // in the VT100 viewport and draws actual vector outlines around them.
-pub const HEADING_RGB: (u8, u8, u8) = (69, 209, 241);
 const HEADING: &str = "\x1b[1;38;2;69;209;241m";
 const COMMAND: &str = "\x1b[38;2;152;222;247m";
 const DETAILS: &str = "\x1b[38;2;179;194;216m";
