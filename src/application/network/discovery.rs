@@ -1307,10 +1307,9 @@ fn render_monitor_screen(
     screen.section("EVENTOS RECIENTES", &event_body);
 
     if let Some(input) = message_input {
-        screen.footer(&format!(
-            "MENSAJE  {}",
-            tui_style::shorten(input, width.saturating_sub(13))
-        ));
+        // Keep the entire editable message visible when it exceeds the width.
+        // The prompt wraps within the current cell geometry; it is not cut off.
+        screen.footer(&render_wrapped_prompt("Mensaje › ", input, width));
         screen.footer("Enter enviar   /   Esc cancelar");
     } else {
         screen.footer("Enter mensaje   /   Q o Esc salir");
