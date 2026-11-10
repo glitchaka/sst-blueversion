@@ -3,7 +3,8 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 
 use crate::{
-    application::packages::PackageService,
+    adapters::persistence::AppPaths,
+    application::{packages::PackageService, update},
     core::{
         CommandContext, CommandOutput,
     },
@@ -13,10 +14,13 @@ use super::BuiltinCommand;
 
 pub struct InstpBuiltin {
     service: Arc<PackageService>,
- }
+    paths: AppPaths,
+}
 
 impl InstpBuiltin {
-    pub fn new(service: Arc<PackageService>) -> Self { Self { service } }
+    pub fn new(service: Arc<PackageService>, paths: AppPaths) -> Self {
+        Self { service, paths }
+    }
 
     fn usage() -> &'static str {
         "Uso:\n\
@@ -27,7 +31,10 @@ impl InstpBuiltin {
          instp install PAQUETE [-p|--persistent]\n\
          instp remove PAQUETE\n\
          instp list\n\
-         instp update                  actualiza índices\n\
+         instp update                  actualiza SOLO índices de paquetes\n\
+         instp sst                     estado de la instalación SST\n\
+         instp check sst               comprueba versiones de SST\n\
+         instp upgrade sst             descarga y verifica SST; aplica al cerrar\n\
          instp upgrade [PAQUETE]       obtiene la versión más reciente\n\
          instp which COMANDO\n\
          instp repo list\n\
@@ -63,6 +70,9 @@ impl InstpBuiltin {
         let Some(id) = args.first() else {
             return Ok(CommandOutput::error("instp info: falta PAQUETE", 2));
         };
+        if id.eq_ignore_ascii_case("sst") {
+            return self.status(id);
+        }
         let Some(package) = self.service.info(id)? else {
             return Ok(CommandOutput::error(
                 format!("instp info: paquete no encontrado: {id}"),
@@ -116,6 +126,12 @@ impl InstpBuiltin {
             Ok(parsed) => parsed,
             Err(error) => return Ok(CommandOutput::error(error, 2)),
         };
+
+        if id.eq_ignore_ascii_case("sst") {
+            return Ok(CommandOutput::error(
+                "Para actualizar SST utiliza 'instp upgrade sst'; no se instala como paquete externo.", 2
+            ));
+        }
 
         let installation = if persistent {
             self.service.install_with_persistence(id, true)
@@ -218,6 +234,12 @@ impl InstpBuiltin {
     }
 
     fn status(&self, id: &str) -> Result<CommandOutput> {
+        if id.eq_ignore_ascii_case("sst") {
+            return Ok(match update::status(&self.paths) {
+                Ok(message) => CommandOutput::ok(message),
+                Err(error) => CommandOutput::error(format!("{error:#}"), 1),
+            });
+        }
         let installed = self.service.installed()?.into_iter()
             .find(|pkg| pkg.id.eq_ignore_ascii_case(id));
         let available = self.service.info(id)?;
@@ -241,6 +263,12 @@ impl InstpBuiltin {
     }
 
     fn upgrade(&self, args: &[String]) -> Result<CommandOutput> {
+        if args.len() == 1 && args[0].eq_ignore_ascii_case("sst") {
+            return Ok(match update::check_now(&self.paths, true) {
+                Ok(message) => CommandOutput::ok(message),
+                Err(error) => CommandOutput::error(format!("{error:#}"), 1),
+            });
+        }
         if args.len() > 1 {
             return Ok(CommandOutput::error("Uso: instp upgrade [PAQUETE]", 2));
         }
@@ -249,6 +277,13 @@ impl InstpBuiltin {
             Ok(rows) => Ok(CommandOutput::ok(format!("{}\n", rows.join("\n")))),
             Err(error) => Ok(CommandOutput::error(format!("{error:#}"), 1)),
         }
+    }
+
+    fn check_sst(&self) -> Result<CommandOutput> {
+        Ok(match update::check_now(&self.paths, false) {
+            Ok(message) => CommandOutput::ok(message),
+            Err(error) => CommandOutput::error(format!("{error:#}"), 1),
+        })
     }
 
     fn which(&self, args: &[String]) -> Result<CommandOutput> {
@@ -394,6 +429,9 @@ impl BuiltinCommand for InstpBuiltin {
             Some("list") | Some("ls") => self.list(),
             Some("update") if args.len() == 1 => self.update(),
             Some("upgrade") => self.upgrade(args.get(1..).unwrap_or_default()),
+            Some("check") if args.len() == 2 && args[1].eq_ignore_ascii_case("sst") => {
+                self.check_sst()
+            }
             Some("which") => self.which(args.get(1..).unwrap_or_default()),
             Some("repo") => self.repo(args.get(1..).unwrap_or_default()),
             Some("cache") => self.cache(args.get(1..).unwrap_or_default()),
@@ -423,6 +461,14 @@ mod tests {
         ] {
             assert_eq!(parse_install_args(&args), Ok(("ripgrep", true)));
         }
+    }
+
+    #[test]
+    fn sst_updates_are_only_reached_through_instp() {
+        let wiring = include_str!("../composition/mod.rs");
+        assert!(!wiring.contains("UpdateBuiltin"));
+        assert!(wiring.contains("InstpBuiltin::new"));
+        assert!(InstpBuiltin::usage().contains("instp upgrade sst"));
     }
 
     #[test]
