@@ -888,7 +888,7 @@ mod tests {
         let raw = Arc::new(AtomicBool::new(false));
         let abort = Arc::new(AtomicBool::new(false));
         let size = Arc::new(Mutex::new((120, 36)));
-        let io = WindowIo::new(display, events, size.clone(), raw.clone(), Arc::new(AtomicBool::new(false)), abort.clone());
+        let io = WindowIo::new(display, events, size.clone(), Arc::new(Mutex::new(Vec::new())), raw.clone(), Arc::new(AtomicBool::new(false)), abort.clone());
         let cwd = directory.clone();
         let worker = thread::spawn(move || {
             terminal_io::install(io);
