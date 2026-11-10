@@ -8,3 +8,4 @@
 2026-11-10: verify blue.35 Dot3 Win32 Foundation FreeLibrary correction
 2026-11-10: verify blue.36 report legibility and native Dot3 Windows builds
 2026-11-10: Windows native WinHTTP backend verification 0.1.9-blue.37
+2026-11-10: validate Windows native Winsock catalog blue.38
