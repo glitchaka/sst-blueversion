@@ -6,3 +6,4 @@
 2026-11-10: validate blue.33 rusqlite fallible_uint compatibility fix
 2026-11-10: native Dot3 wired EAP profile Windows tests blue.34
 2026-11-10: verify blue.35 Dot3 Win32 Foundation FreeLibrary correction
+2026-11-10: verify blue.36 report legibility and native Dot3 Windows builds
