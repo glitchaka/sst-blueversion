@@ -1565,3 +1565,63 @@ fn push_event(events: &mut Vec<String>, event: String) {
 fn timestamp_short() -> String {
     Local::now().format("[%H:%M:%S]").to_string()
 }
+
+
+#[cfg(test)]
+mod native_monitor_presentation_tests {
+    use super::*;
+
+    #[test]
+    fn monitoring_headings_define_four_real_vector_frames() {
+        let cidr: Ipv4Net = "10.6.11.0/24".parse().unwrap();
+        let (screen, panels) = render_monitor_screen(
+            cidr, false, None, None, None, None, "escaneando",
+            &[], &HashMap::new(), &HashMap::new(), &[], None, None,
+            98, 30,
+        );
+        assert_eq!(panels.len(), 4);
+        assert!(panels.windows(2).all(|p| p[0].start_row + p[0].rows < p[1].start_row));
+        assert!(screen.contains("RED EN VIVO"));
+        assert!(screen.contains("EQUIPOS DETECTADOS"));
+        assert!(screen.contains("MENSAJES SST"));
+        assert!(screen.contains("EVENTOS RECIENTES"));
+        assert!(!screen.contains("┌"));
+        assert!(!screen.contains("└"));
+        assert!(!screen.contains("──"));
+        assert!(screen.contains("Buscando equipos"));
+    }
+
+    #[test]
+    fn device_columns_do_not_wrap_at_narrow_window_widths() {
+        let cidr: Ipv4Net = "10.6.11.0/24".parse().unwrap();
+        let row = ScanRow {
+            ip: Ipv4Addr::new(10, 6, 11, 7),
+            inventory_name: Some("Equipo de laboratorio con nombre largo".to_owned()),
+            known: true,
+            mac: "AA:BB:CC:DD:EE:FF".to_owned(),
+            hostname: "equipo-laboratorio-red-datos".to_owned(),
+            latency_ms: Some(7),
+            discovery: "icmp".to_owned(),
+            mac_scope: "global".to_owned(),
+            vendor: Some("Fabricante muy largo de laboratorio".to_owned()),
+        };
+        let rows = vec![("mac:AA:BB".to_owned(), row)];
+        let strip = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+        for columns in [65, 83, 102, 118, 144] {
+            let (screen, panels) = render_monitor_screen(
+                cidr, false, None, None, None, None, "ok · 1 hosts",
+                &rows, &HashMap::new(), &HashMap::new(), &[], None, None,
+                columns, 32,
+            );
+            let plain = strip.replace_all(&screen, "");
+            for (line_number, line) in plain.lines().enumerate() {
+                assert!(
+                    line.chars().count() < columns,
+                    "cols={columns} line={line_number}: {}",
+                    line
+                );
+            }
+            assert_eq!(panels.len(), 4);
+        }
+    }
+}
