@@ -18,9 +18,10 @@ use crate::{
     core::{
         CommandOutput,
         models::network::{PresenceRecord, ScanRow},
-        ports::{DeviceRepository, PresenceRepository, TerminalFactory, TerminalKey},
+        ports::{DeviceRepository, PresenceRepository, TerminalFactory, TerminalKey, TerminalPanel},
     },
     support::csv,
+    presentation::tui_style::{self, LiveScreen},
 };
 
 use super::{
@@ -608,11 +609,11 @@ impl NetworkDiscoveryService {
             }
 
             if dirty {
-                let terminal_width = terminal
+                let (terminal_width, terminal_height) = terminal
                     .size()
-                    .map(|(cols, _)| cols as usize)
-                    .unwrap_or(120);
-                let screen = render_monitor_screen(
+                    .map(|(cols, rows)| (cols as usize, rows as usize))
+                    .unwrap_or((120, 32));
+                let (screen, panels) = render_monitor_screen(
                     network,
                     only_unknown,
                     publish_message.as_deref(),
@@ -627,8 +628,12 @@ impl NetworkDiscoveryService {
                     chat_status.as_deref(),
                     active_room.as_ref(),
                     terminal_width,
+                    terminal_height,
                 );
 
+                // The native Slint overlay receives only the semantic positions.
+                // Text and data still travel through the existing terminal API.
+                terminal.set_panels(panels)?;
                 terminal.clear()?;
                 terminal.write(&screen)?;
                 terminal.flush()?;
@@ -1212,58 +1217,106 @@ fn render_monitor_screen(
     chat_status: Option<&str>,
     active_room: Option<&ChatRoom>,
     terminal_width: usize,
-) -> String {
-    let mut screen = format!(
-        "SST net monitor {}{}   [Enter] mensaje · [q/Esc] salir · scan: {} · offline tras {} fallos · UDP/{}\n",
-        network,
-        if only_unknown { " --unknown" } else { "" },
-        scan_status,
-        OFFLINE_MISSES,
-        LAN_NOTE_PORT,
-    );
-
+    terminal_height: usize,
+) -> (String, Vec<TerminalPanel>) {
+    let width = terminal_width.saturating_sub(4).max(36);
+    let height = terminal_height.max(15);
     let room_label = active_room
         .map(ChatRoom::label)
         .unwrap_or_else(|| "general".to_owned());
-    screen.push_str(&format!("Sala: {room_label}\n"));
+    let mut screen = LiveScreen::new();
 
+    let status_tone = if scan_status == "error" {
+        tui_style::BAD
+    } else if scan_status.starts_with("ok") {
+        tui_style::GOOD
+    } else {
+        tui_style::WARN
+    };
+    let mut overview = format!(
+        "{}ESCANEO{}  {}{}{}     {}SALA{}  {}     {}UDP{}  {}\n{}Filtro:{} {}   {}Desconexión:{} {} intentos",
+        tui_style::LABEL, tui_style::RESET,
+        status_tone, tui_style::shorten(scan_status, 28), tui_style::RESET,
+        tui_style::LABEL, tui_style::RESET,
+        tui_style::shorten(&room_label, 22),
+        tui_style::LABEL, tui_style::RESET, LAN_NOTE_PORT,
+        tui_style::LABEL, tui_style::RESET,
+        if only_unknown { "equipos desconocidos" } else { "todos los equipos" },
+        tui_style::LABEL, tui_style::RESET, OFFLINE_MISSES,
+    );
     if let Some(message) = publish_message {
-        screen.push_str(&format!("Publicando: {}\n", shorten(message, 120)));
+        overview.push_str(&format!(
+            "\n{}Publicando:{} {}",
+            tui_style::LABEL, tui_style::RESET,
+            tui_style::shorten(message, width.saturating_sub(14)),
+        ));
     }
     if let Some(error) = lan_error {
-        screen.push_str(&format!("LAN message warning: {error}\n"));
+        overview.push_str(&format!(
+            "\n{}LAN:{} {}",
+            tui_style::BAD, tui_style::RESET,
+            tui_style::shorten(error, width.saturating_sub(8)),
+        ));
     }
     if let Some(warning) = monitor_warning {
-        screen.push_str(&format!("MONITOR WARNING: {warning}\n"));
+        overview.push_str(&format!(
+            "\n{}Aviso:{} {}",
+            tui_style::WARN, tui_style::RESET,
+            tui_style::shorten(warning, width.saturating_sub(9)),
+        ));
     }
+    screen.section(&format!("RED EN VIVO   /   {network}"), &overview);
 
-    screen.push('\n');
-    screen.push_str(&render_monitor_rows(display_rows, misses));
-    screen.push_str("\nMensajes SST:\n");
+    let max_hosts = height.saturating_sub(17).saturating_div(2).clamp(1, 9);
+    let table = render_monitor_rows(display_rows, misses, width, max_hosts);
+    screen.section(&format!("EQUIPOS DETECTADOS   /   {}", display_rows.len()), &table);
+
+    let notes = render_lan_notes(lan_notes, display_rows, width);
+    let max_notes = (height / 8).clamp(1, 4);
+    let note_lines = notes.lines().collect::<Vec<_>>();
+    let mut note_body = note_lines.iter().take(max_notes).copied().collect::<Vec<_>>().join("\n");
+    if note_lines.len() > max_notes {
+        note_body.push_str(&format!(
+            "\n{}… {} mensajes adicionales (consulta ::lore)",
+            tui_style::LABEL,
+            note_lines.len() - max_notes,
+        ));
+        note_body.push_str(tui_style::RESET);
+    }
     if let Some(status) = chat_status {
-        screen.push_str(&format!("[chat] {status}\n"));
+        note_body = format!(
+            "{}{}{}\n{}",
+            tui_style::WARN, tui_style::shorten(status, width),
+            tui_style::RESET, note_body,
+        );
     }
-    screen.push_str(&render_lan_notes(
-        lan_notes,
-        display_rows,
-        terminal_width,
-    ));
-    screen.push_str("\nEventos recientes:\n");
+    screen.section("MENSAJES SST", &note_body);
 
-    for event_line in events {
-        screen.push_str(event_line);
-        screen.push('\n');
-    }
+    let max_events = (height / 7).clamp(1, 4);
+    let event_body = if events.is_empty() {
+        format!("{}Sin eventos todavía; esperando el escaneo…{}", tui_style::LABEL, tui_style::RESET)
+    } else {
+        events.iter().rev().take(max_events).rev().map(|event| {
+            let tone = if event.contains(" + ") { tui_style::GOOD }
+                else if event.contains(" - ") { tui_style::BAD }
+                else if event.contains(" ~ ") { tui_style::WARN }
+                else { tui_style::CONTENT };
+            format!("{}{}{}", tone, tui_style::shorten(event, width), tui_style::RESET)
+        }).collect::<Vec<_>>().join("\n")
+    };
+    screen.section("EVENTOS RECIENTES", &event_body);
 
     if let Some(input) = message_input {
-        screen.push_str("\n");
-        screen.push_str(&render_wrapped_prompt("Mensaje> ", input, terminal_width));
-        screen.push_str("_\n[Enter] enviar · [Esc] cancelar\n");
+        screen.footer(&format!(
+            "MENSAJE  {}",
+            tui_style::shorten(input, width.saturating_sub(13))
+        ));
+        screen.footer("Enter enviar   /   Esc cancelar");
+    } else {
+        screen.footer("Enter mensaje   /   Q o Esc salir");
     }
-
-    screen
+    screen.finish()
 }
-
 fn render_lan_notes(
     notes: &HashMap<Ipv4Addr, LanNote>,
     rows: &[(String, ScanRow)],
@@ -1358,42 +1411,106 @@ fn render_wrapped_prompt(prefix: &str, text: &str, terminal_width: usize) -> Str
 fn render_monitor_rows(
     rows: &[(String, ScanRow)],
     misses: &HashMap<String, u8>,
+    width: usize,
+    max_rows: usize,
 ) -> String {
-    let mut out = String::from(
-        "IP               NOMBRE                       MAC                 TYPE           VENDOR                   VIA       RESP     STATE       INVENTORY\n",
-    );
+    if rows.is_empty() {
+        return format!(
+            "{}Buscando equipos. Todavía no se detectan dispositivos en la red.{}",
+            tui_style::LABEL, tui_style::RESET,
+        );
+    }
 
-    for (id, row) in rows {
-        let inventory = row
-            .inventory_name
-            .as_deref()
-            .unwrap_or(if row.known { "known" } else { "unknown" });
-        let response = row
-            .latency_ms
-            .map(|value| format!("{value} ms"))
-            .unwrap_or_else(|| "-".to_owned());
-        let state = match misses.get(id).copied().unwrap_or(0) {
-            0 => "online".to_owned(),
-            count => format!("miss {count}/{OFFLINE_MISSES}"),
-        };
-
+    let mut out = String::new();
+    if width >= 122 {
         out.push_str(&format!(
-            "{:<16} {:<28} {:<19} {:<14} {:<24} {:<9} {:<8} {:<11} {}\n",
-            row.ip,
-            shorten(display_name(row), 28),
-            row.mac,
-            shorten(&row.mac_scope, 14),
-            shorten(row.vendor.as_deref().unwrap_or("-"), 24),
-            shorten(&row.discovery, 9),
-            response,
-            state,
-            inventory
+            "{}{:<15} {:<19} {:<18} {:<18} {:<8} {:<7} {:<11} {}{}\n",
+            tui_style::LABEL,
+            "IP", "EQUIPO", "MAC", "FABRICANTE", "VÍA",
+            "RESP", "ESTADO", "INVENTARIO", tui_style::RESET,
+        ));
+    } else if width >= 98 {
+        out.push_str(&format!(
+            "{}{:<15} {:<18} {:<18} {:<9} {:<7} {:<11} {}{}\n",
+            tui_style::LABEL,
+            "IP", "EQUIPO", "MAC", "VÍA", "RESP", "ESTADO", "INVENTARIO",
+            tui_style::RESET,
+        ));
+    } else if width >= 78 {
+        out.push_str(&format!(
+            "{}{:<15} {:<18} {:<18} {:<12} {}{}\n",
+            tui_style::LABEL, "IP", "EQUIPO", "MAC", "ESTADO", "VÍA", tui_style::RESET,
+        ));
+    } else {
+        out.push_str(&format!(
+            "{}{:<15} {:<18} {}{}\n",
+            tui_style::LABEL, "IP", "EQUIPO", "ESTADO", tui_style::RESET,
         ));
     }
 
+    let count = if width >= 78 { max_rows } else { max_rows.saturating_div(2).max(1) };
+    for (id, row) in rows.iter().take(count) {
+        let misses = misses.get(id).copied().unwrap_or(0);
+        let state = if misses == 0 {
+            "EN LÍNEA".to_owned()
+        } else {
+            format!("FALLO {misses}/{OFFLINE_MISSES}")
+        };
+        let tone = if misses == 0 { tui_style::GOOD } else { tui_style::WARN };
+        let inventory = row.inventory_name.as_deref()
+            .unwrap_or(if row.known { "conocido" } else { "nuevo" });
+        let response = row.latency_ms
+            .map(|ms| format!("{ms} ms"))
+            .unwrap_or_else(|| "—".to_owned());
+        let name = display_name(row);
+        let display = if width >= 122 {
+            format!(
+                "{:<15} {:<19} {:<18} {:<18} {:<8} {:<7} {}{:<11}{} {}",
+                row.ip, tui_style::shorten(name, 19),
+                tui_style::shorten(&row.mac, 18),
+                tui_style::shorten(row.vendor.as_deref().unwrap_or(&row.mac_scope), 18),
+                tui_style::shorten(&row.discovery, 8),
+                tui_style::shorten(&response, 7),
+                tone, state, tui_style::RESET, tui_style::shorten(inventory, 13),
+            )
+        } else if width >= 98 {
+            format!(
+                "{:<15} {:<18} {:<18} {:<9} {:<7} {}{:<11}{} {}",
+                row.ip, tui_style::shorten(name, 18),
+                tui_style::shorten(&row.mac, 18),
+                tui_style::shorten(&row.discovery, 9),
+                tui_style::shorten(&response, 7),
+                tone, state, tui_style::RESET, tui_style::shorten(inventory, 12),
+            )
+        } else if width >= 78 {
+            format!(
+                "{:<15} {:<18} {:<18} {}{:<12}{} {}",
+                row.ip, tui_style::shorten(name, 18),
+                tui_style::shorten(&row.mac, 18),
+                tone, state, tui_style::RESET,
+                tui_style::shorten(&row.discovery, 9),
+            )
+        } else {
+            format!(
+                "{:<15} {:<18} {}{}{}\n    {}  {}  {}",
+                row.ip, tui_style::shorten(name, 18),
+                tone, state, tui_style::RESET,
+                tui_style::shorten(&row.mac, 18),
+                tui_style::shorten(&row.discovery, 9), response,
+            )
+        };
+        out.push_str(&display);
+        out.push('\n');
+    }
+
+    if rows.len() > count {
+        out.push_str(&format!(
+            "{}+ {} equipos más fuera de esta vista. Usa el historial de presencia para la lista completa.{}",
+            tui_style::LABEL, rows.len() - count, tui_style::RESET,
+        ));
+    }
     out
 }
-
 fn enrich_presence_record(record: &mut PresenceRecord) {
     if record.mac.starts_with("??") {
         if record.mac_scope.is_empty() {
