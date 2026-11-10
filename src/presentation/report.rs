@@ -30,6 +30,9 @@ fn suitable(command: &str, stdout: &str) -> bool {
           | "diag" | "diagnose" | "domain" | "device" | "tools"
           | "service" | "process" | "firewall" | "eventlog"
           | "sigsour" | "nwash" | "man" | "sudo" | "security" | "config"
+          | "switch" | "wol" | "guide" | "triage" | "intel"
+          | "acl" | "pnp" | "tasks" | "task" | "session"
+          | "share" | "power" | "path" | "printer" | "registry"
     )
 }
 
@@ -110,6 +113,26 @@ fn style_command_row(line: &str) -> Option<String> {
         }
     }
     Some(format!("{indent}  {COMMAND}{trimmed}{RESET}"))
+}
+
+/// Generic two-column help entries used by builtins that omit the command
+/// prefix on each line. This acts on human-facing help only, never data tables.
+fn style_help_entry(line: &str) -> Option<String> {
+    let text = line.trim_start();
+    if text.is_empty() || text.starts_with('#') || text.contains('\x1b') {
+        return None;
+    }
+    let bytes = text.as_bytes();
+    let split = (1..bytes.len().saturating_sub(1))
+        .find(|&i| bytes[i] == b' ' && bytes[i + 1] == b' ');
+    let index = split?;
+    let syntax = text[..index].trim();
+    let description = text[index..].trim();
+    if syntax.is_empty() || description.is_empty() || syntax.chars().count() > 45 {
+        return None;
+    }
+    let indent = &line[..line.len() - text.len()];
+    Some(format!("{indent}  {COMMAND}{syntax}{RESET}  {DETAILS}{description}{RESET}"))
 }
 
 fn style_line(line: &str) -> String {
@@ -232,6 +255,9 @@ pub fn decorate_at_width(command: &str, stdout: &str, cols: u16) -> String {
     // Leave a small right margin so the cursor never autowraps a full row.
     let width = (cols as usize).saturating_sub(3).clamp(18, 160);
     let mut result = String::new();
+    let help_document = command.split_whitespace().any(|part|
+        matches!(part, "help" | "--help" | "-h"))
+        || stdout.lines().take(6).any(|line| line.trim_start().starts_with("uso:"));
     result.push('\n');
     if let Some(title) = canvas_title(command, width) {
         result.push_str(&title);
@@ -252,7 +278,14 @@ pub fn decorate_at_width(command: &str, stdout: &str, cols: u16) -> String {
             vec![line.to_owned()]
         };
         for fragment in fragments {
-            result.push_str(&style_line(&fragment));
+            let styled = if help_document && !is_section_heading(&fragment) {
+                style_command_row(&fragment)
+                    .or_else(|| style_help_entry(&fragment))
+                    .unwrap_or_else(|| style_line(&fragment))
+            } else {
+                style_line(&fragment)
+            };
+            result.push_str(&styled);
             result.push('\n');
         }
     }
