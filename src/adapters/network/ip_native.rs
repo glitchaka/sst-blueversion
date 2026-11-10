@@ -30,8 +30,8 @@ pub fn show_interfaces(ipv6:bool)->Result<CommandOutput>{
     for item in &rows {
         out.push_str(&format!("{:<8} {:<10} {:<8} {:<11} {}\n",
             item.InterfaceIndex,item.Metric,item.NlMtu,
-            if item.Connected!=0{"SÍ"}else{"NO"},
-            if item.ForwardingEnabled!=0{"SÍ"}else{"NO"}
+            if item.Connected{"SÍ"}else{"NO"},
+            if item.ForwardingEnabled{"SÍ"}else{"NO"}
         ));
     }
     Ok(CommandOutput::ok(out))
