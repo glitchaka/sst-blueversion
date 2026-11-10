@@ -4656,7 +4656,7 @@ dependencies = [
 
 [[package]]
 name = "sst"
-version = "0.1.9-blue.31"
+version = "0.1.9-blue.32"
 dependencies = [
  "anyhow",
  "arboard",

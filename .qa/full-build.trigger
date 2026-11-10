@@ -2,3 +2,4 @@
 2026-11-10: native-notsh and libcaca integration Windows build verification, main e226894
 2026-11-10: Windows check blue.30 native LAN, WLAN, IP Helper, libcaca visuals
 2026-11-10: verify blue.31 corrected native IP Helper Boolean fields
+2026-11-10: verify blue.32 SQLite CVE remediation, native NOTSH and terminal formatting
