@@ -4,7 +4,12 @@
 use libcaca::{Canvas, Color};
 
 const RESET: &str = "\x1b[0m";
-const HEADING: &str = "\x1b[1;38;5;117m";
+// Unique semantic heading tint: the native Slint window locates these rows
+// in the VT100 viewport and draws actual vector outlines around them.
+pub const HEADING_RGB: (u8, u8, u8) = (69, 209, 241);
+const HEADING: &str = "\x1b[1;38;2;69;209;241m";
+const COMMAND: &str = "\x1b[38;2;152;222;247m";
+const DETAILS: &str = "\x1b[38;2;179;194;216m";
 const LABEL: &str = "\x1b[38;5;252m";
 const GOOD: &str = "\x1b[1;38;5;114m";
 const CAUTION: &str = "\x1b[1;38;5;221m";
@@ -22,9 +27,10 @@ fn suitable(command: &str, stdout: &str) -> bool {
     }
     matches!(
         command.split_whitespace().next().unwrap_or(""),
-        "notsh" | "net" | "instp" | "sys" | "ps" | "fetch" | "help"
+        "notsh" | "net" | "instp" | "sys" | "ps" | "help"
           | "diag" | "diagnose" | "domain" | "device" | "tools"
-          | "service" | "process" | "firewall" | "eventlog" | "update"
+          | "service" | "process" | "firewall" | "eventlog"
+          | "sigsour" | "nwash" | "man" | "sudo" | "security" | "config"
     )
 }
 
@@ -64,11 +70,63 @@ fn status_color(value: &str) -> Option<&'static str> {
     }
 }
 
+/// Recognize actual structural sections in a native SST report. We do not
+/// infer "a section" from every sentence containing a colon.
+fn is_section_heading(line: &str) -> bool {
+    let text = line.trim();
+    if text.is_empty() || text.chars().count() > 76 { return false; }
+    if text.ends_with(':') && !text.contains("://") {
+        return text.chars().any(char::is_alphabetic)
+            && text.chars().filter(|ch| *ch == ':').count() == 1;
+    }
+    if text.starts_with("== ") || text == "Cambios:" { return true; }
+    // Table headings (rather than data): short runs of mostly uppercase labels.
+    let words = text.split_whitespace().collect::<Vec<_>>();
+    words.len() >= 2 && words.len() <= 12
+        && words.iter().all(|w| w.chars().all(|c|
+            !c.is_alphabetic() || c.is_uppercase()))
+        && words.iter().any(|w| w.chars().count() >= 2)
+        && !text.contains(" = ")
+}
+
+fn style_command_row(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    let token = trimmed.split_whitespace().next()?;
+    if !matches!(token,
+        "sys" | "net" | "notsh" | "instp" | "nwash" | "sigsour"
+        | "device" | "domain" | "tools" | "service" | "diag" | "sudo"
+    ) { return None; }
+    let indent = &line[..line.len() - trimmed.len()];
+    // Help descriptions are separated from command syntax by two or more
+    // spaces. Never infer state coloring from words inside the description.
+    let bytes = trimmed.as_bytes();
+    let split = (1..bytes.len().saturating_sub(1))
+        .find(|&i| bytes[i] == b' ' && bytes[i + 1] == b' '
+            && bytes[..i].iter().any(|b| !b.is_ascii_whitespace()));
+    if let Some(index) = split {
+        let syntax = trimmed[..index].trim_end();
+        let description = trimmed[index..].trim_start();
+        if !description.is_empty() {
+            return Some(format!("{indent}  {COMMAND}{syntax}{RESET}  {DETAILS}{description}{RESET}"));
+        }
+    }
+    Some(format!("{indent}  {COMMAND}{trimmed}{RESET}"))
+}
+
 fn style_line(line: &str) -> String {
     if line.trim().is_empty() { return line.to_owned(); }
     let stripped = line.trim_start();
+    if is_section_heading(stripped) {
+        // This RGB marker is rendered as a native Slint vector heading band.
+        // The indentation gives the rounded border room without covering text.
+        return format!("{HEADING}   {stripped}{RESET}");
+    }
+    if let Some(command) = style_command_row(line) {
+        return command;
+    }
     if let Some((field, value)) = stripped.split_once(": ") {
-        // Distinguish actual key/value fields, not paragraphs containing a colon.
+        // Semantic labels and values. Do not treat a command description as a
+        // status, even if it happens to contain "conectados" or "disponible".
         if !field.is_empty() && field.chars().count() <= 40
            && !field.contains("  ") && field.chars().any(char::is_alphabetic)
         {
@@ -81,22 +139,13 @@ fn style_line(line: &str) -> String {
         let indent = &line[..line.len() - stripped.len()];
         return format!("{indent}{BULLET}•{RESET} {}", stripped.trim_start_matches('•').trim_start());
     }
-    if stripped.eq_ignore_ascii_case("Cambios:")
-        || stripped.starts_with("──")
-        || stripped.starts_with("== ")
-        || stripped.starts_with('[')
-        || (stripped.chars().any(char::is_alphabetic)
-            && stripped.chars().all(|ch| !ch.is_alphabetic() || ch.is_uppercase())
-            && stripped.chars().count() < 90)
+    // Status tint only for standalone short state values, never for a full
+    // prose line. This fixes highlighted "sys drivers --devices" in help.
+    if stripped.split_whitespace().count() <= 2
+       && stripped.chars().count() <= 36
+       && let Some(color) = status_color(stripped)
     {
-        return format!("{HEADING}{line}{RESET}");
-    }
-    if let Some(color) = status_color(stripped) {
-        // Avoid painting entire prose sentences for a single word. Only short
-        // state lines have semantic colors.
-        if stripped.chars().count() < 65 {
-            return format!("{color}{line}{RESET}");
-        }
+        return format!("{color}{line}{RESET}");
     }
     line.to_owned()
 }
@@ -189,7 +238,7 @@ pub fn decorate_at_width(command: &str, stdout: &str, cols: u16) -> String {
         result.push_str(&title);
         if !result.ends_with('\n') { result.push('\n'); }
     } else {
-        result.push_str(&format!("{HEADING}── {command} ──{RESET}\n"));
+        result.push_str(&format!("{HEADING}   {command}{RESET}\n"));
     }
     for original in stdout.split_inclusive('\n') {
         let line = original.strip_suffix('\n').unwrap_or(original).trim_end_matches('\r');
@@ -258,6 +307,25 @@ mod tests {
         assert!(title.contains("notsh lan show interfaces"));
         assert!(!title.contains("\x1b[48;2;9;47;64m"));
         assert!(!title.contains("---"));
+    }
+    #[test]
+    fn help_sections_are_semantic_and_command_descriptions_are_not_statuses() {
+        let out = decorate_at_width(
+            "sys",
+            "uso: sys SUBCOMANDO [opciones]\n\nInformación:\nsys info           resumen del equipo\nsys drivers --devices     dispositivos PnP conectados\n\nAdministración / auditoría de solo lectura:\n",
+            110,
+        );
+        assert!(out.contains("Información:"));
+        assert!(out.contains("Administración / auditoría"));
+        assert!(out.contains(HEADING));
+        assert!(out.contains(COMMAND));
+        assert!(!style_line("sys drivers --devices     dispositivos PnP conectados").contains(GOOD));
+    }
+    #[test]
+    fn preserves_fetch_logo_and_script_pipelines_as_is() {
+        let fetch = "SST ASCII mascot content";
+        assert_eq!(decorate_at_width("fetch", fetch, 80), fetch);
+        assert_eq!(decorate_at_width("sys | cat", fetch, 80), fetch);
     }
     #[test]
     fn narrow_viewport_does_not_change_machine_reports() {
