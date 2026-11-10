@@ -887,9 +887,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.5.4"
+version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f97d3416d5337d15c4b0d78c8c91df922ca143f57ec20e2d1c188333047ef04"
+checksum = "2b929dd2a135771f40afabd1073f85eed59c800b7c61901e5c254270497dad64"
 dependencies = [
  "cfg-if",
 ]
@@ -2626,6 +2626,16 @@ name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+
+[[package]]
+name = "libcaca-rs"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf09a9e833bd02d517c39c71f1bdc3aa1c9fc51910004615df79a6dbd9c052db"
+dependencies = [
+ "libc",
+ "windows-sys 0.59.0",
+]
 
 [[package]]
 name = "libloading"
@@ -4648,7 +4658,6 @@ dependencies = [
 name = "sst"
 version = "0.1.9-blue.29"
 dependencies = [
- "libcaca",
  "anyhow",
  "arboard",
  "argon2",
@@ -4663,6 +4672,7 @@ dependencies = [
  "glob",
  "image",
  "ipnet",
+ "libcaca-rs",
  "portable-pty",
  "rand_core 0.6.4",
  "raw-window-handle",
