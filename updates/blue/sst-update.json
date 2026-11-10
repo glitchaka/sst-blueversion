@@ -1,30 +1,31 @@
 {
   "schema": 1,
-  "version": "0.1.9-blue.42",
+  "version": "0.1.9-blue.46",
   "channel": "blue",
-  "published_at": "2026-11-10T14:49:44.1329968+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.42/sst.exe",
-  "sha256": "928026f8fab65976a81d6a537d01224ef7ec13cb691ed0609f404082230f6410",
-  "size": 55482880,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.42/sst-updater.exe",
-  "updater_sha256": "a6d40edf8927532fee7ca4daee940c81c6432d03b021c8448fce912783a9078e",
+  "published_at": "2026-11-10T15:06:33.6457761+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.46/sst.exe",
+  "sha256": "425f083c137e1e9e605fbb5a1dbf6201576ace081e96c64b6358d513f63c5047",
+  "size": 55489536,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.46/sst-updater.exe",
+  "updater_sha256": "5dcb9840709a95f740efdf21d0ed1511b6021ac8c85969e2b8df2a24fa773402",
   "updater_size": 422400,
   "changes": [
-    "`notsh http show iplisten` consulta con `HttpQueryServiceConfiguration` las direcciones IP limitadas por la configuración del servicio HTTP de Windows.",
-    "`notsh http show urlacl` enumera las reservas de URL mediante la API HTTP Server, sin imprimir descriptores SDDL ni credenciales.",
-    "El parser valida límites y tamaños de buffer para IPv4, IPv6 y cadenas UTF-16 devueltas por la API.",
-    "Se amplían las pruebas nativas de Windows: se comprueba que ambas consultas regresen a Nwash y que no se ejecute `netsh.exe`.",
-    "Informes de la consola SST con libcaca-rs, estado semántico y etiquetas legibles.",
-    "Diagnóstico WLAN, LAN/Dot3, IPv4/IPv6, WinHTTP, Winsock y Windows Defender Firewall mediante API nativas.",
-    "Actualizador independiente y manifiestos verificables con SHA-256.",
-    "SQLite actualizado con comprobaciones RustSec."
+    "`instp sst` muestra el estado local y el canal de SST.",
+    "`instp check sst` consulta versiones sin autorizar ninguna instalación.",
+    "`instp upgrade sst` descarga, verifica y prepara la actualización de SST mediante el actualizador independiente; la aplica tras cerrar voluntariamente la sesión.",
+    "Se elimina el antiguo comando independiente `update`. El subcomando `instp update` sigue actualizando sólo los índices de repositorios de paquetes.",
+    "La notificación de una versión nueva ahora indica `instp upgrade sst`.",
+    "Consultas nativas de ETW con `notsh trace show sessions`, sin llamar a Netsh ni a herramientas de línea externas.",
+    "Continúan las consultas nativas WLAN, LAN/Dot3, IPv4/IPv6, Firewall, HTTP.sys, WinHTTP y Winsock.",
+    "Sin autoactualización silenciosa: la descarga, comprobación SHA-256 y autorización explícita siguen siendo obligatorias.",
+    "Las operaciones nativas de Notsh que requieren administración aún no implementadas mantienen errores explícitos en vez de inventar datos."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.9-blue.42.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.42/SST-Setup-0.1.9-blue.42.exe",
-    "sha256": "529fd4043f6651332293fb40b894a801565b34d97e3e78cc0f377d37c93f73e7",
-    "size": 56470751,
+    "name": "SST-Setup-0.1.9-blue.46.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.46/SST-Setup-0.1.9-blue.46.exe",
+    "sha256": "73ae07fb1f1219022fb0a37593eac248b917a065f1ab7a87fdb95bb4f5c364c3",
+    "size": 56477407,
     "single_use": true,
-    "package_id": "73420e366496203e11328d4e5349f826"
+    "package_id": "6aa1f9e28e8fd20d89fe763429576c35"
   }
 }
