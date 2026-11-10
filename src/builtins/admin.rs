@@ -76,10 +76,37 @@ impl NetworkBuiltin {
         }
     }
 
-    fn show(&self, args: &[String]) -> Result<CommandOutput> {
-        match args {
-            [interfaces] if interfaces.eq_ignore_ascii_case("interfaces") => self.interfaces(),
-            _ => Ok(CommandOutput::error("Uso: notsh show interfaces", 2)),
+    /// Both "notsh lan show interfaces" and "notsh show lan interfaces"
+    /// select the same native Windows context. Neither invokes netsh.exe.
+    fn show(&self, args: &[String], cwd: &std::path::Path) -> Result<CommandOutput> {
+        let words = args.iter().map(String::as_str).collect::<Vec<_>>();
+        match words.as_slice() {
+            ["interfaces"] => self.interfaces(),
+            ["lan", "interfaces"] => self.windows_context(
+                "lan", &["show".into(), "interfaces".into()], cwd),
+            ["wlan", "interfaces"] | ["wifi", "interfaces"] => self.windows_context(
+                "wlan", &["show".into(), "interfaces".into()], cwd),
+            _ => Ok(CommandOutput::error(
+                "Uso: notsh show [lan|wlan] interfaces", 2)),
+        }
+    }
+
+    fn csv_scope(args: &[String]) -> Option<&'static str> {
+        let words = args.iter()
+            .filter(|word| word.as_str() != "--csv")
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        match words.as_slice() {
+            ["interfaces"] | ["show", "interfaces"] | ["link"] | ["addr"] =>
+                Some("all"),
+            ["lan", "show", "interfaces"] | ["lan", "interfaces"]
+              | ["show", "lan", "interfaces"] | ["ethernet", "show", "interfaces"] =>
+                Some("lan"),
+            ["wlan", "show", "interfaces"] | ["wlan", "interfaces"]
+              | ["show", "wlan", "interfaces"] | ["wifi", "show", "interfaces"]
+              | ["wifi", "interfaces"] =>
+                Some("wlan"),
+            _ => None,
         }
     }
 
@@ -139,6 +166,19 @@ impl NetworkBuiltin {
         if Self::show_usage(args) {
             return Ok(CommandOutput::ok(Self::usage()));
         }
+        // Machine-readable output is produced from structured Win32 data;
+        // never return human-readable text merely because a flag was supplied.
+        if args.iter().any(|word| word == "--csv") {
+            return match Self::csv_scope(args) {
+                Some("all") => Ok(CommandOutput::ok(
+                    crate::adapters::windows::network::interfaces_csv("all")?)),
+                Some("lan") => Ok(CommandOutput::ok(
+                    crate::adapters::windows::network::interfaces_csv("lan")?)),
+                Some("wlan") => crate::adapters::network::wlan_native::interfaces_csv(),
+                _ => Ok(CommandOutput::error(
+                    "notsh: --csv no está disponible para este subcomando.", 2)),
+            };
+        }
         let sub = args[0].as_str();
         let rest = args.get(1..).unwrap_or_default();
 
@@ -152,7 +192,7 @@ impl NetworkBuiltin {
             "trace" if rest.first().is_some_and(|word| matches!(
                 word.as_str(), "show" | "start" | "stop" | "convert" | "diagnose" | "help" | "?"
             )) => self.windows_context("trace", rest, cwd),
-            "show" => self.show(rest),
+            "show" => self.show(rest, cwd),
             "link" | "addr" => self.service.execute(&["interfaces".to_owned()]),
             "route" => self.service.execute(&["routes".to_owned()]),
             "neigh" | "neighbor" => self.service.execute(&["neighbors".to_owned()]),
@@ -203,6 +243,21 @@ mod notsh_usage_tests {
         assert!(NetworkBuiltin::show_usage(&["--help".to_owned()]));
         assert!(!NetworkBuiltin::show_usage(&["interfaces".to_owned()]));
         assert!(!NetworkBuiltin::show_usage(&["wlan".to_owned()]));
+    }
+
+    #[test]
+    fn both_lan_wlan_spellings_support_csv() {
+        for (args, expected) in [
+            (vec!["show", "lan", "interfaces", "--csv"], "lan"),
+            (vec!["lan", "show", "interfaces", "--csv"], "lan"),
+            (vec!["show", "wlan", "interfaces", "--csv"], "wlan"),
+            (vec!["wlan", "show", "interfaces", "--csv"], "wlan"),
+            (vec!["interfaces", "--csv"], "all"),
+        ] {
+            let words = args.into_iter().map(str::to_owned).collect::<Vec<_>>();
+            assert_eq!(NetworkBuiltin::csv_scope(&words), Some(expected));
+        }
+        assert_eq!(NetworkBuiltin::csv_scope(&["routes".into()]), None);
     }
 
     #[test]
