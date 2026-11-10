@@ -30,7 +30,7 @@ Notsh no ejecuta procesos Netsh, CMD ni PowerShell. Los contextos actualmente im
 | Consulta | API | Interpretación |
 | --- | --- | --- |
 | `notsh interfaces` | IP Helper | Inventario completo, incluidos adaptadores virtuales |
-| `notsh lan show interfaces` | IP Helper + NDIS + Service Control Manager | Ethernet físico, enlace, IP y estado de dot3svc; no demuestra autenticación NAC |
+| `notsh lan show interfaces` | IP Helper + NDIS + Service Control Manager + Dot3 API | Ethernet físico, enlace, IP, dot3svc, interfaces Dot3 y configuración 802.1X; no demuestra autorización NAC |
 | `notsh wlan show interfaces` | WLAN API | Estado Wi-Fi, conexión, SSID, BSSID, señal, configuración 802.1X |
 | `notsh wlan show profiles` | WLAN API | Nombres de perfiles guardados sin exponer claves |
 | `notsh wlan show networks` | WLAN API | Redes visibles si Windows permite la consulta |
@@ -39,7 +39,7 @@ Notsh no ejecuta procesos Netsh, CMD ni PowerShell. Los contextos actualmente im
 
 La vista LAN incluye el estado real del servicio Wired AutoConfig (`dot3svc`) consultado mediante el gestor de servicios de Windows. Este estado NO demuestra una autenticación exitosa.
 
-**Límites explícitos:** La autorización 802.1X cableada precisa APIs Dot3 que aún no están implementadas; `notsh lan show profiles` y `notsh lan show settings` devuelven un error específico. Los contextos `advfirewall`, `winhttp`, `winsock`, `http` y controles de `trace` quedan pendientes de implementación nativa. No se presentan adaptadores genéricos como datos de autenticación, ni se usa un envoltorio de `netsh.exe`. Las consultas Wi-Fi respetan permisos de Ubicación y las políticas de Windows.
+**Límites explícitos:** Las interfaces y perfiles cableados se consultan ahora mediante Dot3 API sin exponer el XML del perfil ni secretos. El estado real de autorización de 802.1X/NAC no se infiere de un perfil configurado. `notsh lan show settings` todavía requiere un backend especializado. Los contextos `advfirewall`, `winhttp`, `winsock`, `http` y controles de `trace` quedan pendientes de implementación nativa. No se presentan adaptadores genéricos como datos de autenticación, ni se usa un envoltorio de `netsh.exe`. Las consultas Wi-Fi respetan permisos de Ubicación y las políticas de Windows.
 
 ## Funciones existentes de SST
 
