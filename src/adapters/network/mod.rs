@@ -1,4 +1,5 @@
-pub mod netsh_compat;
+pub mod wlan_native;
+pub mod ip_native;
 pub mod snmp_switch;
 pub mod wake_on_lan;
 

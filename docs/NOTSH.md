@@ -23,30 +23,22 @@ notsh lan             # adaptadores Ethernet
 notsh help            # índice de comandos de red
 ```
 
-## Contextos de Windows: compatibilidad con Netsh
+## Contextos nativos de Windows
 
-NOTSH conserva las operaciones propias de SST y las rutas de comandos de Windows. No son la misma cosa.
+Notsh no ejecuta procesos Netsh, CMD ni PowerShell. Los contextos actualmente implementados usan consultas directas al sistema operativo:
 
-Los contextos `lan`, `wlan`, `interface`, `advfirewall`, `winhttp`, `winsock`, `http` y las funciones de seguimiento de `trace` utilizan el **backend de compatibilidad oficial `netsh.exe`** ubicado en System32. Se invoca directamente, **sin CMD ni PowerShell**, con los permisos y las restricciones que tenga el proceso SST. Esto garantiza que el resultado y las reglas de cada subcomando corresponden a Windows; no se sustituyen por un listado genérico de interfaces.
+| Consulta | API | Interpretación |
+| --- | --- | --- |
+| `notsh interfaces` | IP Helper | Inventario completo, incluidos adaptadores virtuales |
+| `notsh lan show interfaces` | IP Helper + NDIS | Enlace Ethernet físico e IP; no demuestra autenticación NAC |
+| `notsh wlan show interfaces` | WLAN API | Estado Wi-Fi, conexión, SSID, BSSID, señal, configuración 802.1X |
+| `notsh wlan show profiles` | WLAN API | Nombres de perfiles guardados sin exponer claves |
+| `notsh wlan show networks` | WLAN API | Redes visibles si Windows permite la consulta |
+| `notsh interface ipv4 show interfaces` | IP Helper | Tabla IPv4 por interfaz |
+| `notsh interface ipv6 show interfaces` | IP Helper | Tabla IPv6 por interfaz |
 
-```text
-notsh lan show interfaces                → netsh lan show interfaces
-notsh lan show profiles                  → netsh lan show profiles
-notsh lan show settings                  → netsh lan show settings
-notsh wlan show interfaces               → netsh wlan show interfaces
-notsh wlan show profiles                 → netsh wlan show profiles
-notsh wlan show networks                 → netsh wlan show networks
-notsh interface ipv4 show interfaces     → netsh interface ipv4 show interfaces
-notsh interface ipv6 show interfaces     → netsh interface ipv6 show interfaces
-```
+**Límites explícitos:** La autorización 802.1X cableada precisa APIs Dot3 que aún no están implementadas; `notsh lan show profiles` y `notsh lan show settings` devuelven un error específico. Los contextos `advfirewall`, `winhttp`, `winsock`, `http` y controles de `trace` quedan pendientes de implementación nativa. No se presentan adaptadores genéricos como datos de autenticación, ni se usa un envoltorio de `netsh.exe`. Las consultas Wi-Fi respetan permisos de Ubicación y las políticas de Windows.
 
-`notsh lan show interfaces` presenta el estado del sistema de autenticación cableada de Windows, incluida 802.1X cuando corresponde. No deduce una autorización NAC a partir de la presencia de cable o dirección IP. Si Wired AutoConfig está detenido, restringido o no entrega el estado, se muestra el resultado correspondiente de Windows.
-
-`notsh wlan show interfaces` presenta el estado Wi-Fi, SSID/BSSID, perfil y modo de autenticación cuando Windows permite consultarlos. Se respetan los permisos de privacidad, como Ubicación.
-
-Los contextos sin argumentos muestran ayuda, sin abrir una sesión interactiva adicional. Las operaciones de modificación de configuración mantienen los requisitos de elevación de Windows. Las políticas de bloqueo de ejecutables también pueden restringir este backend.
-
-`notsh interfaces` es **una operación distinta**, implementada con IP Helper: muestra el inventario completo de adaptadores y conexiones lógicas. No equivale a `netsh lan show interfaces`.
 ## Funciones existentes de SST
 
 Toda la funcionalidad que antes se invocaba mediante `net` sigue disponible porque `net` y `notsh` son el mismo builtin:

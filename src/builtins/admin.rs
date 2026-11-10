@@ -29,13 +29,45 @@ impl NetworkBuiltin {
         self.service.execute(&["interfaces".to_owned()])
     }
 
-    fn windows_context(
-        &self,
-        namespace: &str,
-        args: &[String],
-        cwd: &std::path::Path,
-    ) -> Result<CommandOutput> {
-        crate::adapters::network::netsh_compat::execute(namespace, args, cwd)
+    fn windows_context(&self,namespace:&str,args:&[String],_cwd:&std::path::Path)->Result<CommandOutput>{
+        let words=args.iter().map(String::as_str).collect::<Vec<_>>();
+        match namespace {
+            "wlan"=>crate::adapters::network::wlan_native::execute(args),
+            "lan"=>match words.as_slice(){
+                []|["help"]|["--help"]|["?"]=>Ok(CommandOutput::ok(
+                    "notsh lan — Ethernet físico por IP Helper\n\
+                     notsh lan show interfaces    enlace, IP y diagnóstico físico\n\
+                     Los datos de autorización cableada 802.1X requieren el backend Dot3 pendiente.\n"
+                )),
+                ["show","interfaces"]=>{
+                    let mut result=self.service.execute(&["lan-interfaces".into()])?;
+                    result.stdout=format!(
+                        "LAN — WINDOWS IP HELPER\n\
+                         802.1X cableado: NO VERIFICADO\n\
+                         NAC: NO VERIFICADO. Enlace e IP no acreditan autorización.\n\n{}",
+                        result.stdout);
+                    Ok(result)
+                },
+                ["show","profiles"]|["show","settings"]=>Ok(CommandOutput::error(
+                    "notsh lan: el backend Dot3/802.1X aún no está implementado; no se devolverán perfiles ficticios.",2
+                )),
+                _=>Ok(CommandOutput::error(
+                    "notsh lan: opción nativa no implementada; usa 'notsh lan help'.",2
+                )),
+            },
+            "interface"=>match words.as_slice(){
+                []|["help"]|["--help"]|["ipv4"]|["ipv6"]=>Ok(CommandOutput::ok(
+                    "notsh interface ipv4 show interfaces\nnotsh interface ipv6 show interfaces\n"
+                )),
+                ["ipv4","show","interfaces"]=>crate::adapters::network::ip_native::show_interfaces(false),
+                ["ipv6","show","interfaces"]=>crate::adapters::network::ip_native::show_interfaces(true),
+                _=>Ok(CommandOutput::error("notsh interface: opción nativa no implementada.",2)),
+            },
+            "advfirewall"|"winhttp"|"winsock"|"http"|"trace"=>Ok(CommandOutput::error(
+                format!("notsh {namespace}: falta implementar este backend nativo. No se ejecutará netsh.exe."),2
+            )),
+            _=>Ok(CommandOutput::error(format!("notsh: contexto desconocido: {namespace}"),2)),
+        }
     }
 
     fn show(&self, args: &[String]) -> Result<CommandOutput> {
