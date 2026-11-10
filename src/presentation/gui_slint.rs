@@ -1062,6 +1062,34 @@ impl TerminalModel {
                 }
             }
 
+            // The terminal stream tags report headings with a dedicated RGB
+            // cell background. Paint the rounded panel in *native pixels*,
+            // rather than drawing an ellipse/box using terminal characters.
+            for row in 0..rows {
+                let mut start = None;
+                for col in 0..=cols {
+                    let tagged = col < cols && screen.cell(row, col)
+                        .is_some_and(|cell| {
+                            !cell.is_wide_continuation()
+                                && matches!(cell.bgcolor(), vt100::Color::Rgb(9, 47, 64))
+                        });
+                    if tagged && start.is_none() {
+                        start = Some(col);
+                    } else if !tagged {
+                        if let Some(first) = start.take() {
+                            let x = (left_pad + first as f32 * cell_width).round() as i32;
+                            let y = (top_pad + row as f32 * cell_height).round() as i32;
+                            let w = ((col - first) as f32 * cell_width).ceil() as i32;
+                            let h = cell_height.ceil() as i32;
+                            fill_rounded_panel(
+                                pixels, width, height, x, y, w, h,
+                                Rgb(9, 47, 64),
+                            );
+                        }
+                    }
+                }
+            }
+
             for row in 0..rows {
                 for col in 0..cols {
                     let Some(cell) = screen.cell(row, col) else {
@@ -1101,7 +1129,13 @@ impl TerminalModel {
                     let w = (cell_width * wide).ceil() as i32;
                     let h = cell_height.ceil() as i32;
 
-                    if paint_background {
+                    if paint_background
+                        && (!matches!(cell.bgcolor(), vt100::Color::Rgb(9, 47, 64))
+                            || selection.is_some_and(|(a, b)| {
+                                index >= a.min(b) && index < a.max(b)
+                            })
+                            || (cursor_on && cursor == (row, col)))
+                    {
                         fill_rect(pixels, width, height, x, y, w, h, bg);
                     }
 
@@ -1184,6 +1218,39 @@ fn terminal_color(value: vt100::Color, default: Rgb) -> Rgb {
             let component = |n| if n == 0 { 0 } else { 55 + n * 40 };
             Rgb(component(i / 36), component(i / 6 % 6), component(i % 6))
         }
+    }
+}
+
+/// Native pixel geometry for SST's report headers. This intentionally does
+/// not emit ANSI line/box-drawing characters into stdout.
+fn fill_rounded_panel(
+    pixels: &mut [Rgba8Pixel],
+    width: u32,
+    height: u32,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    color: Rgb,
+) {
+    if w <= 0 || h <= 0 { return; }
+    let radius = (h / 2).min(10).min(w / 2).max(1);
+    for dy in 0..h {
+        let distance = if dy < radius {
+            radius - dy - 1
+        } else if dy >= h - radius {
+            dy - (h - radius)
+        } else {
+            0
+        };
+        let inset = if distance > 0 {
+            let squared = radius * radius - distance * distance;
+            radius - (squared as f64).sqrt().floor() as i32
+        } else {
+            0
+        };
+        fill_rect(pixels, width, height,
+            x + inset, y + dy, w - 2 * inset, 1, color);
     }
 }
 
