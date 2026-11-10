@@ -2,11 +2,13 @@
 use std::{cell::RefCell, io::Write, sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}, mpsc}, time::Duration};
 use anyhow::Result;
 use crossterm::{event::Event, terminal};
+use crate::core::ports::TerminalPanel;
 
 pub struct WindowIo {
     pub output: mpsc::Sender<Vec<u8>>,
     pub input: mpsc::Receiver<Event>,
     pub size: Arc<Mutex<(u16, u16)>>,
+    pub panels: Arc<Mutex<Vec<TerminalPanel>>>,
     pub raw: Arc<AtomicBool>,
     pub interrupt: Arc<AtomicBool>,
     pub force_abort: Arc<AtomicBool>,
@@ -17,17 +19,28 @@ impl WindowIo {
         output: mpsc::Sender<Vec<u8>>,
         input: mpsc::Receiver<Event>,
         size: Arc<Mutex<(u16,u16)>>,
+        panels: Arc<Mutex<Vec<TerminalPanel>>>,
         raw: Arc<AtomicBool>,
         interrupt: Arc<AtomicBool>,
         force_abort: Arc<AtomicBool>,
     ) -> Self {
-        Self { output, input, size, raw, interrupt, force_abort, pending: None }
+        Self { output, input, size, panels, raw, interrupt, force_abort, pending: None }
     }
 }
 thread_local! { static WINDOW: RefCell<Option<WindowIo>> = const { RefCell::new(None) }; }
 pub fn install(io: WindowIo) { WINDOW.with(|slot| *slot.borrow_mut() = Some(io)); }
 pub fn output_sender() -> Option<mpsc::Sender<Vec<u8>>> {
     WINDOW.with(|slot| slot.borrow().as_ref().map(|io| io.output.clone()))
+}
+
+/// Only affects semantic outlines in the native Slint layer. It never injects
+/// any character into the command output or alters the configured wallpaper.
+pub fn set_panels(panels: Vec<TerminalPanel>) {
+    WINDOW.with(|slot| {
+        if let Some(io) = slot.borrow().as_ref() {
+            *io.panels.lock().unwrap_or_else(|error| error.into_inner()) = panels;
+        }
+    });
 }
 
 pub fn interrupt_flag() -> Arc<AtomicBool> {
@@ -100,11 +113,13 @@ pub fn leave_raw() {
 }
 
 pub fn enter() -> Result<()> {
+    set_panels(Vec::new());
     enter_raw()?;
     write(b"\x1b[?1049h\x1b[?25l")
 }
 
 pub fn leave() {
+    set_panels(Vec::new());
     let _ = write(b"\x1b[?25h\x1b[?1049l");
     leave_raw();
 }
