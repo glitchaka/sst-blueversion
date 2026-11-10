@@ -28,20 +28,16 @@ fn suitable(command: &str, stdout: &str) -> bool {
     )
 }
 
-// An SST-only RGB background marker (9,47,64) asks the native pixel
-// compositor to paint an actual rounded panel behind the heading. A canvas
-// is still used for the clipped text, but never to simulate a shape with
-// ASCII dashes. Other terminals simply see a readable colored heading.
+/// Compose a compact, readable heading with libcaca's text canvas.
+/// No ASCII boxes, fake ellipses, hidden RGB markers, or compositor changes.
 fn canvas_title(command: &str, width: usize) -> Option<String> {
     if width < 20 { return None; }
-    let name = command.chars().take(width.saturating_sub(6)).collect::<String>();
-    let length = (name.chars().count() + 4) as i32;
-    let mut canvas = Canvas::new(length, 1).ok()?;
-    canvas.set_color_ansi(Color::White, Color::Default).ok()?;
-    canvas.put_str(2, 0, &name);
-    let raw = String::from_utf8(canvas.export_to_memory("utf8").ok()?).ok()?;
-    let label = raw.trim_end_matches(['\r', '\n']);
-    Some(format!("\x1b[48;2;9;47;64m\x1b[1;38;2;190;230;247m{label}\x1b[0m"))
+    let name = command.chars().take(width.saturating_sub(5)).collect::<String>();
+    let mut canvas = Canvas::new((name.chars().count() + 3) as i32, 1).ok()?;
+    canvas.set_color_ansi(Color::LightCyan, Color::Default).ok()?;
+    canvas.put_str(1, 0, &name);
+    let utf8 = String::from_utf8(canvas.export_to_memory("utf8").ok()?).ok()?;
+    Some(format!("{HEADING}{}{RESET}", utf8.trim_end_matches(['\r', '\n'])))
 }
 
 fn status_color(value: &str) -> Option<&'static str> {
@@ -260,7 +256,7 @@ mod tests {
     fn native_title_is_not_a_dash_drawing() {
         let title = canvas_title("notsh lan show interfaces", 80).unwrap();
         assert!(title.contains("notsh lan show interfaces"));
-        assert!(title.contains("\x1b[48;2;9;47;64m"));
+        assert!(!title.contains("\x1b[48;2;9;47;64m"));
         assert!(!title.contains("---"));
     }
     #[test]
