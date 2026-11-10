@@ -11,3 +11,4 @@
 2026-11-10: validate Windows native Winsock catalog blue.38
 2026-11-10: Windows COM INetFwPolicy2 read-only profile smoke blue.39
 2026-11-10: Windows compile/test 0.1.9-blue.52 native NOTSH LAN/WLAN CSV and Slint rounded report headings; verify before releasing.
+2026-11-10: compile and unit-test blue.54 transfer meter, restore Slint compositor, remove ASCII report frame, verify native NOTSH CSV.
