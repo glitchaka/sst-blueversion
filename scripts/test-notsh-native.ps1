@@ -28,6 +28,8 @@ notsh http show iplisten
 echo SST_NOTSH_HTTP_IP_RETURNED
 notsh http show urlacl
 echo SST_NOTSH_HTTP_URL_RETURNED
+notsh trace show sessions
+echo SST_NOTSH_ETW_RETURNED
 '@
 [IO.File]::WriteAllText($fixture, $commands, [Text.UTF8Encoding]::new($false))
 $process = Start-Process -FilePath $exe -ArgumentList ('"' + $fixture + '"') -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
@@ -47,7 +49,8 @@ try {
         'SST_NOTSH_IPV4_RETURNED', 'SST_NOTSH_IPV6_RETURNED',
         'SST_NOTSH_WINHTTP_RETURNED', 'SST_NOTSH_WINSOCK_RETURNED',
         'SST_NOTSH_FIREWALL_RETURNED',
-        'SST_NOTSH_HTTP_IP_RETURNED', 'SST_NOTSH_HTTP_URL_RETURNED'
+        'SST_NOTSH_HTTP_IP_RETURNED', 'SST_NOTSH_HTTP_URL_RETURNED',
+        'SST_NOTSH_ETW_RETURNED'
     )) {
         if (-not $result.Contains($marker)) {
             throw "No regresó de $marker. STDOUT: $result; STDERR: $errors"

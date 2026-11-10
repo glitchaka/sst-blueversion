@@ -44,7 +44,7 @@ Notsh no ejecuta procesos Netsh, CMD ni PowerShell. Los contextos actualmente im
 
 La vista LAN incluye el estado real del servicio Wired AutoConfig (`dot3svc`) consultado mediante el gestor de servicios de Windows. Este estado NO demuestra una autenticación exitosa.
 
-**Límites explícitos:** Las interfaces y perfiles cableados se consultan ahora mediante Dot3 API sin exponer el XML del perfil ni secretos. El estado real de autorización de 802.1X/NAC no se infiere de un perfil configurado. `notsh lan show settings` todavía requiere un backend especializado. Las operaciones de modificación del proxy siguen pendientes. El restablecimiento Winsock sigue pendiente. La administración de reglas y los cambios de firewall siguen pendientes. Las consultas `notsh http show iplisten` y `notsh http show urlacl` usan ahora HTTP Server API, sin exponer los descriptores SDDL. Los certificados SSL, cambios en HTTP.sys y controles de `trace` siguen pendientes de implementación nativa. No se presentan adaptadores genéricos como datos de autenticación, ni se usa un envoltorio de `netsh.exe`. Las consultas Wi-Fi respetan permisos de Ubicación y las políticas de Windows.
+**Límites explícitos:** Las interfaces y perfiles cableados se consultan ahora mediante Dot3 API sin exponer el XML del perfil ni secretos. El estado real de autorización de 802.1X/NAC no se infiere de un perfil configurado. `notsh lan show settings` todavía requiere un backend especializado. Las operaciones de modificación del proxy siguen pendientes. El restablecimiento Winsock sigue pendiente. La administración de reglas y los cambios de firewall siguen pendientes. Las consultas `notsh http show iplisten` y `notsh http show urlacl` usan ahora HTTP Server API, sin exponer los descriptores SDDL. Los certificados SSL y cambios en HTTP.sys siguen pendientes. `notsh trace show sessions` enumera sesiones ETW mediante QueryAllTracesW; iniciar, detener o modificar trazas sigue pendiente. No se presentan adaptadores genéricos como datos de autenticación, ni se usa un envoltorio de `netsh.exe`. Las consultas Wi-Fi respetan permisos de Ubicación y las políticas de Windows.
 
 ## Funciones existentes de SST
 
@@ -56,6 +56,7 @@ notsh connections
 notsh routes
 notsh dns HOST|IP
 notsh ping HOST [-c N]
+notsh trace show sessions  # sesiones ETW visibles
 notsh trace HOST
 notsh neighbors
 notsh conflicts [IP]
