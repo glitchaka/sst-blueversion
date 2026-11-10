@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "version": "0.1.9-blue.33",
+  "channel": "blue",
+  "published_at": "2026-11-10T13:23:53Z",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.33/sst.exe",
+  "sha256": "a5b28b8b67693bf3af33484ca72a6c2ef5f82a774f35e4bcc99d15cab0f0869f",
+  "size": 55451648,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.33/sst-updater.exe",
+  "updater_sha256": "5465fd66aa10842dcfdbddbed691168f4ab8a12957e435ee4e944f4ff4937d1f",
+  "updater_size": 422400,
+  "changes": [
+    "Integración nativa de libcaca-rs para generar encabezados de los informes dentro de la propia terminal.",
+    "Estados, errores, avisos y diagnósticos con jerarquía visual y colores diferenciados.",
+    "Respeto por el fondo de la consola, su tipografía monoespaciada y la información tabular.",
+    "Las tuberías, redirecciones y formatos JSON/CSV se mantienen sin decoración de pantalla.",
+    "Se elimina el antiguo ejecutor que delegaba comandos en netsh.exe.",
+    "Las consultas Wi-Fi de interfaces, perfiles y redes usan directamente WLAN API de Windows.",
+    "Las tablas IPv4/IPv6 se consultan directamente mediante IP Helper.",
+    "El diagnóstico LAN delimita adaptadores Ethernet físicos y diferencia el enlace del estado 802.1X/NAC.",
+    "Se informa el estado del servicio nativo Wired AutoConfig sin equipararlo a autenticación exitosa.",
+    "Actualización de SQLite empaquetado mediante rusqlite 0.41.1, para incorporar la corrección de la vulnerabilidad de SQLite CVE-2026-119375.",
+    "Revisión de la numeración canónica de la versión y las dependencias del proyecto."
+  ],
+  "setup": {
+    "name": "SST-Setup-0.1.9-blue.33.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.33/SST-Setup-0.1.9-blue.33.exe",
+    "sha256": "7c4d94066e7c2f1c0006af5d7d67255154fdc85c4029494a366e5461892d2d66",
+    "size": 56439519,
+    "single_use": true
+  }
+}
