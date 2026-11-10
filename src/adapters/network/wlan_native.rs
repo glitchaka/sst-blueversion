@@ -138,10 +138,20 @@ mod platform {
     }
 
     pub fn interfaces_csv() -> Result<CommandOutput> {
-        let (client, adapters) = match session() { Ok(s) => s, Err(e) => return Ok(e) };
         let mut output = String::from(
             "Adaptador,Estado,Perfil,SSID,BSSID,Senal_pct,RX_Kbps,TX_Kbps,Autenticacion,8021X\n"
         );
+        // Some Windows Server / CI hosts have no WLAN AutoConfig service. A
+        // failed query must preserve its diagnostic and exit status, but must
+        // never substitute an error paragraph for machine-readable stdout.
+        let (client, adapters) = match session() {
+            Ok(session) => session,
+            Err(error) => return Ok(CommandOutput {
+                stdout: output,
+                stderr: if error.stderr.is_empty() { error.stdout } else { error.stderr },
+                status: error.status.max(1),
+            }),
+        };
         let mut errors = 0usize;
         for adapter in &adapters {
             let mut fields = vec![
