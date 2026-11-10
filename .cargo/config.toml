@@ -5,4 +5,4 @@ rustflags = ["-C", "target-feature=+crt-static"]
 [env]
 # Canal oficial incorporado al binario. Puede sobreescribirse en terreno mediante
 # SST_UPDATE_MANIFEST_URL o data/update-channel.txt sin recompilar SST.
-SST_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/glitchaka/adm-toolbox/main/updates/blue/sst-update.json"
+SST_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/glitchaka/sst-blueversion/main/updates/blue/sst-update.json"

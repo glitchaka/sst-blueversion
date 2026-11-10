@@ -227,6 +227,14 @@ jobs:
 
           gh release upload $tag dist/sst.exe dist/sst-updater.exe dist/sst-update.json dist/version.txt "dist/SST-Setup-$env:VERSION.exe" --clobber
 
+      - name: Publish source blue channel
+        if: ${{ github.event_name == 'push' || inputs.publish_release }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/publish-source-update-channel.ps1 -Version $env:VERSION
+
       - name: Publish public update payload
         if: ${{ steps.publisher.outputs.can_publish == 'true' }}
         shell: pwsh
