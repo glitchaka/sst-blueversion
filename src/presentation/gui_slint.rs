@@ -137,6 +137,123 @@ const NERD_FONT_BYTES: &[u8] = include_bytes!(concat!(
 ));
 
 slint::slint! {
+    // The download panel is independent of the VT100 pixel surface.
+    // It appears only during a transfer and never paints over fetch or
+    // modifies the user's background/transparency/terminal rows.
+    component DownloadCard inherits Rectangle {
+        in property <string> package-title;
+        in property <string> transfer-phase;
+        in property <string> transfer-percent;
+        in property <string> transfer-amount;
+        in property <string> transfer-speed;
+        in property <string> transfer-eta;
+        in property <float> transfer-ratio: 0.0;
+        in property <bool> transfer-known-total: false;
+
+        background: #101c31;
+        border-color: #364d68;
+        border-width: 1px;
+        border-radius: 17px;
+        clip: true;
+
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: 5px;
+            height: parent.height;
+            background: #30c5ee;
+        }
+
+        Text {
+            x: 22px;
+            y: 12px;
+            width: parent.width - 160px;
+            height: 20px;
+            text: "SST  /  " + root.package-title;
+            color: #dceaf9;
+            font-family: "Segoe UI Variable";
+            font-size: 13px;
+            font-weight: 700;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+
+        Text {
+            x: parent.width - 115px;
+            y: 10px;
+            width: 92px;
+            height: 28px;
+            text: root.transfer-percent;
+            color: #7de8ff;
+            font-family: "Segoe UI Variable";
+            font-size: 22px;
+            font-weight: 700;
+            horizontal-alignment: right;
+        }
+
+        Text {
+            x: 22px;
+            y: 39px;
+            width: parent.width - 44px;
+            height: 18px;
+            text: root.transfer-phase;
+            color: #98b4cc;
+            font-family: "Segoe UI Variable";
+            font-size: 12px;
+        }
+
+        track := Rectangle {
+            x: 22px;
+            y: 67px;
+            width: parent.width - 44px;
+            height: 12px;
+            background: #263b52;
+            border-radius: 6px;
+            clip: true;
+
+            Rectangle {
+                x: 0px;
+                y: 0px;
+                width: root.transfer-known-total ? parent.width * root.transfer-ratio : 0px;
+                height: parent.height;
+                background: #17b8e8;
+                border-radius: 6px;
+
+                Rectangle {
+                    x: 0px;
+                    y: 1px;
+                    width: parent.width;
+                    height: 4px;
+                    background: #89e9ff;
+                    border-radius: 2px;
+                }
+            }
+        }
+
+        Text {
+            x: 22px;
+            y: 93px;
+            width: parent.width - 252px;
+            height: 20px;
+            text: root.transfer-amount;
+            color: #d5e1f0;
+            font-family: "Segoe UI Variable";
+            font-size: 12px;
+        }
+
+        Text {
+            x: parent.width - 223px;
+            y: 93px;
+            width: 200px;
+            height: 20px;
+            text: root.transfer-speed + "  ·  ETA " + root.transfer-eta;
+            color: #acc1d8;
+            font-family: "Segoe UI Variable";
+            font-size: 12px;
+            horizontal-alignment: right;
+        }
+    }
+
     export component SstBlueWindow inherits Window {
         title: "Shell Shock Tool";
         preferred-width: 980px;
@@ -156,6 +273,15 @@ slint::slint! {
         in property <string> ram-text: "RAM 0.0 GiB";
         in property <string> clock-text: "00:00";
         in property <string> date-text: "00 ---";
+        in property <bool> transfer-visible: false;
+        in property <bool> transfer-known-total: false;
+        in property <float> transfer-ratio: 0.0;
+        in property <string> transfer-title: "";
+        in property <string> transfer-phase: "";
+        in property <string> transfer-percent: "";
+        in property <string> transfer-amount: "";
+        in property <string> transfer-speed: "";
+        in property <string> transfer-eta: "";
 
         callback key-input(string, bool, bool, bool);
         callback pointer-down(float, float);
@@ -266,6 +392,23 @@ slint::slint! {
                     accept
                 }
             }
+        }
+
+        // Native Slint overlay: independent from terminal glyphs and fetch logo.
+        DownloadCard {
+            visible: root.transfer-visible;
+            x: (root.width - self.width) / 2;
+            y: root.height - self.height - 22px;
+            width: min(570px, root.width - 36px);
+            height: 125px;
+            package-title: root.transfer-title;
+            transfer-phase: root.transfer-phase;
+            transfer-percent: root.transfer-percent;
+            transfer-amount: root.transfer-amount;
+            transfer-speed: root.transfer-speed;
+            transfer-eta: root.transfer-eta;
+            transfer-ratio: root.transfer-ratio;
+            transfer-known-total: root.transfer-known-total;
         }
 
         island := Rectangle {
@@ -1977,6 +2120,29 @@ pub fn run() -> Result<()> {
                     model.resize(size.width, size.height, scale);
                 }
                 model.tick();
+
+                // Shared transfer metrics are read by the Slint event loop.
+                // No ANSI progress bar, global reading layer, or window texture
+                // modification is used while downloading through instp.
+                if let Some(progress) = crate::support::transfer::snapshot() {
+                    ui.set_transfer_visible(true);
+                    ui.set_transfer_title(progress.label.clone().into());
+                    ui.set_transfer_ratio(progress.fraction());
+                    ui.set_transfer_known_total(progress.expected.is_some());
+                    ui.set_transfer_percent(progress.percentage().into());
+                    ui.set_transfer_amount(progress.amount().into());
+                    ui.set_transfer_speed(progress.speed().into());
+                    ui.set_transfer_eta(progress.remaining().into());
+                    let phase = if progress.finished {
+                        if progress.success { "Descarga finalizada · verificando" }
+                        else { "La descarga falló" }
+                    } else {
+                        "Descargando desde el origen verificado"
+                    };
+                    ui.set_transfer_phase(phase.into());
+                } else if ui.get_transfer_visible() {
+                    ui.set_transfer_visible(false);
+                }
 
                 if drawable && model.dirty {
                     ui.set_terminal_image(model.render());
