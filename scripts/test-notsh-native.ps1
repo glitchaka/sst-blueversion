@@ -76,7 +76,10 @@ try {
         throw "NOTSH LAN --csv no produjo un encabezado CSV válido."
     }
     $lanRows = @($lanMatch.Groups[1].Value | ConvertFrom-Csv)
-    if ($lanRows.Count -eq 0) { throw "No se pudo analizar el encabezado CSV LAN." }
+    # A machine with no physical Ethernet still emits valid header-only CSV.
+    if ($lanRows.Count -gt 0 -and $null -eq $lanRows[0].Nombre) {
+        throw "Las columnas de NOTSH LAN --csv no se pudieron analizar."
+    }
     $wlanMatch = [regex]::Match(
         $result, '(?s)SST_CSV_WLAN_BEGIN\s*(.*?)\s*SST_CSV_WLAN_END')
     if (-not $wlanMatch.Success -or $wlanMatch.Groups[1].Value -notmatch '^Adaptador,Estado,Perfil,SSID,BSSID,Senal_pct,RX_Kbps,TX_Kbps,Autenticacion,8021X') {
