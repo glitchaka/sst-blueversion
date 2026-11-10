@@ -31,9 +31,9 @@ mod platform {
     use std::{ffi::c_void, mem, ptr};
     use windows_sys::core::GUID;
     use windows_sys::Win32::{
-        Foundation::HANDLE,
+        Foundation::{HANDLE, FreeLibrary},
         System::LibraryLoader::{
-            FreeLibrary, GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32
+            GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32
         },
     };
 
