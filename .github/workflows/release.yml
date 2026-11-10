@@ -120,6 +120,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test-nwash-process-substitution.ps1 -SstPath ./target/release/sst.exe
 
+      - name: Verify instp SST command integration (blocking release)
+        shell: pwsh
+        run: ./scripts/test-instp-sst.ps1 -SstPath ./target/release/sst.exe
+
       - name: Verify native NOTSH contexts (blocking release)
         shell: pwsh
         run: ./scripts/test-notsh-native.ps1 -SstPath ./target/release/sst.exe

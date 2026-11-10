@@ -22,6 +22,7 @@ on:
       - 'scripts/test-nwash-process-substitution.ps1'
       - 'scripts/test-independent-updater.ps1'
       - 'scripts/test-self-update.ps1'
+      - 'scripts/test-instp-sst.ps1'
       - 'scripts/test-self-update-failures.ps1'
       - 'scripts/test-notsh-native.ps1'
       - '.github/workflows/self-update-regression.yml'
@@ -83,6 +84,10 @@ jobs:
       - name: Exercise real Windows Bash process substitution and read EOF
         shell: pwsh
         run: ./scripts/test-nwash-process-substitution.ps1 -SstPath ./target/debug/sst.exe
+
+      - name: Verify SST update commands through instp
+        shell: pwsh
+        run: ./scripts/test-instp-sst.ps1 -SstPath ./target/debug/sst.exe
 
       - name: Exercise native NOTSH contexts (Windows APIs)
         shell: pwsh
