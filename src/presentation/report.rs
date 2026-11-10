@@ -28,19 +28,20 @@ fn suitable(command: &str, stdout: &str) -> bool {
     )
 }
 
-/// Use actual libcaca canvas cells for a compact frame. A full-width frame is
-/// deliberately avoided: it adds noise to narrow terminals and wrapped text.
+// An SST-only RGB background marker (9,47,64) asks the native pixel
+// compositor to paint an actual rounded panel behind the heading. A canvas
+// is still used for the clipped text, but never to simulate a shape with
+// ASCII dashes. Other terminals simply see a readable colored heading.
 fn canvas_title(command: &str, width: usize) -> Option<String> {
-    if width < 28 { return None; }
-    let name = command.chars().take(width.saturating_sub(8)).collect::<String>();
-    let frame_width = (name.chars().count() + 6).clamp(28, width) as i32;
-    let mut canvas = Canvas::new(frame_width, 3).ok()?;
-    canvas.set_color_ansi(Color::LightCyan, Color::Default).ok()?;
-    canvas.draw_thin_box(0, 0, frame_width - 1, 2);
+    if width < 20 { return None; }
+    let name = command.chars().take(width.saturating_sub(6)).collect::<String>();
+    let length = (name.chars().count() + 4) as i32;
+    let mut canvas = Canvas::new(length, 1).ok()?;
     canvas.set_color_ansi(Color::White, Color::Default).ok()?;
-    canvas.put_str(2, 1, &name);
-    let ansi = canvas.export_to_memory("ansi").ok()?;
-    String::from_utf8(ansi).ok()
+    canvas.put_str(2, 0, &name);
+    let raw = String::from_utf8(canvas.export_to_memory("utf8").ok()?).ok()?;
+    let label = raw.trim_end_matches(['\r', '\n']);
+    Some(format!("\x1b[48;2;9;47;64m\x1b[1;38;2;190;230;247m{label}\x1b[0m"))
 }
 
 fn status_color(value: &str) -> Option<&'static str> {
@@ -228,7 +229,7 @@ mod tests {
     fn scripts_and_machine_output_remain_unmodified() {
         let text = "STATE   VALUE\nUP      1\n";
         for command in ["notsh interfaces | cat", "notsh interfaces > out.txt",
-            "notsh interfaces --json", "echo foo", "notsh interfaces; echo ok",
+            "notsh interfaces --json", "notsh interfaces --csv", "echo foo", "notsh interfaces; echo ok",
             "notsh interfaces --plain"] {
             assert_eq!(decorate(command, text), text, "{command}");
         }
@@ -254,6 +255,13 @@ mod tests {
         assert!(lines.len() > 2);
         assert!(lines.iter().all(|line| display_width(line) <= 49), "{lines:?}");
         assert!(lines.concat().contains("informes") && lines.concat().contains("pantalla"));
+    }
+    #[test]
+    fn native_title_is_not_a_dash_drawing() {
+        let title = canvas_title("notsh lan show interfaces", 80).unwrap();
+        assert!(title.contains("notsh lan show interfaces"));
+        assert!(title.contains("\x1b[48;2;9;47;64m"));
+        assert!(!title.contains("---"));
     }
     #[test]
     fn narrow_viewport_does_not_change_machine_reports() {
