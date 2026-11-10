@@ -297,8 +297,6 @@ slint::slint! {
         in property <bool> transfer-visible: false;
         in property <bool> transfer-known-total: false;
         in property <float> transfer-ratio: 0.0;
-        in property <string> transfer-title: "";
-        in property <string> transfer-phase: "";
         in property <string> transfer-percent: "";
         in property <string> transfer-amount: "";
         in property <string> transfer-speed: "";
