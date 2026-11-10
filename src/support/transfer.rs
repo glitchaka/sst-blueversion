@@ -19,7 +19,6 @@ use crate::adapters::terminal::io;
 
 #[derive(Clone, Debug)]
 pub struct TransferSnapshot {
-    pub label: String,
     pub received: u64,
     pub expected: Option<u64>,
     pub bytes_per_second: f64,
@@ -29,9 +28,8 @@ pub struct TransferSnapshot {
 }
 
 impl TransferSnapshot {
-    fn new(label: &str, received: u64, expected: Option<u64>, rate: f64) -> Self {
+    fn new(_label: &str, received: u64, expected: Option<u64>, rate: f64) -> Self {
         Self {
-            label: label.to_owned(),
             received,
             expected: expected.filter(|value| *value > 0),
             bytes_per_second: rate,
