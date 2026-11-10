@@ -83,6 +83,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test-nwash-process-substitution.ps1 -SstPath ./target/debug/sst.exe
 
+      - name: Exercise native NOTSH contexts (Windows APIs)
+        shell: pwsh
+        run: ./scripts/test-notsh-native.ps1 -SstPath ./target/debug/sst.exe
+
       - name: Exercise native printer and top-memory process reports
         shell: pwsh
         run: |
