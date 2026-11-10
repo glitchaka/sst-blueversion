@@ -20,6 +20,7 @@ use crate::{
         },
     },
     support::{csv, options},
+    presentation::tui_style::{self, LiveScreen},
 };
 
 pub struct NetworkTrafficService {
@@ -353,19 +354,63 @@ impl NetworkTrafficService {
                 .map(|error| format!("ETW no disponible: {error}"))
                 .unwrap_or_else(|| "ETW".to_owned());
 
-            let mut screen = String::from("SST net traffic --watch   [q] salir\n\n");
+            let (terminal_width, terminal_height) = terminal
+                .size()
+                .map(|(cols, rows)| (cols as usize, rows as usize))
+                .unwrap_or((120, 32));
+            let mut screen = LiveScreen::new();
+            let status = if telemetry_error.is_some() {
+                format!(
+                    "{}ETW no disponible{}   {}",
+                    tui_style::WARN, tui_style::RESET,
+                    tui_style::shorten(&telemetry_note, terminal_width.saturating_sub(25)),
+                )
+            } else {
+                format!("{}CAPTURA EN DIRECTO{}  ·  ETW", tui_style::GOOD, tui_style::RESET)
+            };
+            screen.section("TRÁFICO DE RED  /  EN VIVO", &status);
 
             match self.output(&filtered_args, rates.as_ref(), Some(&telemetry_note)) {
-                Ok(output) => screen.push_str(&output.stdout),
+                Ok(output) => {
+                    let rows = output.stdout.lines().collect::<Vec<_>>();
+                    let max_rows = terminal_height.saturating_sub(9).max(2);
+                    let mut body = String::new();
+                    for (index, row) in rows.iter().take(max_rows).enumerate() {
+                        let tone = if index == 0 {
+                            tui_style::LABEL
+                        } else if row.starts_with("telemetry:") {
+                            tui_style::WARN
+                        } else {
+                            tui_style::CONTENT
+                        };
+                        body.push_str(tone);
+                        body.push_str(&tui_style::shorten(
+                            row, terminal_width.saturating_sub(4).max(40),
+                        ));
+                        body.push_str(tui_style::RESET);
+                        body.push('\n');
+                    }
+                    if rows.len() > max_rows {
+                        body.push_str(&format!(
+                            "{}+ {} filas adicionales. Usa --top para limitar los resultados.{}",
+                            tui_style::LABEL, rows.len() - max_rows, tui_style::RESET,
+                        ));
+                    }
+                    screen.section("PROCESOS  /  CONEXIONES", &body);
+                }
                 Err(error) => {
-                    screen.push_str("error: ");
-                    screen.push_str(&error.to_string());
-                    screen.push('\n');
+                    screen.section(
+                        "ERROR DE TELEMETRÍA",
+                        &format!("{}{}{}", tui_style::BAD, error, tui_style::RESET),
+                    );
                 }
             }
+            screen.footer("Q o Esc salir");
+            let (rendered, panels) = screen.finish();
 
+            terminal.set_panels(panels)?;
             terminal.clear()?;
-            terminal.write(&screen)?;
+            terminal.write(&rendered)?;
             terminal.flush()?;
         }
 
