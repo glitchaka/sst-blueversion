@@ -153,7 +153,7 @@ impl EmbeddedSession {
                             if !ps0.is_empty() { io::write(ps0.as_bytes())?; }
                             match engine.execute(&command) {
                                 Ok(result) => {
-                                    io::write(result.stdout.as_bytes())?;
+                                    io::write(crate::presentation::report::decorate(&command, &result.stdout).as_bytes())?;
                                     io::write(result.stderr.as_bytes())?;
                                     if result.status == 0 {
                                         let normalized = command.split_whitespace().collect::<Vec<_>>().join(" ");

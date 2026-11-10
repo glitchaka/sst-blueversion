@@ -4646,8 +4646,9 @@ dependencies = [
 
 [[package]]
 name = "sst"
-version = "0.1.9-blue.28"
+version = "0.1.9-blue.29"
 dependencies = [
+ "libcaca",
  "anyhow",
  "arboard",
  "argon2",
