@@ -37,8 +37,11 @@ foreach ($expected in $check) {
     }
 }
 $channel = 'updates/blue/sst-update.json'
-$currentText = & gh api "repos/$repo/contents/$channel?ref=main"
-if ($LASTEXITCODE -ne 0) { throw 'No se pudo leer la revisión del canal fuente.' }
+# The contents API defaults to the repository's main branch. Avoid interpolating
+# a PowerShell variable immediately before "?ref": it can produce a malformed URI.
+$endpoint = "repos/$repo/contents/$channel"
+$currentText = & gh api $endpoint
+if ($LASTEXITCODE -ne 0) { throw "No se pudo leer la revisión del canal fuente en $endpoint." }
 $current = $currentText | ConvertFrom-Json
 if (-not $current.sha) { throw 'El manifiesto actual no dispone de SHA para actualización segura.' }
 $previousBytes = [Convert]::FromBase64String(($current.content -replace '\s', ''))
@@ -58,6 +61,6 @@ $payload = [ordered]@{
 } | ConvertTo-Json -Depth 5
 $request = Join-Path $env:RUNNER_TEMP 'sst-source-channel.json'
 [IO.File]::WriteAllText($request, $payload, [Text.UTF8Encoding]::new($false))
-& gh api --method PUT "repos/$repo/contents/$channel" --input $request | Out-Null
+& gh api --method PUT $endpoint --input $request | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar el canal de actualización fuente.' }
 Write-Host "Canal oficial SST publicado: $Version"
