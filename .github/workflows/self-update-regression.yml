@@ -23,6 +23,7 @@ on:
       - 'scripts/test-independent-updater.ps1'
       - 'scripts/test-self-update.ps1'
       - 'scripts/test-self-update-failures.ps1'
+      - 'scripts/test-notsh-native.ps1'
       - '.github/workflows/self-update-regression.yml'
 
 permissions:
