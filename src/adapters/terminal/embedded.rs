@@ -3,6 +3,7 @@ use std::{collections::HashMap, fs, path::PathBuf, sync::{Arc, Mutex, atomic::{A
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use super::io::{self, WindowIo};
+use crate::core::ports::TerminalPanel;
 
 enum WorkerRequest {
     Execute(String),
@@ -26,7 +27,7 @@ enum WorkerRequest {
 pub struct EmbeddedSession {
     commands: mpsc::Sender<WorkerRequest>, keys: mpsc::Sender<Event>, display: mpsc::Sender<Vec<u8>>,
     pub output: mpsc::Receiver<Vec<u8>>,
-    size: Arc<Mutex<(u16,u16)>>, raw: Arc<AtomicBool>, busy: Arc<AtomicBool>,
+    size: Arc<Mutex<(u16,u16)>>, panels: Arc<Mutex<Vec<TerminalPanel>>>, raw: Arc<AtomicBool>, busy: Arc<AtomicBool>,
     interrupt: Arc<AtomicBool>, force_abort: Arc<AtomicBool>, exited: Arc<AtomicBool>,
     config_reload_requested: Arc<AtomicBool>,
     line: Vec<char>, cursor: usize, selection_anchor: Option<usize>, history: Vec<String>, history_index: usize,
@@ -66,6 +67,7 @@ impl EmbeddedSession {
         let (keys, key_events) = mpsc::channel();
         let (display, output) = mpsc::channel();
         let size = Arc::new(Mutex::new((cols, rows)));
+        let panels = Arc::new(Mutex::new(Vec::new()));
         let raw = Arc::new(AtomicBool::new(false));
         let busy = Arc::new(AtomicBool::new(true));
         let interrupt = Arc::new(AtomicBool::new(false));
@@ -80,6 +82,7 @@ impl EmbeddedSession {
             display.clone(),
             key_events,
             size.clone(),
+            panels.clone(),
             raw.clone(),
             interrupt.clone(),
             force_abort.clone(),
@@ -224,7 +227,7 @@ impl EmbeddedSession {
         let history = fs::read_to_string(crate::adapters::persistence::AppPaths::detect().history_file())
             .unwrap_or_default().lines().filter(|line| !line.starts_with('#')).map(str::to_owned).collect::<Vec<_>>();
         let history_index = history.len();
-        Ok(Self { commands, keys, display, output, size, raw, busy, interrupt, force_abort, exited,
+        Ok(Self { commands, keys, display, output, size, panels, raw, busy, interrupt, force_abort, exited,
             line: Vec::new(), cursor: 0, selection_anchor: None, history, history_index, pending: String::new(), bindings,
             secondary_prompt, timeout, last_activity, config_reload_requested })
     }
@@ -239,6 +242,10 @@ impl EmbeddedSession {
     pub fn raw_mode(&self) -> bool { self.raw.load(Ordering::SeqCst) }
 
     /// Present an asynchronous notice without losing the user's current
+    pub fn panels_snapshot(&self) -> Vec<TerminalPanel> {
+        self.panels.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
     /// editable command line. Defer while another command or TUI is running.
     pub fn show_notification(&mut self, message: &str) -> bool {
         if self.busy.load(Ordering::SeqCst) || self.raw_mode() || self.exited() {
