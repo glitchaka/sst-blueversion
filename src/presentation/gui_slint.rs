@@ -37,6 +37,9 @@ use windows_sys::Win32::{
         Input::KeyboardAndMouse::{SetActiveWindow, SetFocus},
         WindowsAndMessaging::{
             BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsZoomed,
+            GetWindowLongW, SetWindowLongW, SetWindowPos, GWL_STYLE,
+            WS_CAPTION, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE,
+            SWP_NOZORDER, SWP_NOACTIVATE,
             SetForegroundWindow, SetWindowTextW, ShowWindow, SW_RESTORE,
         },
     },
@@ -273,6 +276,9 @@ slint::slint! {
         in property <string> ram-text: "RAM 0.0 GiB";
         in property <string> clock-text: "00:00";
         in property <string> date-text: "00 ---";
+        // Logical coordinates align the live transfer indicator to the command output.
+        in property <float> transfer-x: 22.0;
+        in property <float> transfer-y: 65.0;
         in property <bool> transfer-visible: false;
         in property <bool> transfer-known-total: false;
         in property <float> transfer-ratio: 0.0;
@@ -397,9 +403,9 @@ slint::slint! {
         // Native Slint overlay: independent from terminal glyphs and fetch logo.
         DownloadCard {
             visible: root.transfer-visible;
-            x: (root.width - self.width) / 2;
-            y: root.height - self.height - 22px;
-            width: min(570px, root.width - 36px);
+            x: root.transfer-x * 1px;
+            y: root.transfer-y * 1px;
+            width: min(570px, root.width - (root.transfer-x * 2.0 + 22.0) * 1px);
             height: 125px;
             package-title: root.transfer-title;
             transfer-phase: root.transfer-phase;
@@ -540,7 +546,9 @@ slint::slint! {
                         y: 10px;
                         width: 16px;
                         height: 12px;
-                        commands: "M 1 1 L 8 9 L 15 1";
+                        commands: root.maximized
+                            ? "M 1 6 L 15 6"
+                            : "M 1 1 L 8 9 L 15 1";
                         stroke: #74c8f5;
                         stroke-width: 2.4px;
                         stroke-line-cap: round;
@@ -571,7 +579,9 @@ slint::slint! {
                         y: 11px;
                         width: 16px;
                         height: 12px;
-                        commands: "M 1 10 L 8 2 L 15 10";
+                        commands: root.maximized
+                            ? "M 1 1 L 8 9 L 15 1"
+                            : "M 1 10 L 8 2 L 15 10";
                         stroke: #74c8f5;
                         stroke-width: 2.4px;
                         stroke-line-cap: round;
@@ -1663,6 +1673,17 @@ const ACCENT_ENABLE_ACRYLIC_BLUR_BEHIND: i32 = 4;
 
 unsafe fn apply_window_effects(hwnd: HWND, appearance: &TerminalAppearance) {
     unsafe {
+        // Slint's no-frame and winit's undecorated flags may not remove
+        // the residual Win32 caption buttons after a native state transition.
+        // Keep the OS resize border; remove only the system-drawn caption so
+        // the SST island is the single visible set of window controls.
+        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+        if style & WS_CAPTION != 0 {
+            SetWindowLongW(hwnd, GWL_STYLE, (style & !WS_CAPTION) as i32);
+            SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0, 0, 0,
+                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE
+                | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
         let dark: i32 = 1;
         let _ = DwmSetWindowAttribute(
             hwnd,
@@ -2125,6 +2146,16 @@ pub fn run() -> Result<()> {
                 // No ANSI progress bar, global reading layer, or window texture
                 // modification is used while downloading through instp.
                 if let Some(progress) = crate::support::transfer::snapshot() {
+                    // Place the native progress panel at the terminal output
+                    // position, not as a detached bottom-of-window toast.
+                    // Coordinates use logical Slint pixels, not framebuffer units.
+                    let (left, top, _, line_height) = model.geometry();
+                    let (rows, _) = model.parser.screen().size();
+                    let (cursor_row, _) = model.parser.screen().cursor_position();
+                    let y_row = cursor_row.min(rows.saturating_sub(7));
+                    ui.set_transfer_x((left / scale.max(0.5)).max(12.0));
+                    ui.set_transfer_y(((top + (y_row as f32 + 0.5) * line_height)
+                        / scale.max(0.5)).max(44.0));
                     ui.set_transfer_visible(true);
                     ui.set_transfer_title(progress.label.clone().into());
                     ui.set_transfer_ratio(progress.fraction());
