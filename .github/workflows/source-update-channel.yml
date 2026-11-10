@@ -1,0 +1,49 @@
+name: Verify SST source update channel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/source-update-channel.yml'
+      - 'scripts/publish-source-update-channel.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify-source-channel:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore release manifest with GitHub token
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $channel = Get-Content -Raw -LiteralPath 'updates/blue/sst-update.json' | ConvertFrom-Json
+          if ($channel.version -notmatch '^0[.]1[.]9-blue[.][0-9]+$') { throw 'Canal no válido' }
+          New-Item -ItemType Directory -Force -Path 'dist' | Out-Null
+          gh release download "v$($channel.version)" --pattern 'sst-update.json' --dir 'dist' --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'No se obtuvo el manifiesto de la release pública' }
+          if (-not (Test-Path -LiteralPath 'dist/sst-update.json' -PathType Leaf)) { throw 'Falta el manifiesto original' }
+      - name: Verify published asset hashes and source manifest API
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content -Raw -LiteralPath 'dist/sst-update.json' | ConvertFrom-Json).version
+          ./scripts/publish-source-update-channel.ps1 -Version $version
+      - name: Confirm published channel version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $expected = (Get-Content -Raw -LiteralPath 'dist/sst-update.json' | ConvertFrom-Json).version
+          $actual = gh api 'repos/glitchaka/sst-blueversion/contents/updates/blue/sst-update.json' | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'No se puede consultar el canal' }
+          $remote = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($actual.content -replace '\s',''))) | ConvertFrom-Json
+          if ($remote.version -ne $expected) { throw "El canal no se actualizó a $expected" }
+          Write-Host "Canal fuente verificado y activado: $expected"
