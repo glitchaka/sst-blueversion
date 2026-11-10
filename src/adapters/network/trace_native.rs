@@ -31,7 +31,7 @@ mod native {
 #[cfg(windows)]
 mod native {
     use super::*;
-    use std::{ffi::c_void, mem::size_of};
+    use std::mem::size_of;
 
     const ERROR_MORE_DATA: u32 = 234;
     const MAX_SESSIONS: usize = 256;
