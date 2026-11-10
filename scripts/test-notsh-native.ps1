@@ -12,8 +12,18 @@ $stderr = Join-Path $dir 'notsh.err'
 $commands = @'
 notsh lan show interfaces
 echo SST_NOTSH_LAN_RETURNED
+notsh show lan interfaces
+echo SST_NOTSH_LAN_ALTERNATE_RETURNED
 notsh wlan show interfaces
 echo SST_NOTSH_WLAN_RETURNED
+notsh show wlan interfaces
+echo SST_NOTSH_WLAN_ALTERNATE_RETURNED
+echo SST_CSV_LAN_BEGIN
+notsh show lan interfaces --csv
+echo SST_CSV_LAN_END
+echo SST_CSV_WLAN_BEGIN
+notsh wlan show interfaces --csv
+echo SST_CSV_WLAN_END
 notsh interface ipv4 show interfaces
 echo SST_NOTSH_IPV4_RETURNED
 notsh interface ipv6 show interfaces
@@ -46,6 +56,7 @@ try {
     }
     foreach ($marker in @(
         'SST_NOTSH_LAN_RETURNED', 'SST_NOTSH_WLAN_RETURNED',
+        'SST_NOTSH_LAN_ALTERNATE_RETURNED', 'SST_NOTSH_WLAN_ALTERNATE_RETURNED',
         'SST_NOTSH_IPV4_RETURNED', 'SST_NOTSH_IPV6_RETURNED',
         'SST_NOTSH_WINHTTP_RETURNED', 'SST_NOTSH_WINSOCK_RETURNED',
         'SST_NOTSH_FIREWALL_RETURNED',
@@ -55,6 +66,21 @@ try {
         if (-not $result.Contains($marker)) {
             throw "No regresó de $marker. STDOUT: $result; STDERR: $errors"
         }
+    }
+    if ($result -match 'Uso: notsh show interfaces') {
+        throw "NOTSH rechazó la sintaxis contextual LAN/WLAN: $result"
+    }
+    $lanMatch = [regex]::Match(
+        $result, '(?s)SST_CSV_LAN_BEGIN\s*(.*?)\s*SST_CSV_LAN_END')
+    if (-not $lanMatch.Success -or $lanMatch.Groups[1].Value -notmatch '^Nombre,Tipo,Estado,Administrativo,Enlace,Operativo,Velocidad_bps,MAC,IP,Adaptador,Diagnostico') {
+        throw "NOTSH LAN --csv no produjo un encabezado CSV válido."
+    }
+    $lanRows = @($lanMatch.Groups[1].Value | ConvertFrom-Csv)
+    if ($lanRows.Count -eq 0) { throw "No se pudo analizar el encabezado CSV LAN." }
+    $wlanMatch = [regex]::Match(
+        $result, '(?s)SST_CSV_WLAN_BEGIN\s*(.*?)\s*SST_CSV_WLAN_END')
+    if (-not $wlanMatch.Success -or $wlanMatch.Groups[1].Value -notmatch '^Adaptador,Estado,Perfil,SSID,BSSID,Senal_pct,RX_Kbps,TX_Kbps,Autenticacion,8021X') {
+        throw "NOTSH WLAN --csv no produjo CSV nativo."
     }
     if ($result -notmatch 'LAN|Dot3|Ethernet') { throw "Diagnóstico LAN sin contexto: $result" }
     if ($result -notmatch 'WLAN|Wi-Fi|WiFi') { throw "Diagnóstico WLAN sin contexto: $result" }
