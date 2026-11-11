@@ -129,10 +129,10 @@ mod viewport_regression_tests {
     }
 }
 
-const FG: Rgb = Rgb(0xDF, 0xE8, 0xEF);
-const BG: Rgb = Rgb(0x11, 0x16, 0x29);
-const CURSOR: Rgb = Rgb(0x69, 0xC7, 0xFF);
-const SELECTION: Rgb = Rgb(0x37, 0x4B, 0x70);
+const FG: Rgb = Rgb(0xEB, 0xDB, 0xB2);
+const BG: Rgb = Rgb(0x28, 0x28, 0x28);
+const CURSOR: Rgb = Rgb(0xFE, 0x80, 0x19);
+const SELECTION: Rgb = Rgb(0x50, 0x49, 0x45);
 
 const NERD_FONT_BYTES: &[u8] = include_bytes!(concat!(
     env!("OUT_DIR"),
@@ -148,7 +148,7 @@ slint::slint! {
         // Restrained semantic outline: no cyan wash, no opaque overlay.
         background: transparent;
         border-width: 1px;
-        border-color: #626a78;
+        border-color: #665c54;
         border-radius: 6px;
 
         Rectangle {
@@ -157,14 +157,14 @@ slint::slint! {
             width: 3px;
             height: max(4px, parent.height - 6px);
             border-radius: 2px;
-            background: #c5c9d1;
+            background: #bdae93;
         }
     }
 
     component TerminalSectionFrame inherits Rectangle {
         background: transparent;
         border-width: 1px;
-        border-color: #5e6877;
+        border-color: #665c54;
         border-radius: 9px;
 
         Rectangle {
@@ -173,7 +173,7 @@ slint::slint! {
             width: 3px;
             height: min(24px, parent.height - 14px);
             border-radius: 2px;
-            background: #bfc6d0;
+            background: #bdae93;
         }
     }
 
@@ -199,7 +199,7 @@ slint::slint! {
             y: 6px;
             width: parent.width - 144px;
             height: 10px;
-            background: #254054;
+            background: #3c3836;
             border-radius: 5px;
             clip: true;
 
@@ -208,7 +208,7 @@ slint::slint! {
                 y: 0px;
                 width: root.transfer-known-total ? parent.width * root.transfer-ratio : 0px;
                 height: parent.height;
-                background: #24bde5;
+                background: #d79921;
                 border-radius: 5px;
 
                 Rectangle {
@@ -216,7 +216,7 @@ slint::slint! {
                     y: 1px;
                     width: parent.width - 2px;
                     height: 3px;
-                    background: #85e4fa;
+                    background: #fabd2f;
                     border-radius: 2px;
                 }
             }
@@ -228,7 +228,7 @@ slint::slint! {
             width: 126px;
             height: 22px;
             text: root.transfer-percent;
-            color: #79e4ff;
+            color: #fabd2f;
             font-family: "Segoe UI Variable";
             font-size: 16px;
             font-weight: 700;
@@ -241,7 +241,7 @@ slint::slint! {
             width: parent.width - 9px;
             height: 19px;
             text: root.transfer-amount + "   ·   " + root.transfer-speed + "   ·   ETA " + root.transfer-eta;
-            color: #b7d2e5;
+            color: #d5c4a1;
             font-family: "Segoe UI Variable";
             font-size: 12px;
             overflow: elide;
@@ -526,9 +526,9 @@ slint::slint! {
             x: (root.width - self.width) / 2;
             y: 6px;
             border-radius: 13px;
-            background: rgba(10, 13, 20, 0.93);
+            background: rgba(40, 40, 40, 0.93);
             border-width: 1px;
-            border-color: #2b3547;
+            border-color: #504945;
 
             WindowMoveArea {
                 x: 0;
@@ -542,7 +542,7 @@ slint::slint! {
                     width: 70px;
                     height: parent.height;
                     text: "SST";
-                    color: #dfe8ef;
+                    color: #ebdbb2;
                     font-family: "Segoe UI Variable";
                     font-size: 15px;
                     font-weight: 700;
@@ -559,10 +559,10 @@ slint::slint! {
                     height: 24px;
                     border-radius: 7px;
                     background: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
-                        ? #202b39 : #392517;
+                        ? #3c3836 : #504030;
                     border-width: 1px;
                     border-color: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
-                        ? #607085 : #e5a55b;
+                        ? #665c54 : #d79921;
 
                     Text {
                         x: 2px;
@@ -571,7 +571,7 @@ slint::slint! {
                         height: parent.height;
                         text: root.privilege-label;
                         color: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
-                            ? #dfe8ef : #ffcf8a;
+                            ? #ebdbb2 : #fabd2f;
                         font-family: "Segoe UI Variable";
                         font-size: 11px;
                         font-weight: 700;
@@ -587,7 +587,7 @@ slint::slint! {
                     width: 92px;
                     height: parent.height;
                     text: root.cpu-text;
-                    color: #dfe8ef;
+                    color: #ebdbb2;
                     font-family: "Segoe UI Variable";
                     font-size: 13px;
                     vertical-alignment: center;
@@ -600,7 +600,7 @@ slint::slint! {
                     width: 128px;
                     height: parent.height;
                     text: root.ram-text;
-                    color: #dfe8ef;
+                    color: #ebdbb2;
                     font-family: "Segoe UI Variable";
                     font-size: 13px;
                     vertical-alignment: center;
@@ -613,7 +613,7 @@ slint::slint! {
                     width: 62px;
                     height: parent.height;
                     text: root.clock-text;
-                    color: #dfe8ef;
+                    color: #ebdbb2;
                     font-family: "Segoe UI Variable";
                     font-size: 13px;
                     vertical-alignment: center;
@@ -627,7 +627,7 @@ slint::slint! {
                     width: 86px;
                     height: parent.height;
                     text: root.date-text;
-                    color: #aeb9c8;
+                    color: #bdae93;
                     font-family: "Segoe UI Variable";
                     font-size: 12px;
                     vertical-alignment: center;
@@ -641,8 +641,8 @@ slint::slint! {
                     height: island.height - 2px;
                     border-radius: 10px;
                     background: minimize-touch.pressed
-                        ? rgb(36, 49, 67)
-                        : minimize-touch.has-hover ? rgb(23, 35, 52) : transparent;
+                        ? rgb(80, 73, 69)
+                        : minimize-touch.has-hover ? rgb(60, 56, 54) : transparent;
 
                     Path {
                         x: 11px;
@@ -652,7 +652,7 @@ slint::slint! {
                         commands: root.maximized
                             ? "M 1 6 L 15 6"
                             : "M 1 1 L 8 9 L 15 1";
-                        stroke: #74c8f5;
+                        stroke: #d5c4a1;
                         stroke-width: 2.4px;
                         stroke-line-cap: round;
                         stroke-line-join: round;
@@ -674,8 +674,8 @@ slint::slint! {
                     height: island.height - 2px;
                     border-radius: 10px;
                     background: maximize-touch.pressed
-                        ? rgb(36, 49, 67)
-                        : maximize-touch.has-hover ? rgb(23, 35, 52) : transparent;
+                        ? rgb(80, 73, 69)
+                        : maximize-touch.has-hover ? rgb(60, 56, 54) : transparent;
 
                     Path {
                         x: 11px;
@@ -685,7 +685,7 @@ slint::slint! {
                         commands: root.maximized
                             ? "M 1 1 L 8 9 L 15 1"
                             : "M 1 10 L 8 2 L 15 10";
-                        stroke: #74c8f5;
+                        stroke: #d5c4a1;
                         stroke-width: 2.4px;
                         stroke-line-cap: round;
                         stroke-line-join: round;
@@ -707,8 +707,8 @@ slint::slint! {
                     height: island.height - 2px;
                     border-radius: 10px;
                     background: close-touch.pressed
-                        ? rgb(62, 23, 36)
-                        : close-touch.has-hover ? rgb(48, 18, 28) : transparent;
+                        ? rgb(100, 45, 38)
+                        : close-touch.has-hover ? rgb(80, 40, 35) : transparent;
 
                     Path {
                         x: 10px;
@@ -716,7 +716,7 @@ slint::slint! {
                         width: 18px;
                         height: 18px;
                         commands: "M 9 1 L 9 8 M 3.3 3.7 A 7 7 0 1 0 14.7 3.7";
-                        stroke: close-touch.has-hover ? #ff5d78 : #ff9fbd;
+                        stroke: close-touch.has-hover ? #fb4934 : #fe8019;
                         stroke-width: 2px;
                         stroke-line-cap: round;
                     }
@@ -1388,22 +1388,22 @@ impl TerminalModel {
 
 fn terminal_color(value: vt100::Color, default: Rgb) -> Rgb {
     const COLORS: [Rgb; 16] = [
-        Rgb(0x11, 0x16, 0x29),
-        Rgb(0xF2, 0x6B, 0x6B),
-        Rgb(0xA3, 0xC7, 0x86),
-        Rgb(0xE8, 0xCC, 0x83),
-        Rgb(0x82, 0xAD, 0xE0),
-        Rgb(0xC9, 0x9F, 0xCE),
-        Rgb(0xC0, 0xCD, 0xD7),
-        Rgb(0xDF, 0xE8, 0xEF),
-        Rgb(0x67, 0x6E, 0x75),
-        Rgb(0xFF, 0x87, 0x87),
-        Rgb(0xC4, 0xEB, 0xA8),
-        Rgb(0xFF, 0xE8, 0xA6),
-        Rgb(0xA8, 0xD1, 0xFF),
-        Rgb(0xEB, 0xC1, 0xF0),
-        Rgb(0xE2, 0xEF, 0xF9),
-        Rgb(0xFF, 0xFF, 0xFF),
+        Rgb(0x28, 0x28, 0x28),
+        Rgb(0xCC, 0x24, 0x1D),
+        Rgb(0x98, 0x97, 0x1A),
+        Rgb(0xD7, 0x99, 0x21),
+        Rgb(0x45, 0x85, 0x88),
+        Rgb(0xB1, 0x62, 0x86),
+        Rgb(0x68, 0x9D, 0x6A),
+        Rgb(0xA8, 0x99, 0x84),
+        Rgb(0x92, 0x83, 0x74),
+        Rgb(0xFB, 0x49, 0x34),
+        Rgb(0xB8, 0xBB, 0x26),
+        Rgb(0xFA, 0xBD, 0x2F),
+        Rgb(0x83, 0xA5, 0x98),
+        Rgb(0xD3, 0x86, 0x9B),
+        Rgb(0x8E, 0xC0, 0x7C),
+        Rgb(0xEB, 0xDB, 0xB2),
     ];
 
     match value {
