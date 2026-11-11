@@ -107,6 +107,18 @@ mod viewport_regression_tests {
     use super::{RestoreViewportGuard, valid_terminal_viewport};
 
     #[test]
+    fn legacy_cyan_and_blue_accents_are_neutralized_globally() {
+        assert_eq!(super::gruvbox_terminal_color(super::Rgb(69, 209, 241)),
+            super::Rgb(0xEB, 0xDB, 0xB2));
+        assert_eq!(super::gruvbox_terminal_color(super::Rgb(80, 150, 255)),
+            super::Rgb(0xD5, 0xC4, 0xA1));
+        assert_eq!(super::gruvbox_terminal_color(super::Rgb(184, 187, 38)),
+            super::Rgb(184, 187, 38));
+        assert_eq!(super::gruvbox_terminal_color(super::Rgb(251, 73, 52)),
+            super::Rgb(251, 73, 52));
+    }
+
+    #[test]
     fn reject_iconic_and_transient_window_sizes() {
         assert!(!valid_terminal_viewport(0, 0, 1.0, false));
         assert!(!valid_terminal_viewport(150, 30, 1.0, false));
@@ -1386,6 +1398,23 @@ impl TerminalModel {
     }
 }
 
+// Central SST Gruvbox color policy. Legacy commands may still emit cyan or
+// bright blue ANSI values; neutralize those at the terminal rendering boundary.
+// Semantic red/amber/green and the muted blue used for explicitly optimal
+// states remain distinguishable.
+fn gruvbox_terminal_color(color: Rgb) -> Rgb {
+    let Rgb(r, g, b) = color;
+    if b > 135 && b > r.saturating_add(28) && b > g.saturating_add(12) {
+        // Loud blue structural accents become readable Gruvbox warm text.
+        return Rgb(0xD5, 0xC4, 0xA1);
+    }
+    if b > 145 && g > r.saturating_add(24) && b > r.saturating_add(35) {
+        // Bright cyan, including embedded legacy truecolor escape sequences.
+        return Rgb(0xEB, 0xDB, 0xB2);
+    }
+    color
+}
+
 fn terminal_color(value: vt100::Color, default: Rgb) -> Rgb {
     const COLORS: [Rgb; 16] = [
         Rgb(0x28, 0x28, 0x28),
@@ -1408,8 +1437,8 @@ fn terminal_color(value: vt100::Color, default: Rgb) -> Rgb {
 
     match value {
         vt100::Color::Default => default,
-        vt100::Color::Rgb(r, g, b) => Rgb(r, g, b),
-        vt100::Color::Idx(i) if i < 16 => COLORS[i as usize],
+        vt100::Color::Rgb(r, g, b) => gruvbox_terminal_color(Rgb(r, g, b)),
+        vt100::Color::Idx(i) if i < 16 => gruvbox_terminal_color(COLORS[i as usize]),
         vt100::Color::Idx(i) if i >= 232 => {
             let v = 8 + (i - 232) * 10;
             Rgb(v, v, v)
@@ -1417,7 +1446,7 @@ fn terminal_color(value: vt100::Color, default: Rgb) -> Rgb {
         vt100::Color::Idx(i) => {
             let i = i - 16;
             let component = |n| if n == 0 { 0 } else { 55 + n * 40 };
-            Rgb(component(i / 36), component(i / 6 % 6), component(i % 6))
+            gruvbox_terminal_color(Rgb(component(i / 36), component(i / 6 % 6), component(i % 6)))
         }
     }
 }
