@@ -5,3 +5,5 @@ Rebuild native Windows UI after full-size fetch restoration and Slint native dow
 2026-11-10 monitor vector headings and adaptive net monitor / traffic live views QA.
 
 2026-11-10 native report semantic headings in Slint and inline reserved-row progress (no popup), QA build.
+
+2026-11-11: verify transactional SST updater without inheriting blocked DACL/ADS and native SFX repair without SST console.
