@@ -7,8 +7,8 @@
 use crate::core::ports::TerminalPanel;
 
 pub const RESET: &str = "\x1b[0m";
-pub const ACCENT: &str = "\x1b[1;38;2;108;213;250m";
-pub const LABEL: &str = "\x1b[38;2;153;181;206m";
+pub const ACCENT: &str = "\x1b[1;38;2;218;223;231m";
+pub const LABEL: &str = "\x1b[38;2;163;171;183m";
 pub const GOOD: &str = "\x1b[1;38;2;133;226;173m";
 pub const WARN: &str = "\x1b[1;38;2;247;203;127m";
 pub const BAD: &str = "\x1b[1;38;2;248;142;148m";
