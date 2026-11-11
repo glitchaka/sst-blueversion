@@ -4,42 +4,57 @@
 use libcaca::{Canvas, Color};
 
 const RESET: &str = "\x1b[0m";
-// Unique semantic heading tint: the native Slint window locates these rows
-// in the VT100 viewport and draws actual vector outlines around them.
-const HEADING: &str = "\x1b[1;38;2;69;209;241m";
-const COMMAND: &str = "\x1b[38;2;152;222;247m";
-const DETAILS: &str = "\x1b[38;2;179;194;216m";
-const LABEL: &str = "\x1b[38;5;252m";
-const GOOD: &str = "\x1b[1;38;5;114m";
-const CAUTION: &str = "\x1b[1;38;5;221m";
-const BAD: &str = "\x1b[1;38;5;203m";
-const BULLET: &str = "\x1b[38;5;117m";
+// Structural headings are neutral, not cyan. The GUI recognizes this exact
+// color as a semantic marker and draws restrained vector outlines at the
+// corresponding terminal row, without changing the rest of the text.
+const HEADING: &str = "\x1b[1;38;2;215;219;227m";
+const COMMAND: &str = "\x1b[1;38;2;229;233;240m";
+const DETAILS: &str = "\x1b[38;2;166;176;191m";
+const LABEL: &str = "\x1b[38;2;191;202;218m";
+// Color encodes proven state ONLY: red critical, amber warning,
+// green functioning, blue genuinely excellent/optimal.
+const GOOD: &str = "\x1b[1;38;2;115;216;152m";
+const CAUTION: &str = "\x1b[1;38;2;239;191;99m";
+const BAD: &str = "\x1b[1;38;2;248;117;121m";
+const PERFECT: &str = "\x1b[1;38;2;104;160;239m";
+const BULLET: &str = "\x1b[38;2;165;175;190m";
 
 fn suitable(command: &str, stdout: &str, registered_native: Option<&[String]>) -> bool {
     if stdout.trim().is_empty()
         || stdout.contains('\x1b')
+        || stdout.contains('\0')
         || command.chars().any(|ch| "|;&><\n\r".contains(ch))
         || command.split_whitespace().any(|part|
             matches!(part, "--json" | "--csv" | "--plain" | "--stdout" | "--xml" | "-j"))
-    {
-        return false;
-    }
+    { return false; }
+
+    // One shared presentation path for all foreground, human-readable output.
+    // Regular unstructured shell text (echo, printf, cat, etc.) stays raw;
+    // every structured native OR external report receives semantic formatting.
     let root = command.split_whitespace().next().unwrap_or("");
-    let known_builtin = registered_native.is_some_and(|names|
+    let native = registered_native.is_some_and(|names|
         names.iter().any(|name| name == root)
             && !crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| *name == root)
     );
-    known_builtin || matches!(
-        root,
-        "notsh" | "net" | "instp" | "sys" | "ps" | "help"
-          | "diag" | "diagnose" | "domain" | "device" | "tools"
-          | "service" | "process" | "firewall" | "eventlog"
-          | "sigsour" | "nwash" | "man" | "sudo" | "security" | "config"
-          | "switch" | "wol" | "guide" | "triage" | "intel"
-          | "acl" | "pnp" | "tasks" | "task" | "session"
-          | "share" | "power" | "path" | "printer" | "registry"
-    )
+    native || stdout.lines().any(|line| {
+        is_section_heading(line)
+            || is_status_field(line)
+            || looks_like_tabular_header(line)
+    })
+}
 
+fn is_status_field(line: &str) -> bool {
+    let Some((key, _)) = line.trim().split_once(": ") else { return false; };
+    matches!(key.to_ascii_lowercase().as_str(),
+        "estado" | "status" | "salud" | "health" | "resultado" | "result")
+}
+
+fn looks_like_tabular_header(line: &str) -> bool {
+    let text = line.trim();
+    text.len() > 7 && text.split_whitespace().count() >= 3
+        && text.chars().any(|c| c.is_ascii_uppercase())
+        && !text.chars().any(|c| c.is_ascii_lowercase())
+        && !text.contains("://")
 }
 
 /// Compose a compact, readable heading with libcaca's text canvas.
@@ -48,53 +63,66 @@ fn canvas_title(command: &str, width: usize) -> Option<String> {
     if width < 20 { return None; }
     let name = command.chars().take(width.saturating_sub(5)).collect::<String>();
     let mut canvas = Canvas::new((name.chars().count() + 3) as i32, 1).ok()?;
-    canvas.set_color_ansi(Color::LightCyan, Color::Default).ok()?;
+    canvas.set_color_ansi(Color::LightGray, Color::Default).ok()?;
     canvas.put_str(1, 0, &name);
     let utf8 = String::from_utf8(canvas.export_to_memory("utf8").ok()?).ok()?;
     Some(format!("{HEADING}{}{RESET}", utf8.trim_end_matches(['\r', '\n'])))
 }
 
 fn status_color(value: &str) -> Option<&'static str> {
-    // Match complete states rather than substring "CONECTADO" in
-    // "DESCONECTADO" or "ACTIVO" in "INACTIVO".
-    let upper = value.trim().to_uppercase();
-    if ["ERROR", "FALLO", "DENEGAD", "SIN ENLACE", "NO DISPONIBLE",
-        "DESCONECTADO", "DETENIDO", "DESHABILITAD", "INACTIVO", "NO OPERATIV"]
-        .iter().any(|term| upper.contains(term))
+    // Never infer a status from incidental words in help descriptions,
+    // hostnames, commands, process names or arbitrary prose.
+    let value = value.trim().trim_end_matches(['.', ';']);
+    if value.len() > 55 || value.split_whitespace().count() > 5 {
+        return None;
+    }
+    let normalized = value.to_uppercase();
+    let status = normalized.as_str();
+    if ["CRÍTICO", "CRITICO", "ERROR", "FALLO", "FAILED",
+        "DENEGADO", "DESCONECTADO", "SIN ENLACE",
+        "NO DISPONIBLE", "DETENIDO", "DESHABILITADO",
+        "INACTIVO", "BLOQUEADO", "DOWN", "OFFLINE"]
+        .iter().any(|term| status == *term || status.starts_with(&format!("{term} ")))
     {
         Some(BAD)
-    } else if ["ADVERTENCIA", "PENDIENTE", "INDETERMINADO", "SIN IP",
-        "NO VERIFICADO", "NO SE PUDO", "NO CONFIRMA", "DESCONOCIDO"]
-        .iter().any(|term| upper.contains(term))
+    } else if ["ADVERTENCIA", "ATENCIÓN", "ATENCION",
+        "PENDIENTE", "DEGRADADO", "INDETERMINADO",
+        "SIN IP", "DESCONOCIDO", "WARNING"]
+        .iter().any(|term| status == *term || status.starts_with(&format!("{term} ")))
     {
         Some(CAUTION)
-    } else if ["CONECTADO", "CORRECTO", "ESTABLECIDO", "OPERATIVA",
-        "ACTIVO", "DISPONIBLE", "EJECUTÁNDOSE"]
-        .iter().any(|term| upper.contains(term))
+    } else if ["PERFECTO", "PERFECTA", "ÓPTIMO", "OPTIMO",
+        "ÓPTIMA", "OPTIMA", "EXCELENTE"]
+        .contains(&status)
+    {
+        Some(PERFECT)
+    } else if ["CONECTADO", "CONECTADA", "CORRECTO",
+        "CORRECTA", "ACTIVO", "ACTIVA", "OPERATIVO",
+        "OPERATIVA", "DISPONIBLE", "OK", "UP"]
+        .contains(&status)
     {
         Some(GOOD)
-    } else {
-        None
-    }
+    } else { None }
 }
 
 /// Recognize actual structural sections in a native SST report. We do not
 /// infer "a section" from every sentence containing a colon.
 fn is_section_heading(line: &str) -> bool {
     let text = line.trim();
-    if text.is_empty() || text.chars().count() > 76 { return false; }
+    if text.is_empty() || text.chars().count() > 72 { return false; }
     if text.ends_with(':') && !text.contains("://") {
+        let name = text.trim_end_matches(':').trim().to_ascii_lowercase();
+        // A status key without a value is NOT a decorative section.
+        if matches!(name.as_str(),
+            "estado" | "status" | "salud" | "resultado" |
+            "ip" | "mac" | "nombre" | "puerto" | "servidor" |
+            "error" | "aviso" | "advertencia" | "latencia")
+        { return false; }
         return text.chars().any(char::is_alphabetic)
             && text.chars().filter(|ch| *ch == ':').count() == 1;
     }
-    if text.starts_with("== ") || text == "Cambios:" { return true; }
-    // Table headings (rather than data): short runs of mostly uppercase labels.
-    let words = text.split_whitespace().collect::<Vec<_>>();
-    words.len() >= 2 && words.len() <= 12
-        && words.iter().all(|w| w.chars().all(|c|
-            !c.is_alphabetic() || c.is_uppercase()))
-        && words.iter().any(|w| w.chars().count() >= 2)
-        && !text.contains(" = ")
+    if text.starts_with("== ") { return true; }
+    looks_like_tabular_header(text)
 }
 
 fn style_command_row(line: &str) -> Option<String> {
@@ -159,7 +187,11 @@ fn style_line(line: &str) -> String {
            && !field.contains("  ") && field.chars().any(char::is_alphabetic)
         {
             let indent = &line[..line.len() - stripped.len()];
-            let value_color = status_color(value).unwrap_or(RESET);
+            let value_color = if is_status_field(stripped) {
+                status_color(value).unwrap_or(RESET)
+            } else {
+                RESET
+            };
             return format!("{indent}{LABEL}{field}:{RESET} {value_color}{value}{RESET}");
         }
     }
@@ -167,15 +199,19 @@ fn style_line(line: &str) -> String {
         let indent = &line[..line.len() - stripped.len()];
         return format!("{indent}{BULLET}•{RESET} {}", stripped.trim_start_matches('•').trim_start());
     }
-    // Status tint only for standalone short state values, never for a full
-    // prose line. This fixes highlighted "sys drivers --devices" in help.
-    if stripped.split_whitespace().count() <= 2
-       && stripped.chars().count() <= 36
-       && let Some(color) = status_color(stripped)
-    {
-        return format!("{color}{line}{RESET}");
-    }
+    // A bare word in arbitrary output is not a verified machine state.
     line.to_owned()
+}
+
+/// Shared presentation for incremental external-process output. Each complete
+/// line is formatted in place; no extra titles or blank lines get inserted.
+/// Data streams are untouched because only direct interactive GUI output uses
+/// this path. Existing ANSI, CR progress bars and NUL bytes are preserved.
+pub fn style_live_line(line: &str) -> String {
+    if line.contains('\x1b') || line.contains('\r') || line.contains('\0') {
+        return line.to_owned();
+    }
+    style_line(line)
 }
 
 fn display_width(s: &str) -> usize {
@@ -344,6 +380,29 @@ mod tests {
             output,
         );
     }
+    #[test]
+    fn neutral_structural_text_never_uses_cyan_without_a_real_state() {
+        let help = decorate_at_width(
+            "sys", "Información:\nsys drivers --devices    dispositivos PnP conectados\n", 95
+        );
+        assert!(help.contains(HEADING));
+        assert!(help.contains(COMMAND));
+        assert!(!help.contains(PERFECT));
+        assert!(!help.contains(GOOD));
+        assert!(!help.contains("\\x1b[38;2;152;222;247m"));
+    }
+
+    #[test]
+    fn semantic_colors_require_verified_status_fields() {
+        assert!(style_line("Estado: CRÍTICO").contains(BAD));
+        assert!(style_line("Estado: ADVERTENCIA").contains(CAUTION));
+        assert!(style_line("Estado: OPERATIVA").contains(GOOD));
+        assert!(style_line("Estado: PERFECTO").contains(PERFECT));
+        assert!(!style_line("Descripción: dispositivos PnP conectados").contains(GOOD));
+        assert!(!style_line("Texto: ERROR en un manual").contains(BAD));
+        assert!(!style_live_line("Respuesta desde 10.0.0.1: bytes=32 tiempo=1ms TTL=64").contains(PERFECT));
+    }
+
     #[test]
     fn scripts_and_machine_output_remain_unmodified() {
         let text = "STATE   VALUE\nUP      1\n";
