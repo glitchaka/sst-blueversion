@@ -21,6 +21,10 @@ try {
     Copy-Item $source $worker
     Copy-Item (Join-Path $env:SystemRoot 'System32\whoami.exe') $target
     Copy-Item (Join-Path $env:SystemRoot 'System32\where.exe') $ready
+    # NTFS alternate streams from the old executable must never move to the
+    # fresh verified replacement (ReplaceFileW used to merge them).
+    $streamName = 'SST_OLD_ONLY_STREAM'
+    Set-Content -LiteralPath $target -Stream $streamName -Value 'OLD_FILE_ONLY'
     $oldSha = (Get-FileHash -Algorithm SHA256 $target).Hash.ToLowerInvariant()
     $newSha = (Get-FileHash -Algorithm SHA256 $ready).Hash.ToLowerInvariant()
     if ($oldSha -eq $newSha) { throw 'Los ejecutables de prueba son idénticos.' }
@@ -66,6 +70,14 @@ try {
     if (-not (Test-Path -Path $backup) -or
         (Get-FileHash -Algorithm SHA256 $backup).Hash.ToLowerInvariant() -ne $oldSha) {
         throw 'No se conservó sst.exe.old.'
+    }
+    $carried = Get-Item -LiteralPath $target -Stream $streamName -ErrorAction SilentlyContinue
+    if ($carried) {
+        throw 'El nuevo sst.exe heredó un flujo NTFS del archivo antiguo.'
+    }
+    $preserved = Get-Item -LiteralPath $backup -Stream $streamName -ErrorAction SilentlyContinue
+    if (-not $preserved) {
+        throw 'La copia de seguridad perdió los metadatos del ejecutable anterior.'
     }
     if ((Test-Path $pending) -or -not (Test-Path $applied)) {
         throw 'Inconsistencia en el registro de aplicación.'
