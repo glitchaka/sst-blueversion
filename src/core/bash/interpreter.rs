@@ -196,6 +196,21 @@ pub trait ShellCommandHost: Send + Sync {
         stdin: Option<&[u8]>,
     ) -> Result<ExecutionResult>;
 
+    /// For a foreground command connected directly to the embedded native
+    /// terminal, allow the Windows host to render subprocess output as it
+    /// arrives. The default remains buffered so scripts, tests, pipes, CLI,
+    /// redirections and other hosts retain their existing semantics.
+    fn execute_external_live(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: &Path,
+        env: &HashMap<String, String>,
+        stdin: Option<&[u8]>,
+    ) -> Result<ExecutionResult> {
+        self.execute_external(program, args, cwd, env, stdin)
+    }
+
     fn execute_external_background(
         &self,
         program: &str,
@@ -2312,13 +2327,24 @@ impl Interpreter {
             } else {
                 let mut child_env = self.execution_environment();
                 child_env.insert("_".to_owned(), program.clone());
-                match self.host.execute_external(
-                    &program,
-                    args,
-                    &self.env.cwd,
-                    &child_env,
-                    local_stdin.as_deref(),
-                ) {
+                // Only a direct foreground interactive command can stream.
+                // Every redirected or captured execution continues to return
+                // byte-for-byte output for pipes, files and Bash substitutions.
+                let live = self.env.option_enabled("interactive")
+                    && self.capture_output_depth == 0
+                    && command.redirects.is_empty();
+                let execution = if live {
+                    self.host.execute_external_live(
+                        &program, args, &self.env.cwd,
+                        &child_env, local_stdin.as_deref(),
+                    )
+                } else {
+                    self.host.execute_external(
+                        &program, args, &self.env.cwd,
+                        &child_env, local_stdin.as_deref(),
+                    )
+                };
+                match execution {
                     Ok(result) => result,
                     Err(error) => ExecutionResult::from_parts(
                         String::new(),
