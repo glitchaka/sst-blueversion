@@ -71,6 +71,9 @@ try {
         throw 'Inconsistencia en el registro de aplicación.'
     }
     Write-Host 'Updater independiente: SHA, espera, sustitución y rollback correctos.'
+    # Solo el ejecutable DEBUG admite inyección controlada. El RELEASE nunca
+    # reconoce variables de prueba y se valida arriba con un reemplazo real.
+    if ($source -match '[\\/]debug[\\/]') {
     # Simula el síntoma real: Windows no puede iniciar el nuevo ejecutable,
     # aunque el fichero descargado pasa el SHA-256. La versión anterior debe
     # restaurarse sin declarar la actualización aplicada.
@@ -104,6 +107,9 @@ try {
     }
     Remove-Item Env:SST_UPDATER_TEST_DENY_LAUNCH -ErrorAction SilentlyContinue
     Write-Host 'Actualizador: denegación de ejecución simulada y restauración automática verificadas.'
+    } else {
+        Write-Host 'Release: sustitución real verificada; inyección de acceso denegado cubierta en DEBUG.'
+    }
 
 }
 finally {
