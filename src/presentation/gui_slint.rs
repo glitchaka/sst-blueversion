@@ -1319,7 +1319,7 @@ impl TerminalModel {
                     if selection
                         .is_some_and(|(a, b)| index >= a.min(b) && index < a.max(b))
                     {
-                        fg = Rgb(255, 255, 255);
+                        fg = FG;
                         bg = SELECTION;
                         paint_background = true;
                     }
