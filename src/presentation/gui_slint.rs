@@ -164,8 +164,8 @@ slint::slint! {
     component TerminalSectionFrame inherits Rectangle {
         background: transparent;
         border-width: 1px;
-        border-color: #35647c;
-        border-radius: 10px;
+        border-color: #5e6877;
+        border-radius: 9px;
 
         Rectangle {
             x: 1px;
@@ -173,7 +173,7 @@ slint::slint! {
             width: 3px;
             height: min(24px, parent.height - 14px);
             border-radius: 2px;
-            background: #4bc7e9;
+            background: #bfc6d0;
         }
     }
 
