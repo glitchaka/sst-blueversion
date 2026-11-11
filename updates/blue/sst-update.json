@@ -2,12 +2,12 @@
   "schema": 1,
   "version": "0.1.9-blue.60",
   "channel": "blue",
-  "published_at": "2026-11-11T16:05:21.8763730+00:00",
+  "published_at": "2026-11-11T16:14:20.6055632+00:00",
   "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.60/sst.exe",
-  "sha256": "5e40432dba8852be1231d8d3ddcf9a00412073641d205927f939aeb04469ad94",
-  "size": 55618560,
+  "sha256": "4571ad038b32c757cef20487dd2e76437fa6600a75ab2a3c4429ffcd6bca8d58",
+  "size": 55619072,
   "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.60/sst-updater.exe",
-  "updater_sha256": "e0b54c7954cd9f2188bacbeed11b348638e21ae9d17f9fec9cc111de9678f4c3",
+  "updater_sha256": "19db88f11514ed4eb7fd90eae940e6e8df8bd2beb34535aff1a65f40ce26e9a3",
   "updater_size": 423424,
   "changes": [
     "El instalador oficial reconoce una instalación existente cuando se abre desde la misma carpeta que `sst.exe` y activa el modo de reparación sin ejecutar la consola averiada.",
@@ -22,9 +22,9 @@
   "setup": {
     "name": "SST-Setup-0.1.9-blue.60.exe",
     "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.60/SST-Setup-0.1.9-blue.60.exe",
-    "sha256": "bdf8633f0ad4d9b93994ccf5b5febd4e7f559608dbbd05de347e03fc02491e94",
-    "size": 56623839,
+    "sha256": "8172ac548845926c02ddf4d37975f1de70b14c2475720b587ac5de2b4e1d48c5",
+    "size": 56624351,
     "single_use": true,
-    "package_id": "9e70347db9529b381449b6998ae5d28c"
+    "package_id": "322db382d5630cc5300a3fe1fc5136d2"
   }
 }
