@@ -2,12 +2,12 @@
   "schema": 1,
   "version": "0.1.9-blue.61",
   "channel": "blue",
-  "published_at": "2026-11-11T16:50:13.2435756+00:00",
+  "published_at": "2026-11-11T16:52:52.2490159+00:00",
   "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.61/sst.exe",
-  "sha256": "01b372df6b009a75ce8f051fb488fec4cf81252a0c29ec3971252cc23c82ea37",
-  "size": 55634944,
+  "sha256": "3b14f0c152abe1bdfbfcd1fde8fe7e9abf3ed9afdc0d412460b33403a3960a1e",
+  "size": 55634432,
   "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.61/sst-updater.exe",
-  "updater_sha256": "ceab14d9951c814a5d017ad79b384afab0961f1aa12d51d6b5a3591e19dab8b0",
+  "updater_sha256": "ad040e3ce7000ac16531c16d1f395656847095270273383b22ec544ebc961436",
   "updater_size": 423424,
   "changes": [
     "Los comandos nativos comparten un mismo renderizador para informes y ayudas; los textos estructurados externos utilizan el mismo criterio semántico.",
@@ -26,9 +26,9 @@
   "setup": {
     "name": "SST-Setup-0.1.9-blue.61.exe",
     "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.61/SST-Setup-0.1.9-blue.61.exe",
-    "sha256": "e22969fd91782da0d76835042c7cca499cce2950c071613a6fc0da9343f872ee",
-    "size": 56640223,
+    "sha256": "6656dc523b4f55e8ab234c2e54b7265a0cc6873da742c63af64172add7efc8de",
+    "size": 56639711,
     "single_use": true,
-    "package_id": "a3dfce2f62600ecf0acc6d3cf8958236"
+    "package_id": "1638fade772f316fc9ec8eb81a39abba"
   }
 }
