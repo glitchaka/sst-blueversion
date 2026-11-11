@@ -435,7 +435,7 @@ mod tests {
     fn future_command_help_is_structurally_styled() {
         let formatted = decorate_at_width(
             "futuretool help",
-            "uso: futuretool help\\nfuturetool inspect     Consulta el sistema\\n",
+            "uso: futuretool help\nfuturetool inspect     Consulta el sistema\n",
             100,
         );
         assert!(formatted.contains(COMMAND));
