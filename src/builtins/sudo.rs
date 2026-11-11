@@ -840,7 +840,7 @@ pub(crate) fn gui_privilege_indicator() -> Result<&'static str> {
 fn indicator_for_level(level: SudoLevel) -> &'static str {
     match level {
         SudoLevel::User => "USUARIO",
-        SudoLevel::AdministratorFiltered => "LIMITADO",
+        SudoLevel::AdministratorFiltered => "USUARIO",
         SudoLevel::Administrator => "ADMIN",
         SudoLevel::System => "SYSTEM",
         SudoLevel::TrustedInstaller => "TRUSTED",
@@ -854,7 +854,7 @@ mod privilege_indicator_tests {
     #[test]
     fn distinguishes_standard_and_filtered_tokens_from_elevated_tokens() {
         assert_eq!(indicator_for_level(SudoLevel::User), "USUARIO");
-        assert_eq!(indicator_for_level(SudoLevel::AdministratorFiltered), "LIMITADO");
+        assert_eq!(indicator_for_level(SudoLevel::AdministratorFiltered), "USUARIO");
     }
 
     #[test]
