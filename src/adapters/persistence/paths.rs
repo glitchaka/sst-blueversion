@@ -12,7 +12,7 @@ const APPEARANCE_BLOCK: &str = r#"
 SST_BACKDROP='acrylic'
 SST_FOCUSED_OPACITY=80
 SST_UNFOCUSED_OPACITY=0
-SST_BACKGROUND_COLOR='#111629'
+SST_BACKGROUND_COLOR='#282828'
 
 # Imagen de fondo. Vacío = desactivada.
 # Ruta absoluta o relativa a la carpeta de sst.exe.
@@ -36,7 +36,7 @@ SST_CONTENT_TOP_GAP=12
 
 # Densidad y texto de la terminal.
 SST_FONT_SIZE=13
-SST_FONT_COLOR='#DFE8EF'
+SST_FONT_COLOR='#EBDBB2'
 SST_CELL_WIDTH=8
 SST_CELL_HEIGHT=17
 SST_TERMINAL_PADDING_X=8
@@ -153,7 +153,7 @@ impl Default for AppearanceConfig {
             backdrop: "acrylic".to_owned(),
             focused_opacity: 80,
             unfocused_opacity: 0,
-            background_color: "#111629".to_owned(),
+            background_color: "#282828".to_owned(),
             background_image: String::new(),
             background_image_opacity: 100,
             background_mode: "off".to_owned(),
@@ -162,7 +162,7 @@ impl Default for AppearanceConfig {
             corner_radius: 16,
             content_top_gap: 12,
             font_size: 13,
-            font_color: "#DFE8EF".to_owned(),
+            font_color: "#EBDBB2".to_owned(),
             cell_width: 8,
             cell_height: 17,
             terminal_padding_x: 8,
@@ -272,7 +272,7 @@ impl AppPaths {
 
             for (key, value, comment) in [
                 ("SST_FONT_SIZE", "13", "# Tamaño de fuente de la terminal."),
-                ("SST_FONT_COLOR", "'#DFE8EF'", "# Color base del texto de la terminal (#RRGGBB)."),
+                ("SST_FONT_COLOR", "'#EBDBB2'", "# Color base del texto de la terminal (#RRGGBB)."),
                 ("SST_CELL_WIDTH", "8", "# Ancho de celda de la terminal."),
                 ("SST_CELL_HEIGHT", "17", "# Alto de celda de la terminal."),
                 ("SST_TERMINAL_PADDING_X", "8", "# Padding horizontal de la terminal."),
@@ -287,6 +287,14 @@ impl AppPaths {
                     text.push_str(&format!("\n{comment}\n{key}={value}\n"));
                 }
             }
+        }
+        // Migrate only SST's previous built-in blue defaults; preserve any
+        // colors deliberately customized in an existing portable sstrc.
+        if assignment_value(&text, "SST_BACKGROUND_COLOR").as_deref() == Some("#111629") {
+            set_assignment(&mut text, "SST_BACKGROUND_COLOR", "#282828");
+        }
+        if assignment_value(&text, "SST_FONT_COLOR").as_deref() == Some("#DFE8EF") {
+            set_assignment(&mut text, "SST_FONT_COLOR", "#EBDBB2");
         }
         fs::write(path, text)?;
         Ok(())
