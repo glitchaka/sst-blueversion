@@ -869,6 +869,120 @@ impl ShellCommandHost for WindowsShellHost {
     }
 
 
+    fn execute_external_live(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: &Path,
+        env: &HashMap<String, String>,
+        stdin: Option<&[u8]>,
+    ) -> Result<ExecutionResult> {
+        // Only SST's embedded terminal can receive incremental process
+        // events. All CLI, pipeline and redirection paths retain the normal
+        // captured execution result, without asynchronous writes.
+        let Some(display) = crate::adapters::terminal::io::output_sender() else {
+            return self.execute_external(program, args, cwd, env, stdin);
+        };
+
+        let spawn_cwd = super::native_process::working_directory(cwd)?;
+        let resolved_program = super::native_process::resolve_program(program, &spawn_cwd, env);
+        let script = resolve_shell_script(program, cwd);
+        let mut command = if let Some(script) = &script {
+            let mut command = Command::new(std::env::current_exe()?);
+            command.arg(script);
+            command
+        } else {
+            Command::new(&resolved_program)
+        };
+        command
+            .args(args)
+            .current_dir(&spawn_cwd)
+            .envs(env)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::inherit() });
+
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
+
+        let mut child = command.spawn().map_err(|error| {
+            if error.raw_os_error() == Some(740) {
+                anyhow::anyhow!(
+                    "{program}: Windows exige elevación para este ejecutable; usa 'sudo {program} ...'"
+                )
+            } else {
+                anyhow::anyhow!(
+                    "no se pudo ejecutar {program} ({}) desde {}: {error}",
+                    resolved_program.display(), spawn_cwd.display()
+                )
+            }
+        })?;
+
+        // Drain both OS pipes concurrently from the moment the process
+        // starts. A single wait_with_output would buffer every ping response
+        // and render them all at the end (the bug in blue.59/60).
+        let stdout = child.stdout.take()
+            .context("no se pudo conectar stdout del comando nativo")?;
+        let stderr = child.stderr.take()
+            .context("no se pudo conectar stderr del comando nativo")?;
+        let stdout_display = display.clone();
+        let out_reader = std::thread::spawn(move || -> Result<()> {
+            let mut input = stdout;
+            let mut bytes = [0u8; 4096];
+            loop {
+                let size = input.read(&mut bytes)?;
+                if size == 0 { break; }
+                send_async_terminal_output(Some(stdout_display.clone()), &bytes[..size], false);
+            }
+            Ok(())
+        });
+        let err_reader = std::thread::spawn(move || -> Result<()> {
+            let mut input = stderr;
+            let mut bytes = [0u8; 4096];
+            loop {
+                let size = input.read(&mut bytes)?;
+                if size == 0 { break; }
+                send_async_terminal_output(Some(display.clone()), &bytes[..size], true);
+            }
+            Ok(())
+        });
+
+        let input_error = if let (Some(bytes), Some(mut writer)) = (stdin, child.stdin.take()) {
+            writer.write_all(bytes).err()
+        } else {
+            None
+        };
+        if input_error.is_some() {
+            let _ = child.kill();
+        }
+        let mut cancelled = false;
+        let exit_status = loop {
+            if self.force_abort.swap(false, Ordering::SeqCst)
+                || self.interrupt.swap(false, Ordering::SeqCst)
+            {
+                cancelled = true;
+                let _ = child.kill();
+            }
+            if let Some(status) = child.try_wait()? {
+                self.record_child_cpu(&child);
+                break status;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        // Drain everything before rendering the next SST prompt.
+        out_reader.join().map_err(|_| anyhow::anyhow!("stdout: fallo del lector"))??;
+        err_reader.join().map_err(|_| anyhow::anyhow!("stderr: fallo del lector"))??;
+        if let Some(error) = input_error {
+            return Err(error.into());
+        }
+        Ok(ExecutionResult::from_parts(
+            String::new(),
+            String::new(),
+            if cancelled { 130 } else { exit_status.code().unwrap_or(1) },
+        ))
+    }
+
+
     fn execute_shell_pipeline(
         &self,
         commands: &[String],
