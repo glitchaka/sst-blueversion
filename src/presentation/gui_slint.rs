@@ -2256,7 +2256,7 @@ pub fn run() -> Result<()> {
                         let mut last_col: Option<u16> = None;
                         for col in 0..cols {
                             if screen.cell(row, col).is_some_and(|cell| {
-                                matches!(cell.fgcolor(), vt100::Color::Rgb(215, 219, 227))
+                                matches!(cell.fgcolor(), vt100::Color::Rgb(213, 196, 161))
                                     && !cell.contents().is_empty()
                             }) {
                                 last_col = Some(col);
@@ -2267,7 +2267,7 @@ pub fn run() -> Result<()> {
                         // around unrelated cyan status values.
                         let is_heading = (0..cols.min(12)).any(|col| {
                             screen.cell(row, col).is_some_and(|cell| {
-                                matches!(cell.fgcolor(), vt100::Color::Rgb(69, 209, 241))
+                                matches!(cell.fgcolor(), vt100::Color::Rgb(213, 196, 161))
                                     && cell.contents().chars().any(char::is_alphabetic)
                             })
                         });
