@@ -101,7 +101,7 @@ impl EmbeddedSession {
                 paths.ensure_layout()?;
                 // No network update checks, downloads, or automatic replacement
                 // are permitted during interactive terminal startup.
-                let (mut engine, _, _) = crate::composition::build_engine()?;
+                let (mut engine, native_commands, _) = crate::composition::build_engine()?;
                 engine.set_interactive(true);
 
                 // The native GUI is an interactive non-login Bash session. Unlike
@@ -159,8 +159,8 @@ impl EmbeddedSession {
                                 Ok(result) => {
                                     let width = worker_size.lock()
                                         .unwrap_or_else(|e| e.into_inner()).0;
-                                    let output = crate::presentation::report::decorate_at_width(
-                                        &command, &result.stdout, width,
+                                    let output = crate::presentation::report::decorate_registered_at_width(
+                                        &command, &result.stdout, width, &native_commands,
                                     );
                                     io::write(output.as_bytes())?;
                                     io::write(result.stderr.as_bytes())?;
