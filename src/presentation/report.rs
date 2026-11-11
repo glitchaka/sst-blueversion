@@ -15,7 +15,7 @@ const CAUTION: &str = "\x1b[1;38;5;221m";
 const BAD: &str = "\x1b[1;38;5;203m";
 const BULLET: &str = "\x1b[38;5;117m";
 
-fn suitable(command: &str, stdout: &str) -> bool {
+fn suitable(command: &str, stdout: &str, registered_native: Option<&[String]>) -> bool {
     if stdout.trim().is_empty()
         || stdout.contains('\x1b')
         || command.chars().any(|ch| "|;&><\n\r".contains(ch))
@@ -24,8 +24,13 @@ fn suitable(command: &str, stdout: &str) -> bool {
     {
         return false;
     }
-    matches!(
-        command.split_whitespace().next().unwrap_or(""),
+    let root = command.split_whitespace().next().unwrap_or("");
+    let known_builtin = registered_native.is_some_and(|names|
+        names.iter().any(|name| name == root)
+            && !crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| *name == root)
+    );
+    known_builtin || matches!(
+        root,
         "notsh" | "net" | "instp" | "sys" | "ps" | "help"
           | "diag" | "diagnose" | "domain" | "device" | "tools"
           | "service" | "process" | "firewall" | "eventlog"
@@ -34,6 +39,7 @@ fn suitable(command: &str, stdout: &str) -> bool {
           | "acl" | "pnp" | "tasks" | "task" | "session"
           | "share" | "power" | "path" | "printer" | "registry"
     )
+
 }
 
 /// Compose a compact, readable heading with libcaca's text canvas.
@@ -251,7 +257,26 @@ fn wrap_line(line: &str, width: usize) -> Vec<String> {
 /// width, including resized windows. Raw Bash redirections and pipes stay
 /// completely byte-for-byte intact.
 pub fn decorate_at_width(command: &str, stdout: &str, cols: u16) -> String {
-    if !suitable(command, stdout) { return stdout.to_owned(); }
+    decorate_with_native_commands(command, stdout, cols, None)
+}
+
+/// Shared human-facing report renderer for every SST-owned built-in command,
+/// including aliases added to the registry. Only machine output and external
+/// commands remain byte-for-byte untouched.
+pub fn decorate_registered_at_width(
+    command: &str,
+    stdout: &str,
+    cols: u16,
+    registered_native: &[String],
+) -> String {
+    decorate_with_native_commands(command, stdout, cols, Some(registered_native))
+}
+
+fn decorate_with_native_commands(
+    command: &str, stdout: &str, cols: u16,
+    registered_native: Option<&[String]>,
+) -> String {
+    if !suitable(command, stdout, registered_native) { return stdout.to_owned(); }
     // Leave a small right margin so the cursor never autowraps a full row.
     let width = (cols as usize).saturating_sub(3).clamp(18, 160);
     let mut result = String::new();
@@ -302,6 +327,23 @@ pub fn decorate(command: &str, stdout: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn all_native_registry_commands_share_consistent_human_report_design() {
+        let names = vec!["new-native-command".to_owned(), "sys".to_owned()];
+        let output = "Estado: OPERATIVA\nDetalles:\nClave: valor\n";
+        let formatted = decorate_registered_at_width("new-native-command", output, 95, &names);
+        assert!(formatted.contains(HEADING));
+        assert!(formatted.contains(GOOD));
+        assert!(formatted.contains("Detalles:"));
+        assert_eq!(
+            decorate_registered_at_width("new-native-command --csv", output, 95, &names),
+            output,
+        );
+        assert_eq!(
+            decorate_registered_at_width("new-native-command | cat", output, 95, &names),
+            output,
+        );
+    }
     #[test]
     fn scripts_and_machine_output_remain_unmodified() {
         let text = "STATE   VALUE\nUP      1\n";
