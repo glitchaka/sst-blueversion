@@ -86,10 +86,6 @@ fn transfer_state() -> &'static Mutex<Option<TransferSnapshot>> {
     GUI_TRANSFER.get_or_init(|| Mutex::new(None))
 }
 
-fn publish(snapshot: TransferSnapshot) {
-    *transfer_state().lock().unwrap_or_else(|e| e.into_inner()) = Some(snapshot);
-}
-
 /// A completed transfer remains visible briefly so even fast downloads can be
 /// observed, then the native overlay disappears without altering the terminal.
 pub fn snapshot() -> Option<TransferSnapshot> {
