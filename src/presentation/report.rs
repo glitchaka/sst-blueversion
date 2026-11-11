@@ -19,13 +19,68 @@ const BAD: &str = "\x1b[1;38;2;251;73;52m";
 const PERFECT: &str = "\x1b[1;38;2;131;165;152m";
 const BULLET: &str = "\x1b[38;2;189;174;147m";
 
+
+fn is_machine_or_shell_command(command: &str) -> bool {
+    // Only the human-facing foreground presentation is styled. Pipelines,
+    // redirects, scripts and machine-readable modes preserve their bytes.
+    command.chars().any(|ch| "|;&><\n\r".contains(ch))
+        || command.split_whitespace().any(|part| matches!(
+            part, "--json" | "--csv" | "--plain" | "--stdout" | "--xml" | "-j"
+        ))
+        || crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| {
+            command.split_whitespace().next() == Some(*name)
+        })
+}
+
+fn is_table_header(line: &str) -> bool {
+    let trimmed = line.trim();
+    let columns = trimmed.split_whitespace().collect::<Vec<_>>();
+    columns.len() >= 2 && trimmed.len() >= 5
+        && columns.iter().all(|column| {
+            column.chars().any(char::is_alphabetic)
+                && !column.chars().any(char::is_lowercase)
+        })
+        && !trimmed.contains("://")
+        && !trimmed.contains(':')
+}
+
+fn table_columns(line: &str) -> Vec<(usize, usize)> {
+    let bytes = line.as_bytes();
+    let mut columns = Vec::new();
+    let mut pos = 0;
+    while pos < bytes.len() {
+        while pos < bytes.len() && bytes[pos].is_ascii_whitespace() { pos += 1; }
+        if pos >= bytes.len() { break; }
+        let start = pos;
+        while pos < bytes.len() && !(bytes[pos] == b' ' && bytes.get(pos + 1) == Some(&b' ')) {
+            pos += 1;
+        }
+        let end = pos;
+        columns.push((start, end));
+    }
+    columns
+}
+
+fn style_table_row(line: &str, status_column: Option<usize>) -> String {
+    let Some(status_column) = status_column else { return line.to_owned(); };
+    let columns = table_columns(line);
+    let Some(&(start, end)) = columns.get(status_column) else { return line.to_owned(); };
+    let value = line.get(start..end).unwrap_or("");
+    let Some(color) = status_color(value) else { return line.to_owned(); };
+    format!("{}{color}{value}{RESET}{}", &line[..start], &line[end..])
+}
+
+fn status_column_index(heading: &str) -> Option<usize> {
+    table_columns(heading).iter().enumerate().find_map(|(index, &(start, end))| {
+        let field = heading.get(start..end)?.trim().to_ascii_uppercase();
+        matches!(field.as_str(), "ESTADO" | "STATUS" | "SALUD" | "HEALTH" | "RESULTADO")
+            .then_some(index)
+    })
+}
+
 fn suitable(command: &str, stdout: &str, registered_native: Option<&[String]>) -> bool {
-    if stdout.trim().is_empty()
-        || stdout.contains('\x1b')
-        || stdout.contains('\0')
-        || command.chars().any(|ch| "|;&><\n\r".contains(ch))
-        || command.split_whitespace().any(|part|
-            matches!(part, "--json" | "--csv" | "--plain" | "--stdout" | "--xml" | "-j"))
+    if stdout.trim().is_empty() || stdout.contains('\x1b') || stdout.contains('\0')
+        || is_machine_or_shell_command(command)
     { return false; }
 
     // One shared presentation path for all foreground, human-readable output.
@@ -37,14 +92,13 @@ fn suitable(command: &str, stdout: &str, registered_native: Option<&[String]>) -
     if crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| *name == root) {
         return false;
     }
-    let native = registered_native.is_some_and(|names|
-        names.iter().any(|name| name == root)
-            && !crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| *name == root)
-    );
+    let native = registered_native.is_some_and(|names| names.iter().any(|name| name == root));
     native || stdout.lines().any(|line| {
-        is_section_heading(line)
-            || is_status_field(line)
-            || looks_like_tabular_header(line)
+        is_section_heading(line) || is_status_field(line)
+            || looks_like_tabular_header(line) || is_table_header(line)
+            || line.trim().split_once(": ").is_some_and(|(label, _)| {
+                !label.is_empty() && label.len() < 42
+            })
     })
 }
 
@@ -338,8 +392,14 @@ fn decorate_with_native_commands(
     } else {
         result.push_str(&format!("{HEADING}   {command}{RESET}\n"));
     }
+    let mut status_column: Option<usize> = None;
     for original in stdout.split_inclusive('\n') {
         let line = original.strip_suffix('\n').unwrap_or(original).trim_end_matches('\r');
+        if is_table_header(line) {
+            status_column = status_column_index(line);
+        } else if line.trim().is_empty() || is_section_heading(line) {
+            status_column = None;
+        }
         if line.trim().is_empty() {
             result.push('\n');
             continue;
@@ -355,8 +415,10 @@ fn decorate_with_native_commands(
                 style_command_row(&fragment)
                     .or_else(|| style_help_entry(&fragment))
                     .unwrap_or_else(|| style_line(&fragment))
+            } else if is_table_header(&fragment) {
+                format!("{HEADING}{fragment}{RESET}")
             } else {
-                style_line(&fragment)
+                style_table_row(&style_line(&fragment), status_column)
             };
             result.push_str(&styled);
             result.push('\n');
@@ -375,6 +437,28 @@ pub fn decorate(command: &str, stdout: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unknown_commands_get_the_same_layout_without_command_specific_rules() {
+        let output = "REDES:\nNombre: Ethernet\nEstado: OPERATIVO\n";
+        let styled = decorate_at_width("futura-herramienta", output, 100);
+        assert!(styled.contains(HEADING));
+        assert!(styled.contains(LABEL));
+        assert!(styled.contains(GOOD));
+        assert_eq!(decorate_at_width("futura-herramienta --csv", output, 100), output);
+    }
+
+    #[test]
+    fn table_status_color_is_column_scoped() {
+        let title = "NOMBRE    ESTADO    DETALLE";
+        assert!(is_table_header(title));
+        assert_eq!(status_column_index(title), Some(1));
+        let row = "Red A     ACTIVO    enlace conectado";
+        assert!(style_table_row(row, Some(1)).contains(GOOD));
+        let description = "Red A     desconocido    conectado";
+        assert!(!style_table_row(description, Some(1)).contains(GOOD));
+    }
+
     #[test]
     fn all_native_registry_commands_share_consistent_human_report_design() {
         let names = vec!["new-native-command".to_owned(), "sys".to_owned()];
