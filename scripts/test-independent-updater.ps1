@@ -74,12 +74,13 @@ try {
     # Simula el síntoma real: Windows no puede iniciar el nuevo ejecutable,
     # aunque el fichero descargado pasa el SHA-256. La versión anterior debe
     # restaurarse sin declarar la actualización aplicada.
-    [IO.File]::WriteAllBytes($ready, [byte[]](0x53,0x53,0x54,0x20,0x4e,0x4f,0x54,0x20,0x50,0x45))
+    Copy-Item (Join-Path $env:SystemRoot 'System32\where.exe') $ready -Force
     '{"pending":true}' | Set-Content $pending
     '{"applied":true}' | Set-Content $appliedPending
     $invalidExeHash = (Get-FileHash -Algorithm SHA256 $ready).Hash.ToLowerInvariant()
     $previousHash = (Get-FileHash -Algorithm SHA256 $target).Hash.ToLowerInvariant()
     $env:SST_UPDATER_SHA256 = $invalidExeHash
+    $env:SST_UPDATER_TEST_DENY_LAUNCH = '1'
     $parent = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoLogo','-NoProfile','-Command','Start-Sleep -Seconds 2') -WindowStyle Hidden -PassThru
     $env:SST_UPDATER_PARENT_PID = [string]$parent.Id
     $operation = Start-Process -FilePath $worker -ArgumentList '--apply' -PassThru
@@ -101,10 +102,12 @@ try {
         ((Get-Content -Raw -LiteralPath $errorFile) -notmatch 'restaurado autom')) {
         throw 'Falta diagnóstico de rollback al bloquearse el inicio del ejecutable.'
     }
+    Remove-Item Env:SST_UPDATER_TEST_DENY_LAUNCH -ErrorAction SilentlyContinue
     Write-Host 'Actualizador: denegación de ejecución simulada y restauración automática verificadas.'
 
 }
 finally {
+    Remove-Item Env:SST_UPDATER_TEST_DENY_LAUNCH -ErrorAction SilentlyContinue
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name,$saved[$name],'Process') }
     Remove-Item -LiteralPath $root -Force -Recurse -ErrorAction SilentlyContinue
 }
