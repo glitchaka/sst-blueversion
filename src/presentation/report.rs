@@ -8,9 +8,9 @@ const RESET: &str = "\x1b[0m";
 // color as a semantic marker and draws restrained vector outlines at the
 // corresponding terminal row, without changing the rest of the text.
 const HEADING: &str = "\x1b[1;38;2;213;196;161m";
-const COMMAND: &str = "\x1b[1;38;2;235;219;178m";
-const DETAILS: &str = "\x1b[38;2;189;174;147m";
-const LABEL: &str = "\x1b[38;2;189;174;147m";
+const COMMAND: &str = "\x1b[1;38;2;254;128;25m";
+const DETAILS: &str = "\x1b[38;2;235;219;178m";
+const LABEL: &str = "\x1b[1;38;2;189;174;147m";
 // Color encodes proven state ONLY: red critical, amber warning,
 // green functioning, blue genuinely excellent/optimal.
 const GOOD: &str = "\x1b[1;38;2;184;187;38m";
@@ -221,7 +221,8 @@ fn style_help_entry(line: &str) -> Option<String> {
         return None;
     }
     let indent = &line[..line.len() - text.len()];
-    Some(format!("{indent}  {COMMAND}{syntax}{RESET}  {DETAILS}{description}{RESET}"))
+    let padding = " ".repeat(34usize.saturating_sub(display_width(syntax)).max(2));
+    Some(format!("{indent}  {COMMAND}{syntax}{RESET}{padding}{DETAILS}{description}{RESET}"))
 }
 
 fn style_line(line: &str) -> String {
@@ -386,8 +387,13 @@ fn decorate_with_native_commands(
         result.push_str(&format!("{HEADING}   {command}{RESET}\n"));
     }
     let mut status_column: Option<usize> = None;
+    let mut first_nonempty = true;
     for original in stdout.split_inclusive('\n') {
         let line = original.strip_suffix('\n').unwrap_or(original).trim_end_matches('\r');
+        if !line.trim().is_empty() && first_nonempty {
+            first_nonempty = false;
+            if line.trim().eq_ignore_ascii_case(command.trim()) { continue; }
+        }
         if is_table_header(line) {
             status_column = status_column_index(line);
         } else if line.trim().is_empty() || is_section_heading(line) {
@@ -404,7 +410,9 @@ fn decorate_with_native_commands(
             vec![line.to_owned()]
         };
         for fragment in fragments {
-            let styled = if help_document && !is_section_heading(&fragment) {
+            let styled = if help_document && is_section_heading(&fragment) {
+                style_line(&fragment)
+            } else if help_document {
                 style_command_row(&fragment)
                     .or_else(|| style_help_entry(&fragment))
                     .unwrap_or_else(|| style_line(&fragment))
@@ -440,6 +448,18 @@ mod tests {
         );
         assert!(formatted.contains(COMMAND));
         assert!(formatted.contains("futuretool inspect"));
+    }
+
+    #[test]
+    fn generic_help_has_distinct_syntax_descriptions_and_no_duplicate_title() {
+        let styled = decorate_at_width(
+            "invented help",
+            "invented help\nuso:\ninvented scan    Detecta equipos\n", 110,
+        );
+        assert_eq!(styled.matches("invented help").count(), 1);
+        assert!(styled.contains(COMMAND));
+        assert!(styled.contains(DETAILS));
+        assert!(styled.contains("Detecta equipos"));
     }
 
     #[test]
