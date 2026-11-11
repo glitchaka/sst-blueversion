@@ -112,6 +112,8 @@ mod viewport_regression_tests {
             super::Rgb(0xEB, 0xDB, 0xB2));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(80, 150, 255)),
             super::Rgb(0xD5, 0xC4, 0xA1));
+        assert_eq!(super::gruvbox_terminal_color(super::Rgb(69, 133, 136)),
+            super::Rgb(0xEB, 0xDB, 0xB2));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(184, 187, 38)),
             super::Rgb(184, 187, 38));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(251, 73, 52)),
@@ -1408,7 +1410,7 @@ fn gruvbox_terminal_color(color: Rgb) -> Rgb {
         // Loud blue structural accents become readable Gruvbox warm text.
         return Rgb(0xD5, 0xC4, 0xA1);
     }
-    if b > 145 && g > r.saturating_add(24) && b > r.saturating_add(35) {
+    if b >= 120 && b.saturating_add(5) >= g && g > r.saturating_add(18) {
         // Bright cyan, including embedded legacy truecolor escape sequences.
         return Rgb(0xEB, 0xDB, 0xB2);
     }
