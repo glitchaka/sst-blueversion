@@ -79,6 +79,7 @@ pub fn repair(extracted: &Path, destination: &Path, launch: bool) -> Result<()> 
     let installed_updater = destination.join("sst-updater.exe");
     let replacement_updater = extracted.join("sst-updater.exe");
     let mut old_updater: Option<PathBuf> = None;
+    let mut introduced_updater = false;
 
     if replacement_updater.is_file() {
         if installed_updater.is_file() {
@@ -90,11 +91,14 @@ pub fn repair(extracted: &Path, destination: &Path, launch: bool) -> Result<()> 
                 return Err(error).context("se restauró SST tras el fallo del actualizador");
             }
             old_updater = Some(preserved);
-        } else if let Err(error) = fs::rename(&replacement_updater, &installed_updater) {
-            restore_file(&installed, &old_sst).context(
-                "no se pudo restaurar SST tras fallar la instalación del actualizador"
-            )?;
-            return Err(error).context("no se pudo instalar el actualizador independiente");
+        } else {
+            if let Err(error) = fs::rename(&replacement_updater, &installed_updater) {
+                restore_file(&installed, &old_sst).context(
+                    "no se pudo restaurar SST tras fallar la instalación del actualizador"
+                )?;
+                return Err(error).context("no se pudo instalar el actualizador independiente");
+            }
+            introduced_updater = true;
         }
     }
 
@@ -108,6 +112,8 @@ pub fn repair(extracted: &Path, destination: &Path, launch: bool) -> Result<()> 
             let sst_rollback = restore_file(&installed, &old_sst);
             if let Some(ref old) = old_updater {
                 let _ = restore_file(&installed_updater, old);
+            } else if introduced_updater {
+                let _ = fs::remove_file(&installed_updater);
             }
             sst_rollback.context("Windows rechazó el nuevo SST y la restauración falló")?;
             return Err(error).context(
