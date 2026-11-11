@@ -926,26 +926,8 @@ impl ShellCommandHost for WindowsShellHost {
         let stderr = child.stderr.take()
             .context("no se pudo conectar stderr del comando nativo")?;
         let stdout_display = display.clone();
-        let out_reader = std::thread::spawn(move || -> Result<()> {
-            let mut input = stdout;
-            let mut bytes = [0u8; 4096];
-            loop {
-                let size = input.read(&mut bytes)?;
-                if size == 0 { break; }
-                send_async_terminal_output(Some(stdout_display.clone()), &bytes[..size], false);
-            }
-            Ok(())
-        });
-        let err_reader = std::thread::spawn(move || -> Result<()> {
-            let mut input = stderr;
-            let mut bytes = [0u8; 4096];
-            loop {
-                let size = input.read(&mut bytes)?;
-                if size == 0 { break; }
-                send_async_terminal_output(Some(display.clone()), &bytes[..size], true);
-            }
-            Ok(())
-        });
+        let out_reader = std::thread::spawn(move || relay_live_console(stdout, stdout_display));
+        let err_reader = std::thread::spawn(move || relay_live_console(stderr, display));
 
         let input_error = if let (Some(bytes), Some(mut writer)) = (stdin, child.stdin.take()) {
             writer.write_all(bytes).err()
@@ -1693,6 +1675,52 @@ impl ShellCommandHost for WindowsShellHost {
     }
 }
 
+/// Stream complete textual lines to the embedded terminal as they arrive.
+/// CR-based progress bars and any non-UTF8/binary output pass through intact.
+/// No line has to wait for the child to exit. This is a presentation boundary,
+/// not a command-specific formatter for ping or any other Windows executable.
+fn relay_live_console<R: Read>(
+    mut reader: R,
+    sender: mpsc::Sender<Vec<u8>>,
+) -> Result<()> {
+    let mut buffer = [0u8; 4096];
+    let mut partial = Vec::<u8>::new();
+    let flush = |line: &mut Vec<u8>, ending: &[u8]| {
+        if line.is_empty() && ending.is_empty() { return; }
+        let mut rendered = if let Ok(text) = std::str::from_utf8(line) {
+            crate::presentation::report::style_live_line(text).into_bytes()
+        } else {
+            line.clone()
+        };
+        // VT100 needs CRLF to move to the beginning of the next row.
+        if ending == b"\n" {
+            rendered.extend_from_slice(b"\r\n");
+        } else {
+            rendered.extend_from_slice(ending);
+        }
+        let _ = sender.send(rendered);
+        line.clear();
+    };
+    loop {
+        let size = reader.read(&mut buffer)?;
+        if size == 0 { break; }
+        for &byte in &buffer[..size] {
+            match byte {
+                b'\n' => flush(&mut partial, b"\n"),
+                b'\r' => flush(&mut partial, b"\r"),
+                _ => {
+                    partial.push(byte);
+                    if partial.len() >= 8192 {
+                        flush(&mut partial, b"");
+                    }
+                }
+            }
+        }
+    }
+    flush(&mut partial, b"");
+    Ok(())
+}
+
 fn send_async_terminal_output(
     sender: Option<mpsc::Sender<Vec<u8>>>,
     bytes: &[u8],
@@ -1714,6 +1742,35 @@ fn send_async_terminal_output(
     } else {
         let _ = std::io::stdout().write_all(bytes);
         let _ = std::io::stdout().flush();
+    }
+}
+
+#[cfg(test)]
+mod general_live_output_tests {
+    use super::relay_live_console;
+    use std::{io::Cursor, sync::mpsc};
+
+    #[test]
+    fn ping_replies_reach_display_line_by_line_without_waiting_for_process_exit() {
+        let text = b"Respuesta desde 192.0.2.10: bytes=32 tiempo=1ms TTL=64\n\
+                     Respuesta desde 192.0.2.10: bytes=32 tiempo=2ms TTL=64\n";
+        let (tx, rx) = mpsc::channel();
+        relay_live_console(Cursor::new(text.to_vec()), tx).unwrap();
+        let lines = rx.into_iter().collect::<Vec<_>>();
+        assert_eq!(lines.len(), 2);
+        assert!(String::from_utf8_lossy(&lines[0]).contains("tiempo=1ms"));
+        assert!(String::from_utf8_lossy(&lines[1]).contains("tiempo=2ms"));
+        assert!(lines.iter().all(|line| line.ends_with(b"\r\n")));
+    }
+
+    #[test]
+    fn windows_progress_carriage_returns_and_non_utf8_data_survive() {
+        let (tx, rx) = mpsc::channel();
+        relay_live_console(Cursor::new(b"50%\r100%\r\n\xff\n".to_vec()), tx).unwrap();
+        let data = rx.into_iter().flatten().collect::<Vec<_>>();
+        assert!(data.windows(4).any(|w| w == b"50%\r"));
+        assert!(data.windows(5).any(|w| w == b"100%\r"));
+        assert!(data.contains(&0xff));
     }
 }
 
