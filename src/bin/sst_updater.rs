@@ -75,7 +75,7 @@ fn run() -> Result<()> {
     #[cfg(windows)]
     {
         wait_for_parent(parent)?;
-        // ReplaceFileW requires the backup destination to be free.
+        // Each verified replacement keeps its own metadata and security streams.
         // Preserve any existing rollback in a separate timestamped file,
         // rather than removing a previously working SST.
         if backup.is_file() {
@@ -147,8 +147,8 @@ fn run() -> Result<()> {
     #[cfg(not(debug_assertions))]
     let launch_result = launch.spawn();
     if let Err(launch_error) = launch_result {
-        // ReplaceFileW retains the original in sst.exe.old. Restore that
-        // executable atomically instead of leaving an unlaunchable sst.exe.
+        // The transactional rename retains the original in sst.exe.old. Restore that
+        // executable before reporting failure instead of leaving it unlaunchable.
         // Do not bypass or alter Windows security policies.
         #[cfg(windows)]
         {
@@ -270,27 +270,45 @@ fn wait_for_parent(pid: u32) -> Result<()> {
 
 #[cfg(windows)]
 fn replace_file(target: &Path, ready: &Path, backup: Option<&Path>) -> Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::ReplaceFileW;
-    fn wide(path: &Path) -> Vec<u16> {
-        path.as_os_str().encode_wide().chain(Some(0)).collect()
-    }
-    let target_w = wide(target);
-    let ready_w = wide(ready);
-    let backup_w = backup.map(wide);
-    let backup_ptr = backup_w
-        .as_ref()
-        .map_or(std::ptr::null(), |w| w.as_ptr());
-    let result = unsafe {
-        ReplaceFileW(
-            target_w.as_ptr(), ready_w.as_ptr(), backup_ptr, 0,
-            std::ptr::null_mut(), std::ptr::null_mut(),
-        )
+    // Do not use ReplaceFileW here. It deliberately MERGES the old executable's
+    // DACL, file attributes, and named NTFS streams into the new executable.
+    // A blocked/marked SST could therefore pass that restriction to each
+    // update. A same-volume rename keeps the verified replacement's metadata.
+    //
+    // The old executable is preserved BEFORE placing the new executable.
+    // If placement fails, the previous name is restored immediately.
+    let preserved = match backup {
+        Some(path) => path.to_path_buf(),
+        None => {
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            target.with_file_name(format!(
+                "sst.exe.failed.{}.{}.bak",
+                std::process::id(), timestamp
+            ))
+        }
     };
-    if result == 0 {
-        return Err(std::io::Error::last_os_error())
-            .with_context(|| format!("no se pudo reemplazar {}", target.display()));
+    if preserved.exists() {
+        bail!("la copia de seguridad ya existe: {}", preserved.display());
     }
+    fs::rename(target, &preserved)
+        .with_context(|| format!("no se pudo conservar SST antes del reemplazo: {}", target.display()))?;
+    if let Err(install_error) = fs::rename(ready, target) {
+        if let Err(restore_error) = fs::rename(&preserved, target) {
+            bail!(
+                "error instalando {}: {install_error};                  también falló restaurar {}: {restore_error};                  ejecutable anterior conservado en {}",
+                target.display(), target.display(), preserved.display()
+            );
+        }
+        return Err(install_error).with_context(|| format!(
+            "falló activar {}; el ejecutable anterior se restauró", target.display()
+        ));
+    }
+    // On rollback, leave the rejected executable in a separate backup for
+    // evidence. Never remove the last known good copy without a successful
+    // installation and execution check.
     Ok(())
 }
 
