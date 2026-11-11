@@ -184,28 +184,24 @@ fn is_section_heading(line: &str) -> bool {
     looks_like_tabular_header(text)
 }
 
+// Help syntax is identified structurally, not by a hard-coded list of commands.
+// New builtins receive the same formatting without editing this renderer.
 fn style_command_row(line: &str) -> Option<String> {
     let trimmed = line.trim_start();
-    let token = trimmed.split_whitespace().next()?;
-    if !matches!(token,
-        "sys" | "net" | "notsh" | "instp" | "nwash" | "sigsour"
-        | "device" | "domain" | "tools" | "service" | "diag" | "sudo"
-    ) { return None; }
-    let indent = &line[..line.len() - trimmed.len()];
-    // Help descriptions are separated from command syntax by two or more
-    // spaces. Never infer state coloring from words inside the description.
+    if trimmed.is_empty() || trimmed.contains(':') || trimmed.contains('=') {
+        return None;
+    }
     let bytes = trimmed.as_bytes();
     let split = (1..bytes.len().saturating_sub(1))
         .find(|&i| bytes[i] == b' ' && bytes[i + 1] == b' '
-            && bytes[..i].iter().any(|b| !b.is_ascii_whitespace()));
-    if let Some(index) = split {
-        let syntax = trimmed[..index].trim_end();
-        let description = trimmed[index..].trim_start();
-        if !description.is_empty() {
-            return Some(format!("{indent}  {COMMAND}{syntax}{RESET}  {DETAILS}{description}{RESET}"));
-        }
+            && bytes[..i].iter().any(|b| !b.is_ascii_whitespace()))?;
+    let syntax = trimmed[..split].trim_end();
+    let description = trimmed[split..].trim_start();
+    if syntax.is_empty() || description.is_empty() || syntax.chars().count() > 60 {
+        return None;
     }
-    Some(format!("{indent}  {COMMAND}{trimmed}{RESET}"))
+    let indent = &line[..line.len() - trimmed.len()];
+    Some(format!("{indent}  {COMMAND}{syntax}{RESET}  {DETAILS}{description}{RESET}"))
 }
 
 /// Generic two-column help entries used by builtins that omit the command
@@ -235,9 +231,6 @@ fn style_line(line: &str) -> String {
         // This RGB marker is rendered as a native Slint vector heading band.
         // The indentation gives the rounded border room without covering text.
         return format!("{HEADING}   {stripped}{RESET}");
-    }
-    if let Some(command) = style_command_row(line) {
-        return command;
     }
     if let Some((field, value)) = stripped.split_once(": ") {
         // Semantic labels and values. Do not treat a command description as a
@@ -437,6 +430,17 @@ pub fn decorate(command: &str, stdout: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn future_command_help_is_structurally_styled() {
+        let formatted = decorate_at_width(
+            "futuretool help",
+            "uso: futuretool help\\nfuturetool inspect     Consulta el sistema\\n",
+            100,
+        );
+        assert!(formatted.contains(COMMAND));
+        assert!(formatted.contains("futuretool inspect"));
+    }
 
     #[test]
     fn unknown_commands_get_the_same_layout_without_command_specific_rules() {
