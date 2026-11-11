@@ -194,6 +194,10 @@ jobs:
             throw 'La verificación consumió el artefacto original de distribución.'
           }
 
+      - name: Verify installer can repair an inaccessible SST without the SST terminal
+        shell: pwsh
+        run: ./scripts/test-sfx-repair.ps1 -PackagerPath ./target/release/sst_sfx_packager.exe -StubPath ./target/release/sst_sfx_stub.exe
+
       - name: Exercise standalone updater e2e and failure paths
         shell: pwsh
         run: ./scripts/test-independent-updater.ps1 -UpdaterPath ./target/release/sst_updater.exe
