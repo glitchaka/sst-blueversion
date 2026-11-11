@@ -900,7 +900,7 @@ impl ShellCommandHost for WindowsShellHost {
             .envs(env)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::inherit() });
+            .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() });
 
         #[cfg(windows)]
         command.creation_flags(CREATE_NO_WINDOW);
