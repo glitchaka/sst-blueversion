@@ -7,17 +7,17 @@ const RESET: &str = "\x1b[0m";
 // Structural headings are neutral, not cyan. The GUI recognizes this exact
 // color as a semantic marker and draws restrained vector outlines at the
 // corresponding terminal row, without changing the rest of the text.
-const HEADING: &str = "\x1b[1;38;2;215;219;227m";
-const COMMAND: &str = "\x1b[1;38;2;229;233;240m";
-const DETAILS: &str = "\x1b[38;2;166;176;191m";
-const LABEL: &str = "\x1b[38;2;191;202;218m";
+const HEADING: &str = "\x1b[1;38;2;213;196;161m";
+const COMMAND: &str = "\x1b[1;38;2;235;219;178m";
+const DETAILS: &str = "\x1b[38;2;189;174;147m";
+const LABEL: &str = "\x1b[38;2;189;174;147m";
 // Color encodes proven state ONLY: red critical, amber warning,
 // green functioning, blue genuinely excellent/optimal.
-const GOOD: &str = "\x1b[1;38;2;115;216;152m";
-const CAUTION: &str = "\x1b[1;38;2;239;191;99m";
-const BAD: &str = "\x1b[1;38;2;248;117;121m";
-const PERFECT: &str = "\x1b[1;38;2;104;160;239m";
-const BULLET: &str = "\x1b[38;2;165;175;190m";
+const GOOD: &str = "\x1b[1;38;2;184;187;38m";
+const CAUTION: &str = "\x1b[1;38;2;250;189;47m";
+const BAD: &str = "\x1b[1;38;2;251;73;52m";
+const PERFECT: &str = "\x1b[1;38;2;131;165;152m";
+const BULLET: &str = "\x1b[38;2;189;174;147m";
 
 fn suitable(command: &str, stdout: &str, registered_native: Option<&[String]>) -> bool {
     if stdout.trim().is_empty()
