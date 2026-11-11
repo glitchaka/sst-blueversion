@@ -71,6 +71,34 @@ try {
         throw 'Inconsistencia en el registro de aplicación.'
     }
     Write-Host 'Updater independiente: SHA, espera, sustitución y rollback correctos.'
+    # Simula el síntoma real: Windows no puede iniciar el nuevo ejecutable,
+    # aunque el fichero descargado pasa el SHA-256. La versión anterior debe
+    # restaurarse sin declarar la actualización aplicada.
+    [IO.File]::WriteAllBytes($ready, [byte[]](0x53,0x53,0x54,0x20,0x4e,0x4f,0x54,0x20,0x50,0x45))
+    '{"pending":true}' | Set-Content $pending
+    '{"applied":true}' | Set-Content $appliedPending
+    $invalidExeHash = (Get-FileHash -Algorithm SHA256 $ready).Hash.ToLowerInvariant()
+    $previousHash = (Get-FileHash -Algorithm SHA256 $target).Hash.ToLowerInvariant()
+    $env:SST_UPDATER_SHA256 = $invalidExeHash
+    $parent = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoLogo','-NoProfile','-Command','Start-Sleep -Seconds 2') -WindowStyle Hidden -PassThru
+    $env:SST_UPDATER_PARENT_PID = [string]$parent.Id
+    $operation = Start-Process -FilePath $worker -ArgumentList '--apply' -PassThru -Wait
+    if ($operation.ExitCode -eq 0) {
+        throw 'El actualizador declaró éxito cuando Windows rechazó el nuevo programa.'
+    }
+    if ((Get-FileHash -Algorithm SHA256 $target).Hash.ToLowerInvariant() -ne $previousHash) {
+        throw 'El fallo de arranque dejó SST inaccesible: no restauró el ejecutable anterior.'
+    }
+    if (Test-Path -LiteralPath $appliedPending) {
+        throw 'Falló la limpieza del recibo pendiente tras restaurar SST.'
+    }
+    $errorFile = Join-Path $dir 'updater-error.log'
+    if ((-not (Test-Path -LiteralPath $errorFile)) -or
+        ((Get-Content -Raw -LiteralPath $errorFile) -notmatch 'restaurado autom')) {
+        throw 'Falta diagnóstico de rollback al bloquearse el inicio del ejecutable.'
+    }
+    Write-Host 'Actualizador: denegación de ejecución simulada y restauración automática verificadas.'
+
 }
 finally {
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name,$saved[$name],'Process') }
