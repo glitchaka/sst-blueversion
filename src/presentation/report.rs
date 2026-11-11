@@ -187,12 +187,19 @@ fn style_line(line: &str) -> String {
            && !field.contains("  ") && field.chars().any(char::is_alphabetic)
         {
             let indent = &line[..line.len() - stripped.len()];
-            let value_color = if is_status_field(stripped) {
-                status_color(value).unwrap_or(RESET)
-            } else {
-                RESET
-            };
-            return format!("{indent}{LABEL}{field}:{RESET} {value_color}{value}{RESET}");
+            let key = field.to_ascii_lowercase();
+            // Explicit diagnostic labels are authoritative; arbitrary
+            // occurrences of these words in descriptions are not.
+            let alarm = matches!(key.as_str(),
+                "error" | "error crítico" | "error critico" | "fallo" | "crítico" | "critico");
+            let warning = matches!(key.as_str(),
+                "advertencia" | "aviso" | "warning" | "atención" | "atencion");
+            let label_color = if alarm { BAD } else if warning { CAUTION } else { LABEL };
+            let value_color = if alarm { BAD }
+                else if warning { CAUTION }
+                else if is_status_field(stripped) { status_color(value).unwrap_or(RESET) }
+                else { RESET };
+            return format!("{indent}{label_color}{field}:{RESET} {value_color}{value}{RESET}");
         }
     }
     if stripped.starts_with('•') {
@@ -400,6 +407,8 @@ mod tests {
         assert!(style_line("Estado: PERFECTO").contains(PERFECT));
         assert!(!style_line("Descripción: dispositivos PnP conectados").contains(GOOD));
         assert!(!style_line("Texto: ERROR en un manual").contains(BAD));
+        assert!(style_line("Error: acceso rechazado").contains(BAD));
+        assert!(style_line("Advertencia: revisar conexión").contains(CAUTION));
         assert!(!style_live_line("Respuesta desde 10.0.0.1: bytes=32 tiempo=1ms TTL=64").contains(PERFECT));
     }
 
