@@ -264,11 +264,17 @@ slint::slint! {
         in property <float> report-grid-width: 0.0;
         in property <float> report-line-height: 18.0;
         in property <float> report-a-row: 0.0;
+        in property <float> report-a-width: 0.0;
         in property <float> report-b-row: 0.0;
+        in property <float> report-b-width: 0.0;
         in property <float> report-c-row: 0.0;
+        in property <float> report-c-width: 0.0;
         in property <float> report-d-row: 0.0;
+        in property <float> report-d-width: 0.0;
         in property <float> report-e-row: 0.0;
+        in property <float> report-e-width: 0.0;
         in property <float> report-f-row: 0.0;
+        in property <float> report-f-width: 0.0;
 
         in property <int> monitor-panel-count: 0;
         in property <float> monitor-grid-left: 0.0;
@@ -348,7 +354,7 @@ slint::slint! {
                 visible: root.report-heading-count > 0;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-a-row * root.report-line-height) * 1px;
-                width: root.report-grid-width * 1px;
+                width: root.report-a-width * 1px;
                 height: root.report-line-height * 1px;
             }
 
@@ -356,7 +362,7 @@ slint::slint! {
                 visible: root.report-heading-count > 1;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-b-row * root.report-line-height) * 1px;
-                width: root.report-grid-width * 1px;
+                width: root.report-b-width * 1px;
                 height: root.report-line-height * 1px;
             }
 
@@ -364,7 +370,7 @@ slint::slint! {
                 visible: root.report-heading-count > 2;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-c-row * root.report-line-height) * 1px;
-                width: root.report-grid-width * 1px;
+                width: root.report-c-width * 1px;
                 height: root.report-line-height * 1px;
             }
 
@@ -372,7 +378,7 @@ slint::slint! {
                 visible: root.report-heading-count > 3;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-d-row * root.report-line-height) * 1px;
-                width: root.report-grid-width * 1px;
+                width: root.report-d-width * 1px;
                 height: root.report-line-height * 1px;
             }
 
@@ -380,7 +386,7 @@ slint::slint! {
                 visible: root.report-heading-count > 4;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-e-row * root.report-line-height) * 1px;
-                width: root.report-grid-width * 1px;
+                width: root.report-e-width * 1px;
                 height: root.report-line-height * 1px;
             }
 
@@ -388,7 +394,7 @@ slint::slint! {
                 visible: root.report-heading-count > 5;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-f-row * root.report-line-height) * 1px;
-                width: root.report-grid-width * 1px;
+                width: root.report-f-width * 1px;
                 height: root.report-line-height * 1px;
             }
 
@@ -2241,20 +2247,32 @@ pub fn run() -> Result<()> {
                 let panels = model.session.panels_snapshot();
                 // Only ordinary SST reports use semantic inline heading bands;
                 // alternate-screen monitors have their own section geometry.
-                let mut headings = Vec::<f32>::new();
+                let mut headings = Vec::<(f32, f32)>::new();
                 if panels.is_empty() {
                     let screen = model.parser.screen();
                     let (rows, cols) = screen.size();
                     for row in 0..rows {
+                        let mut last_col: Option<u16> = None;
+                        for col in 0..cols {
+                            if screen.cell(row, col).is_some_and(|cell| {
+                                matches!(cell.fgcolor(), vt100::Color::Rgb(69, 209, 241))
+                                    && !cell.contents().is_empty()
+                            }) {
+                                last_col = Some(col);
+                            }
+                        }
+                        // A real heading must start near the left margin and
+                        // contain visible text. This avoids drawing borders
+                        // around unrelated cyan status values.
                         let is_heading = (0..cols.min(12)).any(|col| {
                             screen.cell(row, col).is_some_and(|cell| {
-                                matches!(cell.fgcolor(),
-                                    vt100::Color::Rgb(69, 209, 241))
+                                matches!(cell.fgcolor(), vt100::Color::Rgb(69, 209, 241))
                                     && cell.contents().chars().any(char::is_alphabetic)
                             })
                         });
                         if is_heading {
-                            headings.push(f32::from(row));
+                            let title_columns = last_col.unwrap_or(0).saturating_add(3).min(cols);
+                            headings.push((f32::from(row), f32::from(title_columns)));
                             if headings.len() == 6 { break; }
                         }
                     }
@@ -2271,12 +2289,24 @@ pub fn run() -> Result<()> {
                     );
                     ui.set_report_line_height(cell_height / factor);
                     let mut items = headings.into_iter();
-                    ui.set_report_a_row(items.next().unwrap_or_default());
-                    ui.set_report_b_row(items.next().unwrap_or_default());
-                    ui.set_report_c_row(items.next().unwrap_or_default());
-                    ui.set_report_d_row(items.next().unwrap_or_default());
-                    ui.set_report_e_row(items.next().unwrap_or_default());
-                    ui.set_report_f_row(items.next().unwrap_or_default());
+                    let (row, cols) = items.next().unwrap_or_default();
+                    ui.set_report_a_row(row);
+                    ui.set_report_a_width((cols * cell_width / factor).max(0.0));
+                    let (row, cols) = items.next().unwrap_or_default();
+                    ui.set_report_b_row(row);
+                    ui.set_report_b_width((cols * cell_width / factor).max(0.0));
+                    let (row, cols) = items.next().unwrap_or_default();
+                    ui.set_report_c_row(row);
+                    ui.set_report_c_width((cols * cell_width / factor).max(0.0));
+                    let (row, cols) = items.next().unwrap_or_default();
+                    ui.set_report_d_row(row);
+                    ui.set_report_d_width((cols * cell_width / factor).max(0.0));
+                    let (row, cols) = items.next().unwrap_or_default();
+                    ui.set_report_e_row(row);
+                    ui.set_report_e_width((cols * cell_width / factor).max(0.0));
+                    let (row, cols) = items.next().unwrap_or_default();
+                    ui.set_report_f_row(row);
+                    ui.set_report_f_width((cols * cell_width / factor).max(0.0));
                 }
                 ui.set_monitor_panel_count(panels.len().min(4) as i32);
                 if !panels.is_empty() {
