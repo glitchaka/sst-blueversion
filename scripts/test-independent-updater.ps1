@@ -82,7 +82,11 @@ try {
     $env:SST_UPDATER_SHA256 = $invalidExeHash
     $parent = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoLogo','-NoProfile','-Command','Start-Sleep -Seconds 2') -WindowStyle Hidden -PassThru
     $env:SST_UPDATER_PARENT_PID = [string]$parent.Id
-    $operation = Start-Process -FilePath $worker -ArgumentList '--apply' -PassThru -Wait
+    $operation = Start-Process -FilePath $worker -ArgumentList '--apply' -PassThru
+    if (-not $operation.WaitForExit(30000)) {
+        $operation.Kill()
+        throw 'El actualizador quedó bloqueado tras un fallo de ejecución: no se restauró SST a tiempo.'
+    }
     if ($operation.ExitCode -eq 0) {
         throw 'El actualizador declaró éxito cuando Windows rechazó el nuevo programa.'
     }
