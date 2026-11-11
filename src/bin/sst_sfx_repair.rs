@@ -108,9 +108,6 @@ pub fn repair(extracted: &Path, destination: &Path, launch: bool) -> Result<()> 
             let sst_rollback = restore_file(&installed, &old_sst);
             if let Some(ref old) = old_updater {
                 let _ = restore_file(&installed_updater, old);
-            } else if replacement_updater.exists() == false {
-                // A newly introduced updater is safe to leave installed even
-                // if the SST launch is rejected; keep it for diagnosis.
             }
             sst_rollback.context("Windows rechazó el nuevo SST y la restauración falló")?;
             return Err(error).context(
@@ -132,6 +129,57 @@ mod tests {
         let name = unique_backup(Path::new(r"C:\SST"), "sst.exe");
         assert!(name.file_name().unwrap().to_string_lossy().starts_with("sst.exe.repair."));
         assert!(name.file_name().unwrap().to_string_lossy().ends_with(".bak"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn launch_rejection_restores_executable_without_touching_user_data() {
+        let root = std::env::temp_dir().join(format!(
+            "sst-repair-denied-{}-{}", std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos(),
+        ));
+        let source = root.join("payload");
+        let target = root.join("install");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(target.join("data")).unwrap();
+        fs::write(target.join("sst.exe"), b"prior known-good bytes").unwrap();
+        fs::write(target.join("data").join("config.json"), b"untouched settings").unwrap();
+        fs::write(source.join("sst.exe"), vec![0u8; 4096]).unwrap();
+        let outcome = repair(&source, &target, true);
+        assert!(outcome.is_err(), "Windows must reject an invalid PE image");
+        assert_eq!(fs::read(target.join("sst.exe")).unwrap(), b"prior known-good bytes");
+        assert_eq!(fs::read(target.join("data").join("config.json")).unwrap(), b"untouched settings");
+        assert!(fs::read_dir(&target).unwrap().filter_map(Result::ok).any(|f|
+            f.file_name().to_string_lossy().contains("sst.exe.rejected")
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn successful_repair_preserves_existing_user_settings_and_backup() {
+        let root = std::env::temp_dir().join(format!(
+            "sst-repair-success-{}-{}", std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos(),
+        ));
+        let source = root.join("payload");
+        let target = root.join("install");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(target.join("data")).unwrap();
+        let windir = std::env::var_os("SystemRoot")
+            .map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        let where_exe = windir.join("System32").join("where.exe");
+        if !where_exe.is_file() { return; }
+        fs::write(target.join("sst.exe"), b"old executable").unwrap();
+        fs::write(target.join("data").join("user-settings.txt"), b"keep this").unwrap();
+        fs::copy(&where_exe, source.join("sst.exe")).unwrap();
+        repair(&source, &target, true).unwrap();
+        assert_eq!(fs::read(target.join("data").join("user-settings.txt")).unwrap(), b"keep this");
+        assert_eq!(fs::metadata(target.join("sst.exe")).unwrap().len(), fs::metadata(&where_exe).unwrap().len());
+        assert!(fs::read_dir(&target).unwrap().filter_map(Result::ok).any(|f|
+            f.file_name().to_string_lossy().starts_with("sst.exe.repair.")
+        ));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
