@@ -32,6 +32,11 @@ fn suitable(command: &str, stdout: &str, registered_native: Option<&[String]>) -
     // Regular unstructured shell text (echo, printf, cat, etc.) stays raw;
     // every structured native OR external report receives semantic formatting.
     let root = command.split_whitespace().next().unwrap_or("");
+    // File viewers and UNIX text tools must never rewrite the data they show,
+    // even when a file happens to contain words such as "Estado: ERROR".
+    if crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| *name == root) {
+        return false;
+    }
     let native = registered_native.is_some_and(|names|
         names.iter().any(|name| name == root)
             && !crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| *name == root)
@@ -417,7 +422,7 @@ mod tests {
         let text = "STATE   VALUE\nUP      1\n";
         for command in ["notsh interfaces | cat", "notsh interfaces > out.txt",
             "notsh interfaces --json", "notsh interfaces --csv", "echo foo", "notsh interfaces; echo ok",
-            "notsh interfaces --plain"] {
+            "notsh interfaces --plain", "cat report.txt", "grep error report.txt"] {
             assert_eq!(decorate(command, text), text, "{command}");
         }
     }
