@@ -1,28 +1,29 @@
 {
   "schema": 1,
-  "version": "0.1.9-blue.63",
+  "version": "0.1.9-blue.64",
   "channel": "blue",
-  "published_at": "2026-11-11T17:22:39.0397689+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.63/sst.exe",
-  "sha256": "0cc3f82e8a28cf33df05f3c2911baa51ecf611f4b2f50f804796eb0e0aa53a54",
-  "size": 55634944,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.63/sst-updater.exe",
-  "updater_sha256": "f23617be9d3180f27d79bae88f56144b805d5f72098c999fbb5e0e1d8dc7f645",
+  "published_at": "2026-11-11T17:49:32.8656212+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.64/sst.exe",
+  "sha256": "456fed7443534bc66f585eae1fb0d5b3173f903fd025cb9c52dd09e6d5c2f9f7",
+  "size": 55639040,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.64/sst-updater.exe",
+  "updater_sha256": "c7f5bfa978105d604cd255339b79d1814e7a4479f27b0ea9690474629e6a25ee",
   "updater_size": 423424,
   "changes": [
-    "Interfaz Slint, isla de estado, controles, contornos, barras de transferencia, cursor, selección y paleta ANSI con colores Gruvbox Dark.",
-    "Fondo predeterminado #282828, texto #ebdbb2; migración conservadora desde los valores azulados originales en instalaciones existentes, sin sobrescribir preferencias personalizadas.",
-    "Informes normales y monitores TUI: blanco/gris para información, rojo para errores críticos, naranja/amarillo para advertencias, verde para funcionamiento correcto y azul exclusivamente para estados explícitamente óptimos.",
-    "Cabeceras de informes y detección de secciones usan el mismo marcador RGB neutral: los contornos vectoriales nativos vuelven a aparecer sin depender del marcador celeste obsoleto.",
-    "Se mantiene el logo, la lógica de privilegios, el funcionamiento de comandos y las salidas estructuradas CSV/JSON.",
-    "Conserva los cambios de blue.61 para el texto semántico, etiqueta USUARIO y streaming de ping/procesos externos."
+    "El punto compartido de salida interactiva reconoce automáticamente estructuras, títulos, campos y tablas, sin listas de nombres de comandos ni tratamiento individual de utilidades.",
+    "Los nuevos comandos pueden emitir informes de texto normal y obtener diseño Gruvbox Dark sin incorporar secuencias de escape ni crear renderizadores propios.",
+    "Los encabezados de tabla reciben tratamiento neutral y los colores de estado se aplican únicamente cuando el valor ocupa una columna explícita ESTADO, STATUS, SALUD, HEALTH o RESULTADO.",
+    "Los campos etiquetados conservan los estados semánticos: rojo crítico/error, naranja advertencia, verde correcto y azul exclusivamente óptimo.",
+    "Preservación exacta de datos en CSV/JSON/plain, pipes, redirecciones, salidas UNIX y secuencias ANSI ya coloreadas.",
+    "Pruebas de regresión añadidas para comandos nuevos no registrados explícitamente y estados en columnas de tablas.",
+    "Incluye Gruvbox Dark global y la corrección de las cabeceras vectoriales de blue.63."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.9-blue.63.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.63/SST-Setup-0.1.9-blue.63.exe",
-    "sha256": "509d221fcae278017d0264927752516b81a559967c4efa1c3b3ae4f2bc62ee8c",
-    "size": 56640223,
+    "name": "SST-Setup-0.1.9-blue.64.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.9-blue.64/SST-Setup-0.1.9-blue.64.exe",
+    "sha256": "e92cad2732f4c9d06cbeaa9abf987e7ab895ec5968ae9c17567b41b6c2cd1aba",
+    "size": 56644319,
     "single_use": true,
-    "package_id": "b14ae7614cec78cab04fc37c615516ac"
+    "package_id": "49cf0e4c0a646bd4f1b79803b37410e5"
   }
 }
