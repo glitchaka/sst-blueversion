@@ -136,7 +136,17 @@ fn run() -> Result<()> {
     ] {
         launch.env_remove(key);
     }
-    if let Err(launch_error) = launch.spawn() {
+    // Deterministic fault injection for the unshipped DEBUG test binary.
+    // Release builds never read this variable and always invoke Windows.
+    #[cfg(debug_assertions)]
+    let launch_result = if env::var_os("SST_UPDATER_TEST_DENY_LAUNCH").is_some() {
+        Err(std::io::Error::from_raw_os_error(5))
+    } else {
+        launch.spawn()
+    };
+    #[cfg(not(debug_assertions))]
+    let launch_result = launch.spawn();
+    if let Err(launch_error) = launch_result {
         // ReplaceFileW retains the original in sst.exe.old. Restore that
         // executable atomically instead of leaving an unlaunchable sst.exe.
         // Do not bypass or alter Windows security policies.
