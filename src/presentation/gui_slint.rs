@@ -145,10 +145,11 @@ slint::slint! {
     // Text-report section headings are individual native vector outlines,
     // derived from semantic RGB markers in the VT100 viewport. No fake lines.
     component ReportHeadingBand inherits Rectangle {
+        // Restrained semantic outline: no cyan wash, no opaque overlay.
         background: transparent;
         border-width: 1px;
-        border-color: #305b78;
-        border-radius: 8px;
+        border-color: #626a78;
+        border-radius: 6px;
 
         Rectangle {
             x: 1px;
@@ -156,7 +157,7 @@ slint::slint! {
             width: 3px;
             height: max(4px, parent.height - 6px);
             border-radius: 2px;
-            background: #45d1f1;
+            background: #c5c9d1;
         }
     }
 
@@ -2255,7 +2256,7 @@ pub fn run() -> Result<()> {
                         let mut last_col: Option<u16> = None;
                         for col in 0..cols {
                             if screen.cell(row, col).is_some_and(|cell| {
-                                matches!(cell.fgcolor(), vt100::Color::Rgb(69, 209, 241))
+                                matches!(cell.fgcolor(), vt100::Color::Rgb(215, 219, 227))
                                     && !cell.contents().is_empty()
                             }) {
                                 last_col = Some(col);
