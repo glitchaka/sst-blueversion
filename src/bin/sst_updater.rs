@@ -120,19 +120,11 @@ fn run() -> Result<()> {
         return Err(error).context("el ejecutable actualizado no pasó el control de integridad");
     }
 
-    // Never leave a successfully updated SST unlaunchable because metadata or
-    // telemetry could not be written. Retain the .old backup for recovery.
-    if applied_pending.is_file() {
-        let _ = fs::remove_file(&applied);
-        if let Err(error) = fs::rename(&applied_pending, &applied) {
-            eprintln!("SST updater: recibo no guardado: {error}");
-        }
-    }
-    let _ = fs::remove_file(&pending);
-    if staged != target && staged != ready {
-        let _ = fs::remove_file(&staged);
-    }
-
+    // CRITICAL: replacement is not a successful update until Windows accepts
+    // CreateProcess for the installed binary. A previous implementation
+    // removed the pending marker and recorded success BEFORE attempting
+    // launch, leaving SST stranded if Defender/App Control/permissions deny
+    // access to the newly replaced executable.
     let mut launch = Command::new(&target);
     for key in [
         PARENT, TARGET, READY, BACKUP, PENDING, APPLIED_PENDING, APPLIED,
@@ -144,7 +136,47 @@ fn run() -> Result<()> {
     ] {
         launch.env_remove(key);
     }
-    launch.spawn().context("SST se actualizó pero no pudo relanzarse")?;
+    if let Err(launch_error) = launch.spawn() {
+        // ReplaceFileW retains the original in sst.exe.old. Restore that
+        // executable atomically instead of leaving an unlaunchable sst.exe.
+        // Do not bypass or alter Windows security policies.
+        #[cfg(windows)]
+        {
+            if backup.is_file() {
+                match replace_file(&target, &backup, None) {
+                    Ok(()) => {
+                        // Do not record success; keep the error log for support.
+                        let _ = fs::remove_file(&pending);
+                        let _ = fs::remove_file(&applied_pending);
+                        return Err(launch_error).context(
+                            "Windows rechazó iniciar la actualización; SST anterior restaurado automáticamente"
+                        );
+                    }
+                    Err(rollback_error) => {
+                        return Err(anyhow::anyhow!(
+                            "Windows rechazó iniciar SST actualizado ({launch_error});                              también falló la restauración automática ({rollback_error}).                              Conserva los archivos sst.exe y sst.exe.old y revisa Seguridad de Windows."
+                        ));
+                    }
+                }
+            }
+        }
+        return Err(launch_error).context(
+            "Windows rechazó iniciar SST actualizado y no existe una copia anterior para restaurar"
+        );
+    }
+
+    // Commit update metadata ONLY after Windows accepted the new executable.
+    // Metadata I/O must not make an otherwise successful launch fail.
+    if applied_pending.is_file() {
+        let _ = fs::remove_file(&applied);
+        if let Err(error) = fs::rename(&applied_pending, &applied) {
+            eprintln!("SST updater: recibo no guardado: {error}");
+        }
+    }
+    let _ = fs::remove_file(&pending);
+    if staged != target && staged != ready {
+        let _ = fs::remove_file(&staged);
+    }
     Ok(())
 }
 
