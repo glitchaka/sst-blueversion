@@ -12,6 +12,9 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 
+#[path = "sst_sfx_repair.rs"]
+mod repair;
+
 const PACKAGE_MAGIC: &[u8; 8] = b"SSTPKG01";
 const SFX_MAGIC: &[u8; 8] = b"SSTSFX03";
 const PACKAGE_VERSION: u32 = 1;
@@ -124,32 +127,54 @@ fn run() -> Result<()> {
         }
     };
 
-    let (destination, launch) = resolve_destination(parent)?;
-    extract_bundle(&self_path, &destination, metadata.package_offset)?;
-
-    let sst = destination.join("sst.exe");
-    if !sst.is_file() {
-        bail!("el bundle no contiene sst.exe");
+    let (destination, launch, repair_mode) = resolve_destination(parent)?;
+    if repair_mode {
+        // Extract to an isolated directory on the same volume. The installed
+        // configuration, user data and background image are never overwritten.
+        let staged = destination.join(format!(
+            ".sst-repair-stage-{}", std::process::id()
+        ));
+        if staged.exists() {
+            bail!("existe una reparación anterior pendiente: {}", staged.display());
+        }
+        let operation = (|| -> Result<()> {
+            extract_bundle(&self_path, &staged, metadata.package_offset)?;
+            repair::repair(&staged, &destination, launch)
+        })();
+        let _ = fs::remove_dir_all(&staged);
+        operation?;
+    } else {
+        extract_bundle(&self_path, &destination, metadata.package_offset)?;
+        let sst = destination.join("sst.exe");
+        if !sst.is_file() {
+            bail!("el bundle no contiene sst.exe");
+        }
+        if launch {
+            Command::new(&sst)
+                .current_dir(&destination)
+                .spawn()
+                .with_context(|| format!("no se pudo iniciar {}", sst.display()))?;
+        }
     }
 
+    // A failed launch does NOT consume the installer. A successful repair
+    // needs no functioning SST console at any point.
     guard.commit()?;
     schedule_self_delete(&self_path, &metadata.package_id)
         .context("la extracción terminó, pero no se pudo programar la autodestrucción del paquete")?;
 
-    if launch {
-        Command::new(&sst)
-            .current_dir(&destination)
-            .spawn()
-            .with_context(|| format!("no se pudo iniciar {}", sst.display()))?;
-    }
-
     Ok(())
 }
 
-fn resolve_destination(parent: &Path) -> Result<(PathBuf, bool)> {
+fn resolve_destination(parent: &Path) -> Result<(PathBuf, bool, bool)> {
     let mut args = env::args_os().skip(1);
     match args.next() {
-        None => Ok((parent.join(INSTALL_DIR), true)),
+        None if parent.join("sst.exe").is_file() => {
+            // Double-clicking the official installer from the BROKEN SST folder
+            // automatically performs an in-place repair. No terminal needed.
+            Ok((parent.to_path_buf(), true, true))
+        }
+        None => Ok((parent.join(INSTALL_DIR), true, false)),
         Some(flag) if flag == OsString::from("--extract-only") => {
             let destination = args
                 .next()
@@ -158,7 +183,18 @@ fn resolve_destination(parent: &Path) -> Result<(PathBuf, bool)> {
             if args.next().is_some() {
                 bail!("--extract-only acepta una sola carpeta de destino");
             }
-            Ok((destination, false))
+            Ok((destination, false, false))
+        }
+        Some(flag) if flag == OsString::from("--repair") => {
+            let destination = args.next().map(PathBuf::from)
+                .unwrap_or_else(|| parent.to_path_buf());
+            if args.next().is_some() {
+                bail!("--repair acepta solamente una carpeta de SST");
+            }
+            if !destination.join("sst.exe").is_file() {
+                bail!("--repair requiere una instalación SST existente en {}", destination.display());
+            }
+            Ok((destination, true, true))
         }
         Some(other) => bail!(
             "argumento no reconocido para SST Setup: {}",
