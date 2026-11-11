@@ -12,7 +12,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 
-#[path = "sst_sfx_repair.rs"]
+#[path = "../support/sfx_repair.rs"]
 mod repair;
 
 const PACKAGE_MAGIC: &[u8; 8] = b"SSTPKG01";
