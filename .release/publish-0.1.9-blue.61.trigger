@@ -1,1 +1,3 @@
 Publish SST 0.1.9-blue.61 after all Windows build, Rust tests, terminal integration, interactive real-time output and fallback updater tests succeed. Neutral shared text UI and semantic status palette; restore USUARIO. Verify SHA256 and public channel.
+
+Rebuild from complete main including raw cat/grep output preservation and latest general text renderer regression.
