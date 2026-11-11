@@ -1685,6 +1685,7 @@ fn relay_live_console<R: Read>(
 ) -> Result<()> {
     let mut buffer = [0u8; 4096];
     let mut partial = Vec::<u8>::new();
+    let mut pending_cr = false;
     let flush = |line: &mut Vec<u8>, ending: &[u8]| {
         if line.is_empty() && ending.is_empty() { return; }
         let mut rendered = if let Ok(text) = std::str::from_utf8(line) {
@@ -1705,9 +1706,20 @@ fn relay_live_console<R: Read>(
         let size = reader.read(&mut buffer)?;
         if size == 0 { break; }
         for &byte in &buffer[..size] {
+            // Preserve Win32 CRLF exactly (even across read boundaries), and
+            // leave CR-based progress updates working without extra lines.
+            if pending_cr {
+                if byte == b'\n' {
+                    flush(&mut partial, b"\r\n");
+                    pending_cr = false;
+                    continue;
+                }
+                flush(&mut partial, b"\r");
+                pending_cr = false;
+            }
             match byte {
                 b'\n' => flush(&mut partial, b"\n"),
-                b'\r' => flush(&mut partial, b"\r"),
+                b'\r' => pending_cr = true,
                 _ => {
                     partial.push(byte);
                     if partial.len() >= 8192 {
@@ -1717,6 +1729,7 @@ fn relay_live_console<R: Read>(
             }
         }
     }
+    if pending_cr { flush(&mut partial, b"\r"); }
     flush(&mut partial, b"");
     Ok(())
 }
@@ -1749,6 +1762,46 @@ fn send_async_terminal_output(
 mod general_live_output_tests {
     use super::relay_live_console;
     use std::{io::Cursor, sync::mpsc};
+
+    #[test]
+    fn line_one_is_visible_before_line_two_is_produced() {
+        use std::{io, time::Duration};
+        struct ControlledReader {
+            rx: mpsc::Receiver<Vec<u8>>,
+            chunk: Cursor<Vec<u8>>,
+        }
+        impl io::Read for ControlledReader {
+            fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+                loop {
+                    let size = std::io::Read::read(&mut self.chunk, out)?;
+                    if size != 0 { return Ok(size); }
+                    match self.rx.recv() {
+                        Ok(next) => self.chunk = Cursor::new(next),
+                        Err(_) => return Ok(0),
+                    }
+                }
+            }
+        }
+        let (input_tx, input_rx) = mpsc::channel();
+        let (output_tx, output_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            relay_live_console(
+                ControlledReader { rx: input_rx, chunk: Cursor::new(Vec::new()) },
+                output_tx,
+            )
+        });
+        input_tx.send(b"Respuesta desde 192.0.2.1: bytes=32 tiempo=1ms TTL=64\r\n".to_vec()).unwrap();
+        let first = output_rx.recv_timeout(Duration::from_secs(2)).expect(
+            "La primera respuesta debe llegar antes de producirse la segunda"
+        );
+        assert!(String::from_utf8_lossy(&first).contains("tiempo=1ms"));
+        assert!(first.ends_with(b"\r\n"));
+        input_tx.send(b"Respuesta desde 192.0.2.1: bytes=32 tiempo=2ms TTL=64\r\n".to_vec()).unwrap();
+        let second = output_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(String::from_utf8_lossy(&second).contains("tiempo=2ms"));
+        drop(input_tx);
+        worker.join().unwrap().unwrap();
+    }
 
     #[test]
     fn ping_replies_reach_display_line_by_line_without_waiting_for_process_exit() {
