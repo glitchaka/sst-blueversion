@@ -73,8 +73,8 @@ pub fn report() -> CommandOutput {
         if !has_cpu {
             text.push_str("\nCPU: temperatura no disponible con los proveedores activos.\n");
         }
-        text.push_str("\nFuentes: Windows Storage IOCTL, NVIDIA NVML (API nativa),\n\n");
-        text.push_str("almacenamiento SMART/CIM de Windows, NVIDIA NVML (API directa del driver) y zonas ACPI.\n");
+        text.push_str("\nFuentes: Windows Storage IOCTL, NVIDIA NVML (API directa),\n");
+        text.push_str("WMI/CIM de Windows y LHM/OHM opcionales, zonas ACPI.\n");
         text.push_str("Las zonas ACPI NO representan necesariamente la temperatura del CPU.\n");
         text.push_str("Los sensores ausentes se omiten: SST no estima ni fabrica temperaturas.\n");
         if !notes.is_empty() {
