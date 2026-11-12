@@ -1,0 +1,60 @@
+Commit: 405151aa44c93571b2883fffdf0052dcf82bb13a
+Tested UTC: 2026-11-12 19:03:27Z
+Test: failure
+Windows release build: skipped
+Log tail:
+   Compiling crossterm_winapi v0.9.1
+   Compiling aes v0.8.4
+   Compiling cbc v0.1.2
+   Compiling chacha20 v0.9.1
+   Compiling des v0.8.1
+   Compiling cfb-mode v0.8.2
+   Compiling hmac v0.12.1
+   Compiling blake2 v0.10.6
+   Compiling sha1 v0.10.7
+   Compiling sha2 v0.10.9
+   Compiling md-5 v0.10.6
+   Compiling home v0.5.12
+   Compiling serial2 v0.2.39
+   Compiling hashlink v0.12.2
+   Compiling vte v0.15.0
+   Compiling aead v0.5.2
+   Compiling filetime v0.2.29
+   Compiling widestring v1.2.1
+   Compiling slint-macros v1.18.1
+   Compiling downcast-rs v1.2.1
+   Compiling shell-words v1.1.1
+   Compiling fallible-iterator v0.3.0
+   Compiling typed-path v0.13.0
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling slint v1.18.1
+   Compiling rusqlite v0.41.1
+   Compiling ferrisetw v1.2.0
+   Compiling zip v9.5.1
+   Compiling portable-pty v0.9.0
+   Compiling tar v0.4.46
+   Compiling chacha20poly1305 v0.10.1
+   Compiling vt100 v0.16.2
+   Compiling rustyline v17.0.2
+   Compiling snmp2 v0.5.3
+   Compiling argon2 v0.5.3
+   Compiling crossterm v0.29.0
+   Compiling fontdue v0.9.5
+   Compiling x25519-dalek v2.0.1
+   Compiling regex v1.13.1
+   Compiling dns-lookup v2.1.1
+   Compiling libcaca-rs v0.1.0
+   Compiling spellbook v0.4.2
+   Compiling ipnet v2.12.2
+   Compiling glob v0.3.4
+   Compiling base64 v0.22.1
+   Compiling similar v2.7.0
+   Compiling sysinfo v0.37.2
+error[E0432]: unresolved import `windows_sys::Win32::System::LibraryLoader::FreeLibrary`
+   --> src\application\thermal.rs:280:9
+    |
+280 |         FreeLibrary, GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32,
+    |         ^^^^^^^^^^^ no `FreeLibrary` in `Win32::System::LibraryLoader`
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `sst` (bin "sst" test) due to 1 previous error
