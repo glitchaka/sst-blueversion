@@ -1979,20 +1979,21 @@ fn apply_slint_window_effects(ui: &SstBlueWindow, appearance: &TerminalAppearanc
 }
 
 pub fn run() -> Result<()> {
-    // The terminal surface needs a genuinely transparent native window.
-    // Setting only `background: transparent` in Slint is not enough on every
-    // Windows/FemtoVG combination because the native Winit window may otherwise
-    // be created as opaque before the renderer starts.
+    // Do not force FemtoVG: some Windows machines expose no usable OpenGL
+    // driver (including older GPUs, remote sessions and fallback display
+    // adapters). Enable both renderers in Cargo.toml and let Winit try
+    // accelerated FemtoVG, then Slint's software renderer if that fails.
+    // Pinning "femtovg" here bypasses Slint's automatic software fallback and
+    // prevents the entire native console from starting.
     BackendSelector::new()
         .backend_name("winit".into())
-        .renderer_name("femtovg".into())
         .with_winit_window_attributes_hook(|attributes| {
             attributes
                 .with_transparent(true)
                 .with_decorations(false)
         })
         .select()
-        .map_err(|error| anyhow::anyhow!("No se pudo inicializar Winit/FemtoVG transparente: {error}"))?;
+        .map_err(|error| anyhow::anyhow!("No se pudo inicializar la interfaz Winit de SST (GPU/software): {error}"))?;
 
     let paths = AppPaths::detect();
     paths.ensure_layout()?;
