@@ -105,10 +105,17 @@ jobs:
           }
 
       - name: Build SST, native SFX packager and stub
+        id: compile
         shell: pwsh
-        run: cargo build --release --bin sst --bin sst_updater --bin sst_sfx_packager --bin sst_sfx_stub
+        run: |
+          cargo build --release --bin sst --bin sst_updater --bin sst_sfx_packager --bin sst_sfx_stub *> cargo-release-build.log
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content cargo-release-build.log -Tail 100
+            throw 'Windows release compilation failed.'
+          }
 
       - name: Rust regression tests (blocking release)
+        id: rust_tests
         shell: pwsh
         run: cargo test --workspace --all-targets
 
@@ -129,6 +136,7 @@ jobs:
         run: ./scripts/test-notsh-native.ps1 -SstPath ./target/release/sst.exe
 
       - name: Verify GPU-independent GUI launch (blocking release)
+        id: gui_software
         shell: pwsh
         run: ./scripts/test-software-renderer.ps1 -Exe ./target/release/sst.exe
 
@@ -145,6 +153,7 @@ jobs:
         run: cargo audit --file Cargo.lock
 
       - name: Package final self-extracting release
+        id: packaging
         shell: pwsh
         run: ./scripts/package-release.ps1
 
@@ -347,3 +356,34 @@ jobs:
 
           Write-Host "Canal blue activado en SST $env:VERSION"
 
+      - name: Record Windows release outcome for diagnosis
+        if: always()
+        shell: pwsh
+        env:
+          BUILD_RESULT: ${{ steps.compile.outcome }}
+          TEST_RESULT: ${{ steps.rust_tests.outcome }}
+          GUI_RESULT: ${{ steps.gui_software.outcome }}
+          PACKAGE_RESULT: ${{ steps.packaging.outcome }}
+        run: |
+          New-Item -ItemType Directory -Force -Path .qa | Out-Null
+          $log = if (Test-Path cargo-release-build.log) {
+            (Get-Content cargo-release-build.log -Tail 65) -join "`n"
+          } else { 'No compiler log found.' }
+          @"
+          SST Windows release CI report
+          Source commit: $env:GITHUB_SHA
+          Run: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
+          Recorded UTC: $([DateTime]::UtcNow.ToString('u'))
+          Compile: $env:BUILD_RESULT
+          Rust tests: $env:TEST_RESULT
+          Software GUI startup: $env:GUI_RESULT
+          Packaging: $env:PACKAGE_RESULT
+          Compiler log tail:
+          $log
+          "@ | Set-Content -LiteralPath .qa/windows-release-result.txt -Encoding UTF8
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .qa/windows-release-result.txt
+          git commit -m "ci: record Windows release result [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
