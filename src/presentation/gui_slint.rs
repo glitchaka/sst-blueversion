@@ -1979,21 +1979,20 @@ fn apply_slint_window_effects(ui: &SstBlueWindow, appearance: &TerminalAppearanc
 }
 
 pub fn run() -> Result<()> {
-    // Do not force FemtoVG: some Windows machines expose no usable OpenGL
-    // driver (including older GPUs, remote sessions and fallback display
-    // adapters). Enable both renderers in Cargo.toml and let Winit try
-    // accelerated FemtoVG, then Slint's software renderer if that fails.
-    // Pinning "femtovg" here bypasses Slint's automatic software fallback and
-    // prevents the entire native console from starting.
+    // The Winit/FemtoVG OpenGL failure is discovered too late for Slint's
+    // automatic renderer fallback on Windows. Always select software rendering
+    // for SST's GUI; no GPU or OpenGL context is needed for terminal startup.
+    // See upstream slint-ui/slint#8708 for this Windows regression.
     BackendSelector::new()
         .backend_name("winit".into())
+        .renderer_name("software".into())
         .with_winit_window_attributes_hook(|attributes| {
             attributes
                 .with_transparent(true)
                 .with_decorations(false)
         })
         .select()
-        .map_err(|error| anyhow::anyhow!("No se pudo inicializar la interfaz Winit de SST (GPU/software): {error}"))?;
+        .map_err(|error| anyhow::anyhow!("No se pudo inicializar la interfaz Winit/software de SST: {error}"))?;
 
     let paths = AppPaths::detect();
     paths.ensure_layout()?;
