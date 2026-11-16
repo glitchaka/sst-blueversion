@@ -350,8 +350,7 @@ impl PackageService {
         // Remove that obsolete runtime only after the native module is recorded.
         if let Some(previous) = old {
             let old_dir = self.store.resolve_root_relative(&previous.install_dir);
-            if old_dir != install_dir
-                && old_dir.starts_with(self.store.runtimes_dir())
+            if old_dir == self.store.runtimes_dir().join("powershell")
                 && old_dir.exists()
             {
                 fs::remove_dir_all(&old_dir)?;
