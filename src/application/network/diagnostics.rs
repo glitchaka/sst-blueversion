@@ -110,10 +110,30 @@ impl NetworkDiagnosticsService {
     }
 
     pub fn ping(&self, args: &[String]) -> Result<CommandOutput> {
+        self.ping_with_emitter(args, &mut |_| Ok(()), false, &|| false)
+    }
+
+    /// Stream one response at a time only for direct interactive foreground
+    /// commands. Redirected, piped and scripted calls still use ping().
+    pub fn ping_live(
+        &self,
+        args: &[String],
+        emit: &mut dyn FnMut(&str) -> Result<()>,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<CommandOutput> {
+        self.ping_with_emitter(args, emit, true, cancelled)
+    }
+
+    fn ping_with_emitter(
+        &self,
+        args: &[String],
+        emit: &mut dyn FnMut(&str) -> Result<()>,
+        live: bool,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<CommandOutput> {
         let Some(target) = args.first() else {
             return Ok(CommandOutput::error("net ping: uso: net ping HOST", 2));
         };
-
         let count = match args.get(1..) {
             Some([]) | None => 4,
             Some([flag, value]) if flag == "-c" => match value.parse::<u32>() {
@@ -127,17 +147,30 @@ impl NetworkDiagnosticsService {
             )),
         };
         let ip = resolve_ipv4(target)?;
-        let mut output = format!("PING {target} ({ip})\n");
+        let mut output = String::new();
+        let mut push_line = |line: String| -> Result<()> {
+            if live { emit(&line) } else { output.push_str(&line); Ok(()) }
+        };
+        push_line(format!("PING {target} ({ip})\n"))?;
         let mut received = 0;
+        let mut sent = 0;
         for _ in 0..count {
+            if cancelled() { break; }
             let reply = self.probe.echo(ip, 128, Duration::from_secs(1))?;
+            sent += 1;
             if reply.status == 0 {
                 received += 1;
-                output.push_str(&format!("{}: {} ms\n", reply.address, reply.elapsed_ms));
-            } else { output.push_str(&format!("{ip}: sin respuesta (estado {})\n", reply.status)); }
+                push_line(format!("{}: {} ms\n", reply.address, reply.elapsed_ms))?;
+            } else {
+                push_line(format!("{ip}: sin respuesta (estado {})\n", reply.status))?;
+            }
         }
-        output.push_str(&format!("Enviados: {count}; recibidos: {received}\n"));
-        Ok(CommandOutput { stdout: output, stderr: String::new(), status: if received > 0 { 0 } else { 1 } })
+        push_line(format!("Enviados: {sent}; recibidos: {received}\n"))?;
+        Ok(CommandOutput {
+            stdout: output,
+            stderr: String::new(),
+            status: if cancelled() { 130 } else if received > 0 { 0 } else { 1 },
+        })
     }
 
     pub fn trace(&self, args: &[String]) -> Result<CommandOutput> {
