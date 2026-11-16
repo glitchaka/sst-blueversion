@@ -280,20 +280,17 @@
     },
     {
       "id": "powershell",
-      "name": "PowerShell",
-      "version": "latest",
-      "description": "PowerShell portable runtime",
-      "category": "runtime",
-      "portability": "isolated",
+      "name": "Módulo PowerShell nativo SST",
+      "version": "0.1.0",
+      "description": "Cmdlets administrativos nativos de SST; no instala powershell.exe ni pwsh.exe y no interpreta scripts .ps1",
+      "category": "module",
+      "portability": "pure",
       "source": {
-        "type": "github_release",
-        "repository": "PowerShell/PowerShell",
-        "asset_contains": ["win-x64.zip"],
-        "asset_excludes": ["symbols"]
+        "type": "builtin"
       },
       "install": {
-        "type": "zip",
-        "expose": ["pwsh.exe"]
+        "type": "builtin",
+        "expose": []
       }
     },
     {
