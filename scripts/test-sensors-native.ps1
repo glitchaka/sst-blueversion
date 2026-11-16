@@ -26,7 +26,12 @@ try {
         throw "SST sigue ejecutando la antigua sonda WMI: $stdout"
     }
     $code = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\src\application\thermal.rs')
-    if ($code -match 'powershell\.exe|Get-CimInstance|LibreHardwareMonitor|OpenHardwareMonitor|nvidia-smi\.exe|windows_sensors\(') {
+    # Ignore Rust comments: mentioning a forbidden provider in documentation
+    # does not mean a subprocess or WMI call is executed.
+    $executableLines = ($code -split "`n" | Where-Object {
+        $_.TrimStart() -notmatch '^(//|/\*|\*)'
+    }) -join "`n"
+    if ($executableLines -match 'powershell\.exe|Get-CimInstance|LibreHardwareMonitor|OpenHardwareMonitor|nvidia-smi\.exe|windows_sensors\(') {
         throw 'El backend térmico mantiene una dependencia rechazada.'
     }
     Write-Host 'sys sensors: respuesta nativa sin PowerShell, WMI ni sondas de terceros.'
