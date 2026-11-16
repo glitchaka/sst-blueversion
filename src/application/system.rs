@@ -748,11 +748,33 @@ fn drivers(args: &[String]) -> anyhow::Result<CommandOutput> {
         ));
     }
 
-    if options::has(args, "--pnp") {
+    for option in args {
+        if !matches!(option.as_str(), "--pnp" | "--devices" | "--verbose" | "--signed" | "--csv") {
+            return Ok(CommandOutput::error(
+                format!("sys drivers: opción desconocida: {option}"), 2,
+            ));
+        }
+    }
+    let pnp_mode = options::has(args, "--pnp");
+    let device_mode = options::has(args, "--devices");
+    if pnp_mode && device_mode {
+        return Ok(CommandOutput::error(
+            "sys drivers: --pnp y --devices son modos excluyentes", 2,
+        ));
+    }
+    if (pnp_mode || device_mode)
+        && ["--csv", "--verbose", "--signed"].iter().any(|flag| options::has(args, flag))
+    {
+        return Ok(CommandOutput::error(
+            "sys drivers: --csv, --verbose y --signed no se admiten con --pnp ni --devices", 2,
+        ));
+    }
+
+    if pnp_mode {
         return run_windows_tool("pnputil.exe", &["/enum-drivers".to_owned()]);
     }
 
-    if options::has(args, "--devices") {
+    if device_mode {
         return run_windows_tool(
             "pnputil.exe",
             &["/enum-devices".to_owned(), "/connected".to_owned()],
