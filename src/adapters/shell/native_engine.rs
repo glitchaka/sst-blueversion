@@ -796,7 +796,7 @@ impl ShellCommandHost for WindowsShellHost {
         // Stream native ICMP only when the window is actually attached.
         // Scripts, pipes, redirections, command substitutions and CLI
         // invocations use the ordinary captured builtin path.
-        if name == "net" && args.first().is_some_and(|part| part == "ping")
+        if matches!(name, "net" | "notsh") && args.first().is_some_and(|part| part == "ping")
             && stdin.is_none()
             && crate::adapters::terminal::io::output_sender().is_some()
         {
