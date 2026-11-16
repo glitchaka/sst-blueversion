@@ -16,6 +16,10 @@ const ALIASES: &[&str] = &[
     "Get-NetIPConfiguration", "Get-ComputerInfo", "Get-Printer",
     "Get-WinEvent", "Get-Disk", "Get-NetRoute", "Resolve-DnsName",
     "Get-LocalUser", "Get-PnpDevice", "Test-Connection", "Get-Date",
+    "get-process", "get-service", "get-netadapter",
+    "get-netipconfiguration", "get-computerinfo", "get-printer",
+    "get-winevent", "get-disk", "get-netroute", "resolve-dnsname",
+    "get-localuser", "get-pnpdevice", "test-connection", "get-date",
 ];
 
 pub struct NativePowerShellBuiltin {
