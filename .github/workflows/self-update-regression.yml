@@ -9,6 +9,7 @@ on:
       - 'Cargo.lock'
       - 'src/presentation/gui_slint_wrapper.rs'
       - 'src/presentation/gui_slint.rs'
+      - 'src/presentation/report.rs'
       - 'src/builtins/sudo.rs'
       - 'src/builtins/mod.rs'
       - 'src/builtins/powershell_native.rs'
