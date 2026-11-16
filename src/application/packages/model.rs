@@ -120,6 +120,11 @@ pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
         }
         validate_portability(&package.portability)?;
         validate_install_kind(&package.install.kind)?;
+        if package.install.kind == "builtin"
+            && !(package.id == "powershell" && package.source.kind == "builtin")
+        {
+            anyhow::bail!("instp: módulo integrado desconocido: {}", package.id);
+        }
         if let Some(name) = package.install.rename.as_deref() {
             validate_relative_payload_path(name)?;
         }
@@ -171,7 +176,7 @@ fn validate_portability(value: &str) -> Result<()> {
 }
 
 fn validate_install_kind(value: &str) -> Result<()> {
-    if !matches!(value, "single" | "zip" | "archive" | "system") {
+    if !matches!(value, "single" | "zip" | "archive" | "system" | "builtin") {
         anyhow::bail!("instp: tipo de instalación desconocido: {value}");
     }
     Ok(())
