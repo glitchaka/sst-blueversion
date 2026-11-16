@@ -44,7 +44,7 @@ Test-Connection -TargetName 127.0.0.1
 echo SST_NATIVE_POWERSHELL_COMPLETE
 '@
     foreach ($expected in @(
-        'Módulo PowerShell nativo SST',
+        'Módulo PowerShell nativo de SST',
         'SST_NATIVE_POWERSHELL_COMPLETE',
         'PING 127.0.0.1'
     )) {
