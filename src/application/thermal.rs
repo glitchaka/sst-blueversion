@@ -276,8 +276,9 @@ fn native_storage_sensors() -> anyhow::Result<Vec<Reading>> {
 // avoids spawning nvidia-smi.exe and works when that utility is absent.
 #[cfg(windows)]
 fn nvidia_sensors() -> anyhow::Result<Vec<Reading>> {
+    use windows_sys::Win32::Foundation::FreeLibrary;
     use windows_sys::Win32::System::LibraryLoader::{
-        FreeLibrary, GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32,
+        GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32,
     };
 
     type NvmlInit = unsafe extern "C" fn() -> i32;
