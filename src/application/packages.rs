@@ -426,11 +426,37 @@ impl PackageService {
 
         let package = state.packages.remove(index);
         let install_dir = self.store.resolve_root_relative(&package.install_dir);
-        if install_dir.exists() {
-            fs::remove_dir_all(&install_dir)
-                .with_context(|| format!("no se pudo eliminar {}", install_dir.display()))?;
+        anyhow::ensure!(
+            !install_dir.components().any(|part| matches!(part, Component::ParentDir))
+                && (install_dir.starts_with(self.store.tools_dir())
+                    || install_dir.starts_with(self.store.runtimes_dir())),
+            "instp: instalación fuera de su área aislada: {}",
+            install_dir.display()
+        );
+        let quarantine = install_dir.with_extension("instp-removed");
+        anyhow::ensure!(
+            !quarantine.exists(),
+            "instp: hay una eliminación anterior pendiente: {}",
+            quarantine.display()
+        );
+        let moved = install_dir.exists();
+        if moved {
+            fs::rename(&install_dir, &quarantine)
+                .with_context(|| format!("no se pudo preparar eliminación de {}", package.id))?;
         }
-        self.store.save_installed_state(&state)?;
+        if let Err(error) = self.store.save_installed_state(&state) {
+            if moved {
+                fs::rename(&quarantine, &install_dir).context(
+                    "instp: no se pudo restaurar el paquete después de fallar el registro"
+                )?;
+            }
+            return Err(error).context("instp: no se pudo registrar la eliminación");
+        }
+        if moved {
+            fs::remove_dir_all(&quarantine).with_context(|| format!(
+                "instp: paquete desregistrado, pero falta limpiar {}", quarantine.display()
+            ))?;
+        }
         self.store.clean_package_cache(id)?;
         Ok(true)
     }
