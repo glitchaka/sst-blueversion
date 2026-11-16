@@ -1203,15 +1203,17 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
 fn processes(args: &[String]) -> anyhow::Result<CommandOutput> {
     if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(CommandOutput::ok(
-            "sys processes [--sort cpu|ram] [--top N]: sin opciones árbol de procesos, con opciones orden global.\n",
+            "sys processes [--sort cpu|ram] [--top N] [--csv]: árbol interactivo o tabla CSV estructurada.\n",
         ));
     }
     let mut limit = 160usize;
     let mut sort = "cpu";
     let mut flat = false;
+    let mut csv = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
+            "--csv" => { csv = true; flat = true; }
             "--sort" => {
                 i += 1;
                 sort = args.get(i).map(String::as_str)
@@ -1237,7 +1239,11 @@ fn processes(args: &[String]) -> anyhow::Result<CommandOutput> {
 
     let mut system = System::new_all();
     system.refresh_all();
-    let mut out = String::from("PID      PPID     CPU%     RAM MiB   PROCESS\n");
+    let mut out = if csv {
+        String::from("PID,PPID,CPU_pct,RAM_MiB,Nombre\n")
+    } else {
+        String::from("PID      PPID     CPU%     RAM MiB   PROCESS\n")
+    };
     if flat {
         let mut rows: Vec<_> = system.processes().iter().collect();
         rows.sort_by(|(pa, a), (pb, b)| {
@@ -1250,12 +1256,22 @@ fn processes(args: &[String]) -> anyhow::Result<CommandOutput> {
         });
         for (pid, process) in rows.into_iter().take(limit) {
             let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
-            writeln!(
-                out, "{:<8} {:<8} {:>6.1} {:>10.1}   {}",
-                pid, ppid, process.cpu_usage(),
-                process.memory() as f64 / 1024.0 / 1024.0,
-                process.name().to_string_lossy(),
-            )?;
+            if csv {
+                writeln!(
+                    out, "{},{},{:.2},{:.2},{}",
+                    pid.as_u32(), ppid,
+                    process.cpu_usage(),
+                    process.memory() as f64 / 1024.0 / 1024.0,
+                    crate::support::csv::escape(&process.name().to_string_lossy()),
+                )?;
+            } else {
+                writeln!(
+                    out, "{:<8} {:<8} {:>6.1} {:>10.1}   {}",
+                    pid, ppid, process.cpu_usage(),
+                    process.memory() as f64 / 1024.0 / 1024.0,
+                    process.name().to_string_lossy(),
+                )?;
+            }
         }
     } else {
         for (pid, tree_prefix) in process_tree_rows(&system, true).into_iter().take(limit) {
