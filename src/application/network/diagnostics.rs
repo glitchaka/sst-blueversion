@@ -154,8 +154,9 @@ impl NetworkDiagnosticsService {
         push_line(format!("PING {target} ({ip})\n"))?;
         let mut received = 0;
         let mut sent = 0;
-        for _ in 0..count {
+        for attempt in 0..count {
             if cancelled() { break; }
+            let started = Instant::now();
             let reply = self.probe.echo(ip, 128, Duration::from_secs(1))?;
             sent += 1;
             if reply.status == 0 {
@@ -163,6 +164,14 @@ impl NetworkDiagnosticsService {
                 push_line(format!("{}: {} ms\n", reply.address, reply.elapsed_ms))?;
             } else {
                 push_line(format!("{ip}: sin respuesta (estado {})\n", reply.status))?;
+            }
+            // Match the conventional one-second ICMP cadence. Immediate
+            // responses otherwise finish four probes in a single GUI frame.
+            // Poll cancellation while waiting so Ctrl+C remains responsive.
+            if attempt + 1 < count {
+                while started.elapsed() < Duration::from_secs(1) && !cancelled() {
+                    std::thread::sleep(Duration::from_millis(40));
+                }
             }
         }
         push_line(format!("Enviados: {sent}; recibidos: {received}\n"))?;
