@@ -25,6 +25,7 @@ on:
       - 'src/application/system.rs'
       - 'src/application/thermal.rs'
       - 'scripts/test-sensors-native.ps1'
+      - 'scripts/test-software-renderer.ps1'
       - 'examples/11-diagnostico-interactivo.sh'
       - 'src/adapters/shell/native_engine.rs'
       - 'scripts/test-nwash-process-substitution.ps1'
@@ -80,6 +81,10 @@ jobs:
       - name: Build SST for updater regression
         shell: pwsh
         run: cargo build --bin sst --bin sst_updater
+
+      - name: Confirm native GUI starts without GPU or OpenGL
+        shell: pwsh
+        run: ./scripts/test-software-renderer.ps1 -Exe ./target/debug/sst.exe
 
       - name: Exercise real self-update handoff
         shell: pwsh
