@@ -137,7 +137,9 @@ pub fn run_catalog(
                 match service.install_with_persistence(&package.id, persistent) {
                     Ok(report) => {
                         installed.insert(report.package.id.to_ascii_lowercase());
-                        let commands = if report.package.commands.is_empty() {
+                        let commands = if report.package.category == "module" {
+                            "cmdlets internos (psmodule)".to_owned()
+                        } else if report.package.commands.is_empty() {
                             "(ninguno)".to_owned()
                         } else {
                             report
@@ -149,7 +151,7 @@ pub fn run_catalog(
                                 .join(", ")
                         };
                         message = format!(
-                            "Instalado {} {} ({}). Comandos: {}. Reinicia SST para incorporarlos al PATH actual.",
+                            "Instalado {} {} ({}). Comandos: {}. Reinicia SST para activar el paquete.",
                             report.package.name, report.package.version,
                             if report.package.persistent { "persistente" } else { "temporal" },
                             commands
