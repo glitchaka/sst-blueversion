@@ -1,15 +1,6 @@
-//! Lecturas termicas de fuentes disponibles en Windows.
-//! Nunca se equipara una zona ACPI a la temperatura del procesador.
-//! Hardware WMI es opcional: SST no instala controladores ni inventa sensores.
-#[cfg(windows)]
-use std::{
-    process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant},
-};
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
+//! Lecturas termicas directas de los controladores de Windows y NVIDIA.
+//! No se lanza PowerShell, WMI, nvidia-smi ni herramientas de terceros.
+//! No se inventa una temperatura de CPU a partir de zonas ACPI.
 
 use crate::core::CommandOutput;
 
@@ -35,10 +26,6 @@ pub fn report() -> CommandOutput {
         match native_storage_sensors() {
             Ok(rows) => readings.extend(rows),
             Err(error) => notes.push(format!("Windows NVMe (API nativa): {error}")),
-        }
-        match windows_sensors() {
-            Ok(rows) => readings.extend(rows),
-            Err(error) => notes.push(format!("WMI/Storage: {error}")),
         }
         match nvidia_sensors() {
             Ok(rows) => readings.extend(rows),
@@ -71,12 +58,11 @@ pub fn report() -> CommandOutput {
 
         let has_cpu = readings.iter().any(|r| r.group == "CPU");
         if !has_cpu {
-            text.push_str("\nCPU: temperatura no disponible con los proveedores activos.\n");
+            text.push_str("\nCPU: lectura directa pendiente; SST no dispone aún de un controlador propio para acceder a los sensores DTS/SMU del procesador.\n");
         }
-        text.push_str("\nFuentes: Windows Storage IOCTL, NVIDIA NVML (API directa),\n");
-        text.push_str("WMI/CIM de Windows y LHM/OHM opcionales, zonas ACPI.\n");
-        text.push_str("Las zonas ACPI NO representan necesariamente la temperatura del CPU.\n");
-        text.push_str("Los sensores ausentes se omiten: SST no estima ni fabrica temperaturas.\n");
+        text.push_str("\nFuentes consultadas: Windows Storage IOCTL y NVIDIA NVML (API directa).\n");
+        text.push_str("SST no ejecuta PowerShell ni consulta WMI, ACPI, LHM/OHM o nvidia-smi.\n");
+        text.push_str("Las temperaturas ausentes no se estiman ni se sustituyen por zonas ACPI.\n");
         if !notes.is_empty() {
             text.push_str("\nProveedores no disponibles:\n");
             for note in notes {
@@ -85,118 +71,6 @@ pub fn report() -> CommandOutput {
         }
         CommandOutput::ok(text)
     }
-}
-
-#[cfg(windows)]
-fn windows_sensors() -> anyhow::Result<Vec<Reading>> {
-    // PowerShell es solo el adaptador CIM/WMI incorporado en Windows. Los proveedores
-    // de hardware son opcionales; no se requiere PowerShell para las demas herramientas SST.
-    const SCRIPT: &str = r#"
-$ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-$rows = New-Object 'System.Collections.Generic.List[object]'
-foreach ($ns in @('root\LibreHardwareMonitor','root\OpenHardwareMonitor')) {
-  try {
-    $sensors = @(Get-CimInstance -Namespace $ns -ClassName Sensor -ErrorAction Stop)
-    foreach ($s in $sensors) {
-      if ([string]$s.SensorType -ne 'Temperature' -or $null -eq $s.Value) { continue }
-      $rows.Add([pscustomobject]@{
-        source=$ns; identifier=[string]$s.Identifier;
-        name=[string]$s.Name; value=[double]$s.Value
-      })
-    }
-  } catch { }
-}
-try {
-  foreach ($disk in @(Get-PhysicalDisk -ErrorAction Stop)) {
-    try {
-      $counter = $disk | Get-StorageReliabilityCounter -ErrorAction Stop
-      if ($null -ne $counter.Temperature -and [double]$counter.Temperature -gt 0) {
-        $rows.Add([pscustomobject]@{
-          source='Windows Storage'; identifier='/disk';
-          name=([string]$disk.FriendlyName + ' (' + [string]$disk.DeviceId + ')');
-          value=[double]$counter.Temperature
-        })
-      }
-    } catch { }
-  }
-} catch { }
-try {
-  foreach ($zone in @(Get-CimInstance -Namespace 'root\wmi' -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction Stop)) {
-    if ($null -ne $zone.CurrentTemperature -and [double]$zone.CurrentTemperature -gt 0) {
-      $rows.Add([pscustomobject]@{
-        source='ACPI'; identifier='/acpi';
-        name=[string]$zone.InstanceName;
-        value=([math]::Round(([double]$zone.CurrentTemperature / 10.0) - 273.15, 1))
-      })
-    }
-  }
-} catch { }
-[Console]::Out.Write((ConvertTo-Json -InputObject @($rows.ToArray()) -Compress -Depth 3))
-"#;
-    let ps = crate::support::windows::system32_executable(
-        r"WindowsPowerShell\v1.0\powershell.exe",
-    )?;
-    let wide: Vec<u8> = SCRIPT.encode_utf16().flat_map(u16::to_le_bytes).collect();
-    let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, wide);
-    let mut command = Command::new(ps);
-    command.args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    command.creation_flags(0x0800_0000);
-    let mut child = command.spawn()?;
-    let deadline = Instant::now() + Duration::from_secs(12);
-    loop {
-        if child.try_wait()?.is_some() {
-            break;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            anyhow::bail!("consulta CIM/WMI excedio 12 segundos");
-        }
-        thread::sleep(Duration::from_millis(80));
-    }
-    let output = child.wait_with_output()?;
-    if !output.status.success() {
-        anyhow::bail!("consulta CIM/WMI fallo (exit {:?})", output.status.code());
-    }
-    if output.stdout.len() > 1024 * 1024 {
-        anyhow::bail!("respuesta WMI demasiado grande");
-    }
-    let rows: serde_json::Value = serde_json::from_slice(&output.stdout)?;
-    let mut result = Vec::new();
-    for value in rows.as_array().into_iter().flatten() {
-        let celsius = value.get("value").and_then(serde_json::Value::as_f64);
-        let Some(celsius) = celsius else { continue; };
-        let source = value.get("source").and_then(serde_json::Value::as_str).unwrap_or("WMI");
-        let id = value.get("identifier").and_then(serde_json::Value::as_str).unwrap_or("");
-        let name = value.get("name").and_then(serde_json::Value::as_str).unwrap_or("Sensor");
-        let group = if source == "ACPI" { "Zona ACPI" }
-            else if source == "Windows Storage" { "Disco / SSD" }
-            else { classify(id, name) };
-        result.push(Reading {
-            group: group.into(),
-            name: name.into(),
-            celsius,
-            source: source.into(),
-        });
-    }
-    Ok(result)
-}
-
-#[cfg(windows)]
-fn classify(identifier: &str, name: &str) -> &'static str {
-    let id = identifier.to_ascii_lowercase();
-    let name = name.to_ascii_lowercase();
-    if id.contains("cpu") || name.contains("cpu package") { "CPU" }
-    else if id.contains("gpu") { "GPU" }
-    else if id.contains("hdd") || id.contains("disk") || id.contains("nvme") || id.contains("storage") { "Disco / SSD" }
-    else if id.contains("ram") || id.contains("memory") { "Memoria" }
-    else if id.contains("lpc") || id.contains("motherboard") || id.contains("superio") { "Placa base / VRM" }
-    else if id.contains("battery") || id.contains("batt") { "Bateria" }
-    else { "Otros componentes" }
 }
 
 // Query temperatures directly through the Windows storage driver stack.
