@@ -140,7 +140,9 @@ impl InstpBuiltin {
         };
         match installation {
             Ok(report) => {
-                let commands = if report.package.commands.is_empty() {
+                let commands = if report.package.category == "module" {
+                    "cmdlets internos de SST (consulta: psmodule)".to_owned()
+                } else if report.package.commands.is_empty() {
                     "(ninguno)".to_owned()
                 } else {
                     report
@@ -174,7 +176,11 @@ impl InstpBuiltin {
                         report.missing_exposed_commands.join(", ")
                     ));
                 }
-                if !report.package.commands.is_empty() {
+                if report.package.category == "module" {
+                    out.push_str(
+                        "Reinicia SST para activar los cmdlets internos del módulo.\n",
+                    );
+                } else if !report.package.commands.is_empty() {
                     out.push_str(
                         "Reinicia SST para incorporar los nuevos comandos al PATH de esta sesión.\n",
                     );
