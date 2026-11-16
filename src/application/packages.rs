@@ -177,6 +177,10 @@ impl PackageService {
             .info(id)?
             .ok_or_else(|| anyhow::anyhow!("instp: paquete no encontrado: {id}"))?;
 
+        if package.install.kind == "builtin" {
+            return self.install_builtin_module(&package, persistent);
+        }
+
         if matches!(package.portability.as_str(), "system" | "driver")
             || package.install.kind == "system"
         {
@@ -308,6 +312,58 @@ impl PackageService {
         })
     }
 
+    /// Install a first-party module using the SST command registry. No shell,
+    /// executable, PowerShell runtime or remote artifact is downloaded.
+    fn install_builtin_module(
+        &self,
+        package: &PackageManifest,
+        persistent: bool,
+    ) -> Result<InstallReport> {
+        anyhow::ensure!(
+            package.id == "powershell" && package.source.kind == "builtin",
+            "instp: módulo nativo desconocido: {}", package.id
+        );
+        let install_dir = self.store.tools_dir().join(&package.id);
+        fs::create_dir_all(&install_dir)?;
+        let mut state = self.store.load_installed_state()?;
+        let old = state.packages.iter()
+            .find(|existing| existing.id.eq_ignore_ascii_case(&package.id))
+            .cloned();
+        let effective_persistent = persistent
+            || old.as_ref().is_some_and(|item| item.persistent);
+        let installed = InstalledPackage {
+            id: package.id.clone(),
+            name: package.name.clone(),
+            version: package.version.clone(),
+            category: package.category.clone(),
+            portability: package.portability.clone(),
+            install_dir: self.store.root_relative(&install_dir),
+            commands: Vec::new(),
+            path_entries: Vec::new(),
+            persistent: effective_persistent,
+            functional_generation: functional_generation().to_owned(),
+        };
+        state.packages.retain(|existing| !existing.id.eq_ignore_ascii_case(&package.id));
+        state.packages.push(installed.clone());
+        self.store.save_installed_state(&state)?;
+        // An older version could have installed the official pwsh.exe runtime.
+        // Remove that obsolete runtime only after the native module is recorded.
+        if let Some(previous) = old {
+            let old_dir = self.store.resolve_root_relative(&previous.install_dir);
+            if old_dir != install_dir
+                && old_dir.starts_with(self.store.runtimes_dir())
+                && old_dir.exists()
+            {
+                fs::remove_dir_all(&old_dir)?;
+            }
+        }
+        Ok(InstallReport {
+            package: installed,
+            missing_exposed_commands: Vec::new(),
+            source_url: "integrado en SST; sin descarga externa".to_owned(),
+        })
+    }
+
     /// Upgrade installed packages against the currently published upstream
     /// releases. Retains their existing temporary/persistent lifetime.
     /// No package is installed implicitly when only consulting its status.
@@ -328,6 +384,17 @@ impl PackageService {
                 output.push(format!("{}: no figura en el catálogo actual", installed.id));
                 continue;
             };
+            if manifest.install.kind == "builtin" {
+                if manifest.version == installed.version {
+                    output.push(format!("{}: ya tiene la última versión ({})",
+                        installed.id, installed.version));
+                } else {
+                    let report = self.install_with_persistence(&installed.id, installed.persistent)?;
+                    output.push(format!("{}: {} -> {} (módulo nativo)",
+                        installed.id, installed.version, report.package.version));
+                }
+                continue;
+            }
             let latest = resolve_source(&manifest)?;
             // For direct URLs with "latest", there is no published release
             // identifier to compare; always refresh the actual payload.
