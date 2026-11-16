@@ -390,10 +390,19 @@ fn printers(args: &[String]) -> anyhow::Result<CommandOutput> {
                sys printers             todas las impresoras instaladas\n\
                sys printers NOMBRE      detalle de la impresora indicada\n\
                sys printers --default   sólo la impresora predeterminada\n\
+               sys printers --csv       exportación CSV estructurada\n\
 \n\
              Muestra cola, servidor de impresión, recurso compartido, puerto e IP cuando\n\
              el puerto TCP/IP o la ubicación WSD permiten resolverla. No usa PowerShell.\n",
         ));
+    }
+
+    for arg in args {
+        if arg.starts_with('-') && !matches!(arg.as_str(), "--default" | "--csv") {
+            return Ok(CommandOutput::error(
+                format!("sys printers: opción desconocida: {arg}"), 2,
+            ));
+        }
     }
 
     // Si llega un nombre, nunca caer al listado general: delegar en la misma
@@ -409,6 +418,12 @@ fn printers(args: &[String]) -> anyhow::Result<CommandOutput> {
         rows.retain(|row| row.is_default);
     }
 
+    let csv = options::has(args, "--csv");
+    if rows.is_empty() && csv {
+        return Ok(CommandOutput::ok(
+            "Nombre,Predeterminada,Servidor,RecursoCompartido,Puerto,IP\n"
+        ));
+    }
     if rows.is_empty() {
         return Ok(CommandOutput::ok(if only_default {
             "No hay una impresora predeterminada configurada.\n"
@@ -422,6 +437,27 @@ fn printers(args: &[String]) -> anyhow::Result<CommandOutput> {
             .cmp(&a.is_default)
             .then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()))
     });
+
+    if csv {
+        let mut out = String::from(
+            "Nombre,Predeterminada,Servidor,RecursoCompartido,Puerto,IP\n"
+        );
+        for row in rows {
+            let columns = [
+                row.name,
+                row.is_default.to_string(),
+                row.server,
+                row.share,
+                row.port,
+                row.ip.unwrap_or_default(),
+            ];
+            out.push_str(&columns.iter()
+                .map(|field| crate::support::csv::escape(field))
+                .collect::<Vec<_>>().join(","));
+            out.push('\n');
+        }
+        return Ok(CommandOutput::ok(out));
+    }
 
     let mut out = String::from(
         "IMPRESORAS\n----------------------------------------------------------------------------------------------------\n",
