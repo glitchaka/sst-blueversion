@@ -154,6 +154,8 @@ const NERD_FONT_BYTES: &[u8] = include_bytes!(concat!(
 ));
 
 slint::slint! {
+    // Preserve 1.18 language sizing/state behavior when building with Slint 1.19.
+    #[edition = "1.18"]
     // Rendered vector outlines, never made of VT100/ASCII characters.
     // Transparent interiors preserve the user's terminal artwork and logo.
     // Text-report section headings are individual native vector outlines,
