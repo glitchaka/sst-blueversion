@@ -291,6 +291,28 @@ impl SecurityTriageService {
     }
 
     pub fn triage(&self, args: &[String]) -> Result<CommandOutput> {
+        let positionals = args.iter().filter(|arg| !arg.starts_with('-')).count();
+        let invalid_flag = args.iter().find(|arg| {
+            arg.starts_with('-') && !matches!(
+                arg.as_str(),
+                "--status" | "--thermal" | "-h" | "--help" | "--scan"
+                    | "--refresh" | "--deep" | "--memory" | "--ram"
+            )
+        });
+        if let Some(flag) = invalid_flag {
+            return Ok(CommandOutput::error(format!("triage: opción desconocida: {flag}"), 2));
+        }
+        if positionals > 1 {
+            return Ok(CommandOutput::error("triage: se admite un solo PID", 2));
+        }
+        let exclusive = ["--status", "--thermal", "--scan", "--refresh"];
+        if args.iter().any(|arg| exclusive.contains(&arg.as_str()))
+            && (args.len() != 1 || positionals != 0)
+        {
+            return Ok(CommandOutput::error(
+                "triage: --status, --thermal y --scan/--refresh se usan sin otros argumentos", 2,
+            ));
+        }
         if args.iter().any(|arg| arg == "--status") {
             return Ok(CommandOutput::ok(security_deferred::status(&self.paths, &self.deferred)));
         }
