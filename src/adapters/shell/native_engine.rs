@@ -786,6 +786,38 @@ impl ShellCommandHost for WindowsShellHost {
         windows_net_list("localgroup")
     }
 
+    fn execute_builtin_live(
+        &self,
+        name: &str,
+        args: &[String],
+        cwd: &Path,
+        stdin: Option<&[u8]>,
+    ) -> Result<Option<ExecutionResult>> {
+        // Stream native ICMP only when the window is actually attached.
+        // Scripts, pipes, redirections, command substitutions and CLI
+        // invocations use the ordinary captured builtin path.
+        if name == "net" && args.first().is_some_and(|part| part == "ping")
+            && stdin.is_none()
+            && crate::adapters::terminal::io::output_sender().is_some()
+        {
+            let service = crate::application::network::NetworkDiagnosticsService::new(
+                std::sync::Arc::new(crate::adapters::windows::WindowsNetworkProbe),
+            );
+            let interrupt = std::sync::Arc::clone(&self.interrupt);
+            let force_abort = std::sync::Arc::clone(&self.force_abort);
+            let result = service.ping_live(
+                &args[1..],
+                &mut |line| crate::adapters::terminal::io::write(line.as_bytes()),
+                &|| interrupt.load(Ordering::SeqCst)
+                    || force_abort.load(Ordering::SeqCst),
+            )?;
+            return Ok(Some(ExecutionResult::from_parts(
+                result.stdout, result.stderr, result.status,
+            )));
+        }
+        self.execute_builtin(name, args, cwd, stdin)
+    }
+
     fn execute_external(
         &self,
         program: &str,
