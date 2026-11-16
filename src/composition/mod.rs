@@ -47,6 +47,7 @@ use crate::{
         DomainBuiltin,
         EditorBuiltin,
         InstpBuiltin,
+        NativePowerShellBuiltin,
         SigSourBuiltin,
         NetworkBuiltin,
         PathBuiltin,
@@ -178,6 +179,16 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(SwitchBuiltin::new(switch_service)))?;
     registry.register(Arc::new(WakeOnLanBuiltin::new(wol_service)))?;
     registry.register(Arc::new(DiagnosticsBuiltin::new(diagnostics_service)))?;
+    let native_powershell_installed = package_service.installed()?.iter()
+        .any(|package| package.id.eq_ignore_ascii_case("powershell")
+            && package.category == "module"
+            && package.version == "0.1.0");
+    if native_powershell_installed {
+        registry.register(Arc::new(NativePowerShellBuiltin::new(
+            Arc::clone(&system_service),
+            Arc::clone(&network_service),
+        )))?;
+    }
     registry.register(Arc::new(SystemBuiltin::new(system_service)))?;
     registry.register(Arc::new(TriageBuiltin::new(Arc::clone(&security_service))))?;
     registry.register(Arc::new(IntelBuiltin::new(security_service)))?;
