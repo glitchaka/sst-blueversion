@@ -412,6 +412,21 @@ impl BuiltinCommand for InstpBuiltin {
         args: &[String],
         _context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
+        // Reject surplus operands instead of silently operating on the first
+        // package or repository. These commands must have an unambiguous target.
+        let tail = args.get(1..).unwrap_or_default();
+        let exact_one = matches!(
+            args.first().map(String::as_str),
+            Some("info" | "show" | "remove" | "rm" | "uninstall" | "which")
+        );
+        let no_operands = matches!(
+            args.first().map(String::as_str),
+            Some("list" | "ls" | "doctor" | "help" | "--help" | "-h"
+                | "browse" | "catalog")
+        );
+        if (exact_one && tail.len() != 1) || (no_operands && !tail.is_empty()) {
+            return Ok(CommandOutput::error(Self::usage(), 2));
+        }
         match args.first().map(String::as_str) {
             None => Ok(CommandOutput::ok(Self::usage())),
             Some("browse") | Some("catalog") => Ok(CommandOutput::error(
