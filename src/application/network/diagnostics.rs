@@ -114,14 +114,18 @@ impl NetworkDiagnosticsService {
             return Ok(CommandOutput::error("net ping: uso: net ping HOST", 2));
         };
 
-        let count = args
-            .windows(2)
-            .find(|pair| pair[0] == "-c")
-            .map(|pair| pair[1].as_str())
-            .unwrap_or("4");
-
-        let count: u32 = count.parse()?;
-        if count == 0 || count > 100 { return Ok(CommandOutput::error("net ping: -c debe estar entre 1 y 100", 2)); }
+        let count = match args.get(1..) {
+            Some([]) | None => 4,
+            Some([flag, value]) if flag == "-c" => match value.parse::<u32>() {
+                Ok(count) if (1..=100).contains(&count) => count,
+                _ => return Ok(CommandOutput::error(
+                    "net ping: -c requiere un entero entre 1 y 100", 2,
+                )),
+            },
+            _ => return Ok(CommandOutput::error(
+                "Uso: net ping HOST [-c N] (N: 1..100)", 2,
+            )),
+        };
         let ip = resolve_ipv4(target)?;
         let mut output = format!("PING {target} ({ip})\n");
         let mut received = 0;
