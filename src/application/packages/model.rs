@@ -189,3 +189,22 @@ pub(super) fn sanitize_file_name(value: &str) -> String {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod manifest_security_tests {
+    use super::*;
+
+    #[test]
+    fn payload_paths_stay_beneath_package_root() {
+        for valid in ["pwsh.exe", "bin/tool.exe", r"bin\tool.exe"] {
+            assert!(validate_relative_payload_path(valid).is_ok(), "{valid}");
+        }
+        for invalid in [
+            "", "../escape.exe", r"..\escape.exe", "bin/../../escape.exe",
+            "/root.exe", r"\absolute.exe", "C:/Windows/system32/cmd.exe",
+            r"\\server\share\tool.exe", "bin//tool.exe", "./tool.exe",
+        ] {
+            assert!(validate_relative_payload_path(invalid).is_err(), "{invalid}");
+        }
+    }
+}
