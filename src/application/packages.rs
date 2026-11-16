@@ -205,6 +205,23 @@ impl PackageService {
             return Err(error);
         }
 
+        // Check the staged payload before replacing a working installation.
+        // A manifest promising commands that are absent must fail atomically.
+        let mut staged_missing = Vec::new();
+        for exposed in &package.install.expose {
+            if find_file(&staging, exposed)?.is_none() {
+                staged_missing.push(exposed.clone());
+            }
+        }
+        if !staged_missing.is_empty() {
+            let _ = fs::remove_dir_all(&staging);
+            anyhow::bail!(
+                "instp: {} no contiene los ejecutables declarados: {}. Se conserva la instalación anterior.",
+                package.id,
+                staged_missing.join(", ")
+            );
+        }
+
         let backup = install_dir.with_extension("instp-old");
         if backup.exists() {
             fs::remove_dir_all(&backup)?;
@@ -219,9 +236,8 @@ impl PackageService {
             }
             return Err(error).with_context(|| format!("no se pudo activar {}", package.id));
         }
-        if backup.exists() {
-            let _ = fs::remove_dir_all(&backup);
-        }
+        // Keep the previous installation until the installed-state journal
+        // has been durably updated. A failed journal write must roll back.
 
         let mut commands = Vec::new();
         let mut path_entries = Vec::new();
@@ -269,7 +285,18 @@ impl PackageService {
             .packages
             .retain(|existing| !existing.id.eq_ignore_ascii_case(&installed.id));
         state.packages.push(installed.clone());
-        self.store.save_installed_state(&state)?;
+        if let Err(error) = self.store.save_installed_state(&state) {
+            // Do not claim a successful upgrade when the journal failed.
+            // Restore the old payload if it existed.
+            let _ = fs::remove_dir_all(&install_dir);
+            if backup.exists() {
+                let _ = fs::rename(&backup, &install_dir);
+            }
+            return Err(error).context("instp: error al registrar paquete; restauración solicitada");
+        }
+        if backup.exists() {
+            let _ = fs::remove_dir_all(&backup);
+        }
         // Installed payload is stored in its own directory. Never leave
         // additional downloaded archives behind after a successful install.
         self.store.clean_package_cache(&package.id)?;
