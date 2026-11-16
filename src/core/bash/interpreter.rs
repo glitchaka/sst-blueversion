@@ -187,6 +187,18 @@ pub trait ShellCommandHost: Send + Sync {
         stdin: Option<&[u8]>,
     ) -> Result<Option<ExecutionResult>>;
 
+    /// Direct interactive builtins may emit incremental output. The default
+    /// preserves the normal buffered behaviour for every other host.
+    fn execute_builtin_live(
+        &self,
+        name: &str,
+        args: &[String],
+        cwd: &Path,
+        stdin: Option<&[u8]>,
+    ) -> Result<Option<ExecutionResult>> {
+        self.execute_builtin(name, args, cwd, stdin)
+    }
+
     fn execute_external(
         &self,
         program: &str,
@@ -2300,12 +2312,15 @@ impl Interpreter {
             self.env.pop_local_scope();
             self.env.positional = saved;
             execution?
-        } else if let Some(result) = self.host.execute_builtin(
-            &name,
-            args,
-            &self.env.cwd,
-            local_stdin.as_deref(),
-        )? {
+        } else if let Some(result) = if self.env.option_enabled("interactive")
+            && self.capture_output_depth == 0
+            && command.redirects.is_empty()
+            && local_stdin.is_none()
+        {
+            self.host.execute_builtin_live(&name, args, &self.env.cwd, None)?
+        } else {
+            self.host.execute_builtin(&name, args, &self.env.cwd, local_stdin.as_deref())?
+        } {
             result
         } else {
             let Some(program) = self.resolve_hashed_program(&name)? else {
