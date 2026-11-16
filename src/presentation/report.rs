@@ -376,9 +376,19 @@ fn decorate_with_native_commands(
     // Leave a small right margin so the cursor never autowraps a full row.
     let width = (cols as usize).saturating_sub(3).clamp(18, 160);
     let mut result = String::new();
+    let command_root = command.split_whitespace().next().unwrap_or("");
     let help_document = command.split_whitespace().any(|part|
         matches!(part, "help" | "--help" | "-h"))
-        || stdout.lines().take(6).any(|line| line.trim_start().starts_with("uso:"));
+        || stdout.lines().take(6).any(|line| line.trim_start().starts_with("uso:"))
+        || stdout.lines().any(|line| {
+            // Native help can be requested by a bare builtin and may not
+            // include a literal "uso:" heading. Recognize a row only when
+            // its command syntax begins with the invoking builtin.
+            let trimmed = line.trim_start();
+            trimmed.strip_prefix(command_root)
+                .is_some_and(|rest| rest.starts_with(' ')
+                    && style_command_row(trimmed).is_some())
+        });
     result.push('\n');
     if let Some(title) = canvas_title(command, width) {
         result.push_str(&title);
