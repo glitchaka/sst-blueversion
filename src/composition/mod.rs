@@ -181,8 +181,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(DiagnosticsBuiltin::new(diagnostics_service)))?;
     let native_powershell_installed = package_service.installed()?.iter()
         .any(|package| package.id.eq_ignore_ascii_case("powershell")
-            && package.category == "module"
-            && package.version == "0.1.0");
+            && package.category == "module");
     if native_powershell_installed {
         registry.register(Arc::new(NativePowerShellBuiltin::new(
             Arc::clone(&system_service),
