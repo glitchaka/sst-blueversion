@@ -1,0 +1,1 @@
+Publication request for 0.1.9-blue.68. Distribute the Windows executable with the explicit Slint Winit software renderer and pinned Slint 1.18.1 lockfile. Release workflow must pass native GUI launch and all blocking tests before publishing.
