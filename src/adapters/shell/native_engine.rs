@@ -1971,12 +1971,14 @@ fn resolve_shell_script(program: &str, cwd: &Path) -> Option<PathBuf> {
 pub struct NativeShellEngine {
     interpreter: Interpreter,
     config_file: PathBuf,
+    native_commands: Vec<String>,
     interrupt: Arc<std::sync::atomic::AtomicBool>,
     force_abort: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl NativeShellEngine {
     pub fn new(registry: Arc<CommandRegistry>, config_file: PathBuf) -> Result<Self> {
+        let native_commands = registry.names();
         let interrupt = crate::adapters::terminal::io::interrupt_flag();
         let force_abort = crate::adapters::terminal::io::force_abort_flag();
         let host = WindowsShellHost {
@@ -2004,6 +2006,7 @@ impl NativeShellEngine {
         let mut engine = Self {
             interpreter,
             config_file,
+            native_commands,
             interrupt,
             force_abort,
         };
@@ -2094,7 +2097,21 @@ impl ShellEngine for NativeShellEngine {
         } else {
             ShellExecution::continue_running(result.status)
         };
-        execution.stdout = result.stdout;
+        // Apply human-readable report presentation at one engine boundary,
+        // rather than separately in every builtin. Machine output, scripts,
+        // pipes, redirects and ANSI-native TUI output remain byte-for-byte.
+        execution.stdout = if stdin.is_none()
+            && self.interpreter.env.option_enabled("interactive")
+            && crate::adapters::terminal::io::output_sender().is_some()
+        {
+            let width = crate::adapters::terminal::io::size()
+                .map(|(cols, _)| cols).unwrap_or(100);
+            crate::presentation::report::decorate_registered_at_width(
+                line, &result.stdout, width, &self.native_commands,
+            )
+        } else {
+            result.stdout
+        };
         execution.stderr = result.stderr;
         Ok(execution)
     }
