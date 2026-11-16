@@ -337,7 +337,9 @@ impl SecurityTriageService {
                    triage --deep           añade conexiones, inicio automático y servicios\n\
                    triage PID --deep       investigación profunda del PID y sus conexiones\n\
                    triage --status         avance/resultado de colectores diferidos\n\
-                   triage --thermal        sensores de temperatura disponibles\n\n\
+                   triage --thermal        sensores de temperatura disponibles\n\
+                   triage --csv            exporta hallazgos en CSV sin estilos\n\
+                   triage --json           exporta hallazgos en JSON\n\n\
                  SST aprende relaciones padre/hijo recurrentes del mismo equipo, pero una\n\
                  relación aprendida sólo reduce la novedad de linaje; no convierte un proceso\n\
                  en confiable frente a otras señales actuales.\n",
