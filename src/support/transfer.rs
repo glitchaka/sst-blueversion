@@ -22,7 +22,6 @@ pub struct TransferSnapshot {
     pub expected: Option<u64>,
     pub bytes_per_second: f64,
     pub finished: bool,
-    pub success: bool,
     updated_at: Instant,
 }
 
@@ -33,7 +32,6 @@ impl TransferSnapshot {
             expected: expected.filter(|value| *value > 0),
             bytes_per_second: rate,
             finished: false,
-            success: false,
             updated_at: Instant::now(),
         }
     }
