@@ -23,6 +23,8 @@ on:
       - 'src/core/bash/diagnostic_tests.rs'
       - 'src/core/bash/mod.rs'
       - 'src/application/system.rs'
+      - 'src/application/thermal.rs'
+      - 'scripts/test-sensors-native.ps1'
       - 'examples/11-diagnostico-interactivo.sh'
       - 'src/adapters/shell/native_engine.rs'
       - 'scripts/test-nwash-process-substitution.ps1'
@@ -102,6 +104,10 @@ jobs:
       - name: Exercise native NOTSH contexts (Windows APIs)
         shell: pwsh
         run: ./scripts/test-notsh-native.ps1 -SstPath ./target/debug/sst.exe
+
+      - name: Verify thermal command uses native sensors without PowerShell
+        shell: pwsh
+        run: ./scripts/test-sensors-native.ps1 -SstPath ./target/debug/sst.exe
 
       - name: Exercise native printer and top-memory process reports
         shell: pwsh
