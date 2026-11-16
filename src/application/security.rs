@@ -297,6 +297,7 @@ impl SecurityTriageService {
                 arg.as_str(),
                 "--status" | "--thermal" | "-h" | "--help" | "--scan"
                     | "--refresh" | "--deep" | "--memory" | "--ram"
+                    | "--csv" | "--json"
             )
         });
         if let Some(flag) = invalid_flag {
@@ -312,6 +313,14 @@ impl SecurityTriageService {
             return Ok(CommandOutput::error(
                 "triage: --status, --thermal y --scan/--refresh se usan sin otros argumentos", 2,
             ));
+        }
+        let machine_format = args.iter().find(|arg| matches!(arg.as_str(), "--csv" | "--json"));
+        if let Some(format) = machine_format {
+            if args.len() != 1 {
+                return Ok(CommandOutput::error(
+                    format!("triage: {format} se utiliza solo, sin PID ni otros modificadores"), 2,
+                ));
+            }
         }
         if args.iter().any(|arg| arg == "--status") {
             return Ok(CommandOutput::ok(security_deferred::status(&self.paths, &self.deferred)));
@@ -390,6 +399,53 @@ impl SecurityTriageService {
         let mut findings = self.analyze_security(&snapshots);
         security_deferred::enrich(&mut findings, &snapshots, &self.deferred);
         let performance = analyze_performance(&snapshots);
+        if let Some(format) = machine_format {
+            if format.as_str() == "--csv" {
+                let mut out = String::from(
+                    "PID,Nombre,Clasificacion,Razones,Limitaciones,Ruta,CPU_pct,RAM_MiB\n"
+                );
+                for finding in findings.iter().chain(performance.iter()) {
+                    let process = snapshots.iter().find(|item| item.pid == finding.pid);
+                    let path = process.map(|p| p.exe.as_str()).unwrap_or("");
+                    let cpu = process.map(|p| format!("{:.2}", p.cpu)).unwrap_or_default();
+                    let ram = process.map(|p| format!("{:.2}", p.memory_mib)).unwrap_or_default();
+                    let fields = [
+                        finding.pid.to_string(),
+                        finding.name.clone(),
+                        finding.level.label().to_owned(),
+                        finding.reasons.join(" | "),
+                        finding.limitations.join(" | "),
+                        path.to_owned(),
+                        cpu,
+                        ram,
+                    ];
+                    out.push_str(&fields.iter()
+                        .map(|field| crate::support::csv::escape(field))
+                        .collect::<Vec<_>>().join(","));
+                    out.push('\n');
+                }
+                return Ok(CommandOutput::ok(out));
+            }
+            let entries = findings.iter().chain(performance.iter()).map(|finding| {
+                let process = snapshots.iter().find(|item| item.pid == finding.pid);
+                serde_json::json!({
+                    "pid": finding.pid,
+                    "name": finding.name,
+                    "classification": finding.level.label(),
+                    "reasons": finding.reasons,
+                    "limitations": finding.limitations,
+                    "path": process.map(|p| p.exe.as_str()),
+                    "cpu_percent": process.map(|p| p.cpu),
+                    "ram_mib": process.map(|p| p.memory_mib),
+                })
+            }).collect::<Vec<_>>();
+            return Ok(CommandOutput::ok(format!(
+                "{}\n", serde_json::to_string_pretty(&serde_json::json!({
+                    "process_count": snapshots.len(),
+                    "findings": entries,
+                }))?
+            )));
+        }
         let learned = self.learned_lineages().unwrap_or_default();
 
         let known_count = snapshots
