@@ -109,4 +109,4 @@ jobs:
 
       - name: Verify GUI software renderer launch
         shell: pwsh
-        run: ./scripts/test-software-renderer.ps1 -Exe ./target/debug/sst.exe
+        run: ./scripts/test-software-renderer.ps1 -Exe ./target/release/sst.exe
