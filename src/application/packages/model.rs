@@ -135,10 +135,10 @@ pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
 /// even when indices are parsed on a non-Windows build host.
 pub(super) fn validate_relative_payload_path(value: &str) -> Result<()> {
     if value.trim().is_empty()
-        || value.starts_with(['/', '\\'])
+        || (value.starts_with('/') || value.starts_with('\\'))
         || value.contains(':')
         || value.chars().any(|ch| ch == '\0')
-        || value.split(['/', '\\']).any(|part| part == "." || part == ".." || part.is_empty())
+        || value.split(|ch| ch == '/' || ch == '\\').any(|part| part == "." || part == ".." || part.is_empty())
     {
         anyhow::bail!("instp: ruta de paquete insegura: {value}");
     }
