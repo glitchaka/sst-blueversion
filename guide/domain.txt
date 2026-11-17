@@ -38,18 +38,19 @@ Unir a dominio con opciones largas:
 
 Unir en una OU especifica:
 
-  sys domain join -d DOMINIO -u CUENTA -p -ou "RUTA_OU"
-  sys domain join --domain DOMINIO --user CUENTA --password --ou "RUTA_OU"
+  sys domain join -d DOMINIO -u CUENTA -ou "RUTA_OU" -p
+  sys domain join --domain DOMINIO --user CUENTA --ou "RUTA_OU" --password
 
 Sacar del dominio:
 
   sys domain leave -u CUENTA -p
   sys domain leave --user CUENTA --password
 
-Alias directo equivalente:
+Comando directo de consulta:
 
-  domain join -d DOMINIO -u CUENTA -p
-  domain leave -u CUENTA -p
+  domain status
+
+Las operaciones de unión y salida se ejecutan mediante sys domain join/leave.
 
 Subcomandos publicos implementados:
 
@@ -120,11 +121,11 @@ Ejemplo largo:
 
 Con OU usando opcion corta:
 
-  sys domain join -d midominio.cl -u MIDOMINIO\administrador -p -ou "OU=Equipos,OU=Santiago,DC=midominio,DC=cl"
+  sys domain join -d midominio.cl -u MIDOMINIO\administrador -ou "OU=Equipos,OU=Santiago,DC=midominio,DC=cl" -p
 
 Con OU usando opcion larga:
 
-  sys domain join --domain midominio.cl --user MIDOMINIO\administrador --password --ou "OU=Equipos,OU=Santiago,DC=midominio,DC=cl"
+  sys domain join --domain midominio.cl --user MIDOMINIO\administrador --ou "OU=Equipos,OU=Santiago,DC=midominio,DC=cl" --password
 
 5. Parametros de leave
 
@@ -132,7 +133,7 @@ Con OU usando opcion larga:
     Cuenta con permisos para sacar el equipo del dominio.
 
   -p, --password
-    Contrasena de esa cuenta.
+    Abre la ventana protegida de CredUI; no se admite una contraseña como argumento.
 
 Ejemplo corto:
 
@@ -375,8 +376,8 @@ Estado:
 
 Join:
 
-  sys domain join -d DOMINIO -u CUENTA -p [-ou RUTA_OU]
-  sys domain join --domain DOMINIO --user CUENTA --password [--ou RUTA_OU]
+  sys domain join -d DOMINIO -u CUENTA [-ou RUTA_OU] -p
+  sys domain join --domain DOMINIO --user CUENTA [--ou RUTA_OU] --password
 
 Leave:
 
