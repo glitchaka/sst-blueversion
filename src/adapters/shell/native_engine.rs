@@ -2004,7 +2004,7 @@ impl NativeShellEngine {
         interpreter.env.set("HISTFILE", history_file.to_string_lossy().into_owned());
         // Apply the credential-history purge to CLI and script sessions too,
         // not only the embedded graphical terminal.
-        if let Err(error) = crate::support::domain::scrub_domain_history(&history_file) {
+        if let Err(error) = crate::support::domain::scrub_sensitive_history(&history_file) {
             eprintln!("SST: no se pudo depurar el historial sensible: {error}");
         }
 
