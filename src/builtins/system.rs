@@ -117,18 +117,66 @@ fn autologon_tool(args: &[String]) -> Result<CommandOutput> {
     )))
 }
 
+/// Domain passwords are deliberately not accepted as command arguments.
+/// -p/--password means "request a protected Windows credential dialog".
+/// Never interpolate an unknown argument in errors: it may be a legacy secret.
+#[derive(Default)]
+struct DomainOptions<'a> {
+    domain: Option<&'a str>,
+    account: Option<&'a str>,
+    ou: Option<&'a str>,
+    prompt_password: bool,
+}
+
+fn parse_domain_options(args: &[String]) -> std::result::Result<DomainOptions<'_>, CommandOutput> {
+    let mut result = DomainOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        if matches!(arg, "-p" | "--password") {
+            if result.prompt_password {
+                return Err(CommandOutput::error("domain: -p repetido", 2));
+            }
+            result.prompt_password = true;
+            index += 1;
+            continue;
+        }
+        let slot = match arg {
+            "-d" | "--domain" => &mut result.domain,
+            "-u" | "--user" => &mut result.account,
+            "-ou" | "--ou" => &mut result.ou,
+            _ => return Err(CommandOutput::error(
+                "domain: argumento no admitido. No escribas la contraseña en el comando; usa -p sin valor.", 2
+            )),
+        };
+        if slot.is_some() {
+            return Err(CommandOutput::error("domain: opción duplicada", 2));
+        }
+        let Some(value) = args.get(index + 1).map(String::as_str) else {
+            return Err(CommandOutput::error("domain: falta valor de una opción", 2));
+        };
+        if value.starts_with('-') || value.trim().is_empty() {
+            return Err(CommandOutput::error("domain: falta valor de una opción", 2));
+        }
+        *slot = Some(value);
+        index += 2;
+    }
+    Ok(result)
+}
+
 fn domain_tool(args: &[String]) -> Result<CommandOutput> {
     if args.is_empty() || args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(CommandOutput::ok(
             "sys domain status\n\
-             sys domain join -d DOMINIO -u CUENTA -p PASSWORD [-ou RUTA_OU]\n\
-             sys domain leave -u CUENTA -p PASSWORD\n\n\
-             join usa NetJoinDomain y crea la cuenta de equipo si es necesario.\n\
-             leave usa NetUnjoinDomain. Ambas operaciones elevan por UAC cuando hace falta\n\
-             y requieren reiniciar Windows para quedar efectivas.\n",
+             sys domain join -d DOMINIO -u CUENTA [-ou RUTA_OU] -p\n\
+             sys domain leave -u CUENTA -p\n\n\
+             -p / --password abre el diálogo protegido de credenciales de Windows.\n\
+             La contraseña NO se introduce después de -p ni como argumento.\n\
+             join usa NetJoinDomain; leave usa NetUnjoinDomain.\n\
+             SST solicita UAC antes de recoger la contraseña si necesita elevación.\n\
+             Es necesario reiniciar Windows para completar los cambios.\n",
         ));
     }
-
     match args[0].to_ascii_lowercase().as_str() {
         "status" => {
             if args.len() != 1 {
@@ -137,55 +185,65 @@ fn domain_tool(args: &[String]) -> Result<CommandOutput> {
             Ok(CommandOutput::ok(format!("domain: {}\n", crate::support::domain::status()?)))
         }
         "join" => {
-            let values = &args[1..];
-            let domain = match option_value(values, "-d", "--domain")? {
-                Some(value) => value,
-                None => return Ok(CommandOutput::error("domain join: falta -d/--domain", 2)),
+            let values = match parse_domain_options(&args[1..]) {
+                Ok(values) => values,
+                Err(output) => return Ok(output),
             };
-            let user = match option_value(values, "-u", "--user")? {
-                Some(value) => value,
-                None => return Ok(CommandOutput::error("domain join: falta -u/--user", 2)),
+            let Some(domain) = values.domain else {
+                return Ok(CommandOutput::error("domain join: falta -d/--domain", 2));
             };
-            let password = match option_value(values, "-p", "--password")? {
-                Some(value) => value,
-                None => return Ok(CommandOutput::error("domain join: falta -p/--password", 2)),
+            let Some(user) = values.account else {
+                return Ok(CommandOutput::error("domain join: falta -u/--user", 2));
             };
-            let ou = option_value(values, "-ou", "--ou")?;
-            crate::support::domain::join(domain, user, password, ou)?;
+            if !values.prompt_password {
+                return Ok(CommandOutput::error(
+                    "domain join: añade -p sin valor para solicitar la contraseña de forma protegida", 2,
+                ));
+            }
+            crate::support::domain::join(domain, user, values.ou)?;
             Ok(CommandOutput::ok(format!(
                 "domain: unión a {domain} registrada correctamente; reinicio requerido.\n"
             )))
         }
         "leave" => {
-            let values = &args[1..];
-            let user = match option_value(values, "-u", "--user")? {
-                Some(value) => value,
-                None => return Ok(CommandOutput::error("domain leave: falta -u/--user", 2)),
+            let values = match parse_domain_options(&args[1..]) {
+                Ok(values) => values,
+                Err(output) => return Ok(output),
             };
-            let password = match option_value(values, "-p", "--password")? {
-                Some(value) => value,
-                None => return Ok(CommandOutput::error("domain leave: falta -p/--password", 2)),
+            if values.domain.is_some() || values.ou.is_some() {
+                return Ok(CommandOutput::error("domain leave: -d y -ou no son válidos", 2));
+            }
+            let Some(user) = values.account else {
+                return Ok(CommandOutput::error("domain leave: falta -u/--user", 2));
             };
-            crate::support::domain::leave(user, password)?;
+            if !values.prompt_password {
+                return Ok(CommandOutput::error(
+                    "domain leave: añade -p sin valor para solicitar la contraseña de forma protegida", 2,
+                ));
+            }
+            crate::support::domain::leave(user)?;
             Ok(CommandOutput::ok(
                 "domain: salida del dominio registrada correctamente; reinicio requerido.\n",
             ))
         }
         "__elevated" => {
             if args.len() != 2 {
-                return Ok(CommandOutput::error("domain: payload elevado inválido", 87));
+                return Ok(CommandOutput::error("domain: solicitud elevada inválida", 87));
             }
             Ok(match crate::support::domain::run_elevated_payload(&args[1]) {
                 Ok(()) => CommandOutput::ok("domain: operación elevada completada.\n"),
                 Err(code) => CommandOutput::error(
-                    format!("domain: operación elevada falló (NetAPI {code})"),
+                    if code == 1223 {
+                        "domain: entrada protegida cancelada".to_owned()
+                    } else {
+                        format!("domain: operación elevada falló (NetAPI/Win32 {code})")
+                    },
                     code.min(i32::MAX as u32) as i32,
                 ),
             })
         }
-        other => Ok(CommandOutput::error(
-            format!("domain: acción desconocida: {other}; use status, join o leave"),
-            2,
+        _ => Ok(CommandOutput::error(
+            "domain: acción desconocida; usa status, join o leave", 2,
         )),
     }
 }
@@ -240,4 +298,36 @@ fn hostname_set(args: &[String]) -> Result<CommandOutput> {
         "hostname: {old_name} -> {new_name}\n\
          cambio registrado correctamente; reinicia Windows para completar el renombrado.\n"
     )))
+}
+
+#[cfg(test)]
+mod domain_credential_regression_tests {
+    use super::parse_domain_options;
+
+    #[test]
+    fn password_flag_is_a_prompt_switch_not_an_argument() {
+        let opts = ["-d", "empresa.cl", "-u", r"EMPRESA\admin", "-p"]
+            .map(str::to_string);
+        let parsed = parse_domain_options(&opts).unwrap();
+        assert_eq!(parsed.domain, Some("empresa.cl"));
+        assert_eq!(parsed.account, Some(r"EMPRESA\admin"));
+        assert!(parsed.prompt_password);
+    }
+
+    #[test]
+    fn rejects_inline_secrets_without_echoing_them_back() {
+        let secret = "password-only-for-test-do-not-log";
+        for args in [
+            vec!["-u".into(), "admin".into(), "-p".into(), secret.into()],
+            vec!["-u".into(), "admin".into(), format!("--password={secret}")],
+        ] {
+            let output = match parse_domain_options(&args) {
+                Err(output) => output,
+                Ok(_) => panic!("plaintext password accepted"),
+            };
+            assert_eq!(output.status, 2);
+            assert!(!output.stdout.contains(secret));
+            assert!(!output.stderr.contains(secret));
+        }
+    }
 }
