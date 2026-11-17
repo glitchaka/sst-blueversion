@@ -4,34 +4,34 @@
 //! el token que ejecutará NetJoinDomain/NetUnjoinDomain.
 
 
-/// Identifies domain operations that requested a password, including older
-/// commands that may have included it in cleartext. Never log or persist them.
-pub fn has_domain_password_marker(line: &str) -> bool {
+/// Recognize credential-bearing SST commands, including execution through
+/// sudo and both forms of the Autologon entry point.
+fn credential_command(words: &[&str]) -> bool {
+    words.windows(3).any(|part| {
+        part[0] == "sys" && part[1] == "domain"
+            && matches!(part[2], "join" | "leave")
+    }) || words.windows(2).any(|part| part[0] == "sys" && part[1] == "autologon")
+        || words.iter().any(|word| *word == "autologon")
+}
+
+/// Requests for a protected credential prompt are never recorded in history.
+/// This includes previous releases that allowed the password as a value.
+pub fn has_sensitive_password_marker(line: &str) -> bool {
     let lower = line.to_ascii_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
-    let command = words.windows(3).any(|window| {
-        window[0] == "sys" && window[1] == "domain"
-            && matches!(window[2], "join" | "leave")
-    });
-    command && words.iter().any(|word|
+    credential_command(&words) && words.iter().any(|word|
         matches!(*word, "-p" | "--password")
         || word.starts_with("--password=")
         || (word.starts_with("-p") && word.len() > 2)
     )
 }
 
-/// Deny inline legacy password values before shell tracing/verbose output
-/// gets a chance to print the raw command. The secure -p switch is final.
+/// Block inline secrets before verbose output, history expansion and xtrace.
 pub fn contains_unsafe_inline_password(line: &str) -> bool {
     line.split(['\n', ';']).any(|command| {
         let lower = command.to_ascii_lowercase();
         let words: Vec<&str> = lower.split_whitespace().collect();
-        let is_domain = words.windows(3).any(|window| {
-            window[0] == "sys" && window[1] == "domain"
-                && matches!(window[2], "join" | "leave")
-        });
-        if !is_domain { return false; }
-        words.iter().enumerate().any(|(index, word)| {
+        credential_command(&words) && words.iter().enumerate().any(|(index, word)| {
             word.starts_with("--password=")
                 || (word.starts_with("-p") && word.len() > 2)
                 || (matches!(*word, "-p" | "--password") && index + 1 < words.len())
@@ -39,21 +39,18 @@ pub fn contains_unsafe_inline_password(line: &str) -> bool {
     })
 }
 
-/// Once the operator types '-p' at the end of sys domain join/leave, any
-/// subsequent keystroke is ignored; Windows CredUI, not the shell line,
-/// will request the password after Enter.
+/// After -p, the interactive terminal must not accept further typed
+/// characters; the credential dialog is launched only after Enter.
 pub fn awaiting_protected_password_dialog(line: &str) -> bool {
     let lower = line.to_ascii_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
-    words.windows(3).any(|window|
-        window[0] == "sys" && window[1] == "domain"
-            && matches!(window[2], "join" | "leave")
-    ) && words.last().is_some_and(|word| matches!(*word, "-p" | "--password"))
+    credential_command(&words) &&
+        words.last().is_some_and(|word| matches!(*word, "-p" | "--password"))
 }
 
-/// Remove legacy password-bearing domain commands from the persisted history.
+/// Purge legacy domain and Autologon command lines containing passwords.
 /// Do not create a backup containing the exposed credentials.
-pub fn scrub_domain_history(path: &std::path::Path) -> std::io::Result<usize> {
+pub fn scrub_sensitive_history(path: &std::path::Path) -> std::io::Result<usize> {
     let original = match std::fs::read_to_string(path) {
         Ok(content) => content,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
@@ -62,7 +59,7 @@ pub fn scrub_domain_history(path: &std::path::Path) -> std::io::Result<usize> {
     let mut retained = Vec::new();
     let mut count = 0usize;
     for line in original.lines() {
-        if has_domain_password_marker(line) {
+        if has_sensitive_password_marker(line) {
             count += 1;
             if retained.last().is_some_and(|last: &&str| {
                 last.strip_prefix('#').is_some_and(|digits| {
@@ -89,25 +86,34 @@ pub fn scrub_domain_history(path: &std::path::Path) -> std::io::Result<usize> {
 
 #[cfg(test)]
 mod password_guard_tests {
-    use super::{has_domain_password_marker, awaiting_protected_password_dialog, contains_unsafe_inline_password};
+    use super::{has_sensitive_password_marker, awaiting_protected_password_dialog, contains_unsafe_inline_password};
     #[test]
     fn domain_password_requests_are_not_history_safe() {
         for line in [
+            "sys autologon -u user -d empresa.cl -p",
+            "autologon enable -u user -d empresa.cl --password insecure",
             "sys domain join -d domain.cl -u admin -p",
             "sudo sys domain leave -u admin --password old-secret",
             "sys domain join -u admin --password=legacy",
             "sys domain join -u admin -pSecret",
         ] {
-            assert!(has_domain_password_marker(line), "{line}");
+            assert!(has_sensitive_password_marker(line), "{line}");
         }
-        assert!(!has_domain_password_marker("sys domain status"));
-        assert!(!has_domain_password_marker("sys processes --top 10"));
+        assert!(!has_sensitive_password_marker("sys domain status"));
+        assert!(!has_sensitive_password_marker("sys processes --top 10"));
     }
     #[test]
     fn unsafe_inline_values_are_blocked_before_trace_or_expansion() {
         assert!(contains_unsafe_inline_password(
             "sys domain join -d example.cl -u admin -p never-share-this"
         ));
+        assert!(contains_unsafe_inline_password(
+            "sys autologon enable -u user -d empresa.cl -p legacy-secret"
+        ));
+        assert!(contains_unsafe_inline_password(
+            "autologon -u user -d empresa.cl --password=legacy-secret"
+        ));
+
         assert!(contains_unsafe_inline_password(
             "sys domain leave -u admin --password=never-share-this"
         ));
@@ -121,14 +127,14 @@ mod password_guard_tests {
 
     #[test]
     fn previous_history_passwords_are_removed_without_a_secret_backup() {
-        use super::scrub_domain_history;
+        use super::scrub_sensitive_history;
         let id = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let path = std::env::temp_dir().join(format!("sst-domain-history-{}-{id}", std::process::id()));
         std::fs::write(&path,
             "#100\nsys domain join -d internal.invalid -u admin -p old-secret\n#101\nsys info\n"
         ).unwrap();
-        assert_eq!(scrub_domain_history(&path).unwrap(), 1);
+        assert_eq!(scrub_sensitive_history(&path).unwrap(), 1);
         let after = std::fs::read_to_string(&path).unwrap();
         assert_eq!(after, "#101\nsys info\n");
         std::fs::remove_file(path).unwrap();
@@ -137,6 +143,7 @@ mod password_guard_tests {
     #[test]
     fn password_flag_must_finish_the_editable_line() {
         assert!(awaiting_protected_password_dialog("sys domain join -d empresa.cl -u admin -p"));
+        assert!(awaiting_protected_password_dialog("sys autologon enable -u user -d empresa.cl -p"));
         assert!(awaiting_protected_password_dialog("sys domain leave -u admin --password "));
         assert!(!awaiting_protected_password_dialog("sys domain join -d empresa.cl -u admin"));
     }
