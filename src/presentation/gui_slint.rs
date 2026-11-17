@@ -1406,9 +1406,11 @@ impl TerminalModel {
 // states remain distinguishable.
 fn gruvbox_terminal_color(color: Rgb) -> Rgb {
     let Rgb(r, g, b) = color;
-    if b >= 120 && b.saturating_add(5) >= g && g > r.saturating_add(18) {
-        // Cyan must be classified before generic blue; otherwise vivid cyan
-        // satisfies both predicates and gets mapped to the wrong palette entry.
+    if b >= 120 && b.saturating_add(5) >= g
+        && b <= g.saturating_add(48) && g > r.saturating_add(18)
+    {
+        // Neutralize cyan only when blue and green are relatively close.
+        // Pure blue (e.g. 80,150,255) must retain the blue-specific rule.
         return Rgb(0xEB, 0xDB, 0xB2);
     }
     if b > 135 && b > r.saturating_add(28) && b > g.saturating_add(12) {
