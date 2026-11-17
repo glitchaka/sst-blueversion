@@ -656,13 +656,13 @@ impl EmbeddedSession {
                     self.cursor = self.line.len();
                 }
                 KeyCode::Char(ch) if !event.modifiers.contains(KeyModifiers::CONTROL) => {
-                    // The -p switch triggers Windows Credential UI on Enter.
-                    // Never collect, echo or paste passwords into the SST line.
-                    if self.cursor == self.line.len()
-                        && crate::support::domain::awaiting_protected_password_dialog(
-                            &self.line.iter().collect::<String>(),
-                        )
-                    {
+                    // Once a protected password flag exists, do not accept
+                    // further text at ANY cursor position (including paste
+                    // and cursor-movement tricks). Backspace/Delete can still
+                    // remove the flag for normal editing.
+                    if crate::support::domain::has_sensitive_password_marker(
+                        &self.line.iter().collect::<String>(),
+                    ) {
                         return Ok(());
                     }
                     self.delete_selection();
@@ -711,6 +711,11 @@ impl EmbeddedSession {
                     self.cursor = self.line.len();
                 }
                 KeyCode::Tab => {
+                    if crate::support::domain::has_sensitive_password_marker(
+                        &self.line.iter().collect::<String>(),
+                    ) {
+                        return Ok(());
+                    }
                     self.clear_selection();
                     self.complete();
                 },
