@@ -63,6 +63,12 @@ fn readline_sequence(event: &KeyEvent) -> Option<String> {
 
 impl EmbeddedSession {
     pub fn start(cols: u16, rows: u16) -> Result<Self> {
+        // Older releases persisted 'sys domain ... -p PASSWORD' in plain text.
+        // Purge these entries before the history is loaded or displayed.
+        let history_file = crate::adapters::persistence::AppPaths::detect().history_file();
+        if let Err(error) = crate::support::domain::scrub_domain_history(&history_file) {
+            eprintln!("SST: no se pudo depurar el historial sensible: {error}");
+        }
         let (commands, requests) = mpsc::channel::<WorkerRequest>();
         let (keys, key_events) = mpsc::channel();
         let (display, output) = mpsc::channel();
@@ -224,8 +230,11 @@ impl EmbeddedSession {
             if let Err(error) = result { let _ = io::write(format!("\nError de terminal: {error}\n").as_bytes()); }
             worker_exited.store(true, Ordering::SeqCst);
         });
-        let history = fs::read_to_string(crate::adapters::persistence::AppPaths::detect().history_file())
-            .unwrap_or_default().lines().filter(|line| !line.starts_with('#')).map(str::to_owned).collect::<Vec<_>>();
+        let history = fs::read_to_string(&history_file)
+            .unwrap_or_default().lines()
+            .filter(|line| !line.starts_with('#')
+                && !crate::support::domain::has_domain_password_marker(line))
+            .map(str::to_owned).collect::<Vec<_>>();
         let history_index = history.len();
         Ok(Self { commands, keys, display, output, size, panels, raw, busy, interrupt, force_abort, exited,
             line: Vec::new(), cursor: 0, selection_anchor: None, history, history_index, pending: String::new(), bindings,
@@ -610,7 +619,9 @@ impl EmbeddedSession {
                     if command != original_command {
                         self.emit(&format!("{command}\r\n"));
                     }
-                    self.history.push(command.clone());
+                    if !crate::support::domain::has_domain_password_marker(&command) {
+                        self.history.push(command.clone());
+                    }
                     self.history_index = self.history.len();
 
                     if print_only {
@@ -645,6 +656,15 @@ impl EmbeddedSession {
                     self.cursor = self.line.len();
                 }
                 KeyCode::Char(ch) if !event.modifiers.contains(KeyModifiers::CONTROL) => {
+                    // The -p switch triggers Windows Credential UI on Enter.
+                    // Never collect, echo or paste passwords into the SST line.
+                    if self.cursor == self.line.len()
+                        && crate::support::domain::awaiting_protected_password_dialog(
+                            &self.line.iter().collect::<String>(),
+                        )
+                    {
+                        return Ok(());
+                    }
                     self.delete_selection();
                     self.line.insert(self.cursor, ch);
                     self.cursor += 1;
