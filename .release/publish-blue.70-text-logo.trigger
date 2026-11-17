@@ -1,0 +1,1 @@
+Publish Blue.70 from the current main commit only after Rust tests, Windows fetch native text regression, GPU-free GUI startup, and release packaging pass. This replaces the legacy 32-column hand-drawn SST bitmap with terminal-rendered text.
