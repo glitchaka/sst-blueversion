@@ -39,13 +39,10 @@ pub fn contains_unsafe_inline_password(line: &str) -> bool {
     })
 }
 
-/// After -p, the interactive terminal must not accept further typed
-/// characters; the credential dialog is launched only after Enter.
+/// Once -p appears anywhere in a protected operation, block further
+/// inserted text in the interactive editor, regardless of cursor position.
 pub fn awaiting_protected_password_dialog(line: &str) -> bool {
-    let lower = line.to_ascii_lowercase();
-    let words: Vec<&str> = lower.split_whitespace().collect();
-    credential_command(&words) &&
-        words.last().is_some_and(|word| matches!(*word, "-p" | "--password"))
+    has_sensitive_password_marker(line)
 }
 
 /// Purge legacy domain and Autologon command lines containing passwords.
