@@ -24,6 +24,7 @@ on:
       - 'src/core/bash/diagnostic_tests.rs'
       - 'src/core/bash/mod.rs'
       - 'src/application/system.rs'
+      - 'scripts/test-fetch-text-logo.ps1'
       - 'src/builtins/system.rs'
       - 'src/support/domain.rs'
       - 'src/support/autologon.rs'
@@ -121,6 +122,10 @@ jobs:
       - name: Verify thermal command uses native sensors without PowerShell
         shell: pwsh
         run: ./scripts/test-sensors-native.ps1 -SstPath ./target/debug/sst.exe
+
+      - name: Verify fetch uses genuine compact text, not a drawn SST bitmap
+        shell: pwsh
+        run: ./scripts/test-fetch-text-logo.ps1 -SstPath ./target/debug/sst.exe
 
       - name: Verify domain passwords cannot enter command arguments
         shell: pwsh
