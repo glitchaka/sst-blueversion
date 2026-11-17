@@ -1728,7 +1728,7 @@ mod fetch_text_logo_tests {
         let (logo, width) = fetch_title(false, true);
         assert_eq!(logo, "SST");
         assert_eq!(width, 3);
-        assert!(!logo.contains(['▀', '▄', '█']));
+        assert!(!logo.chars().any(|ch| matches!(ch, '▀' | '▄' | '█')));
     }
 
     #[test]
@@ -1745,6 +1745,6 @@ mod fetch_text_logo_tests {
         assert!(logo.contains("SST"));
         assert_eq!(width, 3);
         assert!(logo.starts_with("\x1b["));
-        assert!(!logo.contains(['▀', '▄', '█']));
+        assert!(!logo.chars().any(|ch| matches!(ch, '▀' | '▄' | '█')));
     }
 }
