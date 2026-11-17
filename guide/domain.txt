@@ -30,26 +30,26 @@ Estado:
 
 Unir a dominio con opciones cortas:
 
-  sys domain join -d DOMINIO -u CUENTA -p PASSWORD
+  sys domain join -d DOMINIO -u CUENTA -p
 
 Unir a dominio con opciones largas:
 
-  sys domain join --domain DOMINIO --user CUENTA --password PASSWORD
+  sys domain join --domain DOMINIO --user CUENTA --password
 
 Unir en una OU especifica:
 
-  sys domain join -d DOMINIO -u CUENTA -p PASSWORD -ou "RUTA_OU"
-  sys domain join --domain DOMINIO --user CUENTA --password PASSWORD --ou "RUTA_OU"
+  sys domain join -d DOMINIO -u CUENTA -p -ou "RUTA_OU"
+  sys domain join --domain DOMINIO --user CUENTA --password --ou "RUTA_OU"
 
 Sacar del dominio:
 
-  sys domain leave -u CUENTA -p PASSWORD
-  sys domain leave --user CUENTA --password PASSWORD
+  sys domain leave -u CUENTA -p
+  sys domain leave --user CUENTA --password
 
 Alias directo equivalente:
 
-  domain join -d DOMINIO -u CUENTA -p PASSWORD
-  domain leave -u CUENTA -p PASSWORD
+  domain join -d DOMINIO -u CUENTA -p
+  domain leave -u CUENTA -p
 
 Subcomandos publicos implementados:
 
@@ -61,7 +61,7 @@ Opciones publicas implementadas:
 
   -d, --domain       Dominio para `join`.
   -u, --user         Cuenta usada por `join` o `leave`.
-  -p, --password     Contrasena usada por `join` o `leave`.
+  -p, --password     Solicita la contraseña mediante el diálogo seguro de Windows; no acepta valor en línea.
   -ou, --ou          Ruta LDAP opcional de OU para `join`.
   -h, --help         Muestra ayuda de la familia dominio.
 
@@ -105,26 +105,26 @@ leave
     Cuenta con permisos suficientes para unir el equipo.
 
   -p, --password
-    Contrasena de esa cuenta.
+    Activa el diálogo protegido de Windows después de introducir el comando.
 
   -ou, --ou
     Ruta LDAP completa de la OU donde debe crearse o ubicarse la cuenta del equipo.
 
 Ejemplo corto:
 
-  sys domain join -d midominio.cl -u MIDOMINIO\administrador -p PASSWORD
+  sys domain join -d midominio.cl -u MIDOMINIO\administrador -p
 
 Ejemplo largo:
 
-  sys domain join --domain midominio.cl --user MIDOMINIO\administrador --password PASSWORD
+  sys domain join --domain midominio.cl --user MIDOMINIO\administrador --password
 
 Con OU usando opcion corta:
 
-  sys domain join -d midominio.cl -u MIDOMINIO\administrador -p PASSWORD -ou "OU=Equipos,OU=Santiago,DC=midominio,DC=cl"
+  sys domain join -d midominio.cl -u MIDOMINIO\administrador -p -ou "OU=Equipos,OU=Santiago,DC=midominio,DC=cl"
 
 Con OU usando opcion larga:
 
-  sys domain join --domain midominio.cl --user MIDOMINIO\administrador --password PASSWORD --ou "OU=Equipos,OU=Santiago,DC=midominio,DC=cl"
+  sys domain join --domain midominio.cl --user MIDOMINIO\administrador --password --ou "OU=Equipos,OU=Santiago,DC=midominio,DC=cl"
 
 5. Parametros de leave
 
@@ -136,11 +136,11 @@ Con OU usando opcion larga:
 
 Ejemplo corto:
 
-  sys domain leave -u MIDOMINIO\administrador -p PASSWORD
+  sys domain leave -u MIDOMINIO\administrador -p
 
 Ejemplo largo:
 
-  sys domain leave --user MIDOMINIO\administrador --password PASSWORD
+  sys domain leave --user MIDOMINIO\administrador --password
 
 6. Errores de argumentos que SST detecta
 
@@ -154,7 +154,7 @@ join sin usuario:
 
 join sin contrasena:
 
-  domain join: falta -p/--password
+  domain join: añade -p (sin valor) para solicitar la contraseña
 
 leave sin usuario:
 
@@ -284,16 +284,25 @@ Antes de sacar una estacion de dominio asegurate de que existe una cuenta local 
 
 16. Seguridad de credenciales
 
-La implementacion actual recibe la contrasena mediante:
+La contraseña NO se escribe después de -p ni se incluye en la línea de comandos.
 
-  -p PASSWORD
-  --password PASSWORD
+  sys domain join -d midominio.cl -u MIDOMINIO\administrador -p
+  sys domain leave -u MIDOMINIO\administrador -p
 
-Por ello la contrasena forma parte del comando introducido en SST y puede quedar en el historial.
+La opción -p/--password solicita un diálogo de credenciales de Windows.
+En una sesión sin privilegios administrativos, SST pide primero elevación UAC
+y después la contraseña dentro del proceso elevado.
 
-SST borra de memoria el buffer UTF-16 utilizado para entregar la contrasena a NetJoinDomain/NetUnjoinDomain despues de la llamada, pero eso no elimina el hecho de que el valor haya aparecido inicialmente en la linea de comando.
+SST no guarda la contraseña en archivos ni la transfiere mediante argumentos,
+Base64, variables de entorno o el historial de comandos. La contraseña se
+mantiene temporalmente en un buffer UTF-16 y se borra tras la llamada NetAPI.
 
-Cuando exista entrada secreta interactiva, esa sera la forma preferida para operaciones de dominio.
+Por seguridad, los comandos heredados que incluyen -p PASSWORD se rechazan.
+La consola SST no admite caracteres introducidos después de -p hasta pulsar Enter.
+El arranque depura entradas antiguas de sys domain con -p en el historial SST,
+pero no puede borrar copias en otras terminales, registros o capturas.
+Si utilizaste una contraseña real con el formato antiguo, cámbiala.
+
 
 17. Errores habituales de Windows/NetAPI
 
@@ -323,12 +332,12 @@ Join devuelve correcto pero status aun no cambia como esperas:
   3. Reiniciar.
   4. Comprobar red y DNS.
   5. Unir al dominio:
-       sys domain join -d midominio.cl -u MIDOMINIO\administrador -p PASSWORD
+       sys domain join -d midominio.cl -u MIDOMINIO\administrador -p
   6. Reiniciar.
   7. Verificar:
        sys domain status
   8. Configurar Autologon si la estacion lo requiere:
-       sys autologon -u operador -d MIDOMINIO -p PASSWORD
+       sys autologon -u operador -d MIDOMINIO -p
 
 19. Relacion con otros comandos SST
 
@@ -345,7 +354,7 @@ Join devuelve correcto pero status aun no cambia como esperas:
   - requieren Windows.
   - no gestionan por si mismos GPO, permisos de AD ni objetos obsoletos.
   - no sustituyen un diagnostico de DNS o Active Directory.
-  - la contrasena se entrega actualmente con -p/--password en la linea de comando.
+  - -p/--password no acepta secretos en la línea: abre el diálogo protegido.
   - `-ou/--ou` solo aplica a join.
 
 21. Resumen rapido exhaustivo
@@ -366,13 +375,13 @@ Estado:
 
 Join:
 
-  sys domain join -d DOMINIO -u CUENTA -p PASSWORD [-ou RUTA_OU]
-  sys domain join --domain DOMINIO --user CUENTA --password PASSWORD [--ou RUTA_OU]
+  sys domain join -d DOMINIO -u CUENTA -p [-ou RUTA_OU]
+  sys domain join --domain DOMINIO --user CUENTA --password [--ou RUTA_OU]
 
 Leave:
 
-  sys domain leave -u CUENTA -p PASSWORD
-  sys domain leave --user CUENTA --password PASSWORD
+  sys domain leave -u CUENTA -p
+  sys domain leave --user CUENTA --password
 
 Opciones:
 
