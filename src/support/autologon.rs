@@ -209,8 +209,14 @@ fn store_lsa_password(secret: Option<&[u16]>) -> std::result::Result<(), u32> {
         unsafe { LsaStorePrivateData(policy, &key_name, null()) }
     };
     unsafe { LsaClose(policy); }
-    if status == 0 { Ok(()) } else {
-        Err(unsafe { LsaNtStatusToWinError(status) })
+    let error = if status == 0 { 0 } else {
+        unsafe { LsaNtStatusToWinError(status) }
+    };
+    // "disable" is idempotent: an absent LSA secret is already cleared.
+    if error == 0 || (secret.is_none() && error == 2) {
+        Ok(())
+    } else {
+        Err(error)
     }
 }
 
