@@ -1,28 +1,28 @@
 SST Windows release CI report
-Source commit: 6817f3d5408328dc1249b56d675415f9d1f2be00
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44147143665
-Recorded UTC: 2026-11-17 18:30:07Z
+Source commit: 76ad933e4bb15379db5fe21bc6b939f7c7512848
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44166250300
+Recorded UTC: 2026-11-17 20:16:39Z
 Compile: success
 Rust tests: success
 Software GUI startup: success
-Packaging: failure
+Packaging: success
 Compiler log tail:
     Updating crates.io index
  Downloading crates ...
-  Downloaded cc v1.11.2
   Downloaded bumpalo v3.20.4
+  Downloaded cc v1.11.2
   Downloaded filetime v0.2.30
   Downloaded mio v1.2.5
   Downloaded naga-types v30.0.2
   Downloaded naga v30.0.2
   Downloaded vtable v0.5.1
   Downloaded vtable-macro v0.5.1
+  Downloaded wgpu v30.0.2
   Downloaded wgpu-naga-bridge v30.0.2
   Downloaded wgpu-core-deps-windows-linux-android v30.0.2
   Downloaded wgpu-types v30.0.2
-  Downloaded wgpu v30.0.2
-  Downloaded wgpu-core v30.0.2
   Downloaded wgpu-hal v30.0.2
+  Downloaded wgpu-core v30.0.2
   Downloaded zeroize v1.9.2
   Downloaded zip v9.6.1
    Compiling zeroize v1.9.2
@@ -32,8 +32,8 @@ Compiler log tail:
    Compiling cipher v0.4.4
    Compiling mio v1.2.5
    Compiling bumpalo v3.20.4
-   Compiling zopfli v0.8.4
    Compiling libsqlite3-sys v0.39.1
+   Compiling zopfli v0.8.4
    Compiling vtable v0.5.1
    Compiling i-slint-core v1.18.1
    Compiling curve25519-dalek v4.1.3
@@ -41,9 +41,9 @@ Compiler log tail:
    Compiling sst v0.1.9-blue.70 (D:\a\sst-blueversion\sst-blueversion)
    Compiling chacha20 v0.9.1
    Compiling des v0.8.1
+   Compiling cfb-mode v0.8.2
    Compiling cbc v0.1.2
    Compiling aes v0.8.4
-   Compiling cfb-mode v0.8.2
    Compiling zip v9.6.1
    Compiling snmp2 v0.5.3
    Compiling chacha20poly1305 v0.10.1
@@ -54,4 +54,4 @@ Compiler log tail:
    Compiling x25519-dalek v2.0.1
    Compiling tar v0.4.46
    Compiling rusqlite v0.41.1
-    Finished `release` profile [optimized] target(s) in 4m 50s
+    Finished `release` profile [optimized] target(s) in 4m 17s
