@@ -2002,6 +2002,11 @@ impl NativeShellEngine {
             .map(|root| root.join("data").join("history"))
             .unwrap_or_else(|| PathBuf::from("data").join("history"));
         interpreter.env.set("HISTFILE", history_file.to_string_lossy().into_owned());
+        // Apply the credential-history purge to CLI and script sessions too,
+        // not only the embedded graphical terminal.
+        if let Err(error) = crate::support::domain::scrub_domain_history(&history_file) {
+            eprintln!("SST: no se pudo depurar el historial sensible: {error}");
+        }
 
         let mut engine = Self {
             interpreter,
