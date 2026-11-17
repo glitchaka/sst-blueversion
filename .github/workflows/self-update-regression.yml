@@ -24,6 +24,11 @@ on:
       - 'src/core/bash/diagnostic_tests.rs'
       - 'src/core/bash/mod.rs'
       - 'src/application/system.rs'
+      - 'src/builtins/system.rs'
+      - 'src/support/domain.rs'
+      - 'src/adapters/terminal/embedded.rs'
+      - 'src/core/bash/interpreter.rs'
+      - 'scripts/test-domain-secret-input.ps1'
       - 'src/application/thermal.rs'
       - 'scripts/test-sensors-native.ps1'
       - 'scripts/test-software-renderer.ps1'
@@ -114,6 +119,10 @@ jobs:
       - name: Verify thermal command uses native sensors without PowerShell
         shell: pwsh
         run: ./scripts/test-sensors-native.ps1 -SstPath ./target/debug/sst.exe
+
+      - name: Verify domain passwords cannot enter command arguments
+        shell: pwsh
+        run: ./scripts/test-domain-secret-input.ps1 -SstPath ./target/debug/sst.exe
 
       - name: Exercise native printer and top-memory process reports
         shell: pwsh
