@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::{
     application::system::SystemService,
@@ -66,52 +66,101 @@ impl BuiltinCommand for SystemBuiltin {
     }
 }
 
-fn option_value<'a>(args: &'a [String], short: &str, long: &str) -> Result<Option<&'a str>> {
-    let mut index = 0usize;
+#[derive(Default)]
+struct AutologonOptions<'a> {
+    user: Option<&'a str>,
+    domain: Option<&'a str>,
+    prompt_password: bool,
+}
+
+fn parse_autologon_options(args: &[String]) -> std::result::Result<AutologonOptions<'_>, CommandOutput> {
+    let mut parsed = AutologonOptions::default();
+    let mut index = 0;
     while index < args.len() {
-        if args[index] == short || args[index] == long {
-            let Some(value) = args.get(index + 1) else {
-                bail!("falta valor para {}", args[index]);
-            };
-            return Ok(Some(value.as_str()));
+        match args[index].as_str() {
+            "-p" | "--password" if !parsed.prompt_password => {
+                parsed.prompt_password = true;
+                index += 1;
+            }
+            "-u" | "--user" | "-d" | "--domain" => {
+                let option = args[index].as_str();
+                let Some(value) = args.get(index + 1) else {
+                    return Err(CommandOutput::error("autologon: falta un valor de opción", 2));
+                };
+                if value.is_empty() || value.starts_with('-') {
+                    return Err(CommandOutput::error("autologon: falta un valor de opción", 2));
+                }
+                let slot = if matches!(option, "-u" | "--user") {
+                    &mut parsed.user
+                } else {
+                    &mut parsed.domain
+                };
+                if slot.is_some() {
+                    return Err(CommandOutput::error("autologon: opción duplicada", 2));
+                }
+                *slot = Some(value);
+                index += 2;
+            }
+            _ => return Err(CommandOutput::error(
+                "autologon: opción no admitida; -p no acepta una contraseña en texto claro", 2,
+            )),
         }
-        index += 1;
     }
-    Ok(None)
+    Ok(parsed)
 }
 
 fn autologon_tool(args: &[String]) -> Result<CommandOutput> {
-    if args.is_empty() || args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+    if args.is_empty() || args.len() == 1 &&
+        matches!(args[0].as_str(), "-h" | "--help" | "help")
+    {
         return Ok(CommandOutput::ok(
-            "sys autologon -u CUENTA -d DOMINIO -p PASSWORD\n\
-             sys autologon enable -u CUENTA -d DOMINIO -p PASSWORD\n\n\
-             Configura inicio automático con Microsoft Sysinternals Autologon sin abrir GUI.\n\
-             SST descarga el paquete oficial, valida la firma Microsoft y ejecuta Autologon\n\
-             elevado con /accepteula. La contraseña indicada con -p queda en el historial\n\
-             del comando; no se guarda en archivos de SST.\n",
+            "sys autologon enable -u CUENTA -d DOMINIO -p\n\
+             sys autologon disable\n\
+             autologon -u CUENTA -d DOMINIO -p\n\n\
+             -p / --password abre una ventana protegida de Windows.\n\
+             Nunca escribas la contraseña en el comando.\n\
+             SST solicita UAC antes de solicitar la contraseña y la almacena\n\
+             como secreto LSA del sistema, no en la línea de comandos ni en\n\
+             el valor DefaultPassword del registro.\n\
+             AVISO: el inicio automático facilita el acceso físico no autorizado.\n",
         ));
     }
-
-    let values = if args.first().is_some_and(|arg| arg.eq_ignore_ascii_case("enable")) {
+    if args.first().is_some_and(|arg| arg == "__elevated") {
+        if args.len() != 2 {
+            return Ok(CommandOutput::error("autologon: solicitud elevada inválida", 87));
+        }
+        return Ok(match crate::support::autologon::run_elevated_payload(&args[1]) {
+            Ok(()) => CommandOutput::ok("autologon: operación protegida completada\n"),
+            Err(code) => CommandOutput::error(format!(
+                "autologon: operación elevada falló (Win32 {code})"
+            ), code.min(i32::MAX as u32) as i32),
+        });
+    }
+    if args.len() == 1 && args[0] == "disable" {
+        crate::support::autologon::disable()?;
+        return Ok(CommandOutput::ok("autologon: inicio automático deshabilitado\n"));
+    }
+    let values = if args.first().is_some_and(|arg| arg == "enable") {
         &args[1..]
     } else {
         args
     };
-
-    let user = match option_value(values, "-u", "--user")? {
-        Some(value) => value,
-        None => return Ok(CommandOutput::error("autologon: falta -u/--user", 2)),
+    let parsed = match parse_autologon_options(values) {
+        Ok(parsed) => parsed,
+        Err(output) => return Ok(output),
     };
-    let domain = match option_value(values, "-d", "--domain")? {
-        Some(value) => value,
-        None => return Ok(CommandOutput::error("autologon: falta -d/--domain", 2)),
+    let Some(user) = parsed.user else {
+        return Ok(CommandOutput::error("autologon: falta -u/--user", 2));
     };
-    let password = match option_value(values, "-p", "--password")? {
-        Some(value) => value,
-        None => return Ok(CommandOutput::error("autologon: falta -p/--password", 2)),
+    let Some(domain) = parsed.domain else {
+        return Ok(CommandOutput::error("autologon: falta -d/--domain", 2));
     };
-
-    crate::support::autologon::configure(user, domain, password)?;
+    if !parsed.prompt_password {
+        return Ok(CommandOutput::error(
+            "autologon: añade -p sin valor para abrir el diálogo seguro", 2,
+        ));
+    }
+    crate::support::autologon::configure(user, domain)?;
     Ok(CommandOutput::ok(format!(
         "autologon: configurado para {domain}\\{user}; se aplicará en el próximo inicio de sesión.\n"
     )))
@@ -329,5 +378,32 @@ mod domain_credential_regression_tests {
             assert!(!output.stdout.contains(secret));
             assert!(!output.stderr.contains(secret));
         }
+    }
+}
+
+#[cfg(test)]
+mod autologon_secret_tests {
+    use super::parse_autologon_options;
+
+    #[test]
+    fn secured_password_flag_never_accepts_inline_values() {
+        let args = ["-u", "operator", "-d", "empresa.cl", "-p"].map(str::to_owned);
+        let parsed = parse_autologon_options(&args).unwrap();
+        assert!(parsed.prompt_password);
+        assert_eq!(parsed.user, Some("operator"));
+        assert_eq!(parsed.domain, Some("empresa.cl"));
+    }
+
+    #[test]
+    fn legacy_inline_password_is_rejected_without_reflection() {
+        let secret = "SST_TEST_NOT_REAL_PW_Q7";
+        let opts = ["-u", "operator", "-d", "empresa.cl", "-p", secret]
+            .map(str::to_owned);
+        let output = match parse_autologon_options(&opts) {
+            Ok(_) => panic!("plaintext argument accepted"),
+            Err(output) => output,
+        };
+        assert_eq!(output.status, 2);
+        assert!(!output.stderr.contains(secret));
     }
 }
