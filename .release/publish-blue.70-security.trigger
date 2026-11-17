@@ -1,0 +1,1 @@
+Publish Blue.70 from latest main after all blocking Windows build, Rust unit tests, native GUI startup, domain and Autologon credential-redaction regression, update handoff and security checks pass. Never include plaintext passwords in argv, history, logs or release assets.
