@@ -20,6 +20,25 @@ pub fn has_domain_password_marker(line: &str) -> bool {
     )
 }
 
+/// Deny inline legacy password values before shell tracing/verbose output
+/// gets a chance to print the raw command. The secure -p switch is final.
+pub fn contains_unsafe_inline_password(line: &str) -> bool {
+    line.split(['\n', ';']).any(|command| {
+        let lower = command.to_ascii_lowercase();
+        let words: Vec<&str> = lower.split_whitespace().collect();
+        let is_domain = words.windows(3).any(|window| {
+            window[0] == "sys" && window[1] == "domain"
+                && matches!(window[2], "join" | "leave")
+        });
+        if !is_domain { return false; }
+        words.iter().enumerate().any(|(index, word)| {
+            word.starts_with("--password=")
+                || (word.starts_with("-p") && word.len() > 2)
+                || (matches!(*word, "-p" | "--password") && index + 1 < words.len())
+        })
+    })
+}
+
 /// Once the operator types '-p' at the end of sys domain join/leave, any
 /// subsequent keystroke is ignored; Windows CredUI, not the shell line,
 /// will request the password after Enter.
@@ -70,7 +89,7 @@ pub fn scrub_domain_history(path: &std::path::Path) -> std::io::Result<usize> {
 
 #[cfg(test)]
 mod password_guard_tests {
-    use super::{has_domain_password_marker, awaiting_protected_password_dialog};
+    use super::{has_domain_password_marker, awaiting_protected_password_dialog, contains_unsafe_inline_password};
     #[test]
     fn domain_password_requests_are_not_history_safe() {
         for line in [
@@ -84,6 +103,22 @@ mod password_guard_tests {
         assert!(!has_domain_password_marker("sys domain status"));
         assert!(!has_domain_password_marker("sys processes --top 10"));
     }
+    #[test]
+    fn unsafe_inline_values_are_blocked_before_trace_or_expansion() {
+        assert!(contains_unsafe_inline_password(
+            "sys domain join -d example.cl -u admin -p never-share-this"
+        ));
+        assert!(contains_unsafe_inline_password(
+            "sys domain leave -u admin --password=never-share-this"
+        ));
+        assert!(!contains_unsafe_inline_password(
+            "sys domain join -d example.cl -u admin -p"
+        ));
+        assert!(!contains_unsafe_inline_password(
+            "sys domain join -d example.cl -u admin -p\necho after"
+        ));
+    }
+
     #[test]
     fn password_flag_must_finish_the_editable_line() {
         assert!(awaiting_protected_password_dialog("sys domain join -d empresa.cl -u admin -p"));
