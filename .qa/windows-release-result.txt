@@ -1,63 +1,63 @@
 SST Windows release CI report
-Source commit: 9c586e8354a9129a615373dd37481131782892b0
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/43955949783
-Recorded UTC: 2026-11-16 21:14:55Z
+Source commit: 4503a40e781853fc02fe263b67f798ce60c4b964
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44125871327
+Recorded UTC: 2026-11-17 16:40:26Z
 Compile: success
 Rust tests: failure
 Software GUI startup: skipped
 Packaging: skipped
 Compiler log tail:
    Compiling zerocopy v0.7.35
-   Compiling radix_trie v0.2.1
+   Compiling regex-automata v0.4.18
    Compiling zopfli v0.8.4
-   Compiling slint-macros v1.18.1
-   Compiling poly1305 v0.8.0
+   Compiling radix_trie v0.2.1
    Compiling ttf-parser v0.25.1
    Compiling num v0.4.3
+   Compiling slint-macros v1.18.1
    Compiling asn1-rs v0.6.2
    Compiling tokio v1.54.1
    Compiling parking_lot v0.12.5
    Compiling rand v0.8.8
    Compiling windows v0.61.3
    Compiling rand v0.9.5
-   Compiling sst v0.1.9-blue.68 (D:\a\sst-blueversion\sst-blueversion)
+   Compiling sst v0.1.9-blue.69 (D:\a\sst-blueversion\sst-blueversion)
    Compiling windows v0.57.0
    Compiling fd-lock v4.0.4
    Compiling filedescriptor v0.8.3
    Compiling crossterm_winapi v0.9.1
    Compiling aes v0.8.4
-   Compiling des v0.8.1
+   Compiling chacha20 v0.9.1
    Compiling cfb-mode v0.8.2
    Compiling cbc v0.1.2
-   Compiling chacha20 v0.9.1
-   Compiling sha2 v0.10.9
-   Compiling hmac v0.12.1
+   Compiling des v0.8.1
    Compiling sha1 v0.10.7
-   Compiling blake2 v0.10.6
+   Compiling hmac v0.12.1
    Compiling md-5 v0.10.6
-   Compiling home v0.5.12
+   Compiling sha2 v0.10.9
+   Compiling blake2 v0.10.6
    Compiling serial2 v0.2.39
+   Compiling home v0.5.12
    Compiling hashlink v0.12.2
    Compiling num-derive v0.4.2
    Compiling aead v0.5.2
    Compiling vte v0.15.0
    Compiling filetime v0.2.29
-   Compiling fallible-iterator v0.3.0
-   Compiling widestring v1.2.1
-   Compiling shell-words v1.1.1
    Compiling fallible-streaming-iterator v0.1.9
-   Compiling downcast-rs v1.2.1
+   Compiling fallible-iterator v0.3.0
    Compiling typed-path v0.13.0
+   Compiling widestring v1.2.1
+   Compiling downcast-rs v1.2.1
+   Compiling shell-words v1.1.1
    Compiling portable-pty v0.9.0
-   Compiling ferrisetw v1.2.0
    Compiling zip v9.5.1
+   Compiling ferrisetw v1.2.0
    Compiling rusqlite v0.41.1
    Compiling tar v0.4.46
    Compiling vt100 v0.16.2
    Compiling chacha20poly1305 v0.10.1
    Compiling rustyline v17.0.2
-   Compiling snmp2 v0.5.3
    Compiling argon2 v0.5.3
+   Compiling snmp2 v0.5.3
    Compiling crossterm v0.29.0
    Compiling slint v1.18.1
    Compiling x25519-dalek v2.0.1
@@ -66,9 +66,9 @@ Compiler log tail:
    Compiling dns-lookup v2.1.1
    Compiling libcaca-rs v0.1.0
    Compiling spellbook v0.4.2
-   Compiling base64 v0.22.1
    Compiling similar v2.7.0
-   Compiling ipnet v2.12.2
    Compiling glob v0.3.4
+   Compiling base64 v0.22.1
+   Compiling ipnet v2.12.2
    Compiling sysinfo v0.37.2
-    Finished `release` profile [optimized] target(s) in 8m 06s
+    Finished `release` profile [optimized] target(s) in 8m 46s
