@@ -132,9 +132,9 @@ mod password_guard_tests {
             .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let path = std::env::temp_dir().join(format!("sst-domain-history-{}-{id}", std::process::id()));
         std::fs::write(&path,
-            "#100\nsys domain join -d internal.invalid -u admin -p old-secret\n#101\nsys info\n"
+            "#100\nsys domain join -d internal.invalid -u admin -p old-secret\n#101\nsys info\n#102\nsys autologon enable -u operator -d internal.invalid -p legacy-secret\n"
         ).unwrap();
-        assert_eq!(scrub_sensitive_history(&path).unwrap(), 1);
+        assert_eq!(scrub_sensitive_history(&path).unwrap(), 2);
         let after = std::fs::read_to_string(&path).unwrap();
         assert_eq!(after, "#101\nsys info\n");
         std::fs::remove_file(path).unwrap();
