@@ -1044,88 +1044,17 @@ fn info() -> anyhow::Result<CommandOutput> {
 }
 
 
-const FETCH_LOGO_PIXELS: &[&str] = &[
-    " NNNNNNNNNNNNNNNNNNNNNNNNNNNNNN ",
-    "NYGGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
-    "NGYGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
-    "NYGGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
-    "NGGGBBBBNNGGGGGGBBBNNGBBBBBBBBDN",
-    "NGGBNNDDDNNGGGBBNDDDNNNNNNNDDDDN",
-    "NGBNNDGGGNGGGBNNDGGGNGGGGNNDGGGN",
-    "NGNNNGGGGGGGGNNNGGGGGGGGGNNDGGGN",
-    "NGNNNNGGGGGGGNNNNGGGGGGGGNNDGGGN",
-    "NGGNNNNGGGGGGGNNNNGGGGGGGNNDGGGN",
-    "NGGNNNNNNGGGGGNNNNNNGGGGGNNDGGGN",
-    "NGGGNNNNNNGGGGGNNNNNNGGGGNNDGGGN",
-    "NGGGGGNNNNNGGGGGGNNNNNGGGNNDGGGN",
-    "NBGGGGGGNNNGBGGGGGGNNNGGGNNDGGGN",
-    "NNBGGGGGNNNGNBGGGGGNNNGGGNNDGGGN",
-    "NGNBGGGNNNDGGNBGGGNNNDGGGNNDGGGN",
-    "NGNNNNNNNDGGGNNNNNNNDGGGGNNDGGGN",
-    "NGGGDDDDGGGGGGGDDDDGGGGGGDDDGGGN",
-    "NGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
-    "NGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
-    "NGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGN",
-    " NNNNNNNNNNNNNNNNNNNNNNNNNNNNNN ",
-];
-
-fn fetch_logo_color(code: u8) -> Option<(u8, u8, u8)> {
-    match code {
-        b'G' => Some((186, 189, 198)),
-        b'N' => Some((35, 52, 106)),
-        b'D' => Some((17, 30, 70)),
-        b'B' => Some((6, 48, 185)),
-        b'Y' => Some((251, 242, 54)),
-        _ => None,
+/// Fetch uses actual terminal text, never a raster/pixel glyph matrix.
+/// The native terminal font renders this string at the ordinary cell size.
+/// --full adds a textual product name; neither mode draws oversized letters.
+fn fetch_title(full: bool, plain: bool) -> (String, usize) {
+    let title = if full { "SST · Shell Shock Tool" } else { "SST" };
+    let width = title.chars().count();
+    if plain {
+        (title.to_owned(), width)
+    } else {
+        (format!("\x1b[1;38;2;235;219;178m{title}\x1b[0m"), width)
     }
-}
-
-fn render_fetch_logo(small: bool, color: bool) -> Vec<String> {
-    let x_step = if small { 2 } else { 1 };
-    let y_step = if small { 2 } else { 1 };
-    let row_step = y_step * 2;
-    let width = FETCH_LOGO_PIXELS[0].len();
-    let mut lines = Vec::new();
-
-    for top_y in (0..FETCH_LOGO_PIXELS.len()).step_by(row_step) {
-        let bottom_y = (top_y + y_step).min(FETCH_LOGO_PIXELS.len() - 1);
-        let top = FETCH_LOGO_PIXELS[top_y].as_bytes();
-        let bottom = FETCH_LOGO_PIXELS[bottom_y].as_bytes();
-        let mut line = String::new();
-
-        for x in (0..width).step_by(x_step) {
-            let top_color = fetch_logo_color(top[x]);
-            let bottom_color = fetch_logo_color(bottom[x]);
-
-            if !color {
-                match (top_color, bottom_color) {
-                    (None, None) => line.push(' '),
-                    (Some(_), None) => line.push('▀'),
-                    (None, Some(_)) => line.push('▄'),
-                    (Some(_), Some(_)) => line.push('█'),
-                }
-                continue;
-            }
-
-            match (top_color, bottom_color) {
-                (None, None) => line.push(' '),
-                (Some((r, g, b)), None) => {
-                    line.push_str(&format!("\x1b[38;2;{r};{g};{b}m▀\x1b[0m"));
-                }
-                (None, Some((r, g, b))) => {
-                    line.push_str(&format!("\x1b[38;2;{r};{g};{b}m▄\x1b[0m"));
-                }
-                (Some((tr, tg, tb)), Some((br, bg, bb))) => {
-                    line.push_str(&format!(
-                        "\x1b[38;2;{tr};{tg};{tb}m\x1b[48;2;{br};{bg};{bb}m▀\x1b[0m"
-                    ));
-                }
-            }
-        }
-        lines.push(line);
-    }
-
-    lines
 }
 
 fn truncate_fetch(value: &str, max: usize) -> String {
@@ -1140,8 +1069,10 @@ fn truncate_fetch(value: &str, max: usize) -> String {
 fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(CommandOutput::ok(
-            "fetch — muestra información del sistema con el logo de Shell Shock Tool\n\
-             uso: fetch [--small|--full] [--plain|--stdout] (completo por defecto)\n\
+            "fetch — muestra información del sistema con SST como texto nativo\n\
+             uso: fetch [--small|--full] [--plain|--stdout]\n\
+             --small: título SST compacto (predeterminado)\n\
+             --full: título textual SST · Shell Shock Tool, sin letras dibujadas\n\
              --plain/--stdout: salida sin secuencias ANSI, apta para archivos y pipes\n\
              alias: neofetch, fastfetch\n",
         ));
@@ -1173,10 +1104,9 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         format!("{hours}h {minutes}m")
     };
 
-    let small = args.iter().any(|arg| arg == "--small") && !args.iter().any(|arg| arg == "--full");
+    let full = args.iter().any(|arg| arg == "--full");
     let plain = args.iter().any(|arg| matches!(arg.as_str(), "--plain" | "--stdout"));
-    let logo = render_fetch_logo(small, !plain);
-    let logo_width = if small { 16 } else { 32 };
+    let (logo, logo_width) = fetch_title(full, plain);
 
     let info = if plain {
         vec![
@@ -1195,14 +1125,14 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         ]
     } else {
         let title = format!(
-            "\x1b[1;38;2;6;48;185m{user}\x1b[38;2;251;242;54m@\x1b[38;2;35;52;106m{host}\x1b[0m"
+            "\x1b[1;38;2;235;219;178m{user}\x1b[38;2;250;189;47m@\x1b[38;2;189;174;147m{host}\x1b[0m"
         );
-        let label = "\x1b[1;38;2;251;242;54m";
+        let label = "\x1b[1;38;2;250;189;47m";
         let reset = "\x1b[0m";
 
         vec![
             title,
-            "\x1b[38;2;35;52;106m────────────────────────────────────────\x1b[0m".to_owned(),
+            "\x1b[38;2;146;131;116m────────────────────────────────────────\x1b[0m".to_owned(),
             format!("{label}OS:{reset} {}", truncate_fetch(&os, 58)),
             format!("{label}Host:{reset} {host}"),
             format!("{label}Kernel:{reset} {kernel}"),
@@ -1213,23 +1143,18 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
             format!("{label}CPU:{reset} {}", truncate_fetch(&cpu, 58)),
             format!("{label}Memory:{reset} {used:.2} GiB / {total:.2} GiB"),
             format!("{label}Arch:{reset} {arch}"),
-            "\x1b[48;2;17;30;70m  \x1b[48;2;35;52;106m  \x1b[48;2;6;48;185m  \x1b[48;2;186;189;198m  \x1b[48;2;251;242;54m  \x1b[0m".to_owned(),
         ]
     };
 
-    let rows = logo.len().max(info.len());
     let mut out = String::new();
-    for index in 0..rows {
-        if let Some(line) = logo.get(index) {
-            out.push_str(line);
+    for (index, line) in info.iter().enumerate() {
+        if index == 0 {
+            out.push_str(&logo);
         } else {
             out.push_str(&" ".repeat(logo_width));
         }
-
         out.push_str("   ");
-        if let Some(line) = info.get(index) {
-            out.push_str(line);
-        }
+        out.push_str(line);
         out.push('\n');
     }
 
@@ -1792,4 +1717,34 @@ fn terminate_pid_native(pid: u32) -> anyhow::Result<()> {
 #[cfg(not(windows))]
 fn terminate_pid_native(pid: u32) -> anyhow::Result<()> {
     anyhow::bail!("la terminación nativa por PID solo está disponible en Windows: {pid}")
+}
+
+#[cfg(test)]
+mod fetch_text_logo_tests {
+    use super::fetch_title;
+
+    #[test]
+    fn default_logo_is_compact_text_not_pixel_art() {
+        let (logo, width) = fetch_title(false, true);
+        assert_eq!(logo, "SST");
+        assert_eq!(width, 3);
+        assert!(!logo.contains(['▀', '▄', '█']));
+    }
+
+    #[test]
+    fn full_logo_remains_one_line_of_real_text() {
+        let (logo, width) = fetch_title(true, true);
+        assert_eq!(logo, "SST · Shell Shock Tool");
+        assert_eq!(width, logo.chars().count());
+        assert!(!logo.contains('\n'));
+    }
+
+    #[test]
+    fn colored_logo_keeps_same_visible_characters_and_cell_width() {
+        let (logo, width) = fetch_title(false, false);
+        assert!(logo.contains("SST"));
+        assert_eq!(width, 3);
+        assert!(logo.starts_with("\x1b["));
+        assert!(!logo.contains(['▀', '▄', '█']));
+    }
 }
