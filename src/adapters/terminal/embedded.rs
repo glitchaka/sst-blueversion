@@ -660,7 +660,7 @@ impl EmbeddedSession {
                     // further text at ANY cursor position (including paste
                     // and cursor-movement tricks). Backspace/Delete can still
                     // remove the flag for normal editing.
-                    if crate::support::domain::has_sensitive_password_marker(
+                    if crate::support::domain::awaiting_protected_password_dialog(
                         &self.line.iter().collect::<String>(),
                     ) {
                         return Ok(());
@@ -711,7 +711,7 @@ impl EmbeddedSession {
                     self.cursor = self.line.len();
                 }
                 KeyCode::Tab => {
-                    if crate::support::domain::has_sensitive_password_marker(
+                    if crate::support::domain::awaiting_protected_password_dialog(
                         &self.line.iter().collect::<String>(),
                     ) {
                         return Ok(());
