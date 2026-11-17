@@ -1090,7 +1090,7 @@ impl Interpreter {
         if crate::support::domain::contains_unsafe_inline_password(input) {
             return Ok(ExecutionResult::from_parts(
                 String::new(),
-                "domain: contraseña en línea prohibida; usa -p sin valor y el diálogo seguro.\n".into(),
+                "SST: contraseña en línea prohibida; usa -p sin valor y el diálogo seguro.\n".into(),
                 2,
             ));
         }
@@ -2227,8 +2227,27 @@ impl Interpreter {
             .map(|word| shell_quote(word))
             .collect::<Vec<_>>()
             .join(" ");
+        // Expanded shell variables, functions and aliases can introduce a
+        // password after the raw-text check. Reject before DEBUG/BASH_COMMAND
+        // and before xtrace can expose the expanded argument values.
+        if crate::support::domain::contains_unsafe_inline_password(&command_text) {
+            if !preserve_assignments {
+                for (variable, previous) in temporary_assignments.into_iter().rev() {
+                    self.env.restore_binding(&variable, previous);
+                }
+            }
+            self.cleanup_variable_fds(&allocated_fds);
+            return Ok(ExecutionResult::from_parts(
+                String::new(),
+                "SST: contraseña en línea prohibida; usa -p sin valor y el diálogo seguro.\n".into(),
+                2,
+            ));
+        }
+        let protected_command = crate::support::domain::has_sensitive_password_marker(&command_text);
         if self.env.special_variable_active("BASH_COMMAND") {
-            self.env.set("BASH_COMMAND", command_text);
+            self.env.set("BASH_COMMAND", if protected_command {
+                "[operación con credenciales protegidas]".to_owned()
+            } else { command_text });
         }
         if let Some(debug_result) = self.run_trap_action("DEBUG", self.env.last_status)? {
             if debug_result.exit_requested || debug_result.flow != FlowSignal::None {
@@ -2246,7 +2265,11 @@ impl Interpreter {
         if self.env.option_enabled("xtrace") {
             let ps4 = self.env.vars.get("PS4").cloned().unwrap_or_else(|| "+ ".to_owned());
             trace.push_str(&ps4);
-            trace.push_str(&words.iter().map(|word| shell_quote(word)).collect::<Vec<_>>().join(" "));
+            if protected_command {
+                trace.push_str("[operación con credenciales protegidas]");
+            } else {
+                trace.push_str(&words.iter().map(|word| shell_quote(word)).collect::<Vec<_>>().join(" "));
+            }
             trace.push('\n');
         }
 
