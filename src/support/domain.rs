@@ -278,11 +278,15 @@ pub fn status() -> Result<String> {
 }
 
 #[cfg(windows)]
-struct SecretPassword(Vec<u16>);
+pub(crate) struct SecretPassword(Vec<u16>);
 
 #[cfg(windows)]
 impl SecretPassword {
     fn as_ptr(&self) -> *const u16 { self.0.as_ptr() }
+    pub(crate) fn units(&self) -> &[u16] {
+        let len = self.0.iter().position(|unit| *unit == 0).unwrap_or(self.0.len());
+        &self.0[..len]
+    }
 }
 
 #[cfg(windows)]
@@ -298,7 +302,7 @@ impl Drop for SecretPassword {
 }
 
 #[cfg(windows)]
-fn request_password(account: &str, action: &str) -> Result<SecretPassword> {
+pub(crate) fn request_password(account: &str, action: &str) -> Result<SecretPassword> {
     const DO_NOT_PERSIST: u32 = 0x0000_0002;
     const ALWAYS_SHOW_UI: u32 = 0x0000_0080;
     const GENERIC_CREDENTIALS: u32 = 0x0004_0000;
