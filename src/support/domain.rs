@@ -120,6 +120,21 @@ mod password_guard_tests {
     }
 
     #[test]
+    fn previous_history_passwords_are_removed_without_a_secret_backup() {
+        use super::scrub_domain_history;
+        let id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("sst-domain-history-{}-{id}", std::process::id()));
+        std::fs::write(&path,
+            "#100\nsys domain join -d internal.invalid -u admin -p old-secret\n#101\nsys info\n"
+        ).unwrap();
+        assert_eq!(scrub_domain_history(&path).unwrap(), 1);
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(after, "#101\nsys info\n");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn password_flag_must_finish_the_editable_line() {
         assert!(awaiting_protected_password_dialog("sys domain join -d empresa.cl -u admin -p"));
         assert!(awaiting_protected_password_dialog("sys domain leave -u admin --password "));
