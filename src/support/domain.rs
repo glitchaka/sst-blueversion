@@ -3,6 +3,95 @@
 //! temporales o mensajes de UAC. CredUI recoge el secreto en el proceso con
 //! el token que ejecutará NetJoinDomain/NetUnjoinDomain.
 
+
+/// Identifies domain operations that requested a password, including older
+/// commands that may have included it in cleartext. Never log or persist them.
+pub fn has_domain_password_marker(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    let command = words.windows(3).any(|window| {
+        window[0] == "sys" && window[1] == "domain"
+            && matches!(window[2], "join" | "leave")
+    });
+    command && words.iter().any(|word|
+        matches!(*word, "-p" | "--password")
+        || word.starts_with("--password=")
+        || (word.starts_with("-p") && word.len() > 2)
+    )
+}
+
+/// Once the operator types '-p' at the end of sys domain join/leave, any
+/// subsequent keystroke is ignored; Windows CredUI, not the shell line,
+/// will request the password after Enter.
+pub fn awaiting_protected_password_dialog(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    words.windows(3).any(|window|
+        window[0] == "sys" && window[1] == "domain"
+            && matches!(window[2], "join" | "leave")
+    ) && words.last().is_some_and(|word| matches!(*word, "-p" | "--password"))
+}
+
+/// Remove legacy password-bearing domain commands from the persisted history.
+/// Do not create a backup containing the exposed credentials.
+pub fn scrub_domain_history(path: &std::path::Path) -> std::io::Result<usize> {
+    let original = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(error),
+    };
+    let mut retained = Vec::new();
+    let mut count = 0usize;
+    for line in original.lines() {
+        if has_domain_password_marker(line) {
+            count += 1;
+            if retained.last().is_some_and(|last: &&str| {
+                last.strip_prefix('#').is_some_and(|digits| {
+                    !digits.is_empty() && digits.bytes().all(|ch| ch.is_ascii_digit())
+                })
+            }) {
+                retained.pop();
+            }
+        } else {
+            retained.push(line);
+        }
+    }
+    if count > 0 {
+        use std::io::Write;
+        let mut output = std::fs::OpenOptions::new().write(true).truncate(true).open(path)?;
+        for line in retained {
+            output.write_all(line.as_bytes())?;
+            output.write_all(b"\n")?;
+        }
+        output.sync_all()?;
+    }
+    Ok(count)
+}
+
+#[cfg(test)]
+mod password_guard_tests {
+    use super::{has_domain_password_marker, awaiting_protected_password_dialog};
+    #[test]
+    fn domain_password_requests_are_not_history_safe() {
+        for line in [
+            "sys domain join -d domain.cl -u admin -p",
+            "sudo sys domain leave -u admin --password old-secret",
+            "sys domain join -u admin --password=legacy",
+            "sys domain join -u admin -pSecret",
+        ] {
+            assert!(has_domain_password_marker(line), "{line}");
+        }
+        assert!(!has_domain_password_marker("sys domain status"));
+        assert!(!has_domain_password_marker("sys processes --top 10"));
+    }
+    #[test]
+    fn password_flag_must_finish_the_editable_line() {
+        assert!(awaiting_protected_password_dialog("sys domain join -d empresa.cl -u admin -p"));
+        assert!(awaiting_protected_password_dialog("sys domain leave -u admin --password "));
+        assert!(!awaiting_protected_password_dialog("sys domain join -d empresa.cl -u admin"));
+    }
+}
+
 #[cfg(windows)]
 use std::{
     ffi::{c_void, OsStr},
