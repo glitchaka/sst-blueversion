@@ -135,6 +135,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test-notsh-native.ps1 -SstPath ./target/release/sst.exe
 
+      - name: Verify sys domain credentials are never accepted in argv
+        shell: pwsh
+        run: ./scripts/test-domain-secret-input.ps1 -SstPath ./target/release/sst.exe
+
       - name: Verify GPU-independent GUI launch (blocking release)
         id: gui_software
         shell: pwsh
