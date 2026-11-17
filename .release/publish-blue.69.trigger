@@ -1,0 +1,1 @@
+Publish SST 0.1.9-blue.69 once release compilation, Rust tests, and security regression checks all pass. Fix: prevent domain passwords on command line, in shell history, and UAC payload; use protected Windows credential prompt.
