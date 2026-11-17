@@ -66,7 +66,7 @@ impl EmbeddedSession {
         // Older releases persisted 'sys domain ... -p PASSWORD' in plain text.
         // Purge these entries before the history is loaded or displayed.
         let history_file = crate::adapters::persistence::AppPaths::detect().history_file();
-        if let Err(error) = crate::support::domain::scrub_domain_history(&history_file) {
+        if let Err(error) = crate::support::domain::scrub_sensitive_history(&history_file) {
             eprintln!("SST: no se pudo depurar el historial sensible: {error}");
         }
         let (commands, requests) = mpsc::channel::<WorkerRequest>();
@@ -233,7 +233,7 @@ impl EmbeddedSession {
         let history = fs::read_to_string(&history_file)
             .unwrap_or_default().lines()
             .filter(|line| !line.starts_with('#')
-                && !crate::support::domain::has_domain_password_marker(line))
+                && !crate::support::domain::has_sensitive_password_marker(line))
             .map(str::to_owned).collect::<Vec<_>>();
         let history_index = history.len();
         Ok(Self { commands, keys, display, output, size, panels, raw, busy, interrupt, force_abort, exited,
@@ -619,7 +619,7 @@ impl EmbeddedSession {
                     if command != original_command {
                         self.emit(&format!("{command}\r\n"));
                     }
-                    if !crate::support::domain::has_domain_password_marker(&command) {
+                    if !crate::support::domain::has_sensitive_password_marker(&command) {
                         self.history.push(command.clone());
                     }
                     self.history_index = self.history.len();
