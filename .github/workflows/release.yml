@@ -139,6 +139,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test-domain-secret-input.ps1 -SstPath ./target/release/sst.exe
 
+      - name: Verify Autologon credential security
+        shell: pwsh
+        run: ./scripts/test-autologon-secret-input.ps1 -SstPath ./target/release/sst.exe
+
       - name: Verify GPU-independent GUI launch (blocking release)
         id: gui_software
         shell: pwsh
