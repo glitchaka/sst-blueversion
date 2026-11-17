@@ -26,6 +26,8 @@ on:
       - 'src/application/system.rs'
       - 'src/builtins/system.rs'
       - 'src/support/domain.rs'
+      - 'src/support/autologon.rs'
+      - 'scripts/test-autologon-secret-input.ps1'
       - 'src/adapters/terminal/embedded.rs'
       - 'src/core/bash/interpreter.rs'
       - 'scripts/test-domain-secret-input.ps1'
@@ -123,6 +125,10 @@ jobs:
       - name: Verify domain passwords cannot enter command arguments
         shell: pwsh
         run: ./scripts/test-domain-secret-input.ps1 -SstPath ./target/debug/sst.exe
+
+      - name: Verify Autologon passwords never enter argv or unprotected processes
+        shell: pwsh
+        run: ./scripts/test-autologon-secret-input.ps1 -SstPath ./target/debug/sst.exe
 
       - name: Exercise native printer and top-memory process reports
         shell: pwsh
