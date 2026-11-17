@@ -1085,6 +1085,15 @@ impl Interpreter {
         input: &str,
         stdin: Option<&[u8]>,
     ) -> Result<ExecutionResult> {
+        // Reject legacy inline passwords before verbose/xtrace/history or
+        // expansion can write the raw command into a terminal or log.
+        if crate::support::domain::contains_unsafe_inline_password(input) {
+            return Ok(ExecutionResult::from_parts(
+                String::new(),
+                "domain: contraseña en línea prohibida; usa -p sin valor y el diálogo seguro.\n".into(),
+                2,
+            ));
+        }
         let input = if self.env.option_enabled("interactive")
             && !self.env.option_enabled("interactive_comments")
             && !self.env.option_enabled("interactive-comments")
