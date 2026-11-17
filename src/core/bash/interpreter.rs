@@ -963,7 +963,7 @@ impl Interpreter {
     pub fn record_history(&mut self, line: &str) -> Result<()> {
         // No domain credential requests belong in HISTFILE, even if invoked
         // from a script or a different terminal frontend.
-        if crate::support::domain::has_domain_password_marker(line) {
+        if crate::support::domain::has_sensitive_password_marker(line) {
             return Ok(());
         }
         if line.is_empty() || !self.env.option_enabled("history") { return Ok(()); }
