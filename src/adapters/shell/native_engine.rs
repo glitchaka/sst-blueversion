@@ -42,6 +42,7 @@ use windows_sys::Win32::{
 };
 
 use crate::{
+    application::packages::ScriptRunner,
     builtins::CommandRegistry,
     core::{
         CommandContext,
@@ -72,6 +73,7 @@ enum VirtualPipe {
 
 struct WindowsShellHost {
     registry: Arc<CommandRegistry>,
+    script_routes: HashMap<String, ScriptRunner>,
     interrupt: Arc<std::sync::atomic::AtomicBool>,
     force_abort: Arc<std::sync::atomic::AtomicBool>,
     jobs: Mutex<HashMap<u32, BackgroundJob>>,
@@ -493,6 +495,54 @@ impl ShellCommandHost for WindowsShellHost {
         cwd: &Path,
         stdin: Option<&[u8]>,
     ) -> Result<Option<ExecutionResult>> {
+        // Package adapters get first refusal for installed script types.
+        // Nwash remains the host; the appropriate runtime owns the script.
+        if let Some(extension) = Path::new(name).extension().and_then(|ext| ext.to_str()) {
+            let extension = format!(".{}", extension.to_ascii_lowercase());
+            if let Some(runner) = self.script_routes.get(&extension) {
+                let file = Path::new(name);
+                let path = if file.is_absolute() {
+                    file.to_path_buf()
+                } else {
+                    cwd.join(file)
+                };
+                if path.is_file() {
+                    let output = match runner {
+                        ScriptRunner::Embedded(command) => {
+                            if !self.registry.contains(command) {
+                                crate::core::CommandOutput::error(
+                                    format!("instp: el módulo de {extension} no está activo"), 127)
+                            } else {
+                                let mut forwarded = vec!["-File".to_owned(), path.to_string_lossy().into_owned()];
+                                forwarded.extend_from_slice(args);
+                                self.registry.execute(command, &forwarded, CommandContext { cwd, stdin })?
+                            }
+                        }
+                        ScriptRunner::Process(executable) => {
+                            let mut command = Command::new(executable);
+                            command.arg(&path).args(args).current_dir(cwd)
+                                .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
+                                .stdout(Stdio::piped()).stderr(Stdio::piped());
+                            #[cfg(windows)]
+                            command.creation_flags(CREATE_NO_WINDOW);
+                            let mut child = command.spawn()?;
+                            if let (Some(input), Some(mut writer)) = (stdin, child.stdin.take()) {
+                                writer.write_all(input)?;
+                            }
+                            let result = child.wait_with_output()?;
+                            crate::core::CommandOutput {
+                                stdout: String::from_utf8_lossy(&result.stdout).into_owned(),
+                                stderr: String::from_utf8_lossy(&result.stderr).into_owned(),
+                                status: result.status.code().unwrap_or(1),
+                            }
+                        }
+                    };
+                    return Ok(Some(ExecutionResult::from_parts(
+                        output.stdout, output.stderr, output.status,
+                    )));
+                }
+            }
+        }
         if name == "help" || name == "man" {
             let output = self.registry.help(args.first().map(String::as_str));
             return Ok(Some(ExecutionResult::from_parts(
@@ -1978,11 +2028,20 @@ pub struct NativeShellEngine {
 
 impl NativeShellEngine {
     pub fn new(registry: Arc<CommandRegistry>, config_file: PathBuf) -> Result<Self> {
+        Self::new_with_script_routes(registry, config_file, HashMap::new())
+    }
+
+    pub fn new_with_script_routes(
+        registry: Arc<CommandRegistry>,
+        config_file: PathBuf,
+        script_routes: HashMap<String, ScriptRunner>,
+    ) -> Result<Self> {
         let native_commands = registry.names();
         let interrupt = crate::adapters::terminal::io::interrupt_flag();
         let force_abort = crate::adapters::terminal::io::force_abort_flag();
         let host = WindowsShellHost {
             registry,
+            script_routes,
             interrupt: interrupt.clone(),
             force_abort: force_abort.clone(),
             jobs: Mutex::new(HashMap::new()),
