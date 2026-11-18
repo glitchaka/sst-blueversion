@@ -19,7 +19,7 @@ try {
     $stdout = Get-Content -Raw -LiteralPath $out
     $stderr = Get-Content -Raw -LiteralPath $err
     if ($process.ExitCode -ne 0) { throw "fetch falló: $stderr" }
-    if ($stdout -notmatch '(?m)^  %{20,}' -or $stdout -notmatch '(?m)^%%.*?%{4,}') {
+    if ($stdout -notmatch '(?m)^   %{20,}' -or $stdout -notmatch '(?m)^%%.*?%{4,}') {
         throw "fetch no imprimió el logotipo ASCII SST: $stdout"
     }
     if ($stdout -match [char]27) {
