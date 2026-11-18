@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 
 use crate::adapters::persistence::AppPaths;
 
-pub use model::{InstallReport, InstalledPackage, PackageManifest, RepoSource};
+pub use model::{InstallReport, InstalledPackage, PackageManifest, PackageExecution, RepoSource};
 
 use installer::{command_name_from_exposed, find_file, install_payload};
 use lifecycle::{functional_generation, expires_on_generation};
@@ -115,7 +115,8 @@ impl PackageService {
             anyhow::ensure!(
                 !target.components().any(|component| matches!(component, Component::ParentDir))
                     && (target.starts_with(self.store.tools_dir())
-                    || target.starts_with(self.store.runtimes_dir())),
+                    || target.starts_with(self.store.runtimes_dir())
+                    || target.starts_with(self.store.modules_dir())),
                 "instp: ruta de paquete fuera de su área aislada: {}",
                 target.display()
             );
@@ -165,6 +166,26 @@ impl PackageService {
         packages.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(packages)
     }
+    /// Resolve a genuinely installed embeddable module, never an empty legacy
+    /// "builtin" marker. The manifest is consulted only at install time;
+    /// runtime activation follows the validated installed-state journal.
+    pub fn module_directory(&self, id: &str) -> Result<Option<PathBuf>> {
+        let Some(package) = self.installed()?.into_iter()
+            .find(|item| item.id.eq_ignore_ascii_case(id)) else {
+            return Ok(None);
+        };
+        let Some(execution) = package.execution else { return Ok(None); };
+        if execution.kind != "embedded" || execution.abi.as_deref() != Some("sst-hostfxr/1") {
+            return Ok(None);
+        }
+        let root = self.store.modules_dir().canonicalize()?;
+        let path = self.store.resolve_root_relative(&package.install_dir).canonicalize()?;
+        anyhow::ensure!(path.starts_with(&root), "instp: módulo fuera de su directorio autorizado");
+        anyhow::ensure!(path.join(execution.entry).is_file(),
+            "instp: módulo {} incompleto, reinstálalo", package.id);
+        Ok(Some(path))
+    }
+
 
     pub fn install(&self, id: &str) -> Result<InstallReport> {
         self.install_with_persistence(id, false)
@@ -178,7 +199,10 @@ impl PackageService {
             .ok_or_else(|| anyhow::anyhow!("instp: paquete no encontrado: {id}"))?;
 
         if package.install.kind == "builtin" {
-            return self.install_builtin_module(&package, persistent);
+            anyhow::bail!("instp: {} usa un paquete integrado obsoleto; actualiza el catálogo", id);
+        }
+        if package.execution.as_ref().is_some_and(|e| e.kind == "environment") {
+            return self.install_wsl_environment(&package, persistent);
         }
 
         if matches!(package.portability.as_str(), "system" | "driver")
@@ -193,10 +217,10 @@ impl PackageService {
 
         let resolved = resolve_source(&package)?;
         let archive = self.obtain_source(&package, &resolved)?;
-        let install_dir = if package.category == "runtime" {
-            self.store.runtimes_dir().join(&package.id)
-        } else {
-            self.store.tools_dir().join(&package.id)
+        let install_dir = match package.execution.as_ref().map(|e| e.kind.as_str()) {
+            Some("embedded") => self.store.modules_dir().join(&package.id),
+            Some("runtime") => self.store.runtimes_dir().join(&package.id),
+            _ => self.store.tools_dir().join(&package.id),
         };
 
         let staging = install_dir.with_extension("instp-new");
@@ -224,6 +248,22 @@ impl PackageService {
                 package.id,
                 staged_missing.join(", ")
             );
+        }
+        if let Some(execution) = &package.execution {
+            if matches!(execution.kind.as_str(), "embedded" | "runtime" | "process")
+                && find_file(&staging, &execution.entry)?.is_none()
+            {
+                let _ = fs::remove_dir_all(&staging);
+                anyhow::bail!("instp: {} no contiene su entrada {}: se conserva versión anterior",
+                    package.id, execution.entry);
+            }
+            if execution.kind == "embedded"
+                && (find_file(&staging, "Sst.PowerShell.Bridge.runtimeconfig.json")?.is_none()
+                    || find_file(&staging, "hostfxr.dll")?.is_none())
+            {
+                let _ = fs::remove_dir_all(&staging);
+                anyhow::bail!("instp: {} no contiene el host .NET completo", package.id);
+            }
         }
 
         let backup = install_dir.with_extension("instp-old");
@@ -260,7 +300,9 @@ impl PackageService {
                 None => missing.push(exposed.clone()),
             }
         }
-        if path_entries.is_empty() {
+        if path_entries.is_empty() && package.execution.as_ref()
+            .is_some_and(|e| e.kind != "embedded")
+        {
             path_entries.push(self.store.root_relative(&install_dir));
         }
         path_entries.sort();
@@ -281,6 +323,7 @@ impl PackageService {
             install_dir: self.store.root_relative(&install_dir),
             commands,
             path_entries,
+            execution: package.execution.clone(),
             persistent: effective_persistent,
             functional_generation: functional_generation().to_owned(),
         };
@@ -309,57 +352,6 @@ impl PackageService {
             package: installed,
             missing_exposed_commands: missing,
             source_url: resolved.url,
-        })
-    }
-
-    /// Install a first-party module using the SST command registry. No shell,
-    /// executable, PowerShell runtime or remote artifact is downloaded.
-    fn install_builtin_module(
-        &self,
-        package: &PackageManifest,
-        persistent: bool,
-    ) -> Result<InstallReport> {
-        anyhow::ensure!(
-            package.id == "powershell" && package.source.kind == "builtin",
-            "instp: módulo nativo desconocido: {}", package.id
-        );
-        let install_dir = self.store.tools_dir().join(&package.id);
-        fs::create_dir_all(&install_dir)?;
-        let mut state = self.store.load_installed_state()?;
-        let old = state.packages.iter()
-            .find(|existing| existing.id.eq_ignore_ascii_case(&package.id))
-            .cloned();
-        let effective_persistent = persistent
-            || old.as_ref().is_some_and(|item| item.persistent);
-        let installed = InstalledPackage {
-            id: package.id.clone(),
-            name: package.name.clone(),
-            version: package.version.clone(),
-            category: package.category.clone(),
-            portability: package.portability.clone(),
-            install_dir: self.store.root_relative(&install_dir),
-            commands: Vec::new(),
-            path_entries: Vec::new(),
-            persistent: effective_persistent,
-            functional_generation: functional_generation().to_owned(),
-        };
-        state.packages.retain(|existing| !existing.id.eq_ignore_ascii_case(&package.id));
-        state.packages.push(installed.clone());
-        self.store.save_installed_state(&state)?;
-        // An older version could have installed the official pwsh.exe runtime.
-        // Remove that obsolete runtime only after the native module is recorded.
-        if let Some(previous) = old {
-            let old_dir = self.store.resolve_root_relative(&previous.install_dir);
-            if old_dir == self.store.runtimes_dir().join("powershell")
-                && old_dir.exists()
-            {
-                fs::remove_dir_all(&old_dir)?;
-            }
-        }
-        Ok(InstallReport {
-            package: installed,
-            missing_exposed_commands: Vec::new(),
-            source_url: "integrado en SST; sin descarga externa".to_owned(),
         })
     }
 
@@ -429,7 +421,8 @@ impl PackageService {
         anyhow::ensure!(
             !install_dir.components().any(|part| matches!(part, Component::ParentDir))
                 && (install_dir.starts_with(self.store.tools_dir())
-                    || install_dir.starts_with(self.store.runtimes_dir())),
+                    || install_dir.starts_with(self.store.runtimes_dir())
+                    || install_dir.starts_with(self.store.modules_dir())),
             "instp: instalación fuera de su área aislada: {}",
             install_dir.display()
         );
