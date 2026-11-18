@@ -1,3 +1,11 @@
-# Documentación local de SST
+# Documentación de SST y guía original
 
-Instantánea del directorio `tutorials` de `glitchaka/adm-toolbox`, commit de origen `c52760e4c317f3292ef18f190ed2c0c977deea29` (2026-11-03). Se conserva la documentación original para las 133 fichas propias de SST y se omite Arch de esta edición de demostración (el catálogo sigue en el origen). La guía se carga siempre desde `guide/` junto a `sst.exe`; las búsquedas y las fichas nunca consultan la red. Cuando SST arranca y falta un manual, intenta descargarlo en segundo plano desde una instantánea verificada del propio repositorio. Si no hay Internet, lo recupera desde el contenido embebido en `sst.exe`. Los archivos existentes no se sobrescriben. Actualizar estas fichas no requiere reescribir el lector.
+El comando `guide` utiliza como fuente principal `glitchaka/adm-toolbox`, directorio `tutorials/` de la rama `main`:
+
+https://github.com/glitchaka/adm-toolbox/tree/main/tutorials
+
+Al abrir `guide`, SST solicita el índice completo del repositorio original, que incorpora la sección de Arch. Los manuales se descargan bajo demanda al seleccionar una ficha. La descarga solo admite HTTPS, comprueba límites de tamaño y exige texto UTF-8; el índice también se valida como JSON con esquema 1.
+
+Los archivos procedentes del repositorio original se guardan en `guide/upstream/`, separadamente de los manuales locales del usuario. Si falla la conexión, se reutiliza el último índice/manual descargado; en ausencia de una copia del origen se utiliza la documentación local incluida con SST. Los archivos del usuario no se sobrescriben.
+
+La instantánea de SST en `guide/` sigue disponible para funcionamiento sin red. Los nuevos contenidos de Arch requerirán haberse consultado previamente en línea para estar disponibles sin conexión.
