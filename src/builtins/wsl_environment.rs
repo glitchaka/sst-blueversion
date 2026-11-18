@@ -17,9 +17,11 @@ impl WslEnvironmentBuiltin {
 impl BuiltinCommand for WslEnvironmentBuiltin {
     fn name(&self) -> &'static str { "arch" }
     fn help(&self) -> &'static str {
-        "arch COMANDO [ARGS] — ejecuta un comando en Arch Linux mediante WSL2\n\\
-         Requiere instp install arch y una distribución Arch Linux registrada.\n\\
-         Ejemplo: arch pacman -Q; arch bash -lc 'uname -a'\n"
+        concat!(
+            "arch COMANDO [ARGS] — ejecuta comandos en Arch Linux por WSL2\n",
+            "Requiere instp install arch y distribución Arch registrada\n",
+            "Ejemplo: arch pacman -Q; arch bash -lc 'uname -a'\n",
+        )
     }
 
     fn execute(
