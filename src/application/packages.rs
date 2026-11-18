@@ -408,9 +408,9 @@ impl PackageService {
             let directory = self.store.environments_dir().join("arch");
             fs::create_dir_all(&directory)?;
             let mut state = self.store.load_installed_state()?;
-            // A WSL distribution remains installed across SST updates.
-            let is_persistent = true || persistent || state.packages.iter().any(|p|
-                p.id.eq_ignore_ascii_case("arch") && p.persistent);
+            // A WSL distribution is external and survives SST updates.
+            let _ = persistent;
+            let is_persistent = true;
             let installed = InstalledPackage {
                 id: package.id.clone(),
                 name: package.name.clone(),
