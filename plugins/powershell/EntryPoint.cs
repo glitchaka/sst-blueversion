@@ -95,7 +95,7 @@ public static class EntryPoint
             _runspace.SessionStateProxy.Path.SetLocation(request.Cwd);
         }
 
-        using PowerShell ps = PowerShell.Create();
+        using System.Management.Automation.PowerShell ps = System.Management.Automation.PowerShell.Create();
         ps.Runspace = _runspace;
         switch (request.Kind)
         {
