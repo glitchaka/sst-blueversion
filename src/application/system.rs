@@ -1044,17 +1044,20 @@ fn info() -> anyhow::Result<CommandOutput> {
 }
 
 
-/// Fetch uses actual terminal text, never a raster/pixel glyph matrix.
-/// The native terminal font renders this string at the ordinary cell size.
-/// --full adds a textual product name; neither mode draws oversized letters.
-fn fetch_title(full: bool, plain: bool) -> (String, usize) {
-    let title = if full { "SST · Shell Shock Tool" } else { "SST" };
-    let width = title.chars().count();
-    if plain {
-        (title.to_owned(), width)
-    } else {
-        (format!("\x1b[1;38;2;235;219;178m{title}\x1b[0m"), width)
-    }
+/// El logo tipográfico SST proviene del ascii-art.txt proporcionado por el autor.
+/// La versión compacta conserva la composición y cabe junto a la información.
+const FETCH_LOGO_ASCII: &[&str] = &["  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  ","%%::--------------------------------------------%%","%%::--------------------------------------------%%","%%---%%%%%%%%%%%%-----%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%-+%%%%------------=%%%%--------------%%%%%----%%","%%---%%%%%%-----------%%%%%%-----------%%%%%----%%","%%---%%%%%%%%%--------%%%%%%%%%--------%%%%%----%%","%%--------%%%%%%%----------%%%%%%%=----%%%%%----%%","%%%%%--------%%%%--%%%--------%%%%=----%%%%%----%%","%%-+%%%%%%%%%%%%----=%%%%%%%%%%%%------%%%%%----%%","%%----------------------------------------------%%","%%----------------------------------------------%%","  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  "];
+
+fn fetch_logo(plain: bool) -> (Vec<String>, usize) {
+    let width = FETCH_LOGO_ASCII.iter().map(|line| line.chars().count()).max().unwrap_or(0);
+    let lines = FETCH_LOGO_ASCII.iter().map(|line| {
+        if plain {
+            (*line).to_owned()
+        } else {
+            format!("\x1b[1;38;2;235;219;178m{line}\x1b[0m")
+        }
+    }).collect();
+    (lines, width)
 }
 
 fn truncate_fetch(value: &str, max: usize) -> String {
@@ -1071,8 +1074,8 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         return Ok(CommandOutput::ok(
             "fetch — muestra información del sistema con SST como texto nativo\n\
              uso: fetch [--small|--full] [--plain|--stdout]\n\
-             --small: título SST compacto (predeterminado)\n\
-             --full: título textual SST · Shell Shock Tool, sin letras dibujadas\n\
+             --small: logotipo SST compacto (predeterminado)\n\
+             --full: información del sistema detallada con el logo SST\n\
              --plain/--stdout: salida sin secuencias ANSI, apta para archivos y pipes\n\
              alias: neofetch, fastfetch\n",
         ));
@@ -1104,9 +1107,8 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         format!("{hours}h {minutes}m")
     };
 
-    let full = args.iter().any(|arg| arg == "--full");
     let plain = args.iter().any(|arg| matches!(arg.as_str(), "--plain" | "--stdout"));
-    let (logo, logo_width) = fetch_title(full, plain);
+    let (logo_lines, logo_width) = fetch_logo(plain);
 
     let info = if plain {
         vec![
@@ -1147,14 +1149,17 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     };
 
     let mut out = String::new();
-    for (index, line) in info.iter().enumerate() {
-        if index == 0 {
-            out.push_str(&logo);
+    let count = logo_lines.len().max(info.len());
+    for index in 0..count {
+        if let Some(logo) = logo_lines.get(index) {
+            out.push_str(logo);
         } else {
             out.push_str(&" ".repeat(logo_width));
         }
-        out.push_str("   ");
-        out.push_str(line);
+        if let Some(line) = info.get(index) {
+            out.push_str("   ");
+            out.push_str(line);
+        }
         out.push('\n');
     }
 
@@ -1721,30 +1726,21 @@ fn terminate_pid_native(pid: u32) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod fetch_text_logo_tests {
-    use super::fetch_title;
+    use super::fetch_logo;
 
     #[test]
-    fn default_logo_is_compact_text_not_pixel_art() {
-        let (logo, width) = fetch_title(false, true);
-        assert_eq!(logo, "SST");
-        assert_eq!(width, 3);
-        assert!(!logo.chars().any(|ch| matches!(ch, '▀' | '▄' | '█')));
+    fn logo_is_ascii_and_has_uniform_columns() {
+        let (lines, width) = fetch_logo(true);
+        assert_eq!(lines.len(), 13);
+        assert_eq!(width, 50);
+        assert!(lines.iter().all(|line| line.chars().count() == width));
+        assert!(lines.iter().any(|line| line.contains("%%%%")));
     }
 
     #[test]
-    fn full_logo_remains_one_line_of_real_text() {
-        let (logo, width) = fetch_title(true, true);
-        assert_eq!(logo, "SST · Shell Shock Tool");
-        assert_eq!(width, logo.chars().count());
-        assert!(!logo.contains('\n'));
-    }
-
-    #[test]
-    fn colored_logo_keeps_same_visible_characters_and_cell_width() {
-        let (logo, width) = fetch_title(false, false);
-        assert!(logo.contains("SST"));
-        assert_eq!(width, 3);
-        assert!(logo.starts_with("\x1b["));
-        assert!(!logo.chars().any(|ch| matches!(ch, '▀' | '▄' | '█')));
+    fn colored_logo_keeps_its_dimensions() {
+        let (lines, width) = fetch_logo(false);
+        assert_eq!(width, 50);
+        assert!(lines.iter().all(|line| line.starts_with("\x1b[")));
     }
 }
