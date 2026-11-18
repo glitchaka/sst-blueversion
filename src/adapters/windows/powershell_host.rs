@@ -18,7 +18,7 @@ use windows_sys::Win32::System::{
 };
 use crate::core::CommandOutput;
 
-type FxrInit = unsafe extern "C" fn(*const u16, *const c_void, *mut *mut c_void) -> i32;
+type FxrInit = unsafe extern "C" fn(i32, *const *const u16, *const c_void, *mut *mut c_void) -> i32;
 type FxrDelegate = unsafe extern "C" fn(*mut c_void, i32, *mut *mut c_void) -> i32;
 type FxrClose = unsafe extern "C" fn(*mut c_void) -> i32;
 type LoadAssembly = unsafe extern "system" fn(
@@ -73,7 +73,7 @@ impl PowerShellEngine {
         }
         // hostfxr and CoreCLR must never be unloaded before process exit.
         let init: FxrInit = unsafe {
-            std::mem::transmute(get_function(library, b"hostfxr_initialize_for_runtime_config\0")?)
+            std::mem::transmute(get_function(library, b"hostfxr_initialize_for_dotnet_command_line\0")?)
         };
         let get_delegate: FxrDelegate = unsafe {
             std::mem::transmute(get_function(library, b"hostfxr_get_runtime_delegate\0")?)
@@ -82,8 +82,13 @@ impl PowerShellEngine {
             std::mem::transmute(get_function(library, b"hostfxr_close\0")?)
         };
         let mut context = null_mut();
+        let assembly_path = wide(assembly.as_os_str());
+        let argv = [assembly_path.as_ptr()];
+        // The plugin carries the self-contained .NET runtime. Hostfxr's
+        // command-line initializer supports loading that runtime; the
+        // runtime-config initializer only handles framework-dependent apps.
         let rc = unsafe {
-            init(wide(runtime_config.as_os_str()).as_ptr(), null(), &mut context)
+            init(argv.len() as i32, argv.as_ptr(), null(), &mut context)
         };
         if rc != 0 || context.is_null() {
             bail!("PowerShell: hostfxr no pudo inicializar .NET (0x{:08x})", rc as u32);
