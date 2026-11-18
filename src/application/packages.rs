@@ -27,6 +27,19 @@ use model::{
 use store::PackageStore;
 use transport::{ResolvedSource, download, get, resolve_source};
 
+#[cfg(windows)]
+fn decode_wsl_output(bytes: &[u8]) -> String {
+    // WSL on Windows can return UTF-16LE even to a redirected pipe.
+    let utf16 = bytes.len() % 2 == 0
+        && bytes.chunks_exact(2).take(32).any(|pair| pair[1] == 0);
+    if utf16 {
+        let words = bytes.chunks_exact(2).map(|pair| u16::from_le_bytes([pair[0], pair[1]])).collect::<Vec<_>>();
+        String::from_utf16_lossy(&words).trim_start_matches('\u{feff}').to_owned()
+    } else {
+        String::from_utf8_lossy(bytes).trim_start_matches('\u{feff}').to_owned()
+    }
+}
+
 const BUILTIN_INDEX: &str = include_str!("../../packages/index.json");
 
 #[derive(Clone)]
@@ -116,7 +129,8 @@ impl PackageService {
                 !target.components().any(|component| matches!(component, Component::ParentDir))
                     && (target.starts_with(self.store.tools_dir())
                     || target.starts_with(self.store.runtimes_dir())
-                    || target.starts_with(self.store.modules_dir())),
+                    || target.starts_with(self.store.modules_dir())
+                    || target.starts_with(self.store.environments_dir())),
                 "instp: ruta de paquete fuera de su área aislada: {}",
                 target.display()
             );
@@ -355,6 +369,74 @@ impl PackageService {
         })
     }
 
+    /// Arch is a Windows-managed WSL distribution, not a zip archive or a
+    /// Windows executable. Only an explicit instp install arch authorizes
+    /// calling the official WSL installer; startup never installs WSL.
+    fn install_wsl_environment(
+        &self, package: &PackageManifest, persistent: bool,
+    ) -> Result<InstallReport> {
+        anyhow::ensure!(package.id == "arch"
+            && package.execution.as_ref().is_some_and(|e|
+                e.kind == "environment" && e.provider.as_deref() == Some("wsl")
+                    && e.distribution.as_deref() == Some("archlinux")),
+            "instp: entorno WSL desconocido");
+        #[cfg(windows)]
+        {
+            use std::process::Command;
+            let wsl = crate::support::windows::system32_executable("wsl.exe")?;
+            let check = Command::new(&wsl).args(["--list", "--quiet"]).output()
+                .context("instp: no se pudo consultar WSL")?;
+            if !check.status.success() {
+                anyhow::bail!("instp arch: WSL2 no está disponible; habilítalo y reinicia Windows antes de instalar Arch");
+            }
+            let list = decode_wsl_output(&check.stdout).to_ascii_lowercase();
+            if !list.lines().any(|line| line.trim() == "archlinux") {
+                let outcome = Command::new(&wsl).args(["--install", "archlinux"]).status()
+                    .context("instp arch: falló la ejecución del instalador oficial WSL")?;
+                if !outcome.success() {
+                    anyhow::bail!("instp arch: WSL no completó instalación (código {:?}); comprueba permisos y reinicia si Windows lo solicita", outcome.code());
+                }
+                let verify = Command::new(&wsl).args(["--list", "--quiet"]).output()?;
+                if !verify.status.success() || !decode_wsl_output(&verify.stdout)
+                    .lines().any(|line| line.trim().eq_ignore_ascii_case("archlinux"))
+                {
+                    anyhow::bail!("instp arch: Windows todavía no registró Arch; termina la instalación de WSL y repite instp install arch");
+                }
+            }
+            let directory = self.store.environments_dir().join("arch");
+            fs::create_dir_all(&directory)?;
+            let mut state = self.store.load_installed_state()?;
+            let is_persistent = persistent || state.packages.iter().any(|p|
+                p.id.eq_ignore_ascii_case("arch") && p.persistent);
+            let installed = InstalledPackage {
+                id: package.id.clone(),
+                name: package.name.clone(),
+                version: package.version.clone(),
+                category: package.category.clone(),
+                portability: package.portability.clone(),
+                install_dir: self.store.root_relative(&directory),
+                commands: Vec::new(),
+                path_entries: Vec::new(),
+                execution: package.execution.clone(),
+                persistent: is_persistent,
+                functional_generation: functional_generation().to_owned(),
+            };
+            state.packages.retain(|p| !p.id.eq_ignore_ascii_case("arch"));
+            state.packages.push(installed.clone());
+            self.store.save_installed_state(&state)?;
+            return Ok(InstallReport {
+                package: installed,
+                missing_exposed_commands: Vec::new(),
+                source_url: "WSL2: distribución oficial archlinux".to_owned(),
+            });
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = persistent;
+            anyhow::bail!("instp arch: la integración WSL2 requiere Windows")
+        }
+    }
+
     /// Upgrade installed packages against the currently published upstream
     /// releases. Retains their existing temporary/persistent lifetime.
     /// No package is installed implicitly when only consulting its status.
@@ -422,7 +504,8 @@ impl PackageService {
             !install_dir.components().any(|part| matches!(part, Component::ParentDir))
                 && (install_dir.starts_with(self.store.tools_dir())
                     || install_dir.starts_with(self.store.runtimes_dir())
-                    || install_dir.starts_with(self.store.modules_dir())),
+                    || install_dir.starts_with(self.store.modules_dir())
+                    || install_dir.starts_with(self.store.environments_dir())),
             "instp: instalación fuera de su área aislada: {}",
             install_dir.display()
         );
