@@ -134,6 +134,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test-powershell-plugin.ps1 -SstPath ./target/release/sst.exe -PluginDirectory ./target/plugin-powershell
 
+      - name: Verify Arch WSL2 package manifest and discovery without system changes
+        shell: pwsh
+        run: ./scripts/test-arch-package.ps1 -SstPath ./target/release/sst.exe
+
       - name: Rust regression tests (blocking release)
         id: rust_tests
         shell: pwsh
