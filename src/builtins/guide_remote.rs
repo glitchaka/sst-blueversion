@@ -13,7 +13,7 @@ use std::os::windows::process::CommandExt;
 
 const INDEX_FILE: &str = "guide-index.json";
 const UPSTREAM_BASE: &str = "https://raw.githubusercontent.com/glitchaka/adm-toolbox/main/tutorials";
-const MAX_INDEX_BYTES: usize = 2 * 1024 * 1024;
+const MAX_INDEX_BYTES: usize = 8 * 1024 * 1024;
 const MAX_MANUAL_BYTES: usize = 512 * 1024;
 
 static FILE_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
