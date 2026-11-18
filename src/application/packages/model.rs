@@ -19,6 +19,8 @@ pub struct PackageIndex {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PackageManifest {
+    #[serde(default = "format_v1")]
+    pub format: u32,
     pub id: String,
     pub name: String,
     pub version: String,
@@ -27,6 +29,31 @@ pub struct PackageManifest {
     pub portability: String,
     pub source: PackageSource,
     pub install: PackageInstall,
+    #[serde(default)]
+    pub execution: Option<PackageExecution>,
+}
+
+fn format_v1() -> u32 { 1 }
+
+/// Versioned execution contract common to CLI, runtimes, in-process modules
+/// and managed environments. Category is only for catalog presentation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PackageExecution {
+    pub kind: String,
+    #[serde(default)]
+    pub entry: String,
+    #[serde(default)]
+    pub commands: Vec<String>,
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    #[serde(default)]
+    pub abi: Option<String>,
+    #[serde(default)]
+    pub startup: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub distribution: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -78,6 +105,10 @@ pub struct InstalledPackage {
     pub install_dir: String,
     pub commands: Vec<InstalledCommand>,
     pub path_entries: Vec<String>,
+    /// Execution adapter contract recorded at installation; older installs
+    /// have no adapter and must not claim an embedded engine is functional.
+    #[serde(default)]
+    pub execution: Option<PackageExecution>,
     /// Explicit authorization to retain this package between functional SST releases.
     #[serde(default)]
     pub persistent: bool,
@@ -105,7 +136,7 @@ pub struct InstallReport {
 }
 
 pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
-    if index.schema != 1 {
+    if index.schema != 2 {
         anyhow::bail!("instp: schema de repositorio no soportado: {}", index.schema);
     }
     if index.repository.name.trim().is_empty() {
@@ -120,6 +151,14 @@ pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
         }
         validate_portability(&package.portability)?;
         validate_install_kind(&package.install.kind)?;
+        if package.format != 1 {
+            anyhow::bail!("instp: formato SST-PACKAGE desconocido: {}", package.format);
+        }
+        let execution = package.execution.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("instp: {} no declara adaptador execution", package.id)
+        })?;
+        validate_execution(package, execution)?;
+
         if package.install.kind == "builtin"
             && !(package.id == "powershell" && package.source.kind == "builtin")
         {
@@ -130,6 +169,56 @@ pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
         }
         for exposed in &package.install.expose {
             validate_relative_payload_path(exposed)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -> Result<()> {
+    match execution.kind.as_str() {
+        "embedded" => {
+            if package.category != "module" || package.install.kind != "zip"
+                || execution.abi.as_deref() != Some("sst-hostfxr/1")
+                || execution.startup.as_deref() != Some("load")
+            {
+                anyhow::bail!("instp: módulo {} tiene ABI, categoría o arranque inválido", package.id);
+            }
+            validate_relative_payload_path(&execution.entry)?;
+            if execution.extensions.is_empty() {
+                anyhow::bail!("instp: módulo {} no declara extensiones", package.id);
+            }
+        }
+        "runtime" | "process" => {
+            if package.install.kind == "system" || package.install.kind == "builtin" {
+                anyhow::bail!("instp: {} requiere un paquete ejecutable instalable", package.id);
+            }
+            validate_relative_payload_path(&execution.entry)?;
+        }
+        "environment" => {
+            if package.category != "environment" || package.portability != "system"
+                || package.source.kind != "system" || package.install.kind != "system"
+                || execution.provider.as_deref() != Some("wsl")
+                || execution.distribution.as_deref() != Some("archlinux")
+                || execution.entry != "wsl.exe"
+            {
+                anyhow::bail!("instp: entorno {} sin proveedor WSL reconocido", package.id);
+            }
+        }
+        "system" => {
+            if package.install.kind != "system" {
+                anyhow::bail!("instp: {} no es un paquete de sistema", package.id);
+            }
+        }
+        other => anyhow::bail!("instp: {} usa adaptador desconocido: {other}", package.id),
+    }
+    for command in &execution.commands {
+        validate_identifier(command)?;
+    }
+    for ext in &execution.extensions {
+        if !ext.starts_with('.') || ext.len() < 2 || ext.len() > 12
+            || !ext[1..].bytes().all(|byte| byte.is_ascii_alphanumeric())
+        {
+            anyhow::bail!("instp: {} declara extensión insegura: {ext}", package.id);
         }
     }
     Ok(())
