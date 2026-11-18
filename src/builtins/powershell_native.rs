@@ -9,7 +9,7 @@ use super::BuiltinCommand;
 use crate::adapters::windows::powershell_host::PowerShellEngine;
 
 const ALIASES: &[&str] = &[
-    "powershell", "ps", "Get-Process", "Get-Service", "Get-NetAdapter",
+    "powershell", "psh", "Get-Process", "Get-Service", "Get-NetAdapter",
     "Get-NetIPConfiguration", "Get-ComputerInfo", "Get-Printer",
     "Get-WinEvent", "Get-Disk", "Get-NetRoute", "Resolve-DnsName",
     "Get-LocalUser", "Get-PnpDevice", "Test-Connection", "Get-Date",
@@ -38,8 +38,8 @@ impl NativePowerShellBuiltin {
 
     fn usage() -> &'static str {
         "Motor PowerShell SDK de SST (runspace .NET embebido)\n\
-         ps -Command \"Get-Service | Where-Object Status -eq Running\"\n\
-         ps -File archivo.ps1 [ARGUMENTOS]\n\
+         psh -Command \"Get-Service | Where-Object Status -eq Running\"\n\
+         psh -File archivo.ps1 [ARGUMENTOS]\n\
          psmodule -Command '...'\n\
          psmodule -File archivo.ps1\n\
          psmodule status\n\
@@ -101,7 +101,7 @@ impl BuiltinCommand for NativePowerShellBuiltin {
             return self.run_engine("probe", "", &[], context);
         }
 
-        if matches!(invoked_name, "psmodule" | "powershell" | "ps") {
+        if matches!(invoked_name, "psmodule" | "powershell" | "psh") {
             return match args {
                 [flag, path, rest @ ..] if flag.eq_ignore_ascii_case("-File") => {
                     let path = self.file_path(path, context.cwd)?;
