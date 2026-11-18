@@ -100,10 +100,18 @@ impl InstpBuiltin {
             other => other.to_owned(),
         };
 
+        let adapter = package.execution.as_ref()
+            .map(|execution| execution.kind.as_str()).unwrap_or("sin adaptador");
+        let extensions = package.execution.as_ref()
+            .map(|execution| execution.extensions.join(", "))
+            .unwrap_or_default();
         Ok(CommandOutput::ok(format!(
             "{} ({})\n\
              id: {}\n\
+             estándar: SST-PACKAGE/{}\n\
              categoría: {}\n\
+             adaptador: {}\n\
+             extensiones: {}\n\
              portabilidad: {}\n\
              fuente: {}\n\
              instalación: {}\n\
@@ -112,7 +120,10 @@ impl InstpBuiltin {
             package.name,
             package.version,
             package.id,
+            package.format,
             package.category,
+            adapter,
+            if extensions.is_empty() { "(ninguna)" } else { &extensions },
             package.portability.to_ascii_uppercase(),
             source,
             package.install.kind,
@@ -140,8 +151,11 @@ impl InstpBuiltin {
         };
         match installation {
             Ok(report) => {
-                let commands = if report.package.category == "module" {
-                    "cmdlets internos de SST (consulta: psmodule)".to_owned()
+                let commands = if report.package.execution.as_ref()
+                    .is_some_and(|e| matches!(e.kind.as_str(), "embedded" | "environment"))
+                {
+                    report.package.execution.as_ref()
+                        .map(|e| e.commands.join(", ")).unwrap_or_default()
                 } else if report.package.commands.is_empty() {
                     "(ninguno)".to_owned()
                 } else {
@@ -176,9 +190,13 @@ impl InstpBuiltin {
                         report.missing_exposed_commands.join(", ")
                     ));
                 }
-                if report.package.category == "module" {
+                if report.package.execution.as_ref().is_some_and(|e| e.kind == "embedded") {
                     out.push_str(
-                        "Reinicia SST para activar los cmdlets internos del módulo.\n",
+                        "Reinicia SST para cargar el motor real del módulo y asociar sus scripts.\n",
+                    );
+                } else if report.package.execution.as_ref().is_some_and(|e| e.kind == "environment") {
+                    out.push_str(
+                        "Arch Linux se administra con WSL2; reinicia SST para activar arch COMANDO.\n",
                     );
                 } else if !report.package.commands.is_empty() {
                     out.push_str(
@@ -197,7 +215,12 @@ impl InstpBuiltin {
         };
         if self.service.remove(id)? {
             Ok(CommandOutput::ok(format!(
-                "Eliminado de SST: {id}\nReinicia SST para retirar sus rutas de la sesión actual.\n"
+                "Eliminado de SST: {id}\n{}\n",
+                if id.eq_ignore_ascii_case("arch") {
+                    "Se desconectó SST de Arch; NO se eliminó la distribución WSL ni sus datos. Reinicia SST."
+                } else {
+                    "Reinicia SST para retirar el módulo o sus rutas de la sesión actual."
+                },
             )))
         } else {
             Ok(CommandOutput::error(
