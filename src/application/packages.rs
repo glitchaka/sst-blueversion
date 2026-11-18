@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 
 use crate::adapters::persistence::AppPaths;
 
-pub use model::{InstallReport, InstalledPackage, PackageManifest, PackageExecution, RepoSource};
+pub use model::{InstallReport, InstalledPackage, PackageManifest, RepoSource};
 pub use execution::ScriptRunner;
 
 use installer::{command_name_from_exposed, find_file, install_payload};
