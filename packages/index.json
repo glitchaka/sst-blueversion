@@ -752,7 +752,7 @@
       },
       "format": 1,
       "execution": {
-        "kind": "process",
+        "kind": "system",
         "entry": "",
         "commands": [],
         "extensions": []
