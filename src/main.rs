@@ -387,6 +387,21 @@ fn run_cli(args: &[String]) -> Result<i32> {
         (source, script_name, positional)
     } else {
         let script = &invocation.operands[0];
+        if Path::new(script).extension().and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("ps1"))
+        {
+            // Native SST CLI invokes the installed PowerShell package instead
+            // of trying to parse .ps1 as Nwash/Bash source.
+            let command = std::iter::once("psmodule".to_owned())
+                .chain(std::iter::once("-File".to_owned()))
+                .chain(invocation.operands.iter().cloned())
+                .map(|word| shell_quote(&word))
+                .collect::<Vec<_>>().join(" ");
+            let result = engine.execute(&command)?;
+            print!("{}", result.stdout);
+            eprint!("{}", result.stderr);
+            return Ok(result.status);
+        }
         let source = std::fs::read_to_string(script)?;
         (source, script.clone(), invocation.operands[1..].to_vec())
     };
