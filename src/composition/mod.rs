@@ -245,9 +245,10 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
 
     let registry = Arc::new(registry);
     let command_names = registry.names();
-    let engine = NativeShellEngine::new(
+    let engine = NativeShellEngine::new_with_script_routes(
         Arc::clone(&registry),
         paths.config_file(),
+        package_service.script_routes()?,
     )?;
 
     Ok((Box::new(engine), command_names, paths))
