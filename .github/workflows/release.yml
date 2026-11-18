@@ -40,6 +40,22 @@ jobs:
             'can_publish=true' >> $env:GITHUB_OUTPUT
           }
 
+      - name: Install .NET 9 SDK for the PowerShell host
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Compile actual PowerShell SDK module (no external pwsh process)
+        shell: pwsh
+        run: |
+          dotnet publish ./plugins/powershell/Sst.PowerShell.Bridge.csproj -c Release -r win-x64 --self-contained true -o ./target/plugin-powershell
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar el motor de PowerShell.' }
+          foreach ($name in @('hostfxr.dll','Sst.PowerShell.Bridge.dll','Sst.PowerShell.Bridge.runtimeconfig.json')) {
+            if (-not (Test-Path -LiteralPath "./target/plugin-powershell/$name")) {
+              throw "Plugin de PowerShell incompleto: $name"
+            }
+          }
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -114,6 +130,10 @@ jobs:
             throw 'Windows release compilation failed.'
           }
 
+      - name: Verify .ps1, PowerShell objects and SDK runspace inside SST
+        shell: pwsh
+        run: ./scripts/test-powershell-plugin.ps1 -SstPath ./target/release/sst.exe -PluginDirectory ./target/plugin-powershell
+
       - name: Rust regression tests (blocking release)
         id: rust_tests
         shell: pwsh
@@ -168,6 +188,13 @@ jobs:
         id: packaging
         shell: pwsh
         run: ./scripts/package-release.ps1
+
+      - name: Archive installable SST PowerShell SDK package
+        shell: pwsh
+        run: |
+          $archive = Join-Path $PWD 'dist/SST-PowerShell-win-x64.zip'
+          Compress-Archive -Path './target/plugin-powershell/*' -DestinationPath $archive -Force
+          if (-not (Test-Path -LiteralPath $archive)) { throw 'No se creó el paquete de PowerShell.' }
 
       - name: Verify final self-extractor by executing a disposable copy
         shell: pwsh
@@ -258,7 +285,7 @@ jobs:
             gh release create $tag --target $env:GITHUB_SHA --title "Shell Shock Tool $env:VERSION" --notes-file $notes
           }
 
-          gh release upload $tag dist/sst.exe dist/sst-updater.exe dist/sst-update.json dist/version.txt "dist/SST-Setup-$env:VERSION.exe" --clobber
+          gh release upload $tag dist/sst.exe dist/sst-updater.exe dist/sst-update.json dist/version.txt "dist/SST-Setup-$env:VERSION.exe" dist/SST-PowerShell-win-x64.zip --clobber
 
       - name: Publish source blue channel
         if: ${{ github.event_name == 'push' || inputs.publish_release }}
