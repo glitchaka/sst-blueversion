@@ -17,7 +17,16 @@ on:
       - 'src/application/packages/model.rs'
       - 'src/composition/mod.rs'
       - 'packages/index.json'
-      - 'scripts/test-powershell-native.ps1'
+      - 'scripts/test-powershell-plugin.ps1'
+      - 'plugins/powershell/**'
+      - 'packages/**'
+      - 'src/application/packages.rs'
+      - 'src/application/packages/**'
+      - 'src/builtins/powershell_native.rs'
+      - 'src/builtins/wsl_environment.rs'
+      - 'src/adapters/windows/powershell_host.rs'
+      - 'src/composition/mod.rs'
+      - 'src/main.rs'
       - 'src/application/update.rs'
       - 'src/bin/sst_updater.rs'
       - 'src/core/bash/interpreter.rs'
@@ -54,6 +63,17 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install .NET SDK for PowerShell module
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Build PowerShell SDK module
+        shell: pwsh
+        run: |
+          dotnet publish ./plugins/powershell/Sst.PowerShell.Bridge.csproj -c Release -r win-x64 --self-contained true -o ./target/plugin-powershell
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar PowerShell SDK.' }
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -111,9 +131,9 @@ jobs:
         shell: pwsh
         run: ./scripts/test-instp-sst.ps1 -SstPath ./target/debug/sst.exe
 
-      - name: Exercise integrated PowerShell cmdlets without external runtime
+      - name: Execute .ps1 and PowerShell pipelines through actual SDK engine
         shell: pwsh
-        run: ./scripts/test-powershell-native.ps1 -SstPath ./target/debug/sst.exe
+        run: ./scripts/test-powershell-plugin.ps1 -SstPath ./target/debug/sst.exe -PluginDirectory ./target/plugin-powershell
 
       - name: Exercise native NOTSH contexts (Windows APIs)
         shell: pwsh
