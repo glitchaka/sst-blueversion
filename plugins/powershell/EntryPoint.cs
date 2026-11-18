@@ -43,6 +43,14 @@ public static class EntryPoint
 
     private static string Quote(string value) => "'" + value.Replace("'", "''") + "'";
 
+    // The assembly is published self-contained as an app only to activate the
+    // bundled .NET runtime through hostfxr. SST never executes this entrypoint.
+    public static int Main(string[] _)
+    {
+        Console.Error.WriteLine("Este motor debe cargarse desde SST mediante hostfxr.");
+        return 2;
+    }
+
     [UnmanagedCallersOnly]
     public static unsafe int Execute(nint requestUtf8, nint* responseUtf8)
     {
@@ -77,10 +85,7 @@ public static class EntryPoint
 
     private static Reply Run(Invocation request)
     {
-        if (request.Kind == "probe")
-            return new Reply { Stdout = "SST PowerShell SDK / runspace administrado\n" };
-
-        _runspace ??= RunspaceFactory.CreateRunspace(InitialSessionState.CreateDefault2());
+         _runspace ??= RunspaceFactory.CreateRunspace(InitialSessionState.CreateDefault2());
         if (_runspace.RunspaceStateInfo.State != RunspaceState.Opened)
             _runspace.Open();
 
@@ -94,6 +99,9 @@ public static class EntryPoint
         ps.Runspace = _runspace;
         switch (request.Kind)
         {
+            case "probe":
+                ps.AddScript("$PSVersionTable.PSVersion.ToString()");
+                break;
             case "script":
                 ps.AddScript(request.Script ?? "", useLocalScope: false);
                 break;
@@ -136,10 +144,14 @@ public static class EntryPoint
         // Formatting stays inside the PowerShell engine, so structured objects,
         // pipelines and formatting cmdlets work as they do in real PowerShell.
         ps.AddCommand("Out-String").AddParameter("Width", 180);
-        var output = ps.Invoke();
+        var output = request.Stdin is null
+            ? ps.Invoke()
+            : ps.Invoke(new[] { request.Stdin });
         var stdout = new StringBuilder();
         foreach (PSObject item in output)
             if (item?.BaseObject is not null) stdout.Append(item.BaseObject.ToString());
+        foreach (InformationRecord message in ps.Streams.Information)
+            if (message.MessageData is not null) stdout.AppendLine(message.MessageData.ToString());
         var stderr = new StringBuilder();
         foreach (ErrorRecord error in ps.Streams.Error)
             stderr.AppendLine(error.ToString());
