@@ -19,11 +19,11 @@ try {
     $stdout = Get-Content -Raw -LiteralPath $out
     $stderr = Get-Content -Raw -LiteralPath $err
     if ($process.ExitCode -ne 0) { throw "fetch falló: $stderr" }
-    if ($stdout -notmatch '(?m)^SST\s{3}\S+@' -or $stdout -notmatch '(?m)^SST · Shell Shock Tool\s{3}\S+@') {
-        throw "fetch no imprimió SST como texto compacto: $stdout"
+    if ($stdout -notmatch '(?m)^  %{20,}' -or $stdout -notmatch '(?m)^%%.*?%{4,}') {
+        throw "fetch no imprimió el logotipo ASCII SST: $stdout"
     }
-    if ($stdout -match '[█▀▄]' -or $stdout -match [char]27) {
-        throw 'fetch --plain imprimió pixel art o códigos ANSI.'
+    if ($stdout -match [char]27) {
+        throw 'fetch --plain imprimió códigos ANSI.'
     }
     if (-not $stdout.Contains('SST_FETCH_COMPLETE')) {
         throw 'fetch no devolvió el control al intérprete.'
