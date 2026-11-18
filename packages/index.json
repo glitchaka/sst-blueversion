@@ -550,7 +550,7 @@
         "entry": "Sst.PowerShell.Bridge.dll",
         "commands": [
           "psmodule",
-          "ps",
+          "psh",
           "powershell"
         ],
         "extensions": [
