@@ -159,11 +159,6 @@ pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
         })?;
         validate_execution(package, execution)?;
 
-        if package.install.kind == "builtin"
-            && !(package.id == "powershell" && package.source.kind == "builtin")
-        {
-            anyhow::bail!("instp: módulo integrado desconocido: {}", package.id);
-        }
         if let Some(name) = package.install.rename.as_deref() {
             validate_relative_payload_path(name)?;
         }
@@ -265,7 +260,7 @@ fn validate_portability(value: &str) -> Result<()> {
 }
 
 fn validate_install_kind(value: &str) -> Result<()> {
-    if !matches!(value, "single" | "zip" | "archive" | "system" | "builtin") {
+    if !matches!(value, "single" | "zip" | "archive" | "system") {
         anyhow::bail!("instp: tipo de instalación desconocido: {value}");
     }
     Ok(())
@@ -300,5 +295,47 @@ mod manifest_security_tests {
         ] {
             assert!(validate_relative_payload_path(invalid).is_err(), "{invalid}");
         }
+    }
+}
+
+#[cfg(test)]
+mod standard_manifest_tests {
+    use super::*;
+
+    #[test]
+    fn all_bundled_packages_follow_sst_package_1() {
+        let index: PackageIndex = serde_json::from_str(include_str!(
+            "../../../packages/index.json"
+        )).unwrap();
+        validate_index(&index).unwrap();
+        assert_eq!(index.schema, 2);
+        assert!(index.packages.iter().all(|package| package.format == 1
+            && package.execution.is_some()));
+    }
+
+    #[test]
+    fn arch_wsl2_is_an_environment_not_a_windows_executable() {
+        let index: PackageIndex = serde_json::from_str(include_str!(
+            "../../../packages/index.json"
+        )).unwrap();
+        let arch = index.packages.iter().find(|package| package.id == "arch").unwrap();
+        let exec = arch.execution.as_ref().unwrap();
+        assert_eq!(exec.kind, "environment");
+        assert_eq!(exec.provider.as_deref(), Some("wsl"));
+        assert_eq!(exec.distribution.as_deref(), Some("archlinux"));
+        assert!(arch.install.expose.is_empty());
+    }
+
+    #[test]
+    fn powershell_requires_real_embedded_engine_and_script_routing() {
+        let index: PackageIndex = serde_json::from_str(include_str!(
+            "../../../packages/index.json"
+        )).unwrap();
+        let ps = index.packages.iter().find(|package| package.id == "powershell").unwrap();
+        let exec = ps.execution.as_ref().unwrap();
+        assert_eq!(exec.kind, "embedded");
+        assert_eq!(exec.abi.as_deref(), Some("sst-hostfxr/1"));
+        assert!(exec.extensions.iter().any(|ext| ext == ".ps1"));
+        assert_eq!(exec.entry, "Sst.PowerShell.Bridge.dll");
     }
 }
