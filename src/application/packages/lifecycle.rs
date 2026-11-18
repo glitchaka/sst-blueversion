@@ -41,6 +41,7 @@ mod tests {
                 target: "packages/tools/example/example.exe".into(),
             }],
             path_entries: vec![],
+            execution: None,
             persistent,
             functional_generation: generation.into(),
         }
