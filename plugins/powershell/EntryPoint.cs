@@ -85,7 +85,16 @@ public static class EntryPoint
 
     private static Reply Run(Invocation request)
     {
-         _runspace ??= RunspaceFactory.CreateRunspace(InitialSessionState.CreateDefault2());
+        if (_runspace is null)
+        {
+            // Embedded hosts need a deliberate session policy: Windows client
+            // defaults can be Restricted even for locally authored .ps1 files.
+            // RemoteSigned still requires trusted signatures for downloaded
+            // scripts; machine/user Group Policy takes precedence.
+            var initial = InitialSessionState.CreateDefault2();
+            initial.ExecutionPolicy = Microsoft.PowerShell.ExecutionPolicy.RemoteSigned;
+            _runspace = RunspaceFactory.CreateRunspace(initial);
+        }
         if (_runspace.RunspaceStateInfo.State != RunspaceState.Opened)
             _runspace.Open();
 
