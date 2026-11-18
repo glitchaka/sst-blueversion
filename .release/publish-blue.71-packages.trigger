@@ -1,0 +1,1 @@
+Publish Blue.71 only if all blocking Windows Rust, PowerShell runspace and .ps1, Arch SST-PACKAGE/1 schema, GPU-free startup, installer and security checks pass. Include SST-PowerShell-win-x64.zip as a separate installable plugin asset.
