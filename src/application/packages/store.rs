@@ -28,6 +28,7 @@ impl PackageStore {
             self.cache_dir(),
             self.tools_dir(),
             self.modules_dir(),
+            self.environments_dir(),
             self.runtimes_dir(),
             self.repositories_dir(),
             self.ecosystems_dir(),
@@ -74,6 +75,9 @@ impl PackageStore {
 
     pub fn modules_dir(&self) -> PathBuf {
         self.packages_dir().join("modules")
+    }
+    pub fn environments_dir(&self) -> PathBuf {
+        self.packages_dir().join("environments")
     }
 
     pub fn repositories_dir(&self) -> PathBuf {
