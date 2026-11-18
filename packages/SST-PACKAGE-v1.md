@@ -34,7 +34,7 @@ Cada entrada del catálogo debe contener:
   "execution": {
     "kind": "embedded",
     "entry": "Sst.PowerShell.Bridge.dll",
-    "commands": ["psmodule", "ps", "powershell"],
+    "commands": ["psmodule", "psh", "powershell"],
     "extensions": [".ps1"],
     "abi": "sst-hostfxr/1",
     "startup": "load"
