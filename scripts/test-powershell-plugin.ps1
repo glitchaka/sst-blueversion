@@ -7,7 +7,15 @@ $root = Join-Path $env:RUNNER_TEMP ('sst-powershell-plugin-' + [guid]::NewGuid()
 $plugin = Join-Path $root 'packages\modules\powershell'
 New-Item -ItemType Directory -Force -Path $plugin | Out-Null
 Copy-Item -LiteralPath (Resolve-Path $SstPath).Path -Destination (Join-Path $root 'sst.exe')
-Copy-Item -Path (Join-Path (Resolve-Path $PluginDirectory).Path '*') -Destination $plugin -Recurse -Force
+$sourceDirectory = (Resolve-Path -LiteralPath $PluginDirectory).Path
+$sourceFiles = @(Get-ChildItem -LiteralPath $sourceDirectory -Force)
+if ($sourceFiles.Count -eq 0) {
+    throw "La compilación del módulo PowerShell produjo un directorio vacío: $sourceDirectory"
+}
+foreach ($sourceFile in $sourceFiles) {
+    Copy-Item -LiteralPath $sourceFile.FullName -Destination $plugin -Recurse -Force
+}
+Write-Host "PowerShell plugin: copiados $($sourceFiles.Count) elementos desde $sourceDirectory"
 foreach ($required in @('Sst.PowerShell.Bridge.dll','hostfxr.dll','Sst.PowerShell.Bridge.runtimeconfig.json')) {
     if (-not (Test-Path -LiteralPath (Join-Path $plugin $required) -PathType Leaf)) {
         $files = (Get-ChildItem -LiteralPath $plugin -Recurse -File |
