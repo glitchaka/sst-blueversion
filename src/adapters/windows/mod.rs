@@ -1,5 +1,7 @@
 pub mod domain;
 pub mod network;
+#[cfg(windows)]
+pub mod powershell_host;
 pub mod foreground;
 pub mod traffic;
 #[cfg(windows)]
