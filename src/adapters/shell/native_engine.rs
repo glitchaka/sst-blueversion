@@ -2027,6 +2027,7 @@ pub struct NativeShellEngine {
 }
 
 impl NativeShellEngine {
+    #[allow(dead_code)] // compatibility with callers that do not install script runtimes
     pub fn new(registry: Arc<CommandRegistry>, config_file: PathBuf) -> Result<Self> {
         Self::new_with_script_routes(registry, config_file, HashMap::new())
     }
