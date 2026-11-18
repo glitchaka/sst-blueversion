@@ -21,7 +21,7 @@ try {
     $stdout = Get-Content -Raw -LiteralPath $out
     $stderr = Get-Content -Raw -LiteralPath $err
     if ($p.ExitCode -ne 0) { throw "instp info arch falló: $stderr | $stdout" }
-    foreach ($expected in @('Arch Linux', 'SST-PACKAGE/1', 'environment', 'sst', 'SST_ARCH_CATALOG_DONE')) {
+    foreach ($expected in @('Arch Linux', 'SST-PACKAGE/1', 'environment', 'WSL2', 'SST_ARCH_CATALOG_DONE')) {
         if (-not $stdout.Contains($expected)) {
             throw "Arch no declaró su adaptador en instp: $expected / $stdout"
         }
