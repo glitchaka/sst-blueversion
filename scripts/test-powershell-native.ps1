@@ -11,7 +11,7 @@ $exe = Join-Path $root 'sst.exe'
 Copy-Item -LiteralPath $source -Destination $exe
 $installedDir = Join-Path $root 'packages/modules/powershell'
 New-Item -ItemType Directory -Force -Path $installedDir | Out-Null
-Copy-Item -LiteralPath (Join-Path $plugin '*') -Destination $installedDir -Recurse -Force
+Copy-Item -Path (Join-Path $plugin '*') -Destination $installedDir -Recurse -Force
 $journal = @{
     packages = @(@{
         id = 'powershell'
@@ -45,7 +45,7 @@ function Run-SstScript([string]$Text) {
     $scriptPath = Join-Path $root 'commands.sh'
     [IO.File]::WriteAllText($scriptPath, $Text, [Text.UTF8Encoding]::new($false))
     Remove-Item -LiteralPath $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
-    $p = Start-Process -FilePath $exe -ArgumentList ('"' + $scriptPath + '"') -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+    $p = Start-Process -FilePath $exe -ArgumentList ('"' + $scriptPath + '"') -WorkingDirectory $root -PassThru -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
     if (-not $p.WaitForExit(45000)) {
         $p.Kill()
         throw 'El runspace PowerShell dentro de SST bloqueó la consola.'
