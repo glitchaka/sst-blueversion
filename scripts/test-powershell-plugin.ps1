@@ -34,6 +34,7 @@ $sh = Join-Path $root 'run.sh'
 psmodule status
 psmodule -Command '1..3 | Measure-Object | Select-Object -ExpandProperty Count'
 ./example.ps1 PLUGIN
+psmodule -File example.ps1 MODULE
 echo SST_POWERSHELL_DONE
 '@, [Text.UTF8Encoding]::new($false))
 function Run-SST([string]$target, [string]$argsText) {
@@ -52,7 +53,7 @@ function Run-SST([string]$target, [string]$argsText) {
     if ($process.ExitCode -ne 0) {
         throw "PowerShell SDK $target terminó con $($process.ExitCode): $stderr | $stdout"
     }
-    return $stdout
+    return ($stdout + "`n--- STDERR SST $target ---`n" + $stderr)
 }
 try {
     $result = Run-SST 'Nwash' ('"' + $sh + '"')
