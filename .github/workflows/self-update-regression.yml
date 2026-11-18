@@ -20,6 +20,7 @@ on:
       - 'scripts/test-powershell-plugin.ps1'
       - 'plugins/powershell/**'
       - 'packages/**'
+      - 'scripts/test-arch-package.ps1'
       - 'src/application/packages.rs'
       - 'src/application/packages/**'
       - 'src/builtins/powershell_native.rs'
@@ -134,6 +135,10 @@ jobs:
       - name: Execute .ps1 and PowerShell pipelines through actual SDK engine
         shell: pwsh
         run: ./scripts/test-powershell-plugin.ps1 -SstPath ./target/debug/sst.exe -PluginDirectory ./target/plugin-powershell
+
+      - name: Verify Arch WSL2 package manifest and discovery without system changes
+        shell: pwsh
+        run: ./scripts/test-arch-package.ps1 -SstPath ./target/debug/sst.exe
 
       - name: Exercise native NOTSH contexts (Windows APIs)
         shell: pwsh
