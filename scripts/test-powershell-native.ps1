@@ -68,8 +68,8 @@ $result = 1..$Count | ForEach-Object { $_ * 3 } | Measure-Object -Sum
     $first = Run-SstScript @'
 instp list
 psmodule status
-ps -Command "'PS_SDK_EXPRESSION='+ (5 * 7)"
-ps -File sdk-test.ps1 -Count 4
+psh -Command "'PS_SDK_EXPRESSION='+ (5 * 7)"
+psh -File sdk-test.ps1 -Count 4
 echo SST_POWERSHELL_FINISHED
 '@
     foreach ($expected in @(
