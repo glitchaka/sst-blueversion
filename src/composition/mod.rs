@@ -180,14 +180,27 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(SwitchBuiltin::new(switch_service)))?;
     registry.register(Arc::new(WakeOnLanBuiltin::new(wol_service)))?;
     registry.register(Arc::new(DiagnosticsBuiltin::new(diagnostics_service)))?;
-    let native_powershell_installed = package_service.installed()?.iter()
-        .any(|package| package.id.eq_ignore_ascii_case("powershell")
-            && package.category == "module");
-    if native_powershell_installed {
-        registry.register(Arc::new(NativePowerShellBuiltin::new(
-            Arc::clone(&system_service),
-            Arc::clone(&network_service),
-        )))?;
+    // A module is discovered by its installed execution contract, not just
+    // its catalog presence. Incomplete modules never prevent SST from starting.
+    match package_service.module_directory("powershell") {
+        Ok(Some(directory)) => {
+            registry.register(Arc::new(NativePowerShellBuiltin::new(directory)))?;
+        }
+        Err(error) => eprintln!("SST: módulo PowerShell desactivado: {error:#}"),
+        Ok(None) => {}
+    }
+    // Environment packages are registered only after the external provider
+    // has been explicitly installed and journaled by instp.
+    if let Some(arch) = package_service.installed()?.into_iter()
+        .find(|item| item.id == "arch" && item.execution.as_ref().is_some_and(
+            |e| e.kind == "environment" && e.provider.as_deref() == Some("wsl")
+                && e.distribution.as_deref() == Some("archlinux")
+        ))
+    {
+        let distro = arch.execution.as_ref()
+            .and_then(|e| e.distribution.clone())
+            .unwrap_or_default();
+        registry.register(Arc::new(WslEnvironmentBuiltin::new(distro)))?;
     }
     registry.register(Arc::new(SystemBuiltin::new(system_service)))?;
     registry.register(Arc::new(TriageBuiltin::new(Arc::clone(&security_service))))?;
