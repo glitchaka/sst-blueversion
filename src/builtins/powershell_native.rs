@@ -20,7 +20,6 @@ const ALIASES: &[&str] = &[
 ];
 
 pub struct NativePowerShellBuiltin {
-    path: PathBuf,
     #[cfg(windows)]
     engine: Result<PowerShellEngine, String>,
 }
@@ -29,8 +28,9 @@ impl NativePowerShellBuiltin {
     pub fn new(path: PathBuf) -> Self {
         #[cfg(windows)]
         let engine = PowerShellEngine::load(&path).map_err(|error| format!("{error:#}"));
+        #[cfg(not(windows))]
+        let _ = path;
         Self {
-            path,
             #[cfg(windows)]
             engine,
         }
