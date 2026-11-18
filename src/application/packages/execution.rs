@@ -19,7 +19,14 @@ impl PackageService {
             if execution.extensions.is_empty() { continue; }
             let runner = match execution.kind.as_str() {
                 "embedded" => {
-                    if self.module_directory(&package.id)?.is_none() { continue; }
+                    match self.module_directory(&package.id) {
+                        Ok(Some(_)) => {}
+                        Ok(None) => continue,
+                        Err(error) => {
+                            eprintln!("SST: intérprete {} omitido: {error:#}", package.id);
+                            continue;
+                        }
+                    }
                     let Some(command) = execution.commands.first() else { continue; };
                     ScriptRunner::Embedded(command.clone())
                 }
@@ -36,9 +43,14 @@ impl PackageService {
             };
             for extension in &execution.extensions {
                 let key = extension.to_ascii_lowercase();
-                if routes.insert(key.clone(), runner.clone()).is_some() {
-                    anyhow::bail!("instp: más de un intérprete activo para {key}");
+                if routes.contains_key(&key) {
+                    // Never crash SST because two installed runtimes claim
+                    // the same extension; keep the first sorted package and
+                    // report the conflict for explicit operator resolution.
+                    eprintln!("SST: extensión {key} duplicada por paquete {}; se mantiene el intérprete anterior", package.id);
+                    continue;
                 }
+                routes.insert(key, runner.clone());
             }
         }
         Ok(routes)
