@@ -8,6 +8,13 @@ $plugin = Join-Path $root 'packages\modules\powershell'
 New-Item -ItemType Directory -Force -Path $plugin | Out-Null
 Copy-Item -LiteralPath (Resolve-Path $SstPath).Path -Destination (Join-Path $root 'sst.exe')
 Copy-Item -Path (Join-Path (Resolve-Path $PluginDirectory).Path '*') -Destination $plugin -Recurse -Force
+foreach ($required in @('Sst.PowerShell.Bridge.dll','hostfxr.dll','Sst.PowerShell.Bridge.runtimeconfig.json')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $plugin $required) -PathType Leaf)) {
+        $files = (Get-ChildItem -LiteralPath $plugin -Recurse -File |
+            Select-Object -First 15 -ExpandProperty FullName) -join '; '
+        throw "No se copió $required a la carpeta del módulo. Archivos: $files"
+    }
+}
 $state = @{
     packages = @(@{
         id='powershell'; name='PowerShell SDK'; version='self-test'
@@ -16,7 +23,7 @@ $state = @{
         persistent=$true; functional_generation='test'
         execution=@{
             kind='embedded'; entry='Sst.PowerShell.Bridge.dll'
-            commands=@('psmodule','powershell','ps'); extensions=@('.ps1')
+            commands=@('psmodule','powershell','psh'); extensions=@('.ps1')
             abi='sst-hostfxr/1'; startup='load'
         }
     })
