@@ -1,21 +1,30 @@
 use std::{
     collections::HashMap,
     fs,
+    path::PathBuf,
+    process::Command,
     sync::{Arc, Mutex, OnceLock},
 };
 
 use crate::adapters::persistence::AppPaths;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 const INDEX_FILE: &str = "guide-index.json";
+const UPSTREAM_BASE: &str = "https://raw.githubusercontent.com/glitchaka/adm-toolbox/main/tutorials";
 const MAX_INDEX_BYTES: usize = 2 * 1024 * 1024;
 const MAX_MANUAL_BYTES: usize = 512 * 1024;
 
 static FILE_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
 static TOPIC_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
 
-/// Catálogo SST local. No descarga índices ni incorpora Arch en esta edición.
+/// El catálogo completo procede del repositorio original, incluido Arch.
+/// Si no hay red, se reutiliza la última copia válida y, finalmente, el catálogo SST integrado.
 pub(super) fn load_index() -> Option<String> {
-    fetch_repo_file(INDEX_FILE, MAX_INDEX_BYTES)
+    fetch_upstream(INDEX_FILE, MAX_INDEX_BYTES, true)
+        .or_else(|| read_upstream_cache(INDEX_FILE, MAX_INDEX_BYTES))
+        .or_else(|| read_local_or_bundled(INDEX_FILE, MAX_INDEX_BYTES))
 }
 
 pub(super) fn load_manual(
@@ -77,25 +86,109 @@ fn fetch_cached(file: &str, extension: &str) -> Option<Arc<str>> {
 }
 
 fn fetch_repo_file(filename: &str, max_bytes: usize) -> Option<String> {
-    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+    // Los manuales se obtienen bajo demanda del origen y se conservan para uso sin red.
+    // No descargar otra vez si ya se recuperó el mismo fichero.
+    read_upstream_cache(filename, max_bytes)
+        .or_else(|| fetch_upstream(filename, max_bytes, false))
+        .or_else(|| read_local_or_bundled(filename, max_bytes))
+}
+
+fn read_text(path: &std::path::Path, max_bytes: usize) -> Option<String> {
+    let metadata = fs::metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > max_bytes as u64 {
         return None;
     }
+    String::from_utf8(fs::read(path).ok()?).ok()
+}
 
-    let file = AppPaths::detect().root_dir().join("guide").join(filename);
-    if let Ok(meta) = fs::metadata(&file) {
-        if meta.is_file() && meta.len() > 0 && meta.len() <= max_bytes as u64 {
-            if let Ok(bytes) = fs::read(&file) {
-                if let Ok(text) = String::from_utf8(bytes) {
-                    return Some(text);
-                }
-            }
+fn upstream_path(filename: &str) -> Option<PathBuf> {
+    if !valid_filename(filename) {
+        return None;
+    }
+    Some(AppPaths::detect().root_dir().join("guide").join("upstream").join(filename))
+}
+
+fn valid_filename(filename: &str) -> bool {
+    filename == INDEX_FILE
+        || filename.strip_suffix(".txt").is_some_and(valid_component)
+        || filename.strip_suffix(".md").is_some_and(valid_component)
+}
+
+fn valid_upstream_text(filename: &str, text: &str) -> bool {
+    if filename != INDEX_FILE {
+        return !text.is_empty();
+    }
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
+        return false;
+    };
+    json.get("schema").and_then(|v| v.as_u64()) == Some(1)
+        && json.get("areas").and_then(|v| v.as_array()).is_some_and(|a| !a.is_empty())
+        && json.get("entries").and_then(|v| v.as_array()).is_some_and(|a| !a.is_empty())
+}
+
+fn read_upstream_cache(filename: &str, max_bytes: usize) -> Option<String> {
+    let path = upstream_path(filename)?;
+    let text = read_text(&path, max_bytes)?;
+    valid_upstream_text(filename, &text).then_some(text)
+}
+
+fn fetch_upstream(filename: &str, max_bytes: usize, refresh: bool) -> Option<String> {
+    let path = upstream_path(filename)?;
+    if !refresh {
+        if let Some(text) = read_upstream_cache(filename, max_bytes) {
+            return Some(text);
         }
     }
-    // La descarga es asíncrona: guide funciona inmediatamente incluso si
-    // falta aún el fichero físico o el equipo no tiene conectividad.
-    crate::adapters::persistence::bundled_guide_asset(filename)
-        .filter(|bytes| !bytes.is_empty() && bytes.len() <= max_bytes)
-        .and_then(|bytes| String::from_utf8(bytes.to_vec()).ok())
+    let parent = path.parent()?;
+    fs::create_dir_all(parent).ok()?;
+    let temporary = parent.join(format!(".{filename}.{}.part", std::process::id()));
+    let _ = fs::remove_file(&temporary);
+
+    #[cfg(windows)]
+    let executable = crate::support::windows::system32_executable("curl.exe").ok()?;
+    #[cfg(not(windows))]
+    let executable = PathBuf::from("curl");
+
+    let mut command = Command::new(executable);
+    command.args([
+        "--location", "--fail", "--silent", "--show-error", "--proto", "=https",
+        "--tlsv1.2", "--connect-timeout", "3", "--max-time", "15",
+        "--retry", "0", "--max-filesize", &max_bytes.to_string(), "--output",
+    ]);
+    command.arg(&temporary).arg(format!("{UPSTREAM_BASE}/{filename}"));
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+
+    let result = (|| {
+        if !command.status().ok()?.success() {
+            return None;
+        }
+        let text = read_text(&temporary, max_bytes)?;
+        if !valid_upstream_text(filename, &text) {
+            return None;
+        }
+        // Es una caché de origen, separada de los manuales locales del usuario.
+        // Sustituir únicamente después de descargar y validar el archivo completo.
+        if path.is_file() {
+            let _ = fs::remove_file(&path);
+        }
+        let _ = fs::rename(&temporary, &path);
+        Some(text)
+    })();
+    let _ = fs::remove_file(&temporary);
+    result
+}
+
+fn read_local_or_bundled(filename: &str, max_bytes: usize) -> Option<String> {
+    if !valid_filename(filename) {
+        return None;
+    }
+    let file = AppPaths::detect().root_dir().join("guide").join(filename);
+    read_text(&file, max_bytes).or_else(|| {
+        crate::adapters::persistence::bundled_guide_asset(filename)
+            .filter(|bytes| !bytes.is_empty() && bytes.len() <= max_bytes)
+            .and_then(|bytes| String::from_utf8(bytes.to_vec()).ok())
+    })
 }
 
 fn valid_component(value: &str) -> bool {
