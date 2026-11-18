@@ -137,8 +137,11 @@ pub fn run_catalog(
                 match service.install_with_persistence(&package.id, persistent) {
                     Ok(report) => {
                         installed.insert(report.package.id.to_ascii_lowercase());
-                        let commands = if report.package.category == "module" {
-                            "cmdlets internos (psmodule)".to_owned()
+                        let commands = if report.package.execution.as_ref()
+                            .is_some_and(|e| matches!(e.kind.as_str(), "embedded" | "environment"))
+                        {
+                            report.package.execution.as_ref()
+                                .map(|e| e.commands.join(", ")).unwrap_or_default()
                         } else if report.package.commands.is_empty() {
                             "(ninguno)".to_owned()
                         } else {
