@@ -280,16 +280,19 @@
     },
     {
       "id": "powershell",
-      "name": "Módulo PowerShell nativo SST",
-      "version": "0.1.0",
-      "description": "Cmdlets administrativos nativos de SST; no instala powershell.exe ni pwsh.exe y no interpreta scripts .ps1",
+      "name": "Motor PowerShell SDK para SST",
+      "version": "latest",
+      "description": "Motor PowerShell 7 en el proceso SST; cmdlets, objetos, tuberías y archivos .ps1 mediante runspace .NET embebido",
       "category": "module",
-      "portability": "pure",
+      "portability": "isolated",
       "source": {
-        "type": "builtin"
+        "type": "github_release",
+        "repository": "glitchaka/sst-blueversion",
+        "asset_contains": ["SST-PowerShell-win-x64.zip"],
+        "asset_excludes": ["symbols"]
       },
       "install": {
-        "type": "builtin",
+        "type": "zip",
         "expose": []
       }
     },
