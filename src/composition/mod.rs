@@ -48,6 +48,7 @@ use crate::{
         EditorBuiltin,
         InstpBuiltin,
         NativePowerShellBuiltin,
+        WslEnvironmentBuiltin,
         SigSourBuiltin,
         NetworkBuiltin,
         PathBuiltin,
