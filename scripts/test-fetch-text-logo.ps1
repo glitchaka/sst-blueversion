@@ -29,10 +29,10 @@ try {
         throw 'fetch no devolvió el control al intérprete.'
     }
     $source = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\src\application\system.rs')
-    if ($source.Contains('FETCH_LOGO_PIXELS') -or $source.Contains('render_fetch_logo(')) {
-        throw 'El antiguo logo SST dibujado sigue en el código.'
+    if (-not $source.Contains('FETCH_LOGO_ASCII')) {
+        throw 'No se encontró el nuevo logotipo ASCII SST en el código.'
     }
-    Write-Host 'fetch/neofetch: SST es texto nativo, compacto y sin arte rasterizado.'
+    Write-Host 'fetch/neofetch: logotipo SST ASCII preservado en la salida de terminal.'
 }
 finally {
     if ($process) {
