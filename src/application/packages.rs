@@ -1,4 +1,5 @@
 mod installer;
+mod execution;
 mod lifecycle;
 mod model;
 mod store;
@@ -18,6 +19,7 @@ use sha2::{Digest, Sha256};
 use crate::adapters::persistence::AppPaths;
 
 pub use model::{InstallReport, InstalledPackage, PackageManifest, PackageExecution, RepoSource};
+pub use execution::ScriptRunner;
 
 use installer::{command_name_from_exposed, find_file, install_payload};
 use lifecycle::{functional_generation, expires_on_generation};
@@ -406,7 +408,8 @@ impl PackageService {
             let directory = self.store.environments_dir().join("arch");
             fs::create_dir_all(&directory)?;
             let mut state = self.store.load_installed_state()?;
-            let is_persistent = persistent || state.packages.iter().any(|p|
+            // A WSL distribution remains installed across SST updates.
+            let is_persistent = true || persistent || state.packages.iter().any(|p|
                 p.id.eq_ignore_ascii_case("arch") && p.persistent);
             let installed = InstalledPackage {
                 id: package.id.clone(),
@@ -466,6 +469,10 @@ impl PackageService {
                     output.push(format!("{}: {} -> {} (módulo nativo)",
                         installed.id, installed.version, report.package.version));
                 }
+                continue;
+            }
+            if manifest.execution.as_ref().is_some_and(|e| e.kind == "environment") {
+                output.push(format!("{}: entorno gestionado por WSL2 (usa instp install arch para verificarlo)", installed.id));
                 continue;
             }
             let latest = resolve_source(&manifest)?;
