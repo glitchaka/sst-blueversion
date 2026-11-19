@@ -3,7 +3,7 @@
 use std::{collections::HashMap, path::PathBuf};
 use anyhow::Result;
 
-use super::{PackageService, installer::find_file};
+use super::PackageService;
 
 #[derive(Debug, Clone)]
 pub enum ScriptRunner {
@@ -30,15 +30,9 @@ impl PackageService {
                     let Some(command) = execution.commands.first() else { continue; };
                     ScriptRunner::Embedded(command.clone())
                 }
-                "runtime" => {
-                    let root = self.store.runtimes_dir().canonicalize()?;
-                    let installed = self.store.resolve_root_relative(&package.install_dir);
-                    if !installed.is_dir() { continue; }
-                    let installed = installed.canonicalize()?;
-                    if !installed.starts_with(&root) { continue; }
-                    let Some(entry) = find_file(&installed, &execution.entry)? else { continue; };
-                    ScriptRunner::Process(entry)
-                }
+                // Legacy vendor runtimes were external EXE processes. New SST
+                // packages may not launch such programs as fake plugins.
+                "runtime" => continue,
                 _ => continue,
             };
             for extension in &execution.extensions {
