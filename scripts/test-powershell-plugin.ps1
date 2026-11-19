@@ -5,45 +5,16 @@ param(
 $ErrorActionPreference='Stop'
 $root = Join-Path $env:RUNNER_TEMP ('sst-powershell-plugin-' + [guid]::NewGuid().ToString('N'))
 $plugin = Join-Path $root 'packages\win\modules\powershell'
-New-Item -ItemType Directory -Force -Path $plugin | Out-Null
+New-Item -ItemType Directory -Force -Path $root | Out-Null
 Copy-Item -LiteralPath (Resolve-Path $SstPath).Path -Destination (Join-Path $root 'sst.exe')
 $sourceDirectory = (Resolve-Path -LiteralPath $PluginDirectory).Path
-$sourceFiles = @(Get-ChildItem -LiteralPath $sourceDirectory -File -Force)
-if ($sourceFiles.Count -eq 0) {
-    throw "La compilación del módulo PowerShell no produjo archivos en $sourceDirectory"
+$archive = Join-Path $root 'powershell.sstpkg'
+& python (Join-Path $PSScriptRoot 'pack-sstpkg.py') --id powershell --version 7.5.13 --target win --kind embedded --source $sourceDirectory --output $archive --exclude-dotnet-apphost
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $archive -PathType Leaf)) {
+    throw 'El empaquetador nativo SST-PACKAGE/1 no produjo un módulo válido'
 }
-foreach ($sourceFile in $sourceFiles) {
-    if ($sourceFile.Extension -ieq '.exe') { continue }
-    $targetFile = Join-Path $plugin $sourceFile.Name
-    [System.IO.File]::Copy($sourceFile.FullName, $targetFile, $true)
-    if (-not [System.IO.File]::Exists($targetFile)) {
-        throw "Falló la copia de $($sourceFile.FullName) a $targetFile"
-    }
-}
-Write-Host "PowerShell plugin: copiados $($sourceFiles.Count) archivos a $plugin"
-foreach ($required in @('Sst.PowerShell.Bridge.dll','hostfxr.dll','Sst.PowerShell.Bridge.runtimeconfig.json')) {
-    if (-not (Test-Path -LiteralPath (Join-Path $plugin $required) -PathType Leaf)) {
-        $files = (Get-ChildItem -LiteralPath $plugin -Recurse -File |
-            Select-Object -First 15 -ExpandProperty FullName) -join '; '
-        throw "No se copió $required a la carpeta del módulo. Archivos: $files"
-    }
-}
-$state = @{
-    packages = @(@{
-        id='powershell'; name='PowerShell SDK'; version='self-test'
-        category='module'; portability='isolated'
-        install_dir='packages\win\modules\powershell'; commands=@(); path_entries=@()
-        persistent=$true; functional_generation='test'
-        execution=@{
-            kind='embedded'; entry='Sst.PowerShell.Bridge.dll'; target='win'
-            commands=@('psmodule','powershell','psh'); extensions=@('.ps1')
-            abi='sst-hostfxr/1'; startup='load'
-            required_files=@('Sst.PowerShell.Bridge.runtimeconfig.json','hostfxr.dll')
-        }
-    })
-}
-$statePath = Join-Path $root 'packages\installed.json'
-[IO.File]::WriteAllText($statePath, ($state | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+$installScript = Join-Path $root 'install.sh'
+[IO.File]::WriteAllText($installScript, "instp install powershell.sstpkg -p`necho SST_PLUGIN_INSTALL_DONE`n", [Text.UTF8Encoding]::new($false))
 $ps1 = Join-Path $root 'example.ps1'
 [IO.File]::WriteAllText($ps1, @'
 param([string]$Name)
@@ -77,6 +48,19 @@ function Run-SST([string]$target, [string]$argsText) {
     return ($stdout + "`n--- STDERR SST $target ---`n" + $stderr)
 }
 try {
+    $installed = Run-SST 'instp install local .sstpkg' ('"' + $installScript + '"')
+    if (-not $installed.Contains('Instalado:') -or -not $installed.Contains('SST_PLUGIN_INSTALL_DONE')) {
+        throw "instp no instaló el archivo SST-PACKAGE/1: $installed"
+    }
+    foreach ($required in @('Sst.PowerShell.Bridge.dll', 'hostfxr.dll', 'Sst.PowerShell.Bridge.runtimeconfig.json')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $plugin $required) -PathType Leaf)) {
+            throw "instp no desplegó $required en packages/win/modules/powershell"
+        }
+    }
+    $unexpected = @(Get-ChildItem -LiteralPath $plugin -Recurse -File | Where-Object { $_.Extension -ieq '.exe' })
+    if ($unexpected.Count -gt 0) {
+        throw "instp instaló un ejecutable adicional: $($unexpected[0].FullName)"
+    }
     $result = Run-SST 'Nwash' ('"' + $sh + '"')
     foreach ($expected in @('7.5.', '3', 'PS1_OK_PLUGIN_2', 'SST_POWERSHELL_DONE')) {
         if (-not $result.Contains($expected)) {
