@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use anyhow::{Context, Result};
 
@@ -132,7 +132,7 @@ impl InstpBuiltin {
         )))
     }
 
-    fn install(&self, args: &[String]) -> Result<CommandOutput> {
+    fn install(&self, args: &[String], cwd: &Path) -> Result<CommandOutput> {
         let (id, persistent) = match parse_install_args(args) {
             Ok(parsed) => parsed,
             Err(error) => return Ok(CommandOutput::error(error, 2)),
@@ -144,10 +144,16 @@ impl InstpBuiltin {
             ));
         }
 
-        let installation = if persistent {
-            self.service.install_with_persistence(id, true)
+        let installation = if id.to_ascii_lowercase().ends_with(".sstpkg") {
+            let requested = Path::new(id);
+            let file = if requested.is_absolute() {
+                requested.to_path_buf()
+            } else {
+                cwd.join(requested)
+            };
+            self.service.install_local(&file, persistent)
         } else {
-            self.service.install(id)
+            self.service.install_with_persistence(id, persistent)
         };
         match installation {
             Ok(report) => {
@@ -466,7 +472,7 @@ impl BuiltinCommand for InstpBuiltin {
             }
             Some("search") => self.search(args.get(1..).unwrap_or_default()),
             Some("info") | Some("show") => self.info(args.get(1..).unwrap_or_default()),
-            Some("install") | Some("add") => self.install(args.get(1..).unwrap_or_default()),
+            Some("install") | Some("add") => self.install(args.get(1..).unwrap_or_default(), _context.cwd),
             Some("remove") | Some("rm") | Some("uninstall") => {
                 self.remove(args.get(1..).unwrap_or_default())
             }
