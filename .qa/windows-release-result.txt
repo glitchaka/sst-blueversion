@@ -1,20 +1,12 @@
 SST Windows release CI report
-Source commit: ae34b41ab88e869c3aab24408eb2f12d4ab8c025
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44579436385
-Recorded UTC: 2026-11-19 17:46:34Z
-Compile: success
-Rust tests: failure
+Source commit: e0a9144d6bd2ad3b1918296c3ce7a0650b3af456
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44580992150
+Recorded UTC: 2026-11-19 17:52:13Z
+Compile: failure
+Rust tests: skipped
 Software GUI startup: skipped
 Packaging: skipped
 Compiler log tail:
-    Updating crates.io index
- Downloading crates ...
-  Downloaded bytes v1.12.2
-  Downloaded pin-project v1.2.0
-  Downloaded pin-project-internal v1.2.0
-  Downloaded pin-project-lite v0.2.18
-  Downloaded regex v1.13.2
-  Downloaded regex-syntax v0.8.12
   Downloaded regex-automata v0.4.19
   Downloaded smallvec v1.16.6
   Downloaded zip v9.7.3
@@ -23,34 +15,34 @@ Compiler log tail:
    Compiling pin-project-internal v1.2.0
    Compiling tracing v0.1.44
    Compiling icu_normalizer v2.4.0
-   Compiling harfrust v0.12.0
    Compiling kurbo v0.13.1
-   Compiling svgtypes v0.16.2
+   Compiling harfrust v0.12.0
    Compiling fixed_decimal v0.7.3
+   Compiling svgtypes v0.16.2
    Compiling fontique v0.11.1
    Compiling icu_decimal v2.4.0
-   Compiling usvg v0.48.1
    Compiling idna_adapter v1.2.2
    Compiling icu_segmenter v2.4.0
-   Compiling resvg v0.48.1
-   Compiling parley v0.11.1
-   Compiling i-slint-common v1.18.1
    Compiling idna v1.1.0
+   Compiling usvg v0.48.1
+   Compiling parley v0.11.1
    Compiling pin-project v1.2.0
-   Compiling i-slint-core v1.18.1
    Compiling url v2.5.8
    Compiling winit v0.30.13
+   Compiling resvg v0.48.1
+   Compiling i-slint-common v1.18.1
+   Compiling i-slint-core v1.18.1
    Compiling webbrowser v1.2.7
    Compiling softbuffer v0.4.8
    Compiling i-slint-compiler v1.18.1
    Compiling parking_lot_core v0.9.12
    Compiling nibble_vec v0.1.0
    Compiling regex-syntax v0.8.12
+   Compiling regex-automata v0.4.19
    Compiling i-slint-renderer-software v1.18.1
    Compiling i-slint-backend-winit v1.18.1
-   Compiling radix_trie v0.2.1
    Compiling i-slint-backend-selector v1.18.1
-   Compiling regex-automata v0.4.19
+   Compiling radix_trie v0.2.1
    Compiling tokio v1.54.1
    Compiling parking_lot v0.12.5
    Compiling sst v0.1.9-blue.76 (D:\a\sst-blueversion\sst-blueversion)
@@ -62,4 +54,21 @@ Compiler log tail:
    Compiling slint v1.18.1
    Compiling crossterm v0.29.0
    Compiling regex v1.13.2
-    Finished `release` profile [optimized] target(s) in 3m 44s
+error: variant `Process` is never constructed
+  --> src\application\packages\execution.rs:11:5
+   |
+ 9 | pub enum ScriptRunner {
+   |          ------------ variant in this enum
+10 |     Embedded(String),
+11 |     Process(PathBuf),
+   |     ^^^^^^^
+   |
+   = note: `ScriptRunner` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+note: the lint level is defined here
+  --> src\main.rs:2:9
+   |
+ 2 | #![deny(warnings)]
+   |         ^^^^^^^^
+   = note: `#[deny(dead_code)]` implied by `#[deny(warnings)]`
+
+error: could not compile `sst` (bin "sst") due to 1 previous error
