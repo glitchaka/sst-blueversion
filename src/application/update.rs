@@ -15,6 +15,8 @@ use crate::{adapters::persistence::AppPaths, support::windows::system32_executab
 const UPDATE_DIR: &str = "update";
 const CHANNEL_FILE: &str = "update-channel.txt";
 const REMOTE_MANIFEST_FILE: &str = "remote-manifest.json";
+const DEFAULT_SST_CHANNEL: &str =
+    "https://raw.githubusercontent.com/glitchaka/sst-blueversion/main/updates/blue/sst-update.json";
 const PENDING_FILE: &str = "pending.json";
 const APPLIED_FILE: &str = "applied.json";
 const STAGED_EXE: &str = "sst.exe.new";
@@ -186,6 +188,7 @@ pub fn configured_manifest_url(paths: &AppPaths) -> Option<String> {
                 .filter(|value| !value.is_empty())
                 .map(str::to_owned)
         })
+        .or_else(|| Some(DEFAULT_SST_CHANNEL.to_owned()))
 }
 
 fn fetch_manifest(paths: &AppPaths) -> Result<UpdateManifest> {
