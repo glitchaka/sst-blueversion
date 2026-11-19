@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Create an SST-PACKAGE/1 .sstpkg (gzip-compressed TAR, never an EXE).
+Archive layout: manifest.json, payload/{win|unix}/{modules|runtimes|environments|data}/{id}/...
+"""
+import argparse
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import sys
+import tarfile
+
+GROUPS = {
+    "embedded": "modules",
+    "runtime": "runtimes",
+    "environment": "environments",
+    "data": "data",
+}
+BAD_SUFFIXES = {".exe", ".com", ".bat", ".cmd"}
+REQUIRED = {"Sst.PowerShell.Bridge.dll", "hostfxr.dll", "Sst.PowerShell.Bridge.runtimeconfig.json"}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Construir paquete nativo SST sin ejecutables externos")
+    parser.add_argument("--id", required=True)
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--target", choices=["win", "unix"], required=True)
+    parser.add_argument("--kind", choices=list(GROUPS), required=True)
+    parser.add_argument("--source", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--exclude-dotnet-apphost", action="store_true")
+    args = parser.parse_args()
+    if not args.id or not all(c.isalnum() or c in "-_." for c in args.id):
+        parser.error("id inválido")
+    if not args.source.is_dir():
+        parser.error("el directorio de origen no existe")
+    prefix = f"payload/{args.target}/{GROUPS[args.kind]}/{args.id}/"
+    members = []
+    for file in sorted(args.source.rglob("*")):
+        if file.is_symlink():
+            parser.error(f"no se admiten enlaces simbólicos: {file}")
+        if file.is_dir():
+            continue
+        if not file.is_file():
+            parser.error(f"archivo no regular: {file}")
+        relative = file.relative_to(args.source).as_posix()
+        if file.suffix.lower() in BAD_SUFFIXES:
+            if args.exclude_dotnet_apphost and relative == "Sst.PowerShell.Bridge.exe":
+                print(f"Apphost excluido del paquete: {relative}")
+                continue
+            parser.error(f"un paquete SST no puede contener ejecutables externos: {relative}")
+        members.append((prefix + relative, file))
+    if not members:
+        parser.error("paquete vacío")
+    if args.id == "powershell":
+        names = {f.name for _, f in members}
+        if not REQUIRED.issubset(names):
+            parser.error(f"módulo PowerShell incompleto: faltan {sorted(REQUIRED - names)}")
+    manifest = {
+        "format": 1,
+        "id": args.id,
+        "version": args.version,
+        "kind": args.kind,
+        "files": [
+            {"path": name, "sha256": hashlib.sha256(file.read_bytes()).hexdigest()}
+            for name, file in members
+        ],
+    }
+    body = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(args.output, "w:gz", format=tarfile.PAX_FORMAT) as tar:
+        header = tarfile.TarInfo("manifest.json")
+        header.size = len(body)
+        header.mode = 0o644
+        header.mtime = 0
+        tar.addfile(header, io.BytesIO(body))
+        for name, file in members:
+            header = tar.gettarinfo(str(file), arcname=name)
+            header.uid = header.gid = 0
+            header.uname = header.gname = ""
+            header.mtime = 0
+            header.mode = 0o644
+            with file.open("rb") as payload:
+                tar.addfile(header, payload)
+    print(f"Creado {args.output}: {len(members)} archivos, {args.target}/{GROUPS[args.kind]}/{args.id}")
+
+
+if __name__ == "__main__":
+    main()
