@@ -549,14 +549,12 @@
         "type": "github_release",
         "repository": "glitchaka/sst-blueversion",
         "asset_contains": [
-          "SST-PowerShell-win-x64.zip"
+          "SST-PowerShell-win-x64.sstpkg"
         ],
-        "asset_excludes": [
-          "symbols"
-        ]
+        "asset_excludes": []
       },
       "install": {
-        "type": "zip",
+        "type": "sstpkg",
         "expose": []
       },
       "format": 1,
@@ -576,7 +574,8 @@
         "required_files": [
           "Sst.PowerShell.Bridge.runtimeconfig.json",
           "hostfxr.dll"
-        ]
+        ],
+        "target": "win"
       }
     },
     {
@@ -808,7 +807,8 @@
         "provider": "wsl",
         "distribution": "archlinux",
         "startup": "discover",
-        "required_files": []
+        "required_files": [],
+        "target": "unix"
       }
     }
   ]
