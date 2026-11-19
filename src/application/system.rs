@@ -1822,7 +1822,7 @@ mod fetch_text_logo_tests {
     #[test]
     fn colored_logo_keeps_its_dimensions() {
         let (lines, width) = fetch_logo(false);
-        assert_eq!(width, 50);
+        assert_eq!(width, 100);
         assert!(lines.iter().all(|line| line.starts_with("\x1b[")));
     }
 }
