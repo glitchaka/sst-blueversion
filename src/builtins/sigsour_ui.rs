@@ -128,13 +128,14 @@ pub fn run_catalog(
                     );
                     continue;
                 }
-                if matches!(package.portability.as_str(), "system" | "driver")
-                    || package.install.kind == "system"
-                {
-                    message = format!(
-                        "{} modifica Windows y no se instala automáticamente desde instp.",
-                        package.name
-                    );
+                if package.install.kind != "sstpkg" {
+                    message = if package.execution.as_ref().is_some_and(|e|
+                        e.kind == "environment" && package.install.kind == "system")
+                    {
+                        format!("{}: entorno administrado por WSL2; autoriza su instalación explícitamente desde instp.", package.name)
+                    } else {
+                        format!("{}: herramienta externa no disponible como plugin SST. No se instalará otro .exe.", package.name)
+                    };
                     continue;
                 }
 
@@ -242,6 +243,9 @@ fn installed_ids(service: &PackageService) -> Result<HashSet<String>> {
 }
 
 fn package_type(package: &PackageManifest) -> &'static str {
+    if package.install.kind != "sstpkg" && package.install.kind != "system" {
+        return "externo";
+    }
     match package.execution.as_ref().map(|execution| execution.kind.as_str()) {
         Some("embedded") => "modulo",
         Some("runtime") => "interprete",
@@ -315,12 +319,15 @@ fn catalog_row(
     width: usize,
 ) -> String {
     let installed = installed.contains(&package.id.to_ascii_lowercase());
-    let restricted = matches!(package.portability.as_str(), "system" | "driver")
-        || package.install.kind == "system";
-    let state = if installed { "INSTALADO" } else if restricted { "SISTEMA" } else { "DISPONIBLE" };
-    let state_color = if installed { "\x1b[38;2;114;229;171m" }
-        else if restricted { "\x1b[38;2;237;192;120m" }
-        else { "\x1b[38;2;129;177;208m" };
+    let external = package.install.kind != "sstpkg" && package.install.kind != "system";
+    let restricted = package.install.kind == "system";
+    let state = if installed { "INSTALADO" }
+        else if external { "EXTERNO" }
+        else if restricted { "SISTEMA" }
+        else { "DISPONIBLE" };
+    let state_color = if installed { "\x1b[38;2;184;187;38m" }
+        else if external || restricted { "\x1b[38;2;214;153;58m" }
+        else { "\x1b[38;2;152;151;26m" };
     let marker = if active { "▌" } else { " " };
     let label = if width >= 84 {
         format!(
