@@ -250,6 +250,42 @@ impl PackageService {
 
         let resolved = resolve_source(&package)?;
         let archive = self.obtain_source(&package, &resolved)?;
+        self.install_archive(&package, &archive, &resolved, persistent)
+    }
+
+    /// Local packages use the exact same staging, checksums, journal and rollback
+    /// as packages fetched from an SST repository.
+    pub fn install_local(&self, input: &std::path::Path, persistent: bool) -> Result<InstallReport> {
+        self.reconcile_for_functional_release()?;
+        anyhow::ensure!(
+            input.extension().and_then(|value| value.to_str())
+                .is_some_and(|value| value.eq_ignore_ascii_case("sstpkg")) && input.is_file(),
+            "instp: no existe un archivo local .sstpkg válido"
+        );
+        let (id, version) = sstpkg::read_header(input)?;
+        let package = self.info(&id)?.ok_or_else(|| anyhow::anyhow!(
+            "instp: el paquete local {} no está registrado en un repositorio SST",
+            id
+        ))?;
+        anyhow::ensure!(package.install.kind == "sstpkg",
+            "instp: {} no es un paquete nativo SST registrado", id);
+        let source = ResolvedSource {
+            url: format!("archivo local: {}", input.display()),
+            file_name: input.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            version,
+            sha256: None,
+            size: None,
+        };
+        self.install_archive(&package, input, &source, persistent)
+    }
+
+    fn install_archive(
+        &self,
+        package: &PackageManifest,
+        archive: &std::path::Path,
+        resolved: &ResolvedSource,
+        persistent: bool,
+    ) -> Result<InstallReport> {
         let execution = package.execution.as_ref()
             .context("instp: falta adaptador de ejecución")?;
         let target = execution.target.as_deref().unwrap_or("win");
@@ -383,7 +419,7 @@ impl PackageService {
         Ok(InstallReport {
             package: installed,
             missing_exposed_commands: missing,
-            source_url: resolved.url,
+            source_url: resolved.url.clone(),
         })
     }
 
