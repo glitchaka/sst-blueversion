@@ -1,6 +1,6 @@
 //! SST-PACKAGE/1 script dispatch, derived from the installed-state journal.
 //! Never activate a script interpreter from a catalog entry alone.
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 use anyhow::Result;
 
 use super::PackageService;
@@ -8,7 +8,6 @@ use super::PackageService;
 #[derive(Debug, Clone)]
 pub enum ScriptRunner {
     Embedded(String),
-    Process(PathBuf),
 }
 
 impl PackageService {
