@@ -23,8 +23,8 @@ Aliases públicos directos:
 2. Información
 
   sys info                   resumen host/OS/kernel/uptime/CPU/memoria
-  sys processes              alias interno: sys ps; alias global: ps
-  sys top                    TUI de procesos
+  sys processes [NOMBRE]     filtra por nombre y descendientes; alias sys ps / ps
+  sys top [NOMBRE]           monitor en vivo de CPU y RAM, filtrable
   sys disks                  alias interno: sys df; alias global: df
   sys memory                 alias interno: sys free; alias global: free
   sys uptime                 alias global: uptime
@@ -35,9 +35,14 @@ Aliases públicos directos:
   sys uname -a               alias global uname admite lo mismo
 
 Top TUI:
-  c                         ordenar hermanos por CPU
+  c                         ordenar todos los procesos por CPU
   m                         ordenar por memoria
+  t                         alternar lista global y árbol
+  flechas/PgUp/PgDown        desplazar
   q o Esc                   salir
+
+Búsqueda: `sys processes outlook` y `sys top outlook` incluyen olk.exe y sus descendientes WebView2; no confunden otros WebView2 de Teams o Copilot.
+`sys inspect PID` detalla un proceso y `sys kill PID --tree` lo cierra, con posible pérdida de cambios sin guardar.
 
 3. Fetch
 
