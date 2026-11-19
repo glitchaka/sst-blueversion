@@ -55,9 +55,19 @@ impl InstpBuiltin {
 
         let mut out = String::new();
         for package in packages {
+            let status = if package.install.kind == "sstpkg" {
+                "SSTPKG"
+            } else if package.execution.as_ref().is_some_and(|e| e.kind == "environment")
+                && package.install.kind == "system"
+            {
+                "WSL"
+            } else {
+                "EXTERNO"
+            };
             out.push_str(&format!(
-                "{:<18} {:<12} {:<10} {}\n",
+                "{:<18} {:<9} {:<12} {:<10} {}\n",
                 package.id,
+                status,
                 package.category,
                 package.portability.to_ascii_uppercase(),
                 package.description
@@ -102,6 +112,15 @@ impl InstpBuiltin {
 
         let adapter = package.execution.as_ref()
             .map(|execution| execution.kind.as_str()).unwrap_or("sin adaptador");
+        let support = if package.install.kind == "sstpkg" {
+            "PAQUETE NATIVO SST: instalable"
+        } else if package.execution.as_ref().is_some_and(|e| e.kind == "environment")
+            && package.install.kind == "system"
+        {
+            "ENTORNO WSL: instalación explícita"
+        } else {
+            "EXTERNO: no instalable como plugin SST, no se añaden .exe"
+        };
         let extensions = package.execution.as_ref()
             .map(|execution| execution.extensions.join(", "))
             .unwrap_or_default();
@@ -109,6 +128,7 @@ impl InstpBuiltin {
             "{} ({})\n\
              id: {}\n\
              estándar: SST-PACKAGE/{}\n\
+             estado: {}\n\
              categoría: {}\n\
              adaptador: {}\n\
              extensiones: {}\n\
@@ -121,6 +141,7 @@ impl InstpBuiltin {
             package.version,
             package.id,
             package.format,
+            support,
             package.category,
             adapter,
             if extensions.is_empty() { "(ninguna)" } else { &extensions },
