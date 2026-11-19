@@ -518,24 +518,7 @@ impl ShellCommandHost for WindowsShellHost {
                                 self.registry.execute(command, &forwarded, CommandContext { cwd, stdin })?
                             }
                         }
-                        ScriptRunner::Process(executable) => {
-                            let mut command = Command::new(executable);
-                            command.arg(&path).args(args).current_dir(cwd)
-                                .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
-                                .stdout(Stdio::piped()).stderr(Stdio::piped());
-                            #[cfg(windows)]
-                            command.creation_flags(CREATE_NO_WINDOW);
-                            let mut child = command.spawn()?;
-                            if let (Some(input), Some(mut writer)) = (stdin, child.stdin.take()) {
-                                writer.write_all(input)?;
-                            }
-                            let result = child.wait_with_output()?;
-                            crate::core::CommandOutput {
-                                stdout: String::from_utf8_lossy(&result.stdout).into_owned(),
-                                stderr: String::from_utf8_lossy(&result.stderr).into_owned(),
-                                status: result.status.code().unwrap_or(1),
-                            }
-                        }
+
                     };
                     return Ok(Some(ExecutionResult::from_parts(
                         output.stdout, output.stderr, output.status,
