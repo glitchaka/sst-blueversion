@@ -152,8 +152,10 @@ impl InstpBuiltin {
                 cwd.join(requested)
             };
             self.service.install_local(&file, persistent)
+        } else if persistent {
+            self.service.install_with_persistence(id, true)
         } else {
-            self.service.install_with_persistence(id, persistent)
+            self.service.install(id)
         };
         match installation {
             Ok(report) => {
