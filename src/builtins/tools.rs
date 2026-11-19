@@ -588,14 +588,33 @@ fn run_office_verify() -> Result<CommandOutput> {
                 false
             })
     }).count();
-    let windows = outlook_windows(outlook_pids.clone());
-    let checks = evaluate_office_verification(
+    let windows = outlook_windows(outlook_pids);
+    let mut checks = evaluate_office_verification(
         &inventory.stdout,
-        outlook_pids.len(),
+        newer.len(),
         windows.visible.len(),
         windows.hung.len(),
         webview_children,
     );
+    // Outlook clásico no usa olk.exe ni precisa WebView2 para su interfaz.
+    let classic_pids = system.processes().iter()
+        .filter(|(_, p)| p.name().to_string_lossy().eq_ignore_ascii_case("outlook.exe"))
+        .map(|(pid, _)| pid.as_u32())
+        .collect::<std::collections::HashSet<_>>();
+    if !classic_pids.is_empty() {
+        let classic = outlook_windows(classic_pids);
+        checks.push(if !classic.hung.is_empty() {
+            OfficeCheck::new(CheckStatus::Error, "Respuesta de Outlook clásico",
+                format!("{} ventana(s) sin respuesta detectadas por Windows.", classic.hung.len()),
+                "Revisar trabajo sin guardar antes de cerrar Outlook")
+        } else if !classic.visible.is_empty() {
+            OfficeCheck::new(CheckStatus::Ok, "Respuesta de Outlook clásico",
+                "Ventana visible, sin bloqueo detectado en esta muestra.", "")
+        } else {
+            OfficeCheck::new(CheckStatus::Unknown, "Respuesta de Outlook clásico",
+                "Proceso activo sin ventana visible que permita comprobar respuesta.", "Abrir Outlook y repetir verify")
+        });
+    }
     Ok(CommandOutput::ok(format_office_verification(&checks)))
 }
 
