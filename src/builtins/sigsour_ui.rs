@@ -3,7 +3,7 @@ use std::{collections::HashSet, path::Path, time::Duration};
 use anyhow::Result;
 
 use crate::{
-    application::packages::{PackageManifest, PackageService},
+    application::{packages::{PackageManifest, PackageService}, update},
     core::{
         CommandOutput,
         ports::{TerminalFactory, TerminalKey, TerminalSession},
@@ -95,6 +95,21 @@ pub fn run_catalog(
                 }
             }
             TerminalKey::Char('/') => search_mode = true,
+            TerminalKey::Char('s') | TerminalKey::Char('S') => {
+                message = match update::check_now(&crate::adapters::persistence::AppPaths::detect(), false) {
+                    Ok(status) => status.trim().to_owned(),
+                    Err(error) => format!("Error al comprobar SST: {error:#}"),
+                };
+            }
+            TerminalKey::Char('g') | TerminalKey::Char('G') => {
+                message = "Comprobando y preparando actualización de SST...".to_owned();
+                render(terminal.as_mut(), &visible, &installed, selected, &query,
+                    search_mode, active_category, &message)?;
+                message = match update::check_now(&crate::adapters::persistence::AppPaths::detect(), true) {
+                    Ok(status) => status.trim().to_owned(),
+                    Err(error) => format!("No se pudo actualizar SST: {error:#}"),
+                };
+            },
             TerminalKey::Char('c') | TerminalKey::Char('C') => {
                 category_index = (category_index + 1) % categories.len().max(1);
                 selected = 0;
@@ -226,10 +241,21 @@ fn installed_ids(service: &PackageService) -> Result<HashSet<String>> {
         .collect())
 }
 
+fn package_type(package: &PackageManifest) -> &'static str {
+    match package.execution.as_ref().map(|execution| execution.kind.as_str()) {
+        Some("embedded") => "modulo",
+        Some("runtime") => "interprete",
+        Some("process") => "externo",
+        Some("environment") => "entorno",
+        Some("system") => "sistema",
+        _ => "no soportado",
+    }
+}
+
 fn categories(catalog: &[PackageManifest]) -> Vec<String> {
     let mut rows = catalog
         .iter()
-        .map(|package| package.category.to_ascii_lowercase())
+        .map(|package| package_type(package).to_owned())
         .collect::<Vec<_>>();
     rows.sort();
     rows.dedup();
@@ -245,13 +271,14 @@ fn visible_packages<'a>(
     let query = query.trim().to_ascii_lowercase();
     let mut rows = catalog
         .iter()
-        .filter(|package| category == "todos" || package.category.eq_ignore_ascii_case(category))
+        .filter(|package| category == "todos" || package_type(package) == category)
         .filter(|package| {
             query.is_empty()
                 || package.id.to_ascii_lowercase().contains(&query)
                 || package.name.to_ascii_lowercase().contains(&query)
                 || package.description.to_ascii_lowercase().contains(&query)
                 || package.category.to_ascii_lowercase().contains(&query)
+                || package_type(package).contains(&query)
         })
         .collect::<Vec<_>>();
     rows.sort_by(|left, right| left.id.cmp(&right.id));
@@ -299,7 +326,7 @@ fn catalog_row(
         format!(
             "{marker} {:<10}  {:<19}  {:<12}  {}",
             state, clip(&package.name, 19),
-            clip(&package.category, 12), package.description,
+            clip(package_type(package), 12), package.description,
         )
     } else {
         format!("{marker} {:<10}  {:<21}  {}", state, clip(&package.name, 21), package.description)
@@ -348,14 +375,17 @@ fn render(
     out.push_str("\x1b[1;38;2;90;216;254m  SIGSOUR\x1b[0m");
     out.push_str("  \x1b[38;2;141;157;181m/  Catálogo de paquetes SST\x1b[0m\n");
     out.push_str(&format!(
-        "  \x1b[38;2;141;157;181mCategoría\x1b[0m  \x1b[38;2;183;228;247m{:<12}\x1b[0m  \
+        "  \x1b[38;2;141;157;181mTipo\x1b[0m  \x1b[38;2;183;228;247m{:<12}\x1b[0m  \
          \x1b[38;2;141;157;181mPaquetes\x1b[0m  {}    \
          \x1b[38;2;141;157;181mFiltro\x1b[0m  {}{}\n",
         category, packages.len(),
         if search_mode { "\x1b[1;38;2;90;216;254m› \x1b[0m" } else { "" },
         if query.is_empty() { "todos" } else { query },
     ));
-    out.push('\n');
+    out.push_str(&format!(
+        "  SST núcleo {}   S Comprobar actualización   G Actualizar SST con instp\n\n",
+        update::current_version()
+    ));
 
     if packages.is_empty() {
         out.push_str("  \x1b[38;2;237;192;120mNo hay paquetes para este filtro.\x1b[0m\n");
@@ -374,7 +404,7 @@ fn render(
             "  \x1b[1;38;2;90;216;254m{}\x1b[0m  \
              \x1b[38;2;155;175;199m{} · {} · {}\x1b[0m\n",
             clip(&package.name, columns.saturating_sub(28)),
-            clip(&package.version, 12), clip(&package.category, 13),
+            clip(&package.version, 12), clip(package_type(package), 13),
             package.portability.to_ascii_uppercase(),
         ));
         out.push_str(&format!("  \x1b[38;2;213;223;238m{}\x1b[0m\n",clip(&package.description, columns)));
@@ -387,7 +417,7 @@ fn render(
     for line in &message_lines {
         out.push_str(&format!("  \x1b[38;2;179;195;214m{}\x1b[0m\n",clip(line, columns)));
     }
-    out.push_str("\x1b[38;2;117;151;182m  ↑↓ Mover    / Buscar    C Categoría    I Temporal    P Persistente    R Quitar    U Actualizar    Esc Salir\x1b[0m\n");
+    out.push_str("\x1b[38;2;117;151;182m  ↑↓ Mover   / Buscar   C Tipo   I Temporal   P Persistente   R Quitar   U Repos   S Comprobar SST   G Upgrade SST   Esc Salir\x1b[0m\n");
     terminal.write(&out)?;
     terminal.flush()
 }
