@@ -25,6 +25,12 @@ impl PackageStore {
     pub fn ensure_layout(&self) -> Result<()> {
         for path in [
             self.packages_dir(),
+            self.packages_dir().join("win"),
+            self.packages_dir().join("unix"),
+            self.packages_dir().join("win/data"),
+            self.packages_dir().join("unix/modules"),
+            self.packages_dir().join("unix/runtimes"),
+            self.packages_dir().join("unix/data"),
             self.cache_dir(),
             self.tools_dir(),
             self.modules_dir(),
@@ -66,18 +72,18 @@ impl PackageStore {
     }
 
     pub fn tools_dir(&self) -> PathBuf {
-        self.packages_dir().join("tools")
+        self.packages_dir().join("win/tools")
     }
 
     pub fn runtimes_dir(&self) -> PathBuf {
-        self.packages_dir().join("runtimes")
+        self.packages_dir().join("win/runtimes")
     }
 
     pub fn modules_dir(&self) -> PathBuf {
-        self.packages_dir().join("modules")
+        self.packages_dir().join("win/modules")
     }
     pub fn environments_dir(&self) -> PathBuf {
-        self.packages_dir().join("environments")
+        self.packages_dir().join("unix/environments")
     }
 
     pub fn repositories_dir(&self) -> PathBuf {
