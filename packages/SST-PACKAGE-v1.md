@@ -34,6 +34,7 @@ Cada entrada del catálogo debe contener:
   "execution": {
     "kind": "embedded",
     "entry": "Sst.PowerShell.Bridge.dll",
+    "required_files": ["Sst.PowerShell.Bridge.runtimeconfig.json", "hostfxr.dll"],
     "commands": ["psmodule", "psh", "powershell"],
     "extensions": [".ps1"],
     "abi": "sst-hostfxr/1",
@@ -42,7 +43,7 @@ Cada entrada del catálogo debe contener:
 }
 ```
 
-`entry` es una ruta relativa interna al paquete, nunca una ruta absoluta ni una ruta con `..`. `commands` registra nombres administrados. `extensions` enruta scripts a su intérprete (sin ejecutarlos como Nwash). `abi` fija el protocolo de módulos cargables; los módulos incompatibles deben rechazarse de forma controlada, **sin impedir el inicio de SST**.
+`required_files` declara los archivos obligatorios para activar cada paquete; el instalador común los valida sin comprobaciones específicas de PowerShell. `entry` es una ruta relativa interna al paquete, nunca una ruta absoluta ni una ruta con `..`. `commands` registra nombres administrados. `extensions` enruta scripts a su intérprete (sin ejecutarlos como Nwash). `abi` fija el protocolo de módulos cargables; los módulos incompatibles deben rechazarse de forma controlada, **sin impedir el inicio de SST**.
 
 Los paquetes `process` usan `expose` para publicar ejecutables; los `runtime` registran comandos y extensiones. `environment` define `provider` y `distribution`.
 
