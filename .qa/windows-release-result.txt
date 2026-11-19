@@ -1,7 +1,7 @@
 SST Windows release CI report
-Source commit: cc55174ce6447b9ea6f1624d9876b14f5a7b204a
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44396905248
-Recorded UTC: 2026-11-18 21:07:56Z
+Source commit: aa507cc2b580bc55ae3aa5f4c9a2daa6d1fcf7c1
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44545573077
+Recorded UTC: 2026-11-19 14:43:02Z
 Compile: success
 Rust tests: skipped
 Software GUI startup: skipped
@@ -17,23 +17,23 @@ Compiler log tail:
   Downloaded zip v9.7.0
    Compiling smallvec v1.16.6
    Compiling regex-syntax v0.8.12
-   Compiling sst v0.1.9-blue.71 (D:\a\sst-blueversion\sst-blueversion)
+   Compiling sst v0.1.9-blue.72 (D:\a\sst-blueversion\sst-blueversion)
    Compiling icu_normalizer v2.4.0
    Compiling harfrust v0.12.0
    Compiling kurbo v0.13.1
-   Compiling fixed_decimal v0.7.3
    Compiling svgtypes v0.16.2
-   Compiling usvg v0.48.1
+   Compiling fixed_decimal v0.7.3
    Compiling fontique v0.11.1
+   Compiling usvg v0.48.1
    Compiling icu_decimal v2.4.0
-   Compiling resvg v0.48.1
    Compiling idna_adapter v1.2.2
    Compiling icu_segmenter v2.4.0
+   Compiling resvg v0.48.1
    Compiling parley v0.11.1
-   Compiling idna v1.1.0
    Compiling i-slint-common v1.18.1
-   Compiling i-slint-core v1.18.1
+   Compiling idna v1.1.0
    Compiling url v2.5.8
+   Compiling i-slint-core v1.18.1
    Compiling webbrowser v1.2.7
    Compiling i-slint-compiler v1.18.1
    Compiling nibble_vec v0.1.0
@@ -41,14 +41,14 @@ Compiler log tail:
    Compiling parking_lot v0.12.5
    Compiling radix_trie v0.2.1
    Compiling regex-automata v0.4.19
-   Compiling zip v9.7.0
+   Compiling rusqlite v0.41.1
+   Compiling regex v1.13.2
    Compiling i-slint-renderer-software v1.18.1
    Compiling i-slint-backend-winit v1.18.1
    Compiling i-slint-backend-selector v1.18.1
-   Compiling regex v1.13.2
-   Compiling rusqlite v0.41.1
+   Compiling zip v9.7.0
    Compiling rustyline v17.0.2
    Compiling crossterm v0.29.0
    Compiling slint-macros v1.18.1
    Compiling slint v1.18.1
-    Finished `release` profile [optimized] target(s) in 5m 00s
+    Finished `release` profile [optimized] target(s) in 3m 50s
