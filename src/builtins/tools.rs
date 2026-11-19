@@ -395,12 +395,12 @@ struct OfficeWindowProbe {
 /// pump. A near-zero CPU measurement alone cannot establish a hang.
 fn outlook_windows(pids: std::collections::HashSet<u32>) -> OfficeWindowProbe {
     use windows_sys::Win32::{
-        Foundation::{BOOL, HWND, LPARAM},
+        Foundation::{HWND, LPARAM},
         UI::WindowsAndMessaging::{
             EnumWindows, GetWindowThreadProcessId, IsHungAppWindow, IsWindowVisible,
         },
     };
-    unsafe extern "system" fn collect(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    unsafe extern "system" fn collect(hwnd: HWND, lparam: LPARAM) -> i32 {
         // SAFETY: callback is synchronous and receives a pointer to the
         // living OfficeWindowProbe passed to EnumWindows below.
         unsafe {
