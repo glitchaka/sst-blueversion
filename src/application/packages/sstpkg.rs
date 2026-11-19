@@ -38,6 +38,25 @@ struct PayloadFile {
     sha256: String,
 }
 
+/// Read the identity of a local .sstpkg without executing or unpacking it.
+pub(super) fn read_header(source: &Path) -> Result<(String, String)> {
+    let archive = File::open(source)?;
+    let mut tar = Archive::new(GzDecoder::new(archive));
+    let mut entries = tar.entries()?;
+    let mut entry = entries.next().context("sstpkg: archivo vacío")??;
+    ensure!(entry.path_bytes().as_ref() == b"manifest.json"
+        && entry.header().entry_type().is_file()
+        && entry.header().size()? <= MAX_MANIFEST,
+        "sstpkg: manifiesto de cabecera inválido");
+    let mut contents = Vec::new();
+    entry.read_to_end(&mut contents)?;
+    let manifest: Envelope = serde_json::from_slice(&contents)?;
+    ensure!(manifest.format == 1, "sstpkg: formato no soportado");
+    validate_identifier(&manifest.id)?;
+    ensure!(!manifest.version.trim().is_empty(), "sstpkg: versión vacía");
+    Ok((manifest.id, manifest.version))
+}
+
 pub(super) fn kind_folder(kind: &str) -> Result<&'static str> {
     match kind {
         "embedded" => Ok("modules"),
