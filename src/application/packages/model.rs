@@ -277,7 +277,7 @@ pub(super) fn validate_relative_payload_path(value: &str) -> Result<()> {
 }
 
 pub(super) fn validate_identifier(value: &str) -> Result<()> {
-    if value.is_empty()
+    if value.is_empty() || matches!(value, "." | "..")
         || !value
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
