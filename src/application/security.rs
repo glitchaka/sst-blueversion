@@ -496,137 +496,54 @@ impl SecurityTriageService {
                 }))?
             )));
         }
-        let learned = self.learned_lineages().unwrap_or_default();
+        // El modo normal no es un volcado: ordena hallazgos verificables y
+        // problemas de rendimiento, limita duplicados y omite evidencia de
+        // mero contexto. --deep, --history y --memory amplían bajo demanda.
+        if memory_only && !deep {
+            return Ok(CommandOutput::ok(triage_memory_report(&system, &snapshots)));
+        }
+        let mut out = render_triage_priorities(&system, &snapshots, &findings);
 
-        let known_count = snapshots
-            .iter()
-            .filter(|p| !p.exe.is_empty() && !p.new_to_history)
-            .count();
-        let new_count = snapshots.iter().filter(|p| p.new_to_history).count();
-
-        let mut active_learned = Vec::<(u32, String, u32, String, u64)>::new();
-        for process in &snapshots {
-            let Some(parent) = snapshots
-                .iter()
-                .find(|p| p.pid == process.ppid && p.start_time <= process.start_time && !p.exe.is_empty())
-            else {
-                continue;
-            };
-            let key = (
-                normalize_install_identity(&process.exe),
-                normalize_install_identity(&parent.exe),
-            );
-            let sessions = learned.get(&key).copied().unwrap_or(0);
-            if sessions >= local_learning_threshold(process)
-                && auto_learnable_install_path(&process.exe)
-                && auto_learnable_install_path(&parent.exe)
-            {
-                active_learned.push((
-                    process.pid,
-                    process.name.clone(),
-                    parent.pid,
-                    parent.name.clone(),
-                    sessions,
+        if history {
+            let learned = self.learned_lineages().unwrap_or_default();
+            let mut observed = Vec::<(u32, &str, u32, &str, u64)>::new();
+            for process in &snapshots {
+                let Some(parent) = snapshots.iter().find(|p| {
+                    p.pid == process.ppid && p.start_time <= process.start_time && !p.exe.is_empty()
+                }) else { continue; };
+                let key = (
+                    normalize_install_identity(&process.exe),
+                    normalize_install_identity(&parent.exe),
+                );
+                let sessions = learned.get(&key).copied().unwrap_or(0);
+                if sessions >= local_learning_threshold(process)
+                    && auto_learnable_install_path(&process.exe)
+                    && auto_learnable_install_path(&parent.exe)
+                {
+                    observed.push((process.pid, &process.name, parent.pid, &parent.name, sessions));
+                }
+            }
+            observed.sort_by(|a,b| b.4.cmp(&a.4).then_with(|| a.0.cmp(&b.0)));
+            out.push_str(&format!(
+                "\nHISTORIAL SOLICITADO — {} relaciones aprendidas\n\
+                 Las repeticiones no certifican que un proceso sea seguro.\n",
+                observed.len(),
+            ));
+            for (pid, name, parent_pid, parent_name, sessions) in observed.iter().take(5) {
+                out.push_str(&format!(
+                    "  {} [{}] <- {} [{}] · {} sesiones\n",
+                    name, pid, parent_name, parent_pid, sessions,
+                ));
+            }
+            if observed.len() > 5 {
+                out.push_str(&format!(
+                    "  ... {} relaciones más (historial resumido).\n", observed.len() - 5,
                 ));
             }
         }
-
-        let mut out = String::from(
-            "SST TRIAGE — ANÁLISIS ACTIVO\n============================================================\n",
-        );
-        out.push_str(&format!(
-            "Procesos actuales                 {}\n\
-             Rutas vistas anteriormente         {}\n\
-             Rutas nuevas                       {}\n\
-             Hallazgos que requieren revisión   {}\n\
-             Relaciones locales aprendidas      {}\n\
-             Carga relevante                    {}\n\n",
-            snapshots.len(),
-            known_count,
-            new_count,
-            findings.len(),
-            active_learned.len(),
-            performance.len(),
-        ));
-
-        let memory_pressure = if system.total_memory() == 0 {
-            0.0
-        } else {
-            system.used_memory() as f64 * 100.0 / system.total_memory() as f64
-        };
-        if memory_only || deep || memory_pressure >= 75.0 {
+        if deep {
+            out.push_str("\nDESGLOSE DE MEMORIA\n------------------------------------------------------------\n");
             out.push_str(&triage_memory_report(&system, &snapshots));
-            if memory_only && !deep {
-                return Ok(CommandOutput::ok(out));
-            }
-        }
-
-        out.push_str("SEGURIDAD\n------------------------------------------------------------\n");
-        if findings.is_empty() {
-            out.push_str(
-                "No hay procesos que superen las reglas actuales de atención.\n\
-                 Las relaciones recurrentes sólo dejan de contarse como novedad de linaje;\n\
-                 otras señales siguen pudiendo elevarlas nuevamente.\n",
-            );
-        } else {
-            for finding in findings.iter().take(20) {
-                out.push_str(&format!(
-                    "\n{}  {} [{}]\n",
-                    finding.level.label(),
-                    finding.name,
-                    finding.pid
-                ));
-                if let Some(process) = snapshots.iter().find(|p| p.pid == finding.pid) {
-                    out.push_str(&format!("  ruta:   {}\n", display_path(&process.exe)));
-                    if let Some(parent) = snapshots
-                        .iter()
-                        .find(|p| p.pid == process.ppid && p.start_time <= process.start_time)
-                    {
-                        out.push_str(&format!(
-                            "  padre:  {} [{}]\n  p.ruta: {}\n",
-                            parent.name,
-                            parent.pid,
-                            display_path(&parent.exe),
-                        ));
-                    }
-                }
-                for reason in &finding.reasons {
-                    out.push_str(&format!("  razón:  {reason}\n"));
-                }
-                for limitation in &finding.limitations {
-                    out.push_str(&format!("  falta:  {limitation}\n"));
-                }
-                out.push_str(&format!(
-                    "  revisar: triage {} --deep | sys why {} | sys inspect {}\n",
-                    finding.pid, finding.pid, finding.pid
-                ));
-            }
-        }
-
-        if history && !active_learned.is_empty() {
-            out.push_str("\nAPRENDIZAJE LOCAL\n------------------------------------------------------------\n");
-            out.push_str(
-                "Estas relaciones instaladas ya fueron observadas en sesiones anteriores y no\n\
-                 generan ATTENTION únicamente por rareza histórica:\n",
-            );
-            for (pid, name, parent_pid, parent_name, sessions) in active_learned.iter().take(20) {
-                out.push_str(&format!(
-                    "  {} [{}] <- {} [{}] · {} sesión(es) previa(s)\n",
-                    name, pid, parent_name, parent_pid, sessions
-                ));
-            }
-        }
-
-        if !performance.is_empty() {
-            out.push_str("\nRECURSOS\n------------------------------------------------------------\n");
-            for item in performance.iter().take(6) {
-                out.push_str(&format!(
-                    "{} [{}]  {}\n",
-                    item.name,
-                    item.pid,
-                    item.reasons.join(" · ")
-                ));
-            }
         }
 
         if deep {
@@ -651,7 +568,7 @@ impl SecurityTriageService {
             }
         } else {
             out.push_str(
-                "\nUsa 'triage --history' para linajes, 'triage --memory' para RAM o 'triage --deep' para conexiones, inicio automático y servicios.\n",
+                "\nDetalle bajo demanda: triage PID --deep | triage --memory | triage --history.\n",
             );
         }
 
@@ -1702,6 +1619,168 @@ fn assess_process_with_extra(
     }
     evidence.extend_from_slice(extra);
     correlate(&evidence)
+}
+
+/// Triage must not resemble a process inventory: actionable signals first,
+/// a bounded count, one reason per case, and no misleading "all safe" claim.
+fn render_triage_priorities(
+    system: &System,
+    snapshots: &[ProcessSnapshot],
+    findings: &[Finding],
+) -> String {
+    let used_percent = if system.total_memory() == 0 {
+        0.0
+    } else {
+        system.used_memory() as f64 * 100.0 / system.total_memory() as f64
+    };
+
+    // Every independently classified finding is kept in the machine-readable
+    // formats. The operator view groups identical heuristics from many
+    // worker processes instead of presenting dozens of equivalent alarms.
+    let groups = group_triage_findings(findings);
+    let status = if findings.iter().any(|f| f.level == AttentionLevel::Alert) {
+        "ALERTA: evidencia de prioridad máxima; verificar origen"
+    } else if findings.iter().any(|f| f.level == AttentionLevel::Suspicious) {
+        "SOSPECHA: señales combinadas que requieren investigación"
+    } else if findings.iter().any(|f| f.level == AttentionLevel::Attention) {
+        "REVISAR: anomalías locales sin confirmación de amenaza"
+    } else if used_percent >= 85.0 {
+        "RECURSOS: presión alta de memoria"
+    } else {
+        "SIN ALERTAS PRIORITARIAS CON LA EVIDENCIA DISPONIBLE"
+    };
+    let mut out = format!(
+        "SST TRIAGE — RESUMEN PRIORIZADO\n\
+         ============================================================\n\
+         ESTADO: {status}\n\
+         Muestra: {} procesos · CPU global {:.1}% · RAM {:.1}%\n",
+        snapshots.len(), system.global_cpu_usage(), used_percent,
+    );
+
+    if !groups.is_empty() {
+        out.push_str(&format!(
+            "\nSEGURIDAD — {} procesos, {} grupos de señales\n\
+             ------------------------------------------------------------\n",
+            findings.len(), groups.len(),
+        ));
+        for (finding, count) in groups.iter().take(5) {
+            let severity = match finding.level {
+                AttentionLevel::Alert => "CRÍTICO",
+                AttentionLevel::Suspicious => "SOSPECHOSO",
+                AttentionLevel::Attention => "REVISAR",
+                _ => "OBSERVAR",
+            };
+            out.push_str(&format!(
+                "  [{severity}] {}  PID {}{}\n",
+                finding.name, finding.pid,
+                if *count > 1 { format!(" (+{} instancias similares)", count - 1) }
+                else { String::new() },
+            ));
+            if let Some(reason) = finding.reasons.first() {
+                out.push_str(&format!("    Evidencia: {reason}\n"));
+            }
+            if finding.reasons.len() > 1 {
+                out.push_str(&format!(
+                    "    Además: {} indicio(s) disponible(s)\n", finding.reasons.len() - 1,
+                ));
+            }
+            out.push_str(&format!(
+                "    Acción: triage {} --deep\n", finding.pid,
+            ));
+        }
+        if groups.len() > 5 {
+            out.push_str(&format!(
+                "  {} grupos adicionales: triage --json (detalle completo).\n",
+                groups.len() - 5,
+            ));
+        }
+    } else {
+        out.push_str(
+            "\nSEGURIDAD\n\
+             ------------------------------------------------------------\n\
+             Sin patrones que superen los umbrales locales de atención.\n",
+        );
+    }
+
+    // Routine 512-MiB apps are not incidents. Show resource-intensive
+    // processes only when their consumption is significant to this sample.
+    let mut stressed = snapshots.iter().filter(|p| {
+        p.cpu >= 30.0 || (used_percent >= 80.0 && p.memory_mib >= 1024.0)
+    }).collect::<Vec<_>>();
+    stressed.sort_by(|a, b| {
+        b.cpu.total_cmp(&a.cpu)
+            .then_with(|| b.memory_mib.total_cmp(&a.memory_mib))
+            .then_with(|| a.pid.cmp(&b.pid))
+    });
+    if used_percent >= 75.0 || !stressed.is_empty() {
+        out.push_str("\nRENDIMIENTO\n------------------------------------------------------------\n");
+        if used_percent >= 85.0 {
+            out.push_str("  RAM: presión global alta; comprobar consumidores.\n");
+        } else if used_percent >= 75.0 {
+            out.push_str("  RAM: presión global elevada; vigilar crecimiento.\n");
+        }
+        for process in stressed.iter().take(3) {
+            out.push_str(&format!(
+                "  {} [{}]  CPU {:.1}% · RAM {:.0} MiB\n",
+                process.name, process.pid, process.cpu, process.memory_mib,
+            ));
+        }
+        if stressed.len() > 3 {
+            out.push_str(&format!(
+                "  {} procesos adicionales con carga relevante: sys top.\n",
+                stressed.len() - 3,
+            ));
+        }
+        if stressed.is_empty() && used_percent >= 75.0 {
+            out.push_str("  Ningún proceso aislado explica por sí solo la presión.\n");
+        }
+    }
+    out.push_str(
+        "\nALCANCE: comprobación local puntual, no dictamen de seguridad ni prueba\n\
+         de que las ventanas respondan. Datos faltantes no son evidencia de amenaza.\n",
+    );
+    out
+}
+
+/// Similar findings differ only by instance PID, not security priority.
+fn group_triage_findings(findings: &[Finding]) -> Vec<(&Finding, usize)> {
+    let mut sorted = findings.iter().collect::<Vec<_>>();
+    sorted.sort_by(|a, b| b.level.cmp(&a.level).then_with(|| a.pid.cmp(&b.pid)));
+    let mut groups: Vec<(&Finding, usize)> = Vec::new();
+    for item in sorted {
+        if let Some((_, count)) = groups.iter_mut().find(|(first, _)| {
+            first.level == item.level
+                && first.name.eq_ignore_ascii_case(&item.name)
+                && first.reasons == item.reasons
+        }) {
+            *count += 1;
+        } else {
+            groups.push((item, 1));
+        }
+    }
+    groups
+}
+
+#[cfg(test)]
+mod triage_output_tests {
+    use super::{group_triage_findings, AttentionLevel, Finding};
+
+    #[test]
+    fn groups_repeated_processes_but_keeps_other_evidence_distinct() {
+        let finding = |pid, reason: &str, level| Finding {
+            pid, name: "msedgewebview2.exe".to_owned(), level,
+            reasons: vec![reason.to_owned()], limitations: Vec::new(),
+        };
+        let rows = vec![
+            finding(1, "parent changed", AttentionLevel::Attention),
+            finding(2, "parent changed", AttentionLevel::Attention),
+            finding(3, "suspicious command", AttentionLevel::Suspicious),
+        ];
+        let groups = group_triage_findings(&rows);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].0.pid, 3);
+        assert_eq!(groups[1].1, 2);
+    }
 }
 
 fn triage_memory_report(system: &System, snapshots: &[ProcessSnapshot]) -> String {
