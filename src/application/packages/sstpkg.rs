@@ -19,6 +19,7 @@ use super::model::{PackageManifest, validate_identifier};
 const MAX_MANIFEST: u64 = 1024 * 1024;
 const MAX_FILE: u64 = 512 * 1024 * 1024;
 const MAX_FILES: usize = 10000;
+const MAX_TOTAL: u64 = 1024 * 1024 * 1024;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -145,7 +146,11 @@ pub(super) fn install_sstpkg(
     ensure!(expected.keys().any(|file| file.starts_with(&prefix)),
         "sstpkg: falta el árbol requerido {prefix}");
     let mut seen = HashSet::new();
+    let mut total_bytes = 0u64;
+    let mut total_entries = 0usize;
     for item in entries {
+        total_entries += 1;
+        ensure!(total_entries <= MAX_FILES * 2, "sstpkg: exceso de entradas");
         let mut entry = item?;
         let name = String::from_utf8(entry.path_bytes().into_owned())
             .context("sstpkg: ruta no UTF-8")?;
@@ -165,15 +170,19 @@ pub(super) fn install_sstpkg(
         let checksum = expected.get(&name)
             .with_context(|| format!("sstpkg: archivo no declarado en manifest.json: {name}"))?;
         ensure!(seen.insert(name.clone()), "sstpkg: archivo duplicado");
-        ensure!(entry.header().size()? <= MAX_FILE, "sstpkg: archivo demasiado grande");
-        let destination = if let Some(relative) = name.strip_prefix(&prefix) {
+        let size = entry.header().size()?;
+        ensure!(size <= MAX_FILE, "sstpkg: archivo demasiado grande");
+        total_bytes = total_bytes.checked_add(size)
+            .context("sstpkg: tamaño total inválido")?;
+        ensure!(total_bytes <= MAX_TOTAL, "sstpkg: carga útil demasiado grande");
+        let mut destination = if let Some(relative) = name.strip_prefix(&prefix) {
             let path = staging.join(relative);
             if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
             Some(File::create(path)?)
         } else {
             None
         };
-        let actual = sha256_reader(&mut entry, destination.as_ref().map(File::try_clone).transpose()?.as_mut())?;
+        let actual = sha256_reader(&mut entry, destination.as_mut())?;
         ensure!(actual == *checksum, "sstpkg: SHA-256 no coincide para {name}");
     }
     ensure!(seen.len() == expected.len(), "sstpkg: faltan archivos declarados");
