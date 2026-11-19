@@ -47,7 +47,8 @@
         ],
         "extensions": [
           ".rb"
-        ]
+        ],
+        "required_files": []
       }
     },
     {
@@ -91,7 +92,8 @@
         ],
         "extensions": [
           ".py"
-        ]
+        ],
+        "required_files": []
       }
     },
     {
@@ -127,7 +129,8 @@
           "uv",
           "uvx"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -159,7 +162,8 @@
         "commands": [
           "rg"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -191,7 +195,8 @@
         "commands": [
           "fd"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -223,7 +228,8 @@
         "commands": [
           "bat"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -255,7 +261,8 @@
         "commands": [
           "fzf"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -287,7 +294,8 @@
         "commands": [
           "jq"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -321,7 +329,8 @@
         "commands": [
           "yq"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -353,7 +362,8 @@
         "commands": [
           "delta"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -385,7 +395,8 @@
         "commands": [
           "hyperfine"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -418,7 +429,8 @@
         "commands": [
           "tokei"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -450,7 +462,8 @@
         "commands": [
           "btm"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -484,7 +497,8 @@
         "extensions": [
           ".ts",
           ".tsx"
-        ]
+        ],
+        "required_files": []
       }
     },
     {
@@ -520,7 +534,8 @@
         ],
         "extensions": [
           ".jsx"
-        ]
+        ],
+        "required_files": []
       }
     },
     {
@@ -557,7 +572,11 @@
           ".ps1"
         ],
         "abi": "sst-hostfxr/1",
-        "startup": "load"
+        "startup": "load",
+        "required_files": [
+          "Sst.PowerShell.Bridge.runtimeconfig.json",
+          "hostfxr.dll"
+        ]
       }
     },
     {
@@ -588,7 +607,8 @@
         "commands": [
           "gh"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -619,7 +639,8 @@
         "commands": [
           "starship"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -650,7 +671,8 @@
         "commands": [
           "zoxide"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -683,7 +705,8 @@
         "commands": [
           "nvim"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -732,7 +755,8 @@
           "procdump",
           "strings"
         ],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -755,7 +779,8 @@
         "kind": "system",
         "entry": "",
         "commands": [],
-        "extensions": []
+        "extensions": [],
+        "required_files": []
       }
     },
     {
@@ -782,7 +807,8 @@
         "extensions": [],
         "provider": "wsl",
         "distribution": "archlinux",
-        "startup": "discover"
+        "startup": "discover",
+        "required_files": []
       }
     }
   ]
