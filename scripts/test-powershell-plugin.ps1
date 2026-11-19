@@ -13,9 +13,9 @@ if ($sourceFiles.Count -eq 0) {
     throw "La compilación del módulo PowerShell produjo un directorio vacío: $sourceDirectory"
 }
 foreach ($sourceFile in $sourceFiles) {
-    Copy-Item -LiteralPath $sourceFile.FullName -Destination $plugin -Recurse -Force
+    Copy-Item -LiteralPath $sourceFile.FullName -Destination (Join-Path $plugin $sourceFile.Name) -Recurse -Force
 }
-Write-Host "PowerShell plugin: copiados $($sourceFiles.Count) elementos desde $sourceDirectory"
+Write-Host "PowerShell plugin: copiados $($sourceFiles.Count) elementos"
 foreach ($required in @('Sst.PowerShell.Bridge.dll','hostfxr.dll','Sst.PowerShell.Bridge.runtimeconfig.json')) {
     if (-not (Test-Path -LiteralPath (Join-Path $plugin $required) -PathType Leaf)) {
         $files = (Get-ChildItem -LiteralPath $plugin -Recurse -File |
