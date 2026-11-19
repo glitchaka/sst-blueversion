@@ -291,20 +291,27 @@ impl SecurityTriageService {
     }
 
     pub fn triage(&self, args: &[String]) -> Result<CommandOutput> {
+        // A named query searches current processes, not historical lineages.
+        if let Some(index) = args.iter().position(|arg| arg == "--find") {
+            if index != 0 || args.len() != 2 || args[1].starts_with('-') || args[1].trim().is_empty() {
+                return Ok(CommandOutput::error("triage: uso: triage --find NOMBRE", 2));
+            }
+            return self.triage(&[args[1].clone()]);
+        }
         let positionals = args.iter().filter(|arg| !arg.starts_with('-')).count();
         let invalid_flag = args.iter().find(|arg| {
             arg.starts_with('-') && !matches!(
                 arg.as_str(),
                 "--status" | "--thermal" | "-h" | "--help" | "--scan"
                     | "--refresh" | "--deep" | "--memory" | "--ram"
-                    | "--csv" | "--json"
+                    | "--csv" | "--json" | "--history"
             )
         });
         if let Some(flag) = invalid_flag {
             return Ok(CommandOutput::error(format!("triage: opción desconocida: {flag}"), 2));
         }
         if positionals > 1 {
-            return Ok(CommandOutput::error("triage: se admite un solo PID", 2));
+            return Ok(CommandOutput::error("triage: se admite un solo PID o nombre de proceso", 2));
         }
         let exclusive = ["--status", "--thermal", "--scan", "--refresh"];
         if args.iter().any(|arg| exclusive.contains(&arg.as_str()))
@@ -334,6 +341,9 @@ impl SecurityTriageService {
                  uso:\n\
                    triage                  vuelve a revisar procesos y aprendizaje local\n\
                    triage PID              investiga un proceso: why + inspect + diff\n\
+                   triage outlook          busca Outlook (new) y sus procesos WebView2\n\
+                   triage --find NOMBRE    busca por nombre del proceso\n\
+                   triage --history        incluye linajes aprendidos\n\
                    triage --deep           añade conexiones, inicio automático y servicios\n\
                    triage PID --deep       investigación profunda del PID y sus conexiones\n\
                    triage --status         avance/resultado de colectores diferidos\n\
@@ -355,11 +365,49 @@ impl SecurityTriageService {
 
         let deep = args.iter().any(|arg| arg == "--deep");
         let memory_only = args.iter().any(|arg| matches!(arg.as_str(), "--memory" | "--ram"));
+        let history = args.iter().any(|arg| arg == "--history");
 
         if let Some(raw_pid) = args.iter().find(|arg| !arg.starts_with('-')) {
-            let pid = raw_pid
-                .parse::<u32>()
-                .with_context(|| format!("triage: PID inválido: {raw_pid}"))?;
+            let Ok(pid) = raw_pid.parse::<u32>() else {
+                let system = refreshed_system();
+                let mut matches = system.processes().keys().copied()
+                    .filter(|pid| crate::application::system::process_matches_filter(&system, *pid, raw_pid))
+                    .collect::<Vec<_>>();
+                matches.sort_by(|a, b| {
+                    let (Some(pa), Some(pb)) = (system.process(*a), system.process(*b)) else {
+                        return a.as_u32().cmp(&b.as_u32());
+                    };
+                    pb.cpu_usage().total_cmp(&pa.cpu_usage())
+                        .then_with(|| pb.memory().cmp(&pa.memory()))
+                        .then_with(|| a.as_u32().cmp(&b.as_u32()))
+                });
+                let mut out = format!(
+                    "SST TRIAGE — BUSCAR PROCESO: {raw_pid}\n\
+                     Coincidencias actuales: {}\n\
+                     PID      PPID     CPU%     RAM MiB   PROCESO\n",
+                    matches.len(),
+                );
+                if matches.is_empty() {
+                    out.push_str("Sin procesos actualmente en ejecución que coincidan con el filtro.\n");
+                }
+                for candidate in matches.iter().take(50) {
+                    let Some(process) = system.process(*candidate) else { continue; };
+                    let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
+                    out.push_str(&format!(
+                        "{:<8} {:<8} {:>6.1} {:>10.1}   {}\n",
+                        candidate, ppid, process.cpu_usage(),
+                        process.memory() as f64 / 1024.0 / 1024.0,
+                        process.name().to_string_lossy(),
+                    ));
+                }
+                if matches.len() > 50 {
+                    out.push_str("Mostrando 50 procesos; usa 'sys processes NOMBRE --top 1000'.\n");
+                }
+                out.push_str("\nPara investigar: triage PID --deep | sys inspect PID.\n\
+                              Para monitorizar: sys top NOMBRE.\n\
+                              CPU baja no prueba que la ventana esté respondiendo.\n");
+                return Ok(CommandOutput::ok(out));
+            };
             let mut out = format!(
                 "SST TRIAGE — PROCESO {pid}\n============================================================\n\n"
             );
@@ -555,7 +603,7 @@ impl SecurityTriageService {
             }
         }
 
-        if !active_learned.is_empty() {
+        if history && !active_learned.is_empty() {
             out.push_str("\nAPRENDIZAJE LOCAL\n------------------------------------------------------------\n");
             out.push_str(
                 "Estas relaciones instaladas ya fueron observadas en sesiones anteriores y no\n\
@@ -603,7 +651,7 @@ impl SecurityTriageService {
             }
         } else {
             out.push_str(
-                "\nUsa 'triage --memory' para presión de RAM o 'triage --deep' para correlacionar memoria, conexiones, inicio automático y servicios.\n",
+                "\nUsa 'triage --history' para linajes, 'triage --memory' para RAM o 'triage --deep' para conexiones, inicio automático y servicios.\n",
             );
         }
 
@@ -1443,6 +1491,9 @@ impl SecurityTriageService {
 
 fn refreshed_system() -> System {
     let mut system = System::new_all();
+    system.refresh_all();
+    // El primer valor de CPU carece de intervalo; tomar una segunda muestra.
+    std::thread::sleep(std::time::Duration::from_millis(350));
     system.refresh_all();
     system
 }
