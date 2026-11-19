@@ -194,16 +194,10 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
             }
         }
         "runtime" | "process" => {
-            if package.install.kind != "sstpkg" {
-                anyhow::bail!("instp: {} no es un plugin SST; ejecutables externos no admitidos", package.id);
-            }
-            if execution.kind == "process" {
-                anyhow::bail!("instp: {} necesita un adaptador interno antes de distribuirse", package.id);
-            }
-            if package.install.kind == "system" || package.install.kind == "builtin" {
-                anyhow::bail!("instp: {} requiere un paquete ejecutable instalable", package.id);
-            }
-            validate_relative_payload_path(&execution.entry)?;
+            anyhow::bail!(
+                "instp: {} requiere un adaptador interno de ejecución; no se admiten runtimes ni CLI externos como .exe",
+                package.id
+            );
         }
         "environment" => {
             if package.install.kind == "sstpkg" {
