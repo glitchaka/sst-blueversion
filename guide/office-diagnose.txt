@@ -8,13 +8,14 @@ Formas públicas
 
   tools office diagnose
   tools office status
-  tools office verify
 
-`status` y `verify` son aliases exactos de `diagnose`.
+`status` es alias de `diagnose`. `tools office verify` es un comando distinto: evalúa comprobaciones operativas, identifica fallos y propone siguientes pasos.
 
 No acepta parámetros adicionales. Si se entregan argumentos extra, SST devuelve error 2.
 
 Qué revisa — OFFICE
+
+El inventario Click-to-Run es independiente de Outlook (new), instalado como AppX. Un Office clásico ausente no demuestra que el nuevo Outlook esté ausente.
 
 State
 
@@ -56,6 +57,8 @@ Outlook.exe
 
 Outlook version
   Lee FileVersion del ejecutable detectado.
+
+Detecta también Microsoft.OutlookForWindows (Outlook new) como paquete AppX separado de Office clásico.
 
 Qué revisa — AUTHENTICATION
 
