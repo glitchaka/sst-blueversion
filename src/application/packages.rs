@@ -271,7 +271,8 @@ impl PackageService {
             "instp: {} no es un paquete nativo SST registrado", id);
         let source = ResolvedSource {
             url: format!("archivo local: {}", input.display()),
-            file_name: input.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            file_name: input.file_name().map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| format!("{id}.sstpkg")),
             version,
             sha256: None,
             size: None,
