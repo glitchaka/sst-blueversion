@@ -1,0 +1,1 @@
+Validate Blue.76 latest main: remove legacy Process runner, reject externally executable packages, package embedded PowerShell SDK without apphost or createdump.exe, test local instp .sstpkg install, platform trees and update channel. Publish only on full Windows success.
