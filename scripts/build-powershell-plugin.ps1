@@ -1,6 +1,6 @@
 param(
     [string]$OutputDirectory = (Join-Path $PWD 'dist/powershell-module'),
-    [string]$ZipPath = (Join-Path $PWD 'dist/SST-PowerShell-win-x64.zip')
+    [string]$PackagePath = (Join-Path $PWD 'dist/SST-PowerShell-win-x64.sstpkg')
 )
 $ErrorActionPreference = 'Stop'
 $project = Join-Path $PSScriptRoot '../plugins/powershell/Sst.PowerShell.Bridge.csproj'
@@ -23,10 +23,8 @@ foreach ($filename in @(
         throw "El módulo PowerShell no contiene $filename"
     }
 }
-New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ZipPath) | Out-Null
-if (Test-Path -LiteralPath $ZipPath) { Remove-Item -LiteralPath $ZipPath -Force }
-Compress-Archive -Path (Join-Path $OutputDirectory '*') -DestinationPath $ZipPath -CompressionLevel Optimal
-if (-not (Test-Path -LiteralPath $ZipPath -PathType Leaf)) {
-    throw 'No se generó SST-PowerShell-win-x64.zip'
+& python (Join-Path $PSScriptRoot 'pack-sstpkg.py') --id powershell --version 7.5.13 --target win --kind embedded --source $OutputDirectory --output $PackagePath --exclude-dotnet-apphost
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
+    throw 'No se generó SST-PowerShell-win-x64.sstpkg'
 }
-Write-Host "Motor PowerShell .NET distribuible: $ZipPath"
+Write-Host "Módulo PowerShell SST-PACKAGE/1: $PackagePath"
