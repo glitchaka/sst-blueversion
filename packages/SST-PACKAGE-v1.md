@@ -1,111 +1,140 @@
-# SST-PACKAGE/1 — estándar de paquetes de Shell Shock Tool
+# SST-PACKAGE/1 — formato de distribución e instalación de Shell Shock Tool
 
-Estado: contrato de catálogo y ejecución **v1**. El índice de repositorios emplea `schema: 2`; cada entrada declara `format: 1` y `execution`. El formato no equivale a los formatos externos de los proveedores (.zip, .tar.gz, .wsl).
+## Contenedor propio
 
-## Objetivo y límites
+La extensión oficial es **`.sstpkg`**. El contenido es un TAR comprimido con
+GZIP (`.tar.gz`), no un ejecutable ni un ZIP renombrado. `instp` puede
+instalar paquetes registrados desde un repositorio SST o desde un archivo local:
 
-`instp` instala, verifica, registra, actualiza y desinstala. Nwash conserva la consola y enruta comandos, scripts y E/S al adaptador registrado. El adaptador interpreta o ejecuta; el catálogo **no** implementa por sí solo un nuevo lenguaje.
+```text
+instp install powershell [-p|--persistent]
+instp install C:\\Descargas\\powershell.sstpkg [-p|--persistent]
+instp upgrade powershell
+instp remove powershell
+instp upgrade sst             # Actualiza la propia consola por su canal blue
+```
 
-Las clases no son etiquetas intercambiables:
-- `embedded`: ensamblado/plug-in cargado **en el proceso SST**, con ABI versionada (ej. PowerShell SDK + hostfxr).
-- `runtime`: intérprete externo administrado (Python, Ruby, Deno, Bun), ligado a extensiones de scripts. Puede crear un proceso hijo, sin abrir otra consola.
-- `process`: herramienta CLI nativa (rg, fd, jq, bat, etc.). SST mantiene su E/S y controla el proceso.
-- `environment`: entorno del sistema administrado por proveedor (Arch Linux con WSL2). No se representa como binario Windows ni se elimina junto con SST.
-- `system`: software que modifica Windows y requiere una instalación y confirmación especial; no se instala silenciosamente.
+El catálogo usa `schema: 2` y cada entrada `format: 1`,
+`install.type: "sstpkg"` y un adaptador `execution`. Los archivos de
+proveedores originales (`.zip`, `.7z`, `.tar.gz`, `.exe`) pueden describirse
+para consulta, pero **no son paquetes instalables en SST** hasta que se
+conviertan en integraciones reales. Está prohibido instalar ejecutables
+adicionales: los comandos deben pasar por Nwash y módulos de SST.
 
-## Manifiesto de ejecución
+### Estructura del archivo
 
-Cada entrada del catálogo debe contener:
+```text
+powershell-7.5.13-win.sstpkg  (TAR + GZIP)
+├── manifest.json
+└── payload/
+    ├── win/
+    │   ├── modules/
+    │   │   └── powershell/
+    │   │       ├── Sst.PowerShell.Bridge.dll
+    │   │       ├── Sst.PowerShell.Bridge.runtimeconfig.json
+    │   │       └── ... DLL y dependencias del SDK
+    │   ├── runtimes/
+    │   ├── environments/
+    │   └── data/
+    └── unix/
+        ├── modules/
+        ├── runtimes/
+        ├── environments/
+        │   └── arch/
+        │       ├── etc/
+        │       ├── usr/
+        │       └── ...
+        └── data/
+```
+
+Un paquete puede contener simultáneamente árboles `win` y `unix`; se
+verifican los hashes de **todos** los archivos, pero solo se despliega el árbol
+de la plataforma declarada. Sus carpetas anidadas se conservan. Por ejemplo,
+`payload/unix/environments/arch/etc/foo.conf` se copia a
+`<SST_HOME>/packages/unix/environments/arch/etc/foo.conf`.
+
+El `manifest.json` debe ser el primer elemento del TAR y tiene esta forma:
 
 ```json
 {
   "format": 1,
   "id": "powershell",
-  "name": "Motor PowerShell SDK para SST",
-  "version": "latest",
-  "category": "module",
-  "portability": "isolated",
-  "source": {
-    "type": "github_release",
-    "repository": "glitchaka/sst-blueversion",
-    "asset_contains": ["SST-PowerShell-win-x64.zip"]
-  },
-  "install": { "type": "zip", "expose": [] },
-  "execution": {
-    "kind": "embedded",
-    "entry": "Sst.PowerShell.Bridge.dll",
-    "required_files": ["Sst.PowerShell.Bridge.runtimeconfig.json", "hostfxr.dll"],
-    "commands": ["psmodule", "psh", "powershell"],
-    "extensions": [".ps1"],
-    "abi": "sst-hostfxr/1",
-    "startup": "load"
-  }
+  "version": "7.5.13",
+  "kind": "embedded",
+  "files": [
+    {
+      "path": "payload/win/modules/powershell/Sst.PowerShell.Bridge.dll",
+      "sha256": "HASH_SHA256_DE_64_CARACTERES_HEXADECIMALES"
+    }
+  ]
 }
 ```
 
-`required_files` declara los archivos obligatorios para activar cada paquete; el instalador común los valida sin comprobaciones específicas de PowerShell. `entry` es una ruta relativa interna al paquete, nunca una ruta absoluta ni una ruta con `..`. `commands` registra nombres administrados. `extensions` enruta scripts a su intérprete (sin ejecutarlos como Nwash). `abi` fija el protocolo de módulos cargables; los módulos incompatibles deben rechazarse de forma controlada, **sin impedir el inicio de SST**.
+El ejemplo es esquemático: un paquete real enumera **todos** sus archivos con
+el SHA-256 de cada uno, y cada digest contiene 64 caracteres hexadecimales.
+No se admiten archivos no declarados, rutas absolutas, recorridos con `..`,
+enlaces, dispositivos ni sufijos de ejecutables `.exe`, `.com`, `.bat` o
+`.cmd`. Se limita el tamaño individual, total y la cantidad de entradas.
 
-Los paquetes `process` usan `expose` para publicar ejecutables; los `runtime` registran comandos y extensiones. `environment` define `provider` y `distribution`.
-
-## Directorios
+### Directorio instalado
 
 ```text
 <SST_HOME>/packages/
-  installed.json                # estado de instalaciones confirmado
-  repositories/                 # índices
-  cache/                        # descargas transitorias
-  modules/powershell/           # SDK + hostfxr + ensamblado
-  runtimes/python/              # intérprete y librerías
-  runtimes/ruby/
-  tools/ripgrep/
-  tools/jq/
-  environments/arch/            # metadatos SST; NO almacena la raíz de Arch WSL
-  bin/                          # comandos de paquete expuestos
+├── installed.json                 # Registro transaccional de instalaciones
+├── repositories/                  # Catálogos
+├── cache/                         # Descargas temporales
+├── win/
+│   ├── modules/powershell/        # DLL del motor PowerShell, sin .exe
+│   ├── runtimes/
+│   ├── environments/
+│   └── data/
+└── unix/
+    ├── modules/
+    ├── runtimes/
+    ├── environments/arch/         # Metadatos y paquetes Unix propios de SST
+    └── data/
 ```
 
-Los módulos cargables no deben añadirse al PATH general. Los intérpretes se descubren al iniciar SST y Nwash les remite los archivos por su extensión. Los paquetes CLI siguen siendo ejecutables reales y no necesitan ABI embebida.
+La distribución Arch WSL2 real está administrada por Windows/WSL y **no**
+corresponde al directorio de metadatos de SST. Instalar archivos Unix en este
+árbol de SST no implica automáticamente instalar paquetes en la raíz de WSL:
+la instalación de software dentro de Arch exige un adaptador Unix/WSL
+autorizado. `instp install arch` conserva su flujo de provisión explícita
+mediante WSL2; `instp remove arch` no elimina la distribución del usuario.
 
-## Contrato de ejecución
+## Adaptadores y ciclo de vida
 
-1. `instp install`: obtiene el paquete, comprueba la descarga y verifica que `execution.entry` existe dentro del directorio aislado. Los módulos embebidos exigen todos los componentes del host.
-2. Activación atómica: primero se construye en staging y solo después se actualiza `installed.json`. Un fallo conserva la versión anterior.
-3. Arranque: SST recorre **solo el estado instalado**. Un archivo de catálogo sin instalar no habilita comandos. Los módulos se cargan de forma controlada; los runtimes registran sus extensiones sin ejecutar procesos al iniciar.
-4. Enrutamiento: la entrada y los argumentos se entregan al módulo sin concatenar sintaxis incontrolada. Se conservan `cwd`, `stdin`, `stdout`, `stderr` y el código de salida; se respeta la captura de tuberías/redirecciones de Nwash.
-5. Desinstalación: elimina únicamente el directorio propio del paquete y su registro, **no** borra archivos de proyectos ni distribuciones externas del sistema.
-6. Actualización: `instp upgrade` sustituye el paquete cuando hay una versión nueva, sin romper el contrato ABI. Un cambio de ABI requiere adaptador y pruebas nuevas.
-7. Seguridad: los nombres y rutas del manifiesto se validan; la fuente debe ser HTTPS para descargas; usar SHA-256 si el proveedor publica un digest; nunca cargar DLL desde el directorio de trabajo; no enviar contraseñas a argumentos, historiales o registros.
+- `embedded`: bibliotecas cargadas dentro de SST mediante una ABI declarada.
+  Actualmente PowerShell usa `sst-hostfxr/1` con el SDK .NET y ejecuta `.ps1`,
+  cmdlets y tuberías sin abrir `powershell.exe` ni `pwsh.exe`.
+- `runtime`: contrato de intérpretes. No se autoriza entregar un intérprete
+  `.exe` como si fuera un plugin; necesita un adaptador cargable real.
+- `environment`: árboles Unix/entornos SST o provisión explícita mediante
+  proveedor del sistema como WSL2.
+- `data`: archivos sin código ejecutable que preservan sus subdirectorios.
+- `process`/CLI externo: **fuera de la distribución interna por ahora**.
+  Herramientas de terceros se mantienen en el catálogo solo para identificar
+  las integraciones pendientes; no se instalarán sus `.exe`.
 
-## PowerShell
+La instalación debe pasar siempre por staging, verificar el manifiesto y los
+archivos obligatorios del adaptador, y activar atómicamente el nuevo directorio
+y `installed.json`. Un error conserva la instalación anterior. Los paquetes
+persistentes `-p` sobreviven cambios de generación; los temporales siguen
+las reglas de `instp`.
 
-El módulo debe ejecutar **PowerShell real**: cmdlets, objetos, expresiones, tuberías y `.ps1` mediante el SDK `System.Management.Automation`. La ABI `sst-hostfxr/1` transporta una solicitud estructurada y devuelve resultado, error y estado. No se inicia `powershell.exe` ni `pwsh.exe`. No se ofrecen alias falsos como sustitutos del motor.
+La carga es por contrato: `execution.kind`, `execution.target` (`win` o
+`unix`), `execution.entry`, `execution.required_files`, `execution.commands`,
+`execution.extensions` y, cuando corresponde, `execution.abi`.
+No se ejecutan DLL ni scripts porque aparezcan en un directorio: deben estar
+registrados en el estado instalado de SST.
 
-## Arch Linux
+Para generar un paquete sin crear otro ejecutable:
 
-```json
-{
-  "format": 1,
-  "id": "arch",
-  "category": "environment",
-  "portability": "system",
-  "source": { "type": "system" },
-  "install": { "type": "system", "expose": [] },
-  "execution": {
-    "kind": "environment",
-    "entry": "wsl.exe",
-    "commands": ["arch"],
-    "extensions": [],
-    "provider": "wsl",
-    "distribution": "archlinux",
-    "startup": "discover"
-  }
-}
+```text
+python scripts/pack-sstpkg.py --id powershell --version 7.5.13 --target win --kind embedded --source target/plugin-powershell --output dist/SST-PowerShell-win-x64.sstpkg --exclude-dotnet-apphost
 ```
 
-Solo una orden **explícita** `instp install arch` podrá solicitar `wsl --install archlinux`. SST no habilitará WSL ni instalará Arch de forma automática al arrancar. `arch COMANDO [ARGS]` usará `wsl.exe --distribution archlinux --exec ...`. `instp remove arch` separa el registro de SST, **no** hace `wsl --unregister` ni destruye datos de Linux. Arch tiene ciclo de vida persistente por ser externo a SST.
-
-## Versiones
-
-- `schema: 2` = índice de catálogo de paquetes con adaptadores.
-- `format: 1` = contrato de metadatos por paquete.
-- `abi: sst-hostfxr/1` = puente de módulos .NET alojados por SST.
-- Adaptadores/proveedores nuevos necesitan validación explícita y pruebas: no se ejecuta código arbitrario suministrado por un manifiesto remoto sin restricciones.
+**Límite de implementación:** este formato y el despliegue por plataforma son
+genéricos, pero las ABIs de ejecución aún requieren adaptadores compatibles.
+Un contenedor válido no convierte por sí solo un programa Windows externo en
+un módulo SST ni instala binarios de Linux dentro de la distribución WSL.
