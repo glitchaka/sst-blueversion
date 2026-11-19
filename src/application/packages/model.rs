@@ -43,6 +43,8 @@ pub struct PackageExecution {
     #[serde(default)]
     pub entry: String,
     #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
     pub required_files: Vec<String>,
     #[serde(default)]
     pub commands: Vec<String>,
@@ -152,14 +154,20 @@ pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
             anyhow::bail!("instp: paquete duplicado en índice: {}", package.id);
         }
         validate_portability(&package.portability)?;
-        validate_install_kind(&package.install.kind)?;
+        if !matches!(package.install.kind.as_str(), "single" | "zip" | "archive") {
+            validate_install_kind(&package.install.kind)?;
+        }
         if package.format != 1 {
             anyhow::bail!("instp: formato SST-PACKAGE desconocido: {}", package.format);
         }
         let execution = package.execution.as_ref().ok_or_else(|| {
             anyhow::anyhow!("instp: {} no declara adaptador execution", package.id)
         })?;
-        validate_execution(package, execution)?;
+        // Entries for external vendor tools may stay in the catalog for
+        // discovery, but cannot be installed until an SST plugin exists.
+        if package.install.kind == "sstpkg" || package.install.kind == "system" {
+            validate_execution(package, execution)?;
+        }
 
         if let Some(name) = package.install.rename.as_deref() {
             validate_relative_payload_path(name)?;
@@ -174,7 +182,7 @@ pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
 fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -> Result<()> {
     match execution.kind.as_str() {
         "embedded" => {
-            if package.category != "module" || package.install.kind != "zip"
+            if package.category != "module" || package.install.kind != "sstpkg"
                 || execution.abi.as_deref() != Some("sst-hostfxr/1")
                 || execution.startup.as_deref() != Some("load")
             {
@@ -186,6 +194,12 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
             }
         }
         "runtime" | "process" => {
+            if package.install.kind != "sstpkg" {
+                anyhow::bail!("instp: {} no es un plugin SST; ejecutables externos no admitidos", package.id);
+            }
+            if execution.kind == "process" {
+                anyhow::bail!("instp: {} necesita un adaptador interno antes de distribuirse", package.id);
+            }
             if package.install.kind == "system" || package.install.kind == "builtin" {
                 anyhow::bail!("instp: {} requiere un paquete ejecutable instalable", package.id);
             }
@@ -207,6 +221,11 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
             }
         }
         other => anyhow::bail!("instp: {} usa adaptador desconocido: {other}", package.id),
+    }
+    if let Some(target) = execution.target.as_deref() {
+        if !matches!(target, "win" | "unix") {
+            anyhow::bail!("instp: {} tiene plataforma no soportada: {target}", package.id);
+        }
     }
     for file in &execution.required_files {
         validate_relative_payload_path(file)?;
@@ -265,7 +284,7 @@ fn validate_portability(value: &str) -> Result<()> {
 }
 
 fn validate_install_kind(value: &str) -> Result<()> {
-    if !matches!(value, "single" | "zip" | "archive" | "system") {
+    if !matches!(value, "sstpkg" | "system") {
         anyhow::bail!("instp: tipo de instalación desconocido: {value}");
     }
     Ok(())
