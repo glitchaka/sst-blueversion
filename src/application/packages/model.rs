@@ -189,8 +189,8 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
                 anyhow::bail!("instp: módulo {} tiene ABI, categoría o arranque inválido", package.id);
             }
             validate_relative_payload_path(&execution.entry)?;
-            if execution.extensions.is_empty() {
-                anyhow::bail!("instp: módulo {} no declara extensiones", package.id);
+            if execution.extensions.is_empty() && execution.commands.is_empty() {
+                anyhow::bail!("instp: módulo {} no declara comandos ni extensiones", package.id);
             }
         }
         "runtime" | "process" => {
@@ -215,12 +215,20 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
                 anyhow::bail!("instp: entorno {} sin proveedor WSL reconocido", package.id);
             }
         }
+        "data" => {
+            if package.install.kind != "sstpkg" {
+                anyhow::bail!("instp: los datos de {} requieren un .sstpkg", package.id);
+            }
+        }
         "system" => {
             if package.install.kind != "system" {
                 anyhow::bail!("instp: {} no es un paquete de sistema", package.id);
             }
         }
         other => anyhow::bail!("instp: {} usa adaptador desconocido: {other}", package.id),
+    }
+    if package.install.kind == "sstpkg" && execution.target.is_none() {
+        anyhow::bail!("instp: {} no declara su plataforma win/unix", package.id);
     }
     if let Some(target) = execution.target.as_deref() {
         if !matches!(target, "win" | "unix") {
@@ -229,6 +237,12 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
     }
     for file in &execution.required_files {
         validate_relative_payload_path(file)?;
+        if package.install.kind == "sstpkg" && forbidden_executable(file) {
+            anyhow::bail!("instp: {} no puede instalar ejecutables externos", package.id);
+        }
+    }
+    if package.install.kind == "sstpkg" && forbidden_executable(&execution.entry) {
+        anyhow::bail!("instp: {} no puede incluir un .exe como entrada", package.id);
     }
     for command in &execution.commands {
         validate_identifier(command)?;
@@ -274,6 +288,11 @@ pub(super) fn validate_https(url: &str) -> Result<()> {
         anyhow::bail!("instp: solo se permiten fuentes HTTPS en repositorios remotos");
     }
     Ok(())
+}
+
+fn forbidden_executable(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    [".exe", ".com", ".bat", ".cmd"].iter().any(|ext| lower.ends_with(ext))
 }
 
 fn validate_portability(value: &str) -> Result<()> {
