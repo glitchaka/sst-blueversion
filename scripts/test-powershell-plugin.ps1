@@ -8,14 +8,18 @@ $plugin = Join-Path $root 'packages\modules\powershell'
 New-Item -ItemType Directory -Force -Path $plugin | Out-Null
 Copy-Item -LiteralPath (Resolve-Path $SstPath).Path -Destination (Join-Path $root 'sst.exe')
 $sourceDirectory = (Resolve-Path -LiteralPath $PluginDirectory).Path
-$sourceFiles = @(Get-ChildItem -LiteralPath $sourceDirectory -Force)
+$sourceFiles = @(Get-ChildItem -LiteralPath $sourceDirectory -File)
 if ($sourceFiles.Count -eq 0) {
-    throw "La compilación del módulo PowerShell produjo un directorio vacío: $sourceDirectory"
+    throw "La compilación del módulo PowerShell no produjo archivos en $sourceDirectory"
 }
 foreach ($sourceFile in $sourceFiles) {
-    Copy-Item -LiteralPath $sourceFile.FullName -Destination (Join-Path $plugin $sourceFile.Name) -Recurse -Force
+    $targetFile = Join-Path $plugin $sourceFile.Name
+    [System.IO.File]::Copy($sourceFile.FullName, $targetFile, $true)
+    if (-not [System.IO.File]::Exists($targetFile)) {
+        throw "Falló la copia de $($sourceFile.FullName) a $targetFile"
+    }
 }
-Write-Host "PowerShell plugin: copiados $($sourceFiles.Count) elementos"
+Write-Host "PowerShell plugin: copiados $($sourceFiles.Count) archivos a $plugin"
 foreach ($required in @('Sst.PowerShell.Bridge.dll','hostfxr.dll','Sst.PowerShell.Bridge.runtimeconfig.json')) {
     if (-not (Test-Path -LiteralPath (Join-Path $plugin $required) -PathType Leaf)) {
         $files = (Get-ChildItem -LiteralPath $plugin -Recurse -File |
@@ -33,6 +37,7 @@ $state = @{
             kind='embedded'; entry='Sst.PowerShell.Bridge.dll'
             commands=@('psmodule','powershell','psh'); extensions=@('.ps1')
             abi='sst-hostfxr/1'; startup='load'
+            required_files=@('Sst.PowerShell.Bridge.runtimeconfig.json','hostfxr.dll')
         }
     })
 }
