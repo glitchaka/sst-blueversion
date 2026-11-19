@@ -1,13 +1,8 @@
-use std::{
-    fs::{self, File},
-    io::Write,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{fs, path::{Path, PathBuf}};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::{model::PackageManifest, transport::configure_hidden};
+use super::model::PackageManifest;
 
 pub(super) fn install_payload(
     package: &PackageManifest,
@@ -15,18 +10,10 @@ pub(super) fn install_payload(
     destination: &Path,
 ) -> Result<()> {
     match package.install.kind.as_str() {
-        "single" => {
-            let name = package
-                .install
-                .rename
-                .as_deref()
-                .or_else(|| source.file_name().and_then(|value| value.to_str()))
-                .unwrap_or(&package.id);
-            fs::copy(source, destination.join(name))?;
-            Ok(())
-        }
-        "zip" => extract_zip(source, destination),
-        "archive" => extract_archive(source, destination),
+        "single" => anyhow::bail!("{}: no se instalan ejecutables independientes", package.id),
+        "sstpkg" => super::sstpkg::install_sstpkg(package, source, destination),
+        "zip" => anyhow::bail!("{}: ZIP de proveedor no es un paquete SST", package.id),
+        "archive" => anyhow::bail!("{}: archivo externo no es un paquete SST", package.id),
         "system" => anyhow::bail!("{} requiere instalación de sistema", package.id),
         other => anyhow::bail!("{}: install.type no soportado: {other}", package.id),
     }
@@ -67,44 +54,6 @@ pub(super) fn command_name_from_exposed(exposed: &str) -> String {
         .and_then(|value| value.to_str())
         .unwrap_or(exposed)
         .to_owned()
-}
-
-fn extract_zip(source: &Path, destination: &Path) -> Result<()> {
-    let file = File::open(source)?;
-    let mut archive = zip::ZipArchive::new(file)?;
-    for index in 0..archive.len() {
-        let mut entry = archive.by_index(index)?;
-        let Some(relative) = entry.enclosed_name() else {
-            continue;
-        };
-        let output = destination.join(relative);
-        if entry.is_dir() {
-            fs::create_dir_all(&output)?;
-            continue;
-        }
-        if let Some(parent) = output.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let mut file = File::create(&output)?;
-        std::io::copy(&mut entry, &mut file)?;
-        file.flush()?;
-    }
-    Ok(())
-}
-
-fn extract_archive(source: &Path, destination: &Path) -> Result<()> {
-    let mut command = Command::new(tar_program()?);
-    command.arg("-xf").arg(source).arg("-C").arg(destination);
-    configure_hidden(&mut command);
-    let output = command.output().context("instp: no se pudo ejecutar tar")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "instp: no se pudo extraer {}: {}",
-            source.display(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
-    }
-    Ok(())
 }
 
 pub(super) fn tar_program() -> Result<PathBuf> {
