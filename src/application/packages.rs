@@ -1,4 +1,5 @@
 mod installer;
+mod sstpkg;
 mod execution;
 mod lifecycle;
 mod model;
@@ -64,21 +65,10 @@ impl PackageService {
         self.reconcile_for_functional_release()?;
         let state = self.store.load_installed_state()?;
         let mut entries = vec![self.store.bin_dir()];
-        for package in &state.packages {
-            for entry in &package.path_entries {
-                entries.push(self.store.resolve_root_relative(entry));
-            }
-        }
+        // Do not expose installed third-party executables in SST's PATH.
+        // Embedded modules are dispatched by their registered ABI instead.
 
-        let ruby_home = self.store.ecosystems_dir().join("ruby");
-        let ruby_installed = state
-            .packages
-            .iter()
-            .any(|package| package.id.eq_ignore_ascii_case("ruby"));
-        if ruby_installed {
-            fs::create_dir_all(ruby_home.join("bin"))?;
-            entries.push(ruby_home.join("bin"));
-        }
+        let _ = state;
 
         let inherited = env::var_os("PATH").unwrap_or_default();
         entries.extend(env::split_paths(&inherited));
@@ -92,10 +82,7 @@ impl PackageService {
         unsafe {
             env::set_var("PATH", joined);
             env::set_var("SST_PACKAGES", self.store.packages_dir());
-            if ruby_installed {
-                env::set_var("GEM_HOME", &ruby_home);
-                env::set_var("GEM_PATH", &ruby_home);
-            }
+
         }
         Ok(())
     }
@@ -218,8 +205,13 @@ impl PackageService {
             .info(id)?
             .ok_or_else(|| anyhow::anyhow!("instp: paquete no encontrado: {id}"))?;
 
-        if package.install.kind == "builtin" {
-            anyhow::bail!("instp: {} usa un paquete integrado obsoleto; actualiza el catálogo", id);
+        if package.install.kind != "sstpkg"
+            && !package.execution.as_ref().is_some_and(|e| e.kind == "environment")
+        {
+            anyhow::bail!(
+                "instp: {} se distribuye como ejecutable externo o archivo de proveedor; sólo se admiten módulos .sstpkg sin nuevos .exe",
+                id
+            );
         }
         if package.execution.as_ref().is_some_and(|e| e.kind == "environment") {
             return self.install_wsl_environment(&package, persistent);
@@ -237,11 +229,14 @@ impl PackageService {
 
         let resolved = resolve_source(&package)?;
         let archive = self.obtain_source(&package, &resolved)?;
-        let install_dir = match package.execution.as_ref().map(|e| e.kind.as_str()) {
-            Some("embedded") => self.store.modules_dir().join(&package.id),
-            Some("runtime") => self.store.runtimes_dir().join(&package.id),
-            _ => self.store.tools_dir().join(&package.id),
-        };
+        let execution = package.execution.as_ref()
+            .context("instp: falta adaptador de ejecución")?;
+        let target = execution.target.as_deref().unwrap_or("win");
+        anyhow::ensure!(matches!(target, "win" | "unix"),
+            "instp: plataforma de paquete desconocida");
+        let folder = sstpkg::kind_folder(&execution.kind)?;
+        let install_dir = self.store.packages_dir()
+            .join(target).join(folder).join(&package.id);
 
         let staging = install_dir.with_extension("instp-new");
         if staging.exists() {
@@ -319,11 +314,8 @@ impl PackageService {
                 None => missing.push(exposed.clone()),
             }
         }
-        if path_entries.is_empty() && package.execution.as_ref()
-            .is_some_and(|e| e.kind != "embedded")
-        {
-            path_entries.push(self.store.root_relative(&install_dir));
-        }
+        // SST plugins are loaded internally, never exported to the OS PATH.
+        // Runtime and CLI programs from upstream are not installed as EXEs.
         path_entries.sort();
         path_entries.dedup();
 
@@ -408,7 +400,7 @@ impl PackageService {
                     anyhow::bail!("instp arch: Windows todavía no registró Arch; termina la instalación de WSL y repite instp install arch");
                 }
             }
-            let directory = self.store.environments_dir().join("arch");
+            let directory = self.store.environments_dir().join(&package.id);
             fs::create_dir_all(&directory)?;
             let mut state = self.store.load_installed_state()?;
             // A WSL distribution is external and survives SST updates.
