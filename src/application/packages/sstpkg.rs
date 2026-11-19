@@ -191,7 +191,79 @@ pub(super) fn install_sstpkg(
 
 #[cfg(test)]
 mod tests {
-    use super::valid_payload_path;
+    use super::{install_sstpkg, valid_payload_path};
+    use std::{fs::{self, File}, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+    use flate2::{write::GzEncoder, Compression};
+    use sha2::{Digest, Sha256};
+
+    fn fixture(bad_digest: bool) -> (PathBuf, PathBuf, super::PackageManifest) {
+        let tick = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("sstpkg-{}-{tick}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let archive_path = root.join("demo.sstpkg");
+        let files: [(&str, &[u8]); 2] = [
+            ("payload/win/modules/demo/sub/bridge.dll", b"win bridge"),
+            ("payload/unix/modules/demo/sub/bridge.so", b"unix bridge"),
+        ];
+        let manifest = serde_json::json!({
+            "format": 1, "id": "demo", "version": "1.0", "kind": "embedded",
+            "files": files.iter().map(|(path, bytes)| serde_json::json!({
+                "path": path,
+                "sha256": if bad_digest { "0".repeat(64) } else { format!("{:x}", Sha256::digest(bytes)) },
+            })).collect::<Vec<_>>(),
+        });
+        let compressed = GzEncoder::new(File::create(&archive_path).unwrap(), Compression::default());
+        let mut tar = tar::Builder::new(compressed);
+        let mut add = |name: &str, payload: &[u8]| {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(payload.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            tar.append_data(&mut header, name, payload).unwrap();
+        };
+        let manifest_bytes = serde_json::to_vec(&manifest).unwrap();
+        add("manifest.json", &manifest_bytes);
+        for (name, bytes) in files { add(name, bytes); }
+        drop(add);
+        tar.into_inner().unwrap().finish().unwrap();
+        let package: super::PackageManifest = serde_json::from_value(serde_json::json!({
+            "format": 1, "id": "demo", "name": "Demo", "version": "1.0",
+            "description": "Prueba", "category": "module", "portability": "isolated",
+            "source": {"type": "url", "url": "https://example.org/demo.sstpkg"},
+            "install": {"type": "sstpkg", "expose": []},
+            "execution": {"kind": "embedded", "target": "win", "entry": "sub/bridge.dll",
+                "commands": ["demo"], "extensions": [".demo"],
+                "abi": "sst-hostfxr/1", "startup": "load"}
+        })).unwrap();
+        (root, archive_path, package)
+    }
+
+    #[test]
+    fn extracts_only_requested_platform_preserving_subfolders() {
+        let (root, archive, mut package) = fixture(false);
+        let windows = root.join("win");
+        fs::create_dir_all(&windows).unwrap();
+        install_sstpkg(&package, &archive, &windows).unwrap();
+        assert_eq!(fs::read(windows.join("sub/bridge.dll")).unwrap(), b"win bridge");
+        assert!(!windows.join("sub/bridge.so").exists());
+
+        package.execution.as_mut().unwrap().target = Some("unix".to_owned());
+        let unix = root.join("unix");
+        fs::create_dir_all(&unix).unwrap();
+        install_sstpkg(&package, &archive, &unix).unwrap();
+        assert_eq!(fs::read(unix.join("sub/bridge.so")).unwrap(), b"unix bridge");
+        assert!(!unix.join("sub/bridge.dll").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_payload_with_wrong_sha256() {
+        let (root, archive, package) = fixture(true);
+        let staging = root.join("staging");
+        fs::create_dir_all(&staging).unwrap();
+        assert!(install_sstpkg(&package, &archive, &staging).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn rejects_programs_and_path_traversal() {
