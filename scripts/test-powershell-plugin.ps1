@@ -8,7 +8,7 @@ $plugin = Join-Path $root 'packages\modules\powershell'
 New-Item -ItemType Directory -Force -Path $plugin | Out-Null
 Copy-Item -LiteralPath (Resolve-Path $SstPath).Path -Destination (Join-Path $root 'sst.exe')
 $sourceDirectory = (Resolve-Path -LiteralPath $PluginDirectory).Path
-$sourceFiles = @(Get-ChildItem -LiteralPath $sourceDirectory -File)
+$sourceFiles = @(Get-ChildItem -LiteralPath $sourceDirectory -File -Force)
 if ($sourceFiles.Count -eq 0) {
     throw "La compilación del módulo PowerShell no produjo archivos en $sourceDirectory"
 }
