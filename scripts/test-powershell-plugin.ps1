@@ -4,7 +4,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 $root = Join-Path $env:RUNNER_TEMP ('sst-powershell-plugin-' + [guid]::NewGuid().ToString('N'))
-$plugin = Join-Path $root 'packages\modules\powershell'
+$plugin = Join-Path $root 'packages\win\modules\powershell'
 New-Item -ItemType Directory -Force -Path $plugin | Out-Null
 Copy-Item -LiteralPath (Resolve-Path $SstPath).Path -Destination (Join-Path $root 'sst.exe')
 $sourceDirectory = (Resolve-Path -LiteralPath $PluginDirectory).Path
@@ -13,6 +13,7 @@ if ($sourceFiles.Count -eq 0) {
     throw "La compilación del módulo PowerShell no produjo archivos en $sourceDirectory"
 }
 foreach ($sourceFile in $sourceFiles) {
+    if ($sourceFile.Extension -ieq '.exe') { continue }
     $targetFile = Join-Path $plugin $sourceFile.Name
     [System.IO.File]::Copy($sourceFile.FullName, $targetFile, $true)
     if (-not [System.IO.File]::Exists($targetFile)) {
@@ -31,10 +32,10 @@ $state = @{
     packages = @(@{
         id='powershell'; name='PowerShell SDK'; version='self-test'
         category='module'; portability='isolated'
-        install_dir='packages\modules\powershell'; commands=@(); path_entries=@()
+        install_dir='packages\win\modules\powershell'; commands=@(); path_entries=@()
         persistent=$true; functional_generation='test'
         execution=@{
-            kind='embedded'; entry='Sst.PowerShell.Bridge.dll'
+            kind='embedded'; entry='Sst.PowerShell.Bridge.dll'; target='win'
             commands=@('psmodule','powershell','psh'); extensions=@('.ps1')
             abi='sst-hostfxr/1'; startup='load'
             required_files=@('Sst.PowerShell.Bridge.runtimeconfig.json','hostfxr.dll')
