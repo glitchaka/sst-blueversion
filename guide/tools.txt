@@ -25,7 +25,7 @@ Familias implementadas actualmente:
 Office / Microsoft 365:
   tools office diagnose
   tools office status          alias de diagnose
-  tools office verify          alias de diagnose
+  tools office verify          comprobación operativa con estados y acciones
   tools office auth repair
 
 SaRA legacy — aliases equivalentes:
@@ -71,8 +71,9 @@ Diseño de nuevas familias:
   La verificación posterior de residuos sí puede ser responsabilidad de SST.
 
 Office — detalle:
-  diagnose/verify revisa instalación, residuos, versión/build de Office,
-  Outlook, WebView2, WAM/AAD Broker, TokenBroker, estado Entra/PRT y cachés.
+  diagnose describe instalación, residuos, versiones y cadena de autenticación;
+  verify evalúa la salud operativa, comprobando Outlook (new) y si su ventana
+  responde realmente. No ejecuta reparaciones.
 
   auth repair vuelve a registrar Microsoft.AAD.BrokerPlugin para el usuario
   actual y rechaza la operación si detecta Office abierto.
