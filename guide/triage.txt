@@ -8,6 +8,9 @@ Formas públicas
 
   triage
   triage PID
+  triage outlook
+  triage --find NOMBRE
+  triage --history
   triage --deep
   triage PID --deep
   triage --memory
@@ -85,3 +88,4 @@ Triage no sustituye antivirus, EDR, sandbox, memoria forense ni una investigaci�
 Validación
 
 Ante una señal concreta, usa los comandos relacionados (`sys inspect`, `sys why`, `sys diff`, conexiones, startup, servicios) para confirmar el contexto antes de tomar acciones destructivas.
+`triage outlook` y `triage --find outlook` localizan procesos actuales de Outlook (new) y sus hijos WebView2. La auditoría general no imprime los linajes aprendidos salvo al pedir `triage --history`; esto evita desplazar los hallazgos actuales con historia.
