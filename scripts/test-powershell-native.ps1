@@ -9,9 +9,10 @@ $root = Join-Path $env:RUNNER_TEMP ('sst-powerShell-real-' + [Guid]::NewGuid().T
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 $exe = Join-Path $root 'sst.exe'
 Copy-Item -LiteralPath $source -Destination $exe
-$installedDir = Join-Path $root 'packages/modules/powershell'
+$installedDir = Join-Path $root 'packages/win/modules/powershell'
 New-Item -ItemType Directory -Force -Path $installedDir | Out-Null
-Copy-Item -Path (Join-Path $plugin '*') -Destination $installedDir -Recurse -Force
+Get-ChildItem -LiteralPath $plugin -File -Force | Where-Object { $_.Extension -ine '.exe' } |
+    ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $installedDir $_.Name) -Force }
 $journal = @{
     packages = @(@{
         id = 'powershell'
@@ -19,7 +20,7 @@ $journal = @{
         version = '7.5.13'
         category = 'module'
         portability = 'isolated'
-        install_dir = 'packages\modules\powershell'
+        install_dir = 'packages\win\modules\powershell'
         commands = @()
         path_entries = @()
         persistent = $true
@@ -27,6 +28,7 @@ $journal = @{
         execution = @{
             kind = 'embedded'
             entry = 'Sst.PowerShell.Bridge.dll'
+            target = 'win'
             commands = @('psmodule','ps','powershell')
             extensions = @('.ps1')
             abi = 'sst-hostfxr/1'
