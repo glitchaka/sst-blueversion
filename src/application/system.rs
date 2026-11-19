@@ -55,7 +55,7 @@ impl SystemService {
         match sub {
             "info" => info(),
             "processes" | "ps" => processes(&args[1..]),
-            "top" => self.top(),
+            "top" => self.top(&args[1..]),
             "disks" | "df" => disks(),
             "memory" | "free" => memory(),
             "sensors" | "temperature" | "temperatures" | "thermal" => Ok(crate::application::thermal::report()),
@@ -98,7 +98,7 @@ impl SystemService {
     pub fn execute_alias(&self, name: &str, args: &[String]) -> anyhow::Result<CommandOutput> {
         match name {
             "ps" => processes(args),
-            "top" => self.top(),
+            "top" => self.top(args),
             "df" => disks(),
             "free" => memory(),
             "hostname" => hostname(),
@@ -114,74 +114,98 @@ impl SystemService {
         }
     }
 
-    fn top(&self) -> anyhow::Result<CommandOutput> {
+    fn top(&self, args: &[String]) -> anyhow::Result<CommandOutput> {
+        if args.iter().any(|arg| matches!(arg.as_str(), "--help" | "-h")) {
+            return Ok(CommandOutput::ok(
+                "sys top [NOMBRE | --find NOMBRE]\n\
+                 c: ordenar por CPU | m: RAM | t: árbol | flechas/PgUp/PgDown: mover | q/Esc: salir\n\
+                 Ejemplo: sys top outlook\n",
+            ));
+        }
+        let filter = match args {
+            [] => None,
+            [name] if !name.starts_with('-') && !name.trim().is_empty() => Some(name.as_str()),
+            [flag, name] if flag == "--find" && !name.starts_with('-') && !name.trim().is_empty() => Some(name.as_str()),
+            _ => return Ok(CommandOutput::error("sys top: uso: sys top [NOMBRE | --find NOMBRE]", 2)),
+        };
         let mut terminal = self.terminal.alternate_screen()?;
         let mut sort_cpu = true;
-        // Keep the same process sampler across frames. Reconstructing System on
-        // every refresh produces misleading CPU% values near zero.
-        let mut system = System::new_all();
-        system.refresh_all();
+        let mut tree = false;
+        let mut offset = 0usize;
+        // Two samples initialize meaningful CPU utilization, and then the same
+        // sampler is refreshed after each 900-ms frame.
+        let mut system = sampled_processes();
 
         loop {
-            system.refresh_all();
-            let rows = process_tree_rows(&system, sort_cpu);
+            let mut rows = if tree {
+                process_tree_rows(&system, sort_cpu)
+            } else {
+                let mut pids = system.processes().keys().copied().collect::<Vec<_>>();
+                sort_process_pids(&system, &mut pids, sort_cpu);
+                pids.into_iter().map(|pid| (pid, String::new())).collect::<Vec<_>>()
+            };
+            if let Some(query) = filter {
+                rows.retain(|(pid, _)| process_matches_filter(&system, *pid, query));
+            }
             let (columns, height) = terminal.size()?;
             // Leave a column free to prevent the terminal's automatic wrap.
             let width = usize::from(columns.saturating_sub(1)).max(1);
             let max_rows = usize::from(height.saturating_sub(7));
+            offset = offset.min(rows.len().saturating_sub(max_rows.max(1)));
             let mut screen = String::new();
 
             top_screen_line(
                 &mut screen,
                 "  SST  /  MONITOR DE PROCESOS",
                 width,
-                "\x1b[1;38;2;142;205;255m",
-                "\x1b[48;2;17;34;57m",
+                "\x1b[1;38;2;235;219;178m",
+                "\x1b[48;2;60;56;54m",
             );
             let used = system.used_memory() / 1024 / 1024;
             let total = system.total_memory() / 1024 / 1024;
             top_screen_line(
                 &mut screen,
                 &format!(
-                    "  EN EJECUCIÓN: {}   ·   CPU: {} núcleos   ·   RAM: {} / {} MiB   ·   Uptime: {}m",
+                    "  Procesos: {}   ·   CPU global: {:.1}%   ·   RAM: {} / {} MiB   ·   Uptime: {}m",
                     system.processes().len(),
-                    system.cpus().len(),
+                    system.global_cpu_usage(),
                     used,
                     total,
                     System::uptime() / 60
                 ),
                 width,
-                "\x1b[38;2;219;232;247m",
-                "\x1b[48;2;13;24;40m",
+                "\x1b[38;2;235;219;178m",
+                "\x1b[48;2;40;40;40m",
             );
             top_screen_line(
                 &mut screen,
                 &format!(
-                    "  Orden: {}   ·   [c] CPU  [m] Memoria  [q/Esc] Volver",
-                    if sort_cpu { "CPU (activo)" } else { "MEMORIA (activo)" }
+                    "  {}  ·  Orden: {}  ·  [c] CPU [m] RAM [t] Árbol [↑↓] mover [q] salir",
+                    filter.map(|v| format!("Filtro: {v}")).unwrap_or_else(|| "Todos los procesos".to_owned()),
+                    if sort_cpu { "CPU" } else { "RAM" }
                 ),
                 width,
-                "\x1b[38;2;173;191;214m",
-                "\x1b[48;2;13;24;40m",
+                "\x1b[38;2;189;174;147m",
+                "\x1b[48;2;40;40;40m",
             );
             top_screen_line(
                 &mut screen,
                 "",
                 width,
-                "\x1b[38;2;213;226;242m",
-                "\x1b[48;2;10;17;29m",
+                "\x1b[38;2;235;219;178m",
+                "\x1b[48;2;29;32;33m",
             );
             top_screen_line(
                 &mut screen,
                 "  PID      PPID     CPU %     RAM MiB   PROCESO / JERARQUÍA",
                 width,
-                "\x1b[1;38;2;143;203;255m",
-                "\x1b[48;2;24;44;68m",
+                "\x1b[1;38;2;250;189;47m",
+                "\x1b[48;2;60;56;54m",
             );
 
             let mut shown = 0usize;
-            for (pid, tree_prefix) in rows.into_iter().take(max_rows) {
-                let Some(process) = system.process(pid) else { continue; };
+            for (pid, tree_prefix) in rows.iter().skip(offset).take(max_rows) {
+                let Some(process) = system.process(*pid) else { continue; };
                 let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
                 let mut name = format!("{tree_prefix}{}", process.name().to_string_lossy());
                 let name_width = width.saturating_sub(43);
@@ -197,16 +221,16 @@ impl SystemService {
                     pid, ppid, cpu, memory, name
                 );
                 let foreground = if cpu >= 50.0 {
-                    "\x1b[1;38;2;255;183;119m"
+                    "\x1b[1;38;2;251;73;52m"
                 } else if memory >= 1024.0 {
-                    "\x1b[38;2;149;222;186m"
+                    "\x1b[38;2;184;187;38m"
                 } else {
-                    "\x1b[38;2;222;232;245m"
+                    "\x1b[38;2;235;219;178m"
                 };
                 let background = if shown % 2 == 0 {
-                    "\x1b[48;2;10;17;29m"
+                    "\x1b[48;2;29;32;33m"
                 } else {
-                    "\x1b[48;2;16;25;41m"
+                    "\x1b[48;2;40;40;40m"
                 };
                 top_screen_line(&mut screen, &content, width, foreground, background);
                 shown += 1;
@@ -216,21 +240,21 @@ impl SystemService {
             for _ in shown..max_rows {
                 top_screen_line(
                     &mut screen, "", width,
-                    "\x1b[38;2;222;232;245m",
-                    "\x1b[48;2;10;17;29m",
+                    "\x1b[38;2;235;219;178m",
+                    "\x1b[48;2;29;32;33m",
                 );
             }
             top_screen_line(
                 &mut screen, "", width,
-                "\x1b[38;2;222;232;245m",
-                "\x1b[48;2;10;17;29m",
+                "\x1b[38;2;235;219;178m",
+                "\x1b[48;2;29;32;33m",
             );
             top_screen_line(
                 &mut screen,
                 "  SST top   ·   Actualización automática de métricas   ·   q para cerrar",
                 width,
-                "\x1b[38;2;162;186;210m",
-                "\x1b[48;2;17;34;57m",
+                "\x1b[38;2;189;174;147m",
+                "\x1b[48;2;60;56;54m",
             );
 
             terminal.clear()?;
@@ -239,10 +263,18 @@ impl SystemService {
 
             match terminal.poll_key(Duration::from_millis(900))? {
                 Some(TerminalKey::Char('q') | TerminalKey::Escape) => break,
-                Some(TerminalKey::Char('c')) => sort_cpu = true,
-                Some(TerminalKey::Char('m')) => sort_cpu = false,
+                Some(TerminalKey::Char('c')) => { sort_cpu = true; offset = 0; }
+                Some(TerminalKey::Char('m')) => { sort_cpu = false; offset = 0; }
+                Some(TerminalKey::Char('t')) => { tree = !tree; offset = 0; }
+                Some(TerminalKey::Up) => offset = offset.saturating_sub(1),
+                Some(TerminalKey::Down) => offset = (offset + 1).min(rows.len().saturating_sub(max_rows.max(1))),
+                Some(TerminalKey::PageUp) => offset = offset.saturating_sub(max_rows.max(1)),
+                Some(TerminalKey::PageDown) => offset = offset.saturating_add(max_rows.max(1)).min(rows.len().saturating_sub(max_rows.max(1))),
+                Some(TerminalKey::Home) => offset = 0,
+                Some(TerminalKey::End) => offset = rows.len().saturating_sub(max_rows.max(1)),
                 _ => {}
             }
+            system.refresh_all();
         }
 
         Ok(CommandOutput::ok(""))
@@ -272,8 +304,8 @@ fn system_help() -> CommandOutput {
          uso: sys SUBCOMANDO [opciones]\n\n\
          Información:\n\
            sys info                     resumen del equipo\n\
-           sys processes                procesos por CPU/RAM\n\
-           sys top                      monitor TUI de procesos\n\
+           sys processes [NOMBRE]       buscar o listar procesos por CPU/RAM\n\
+           sys top [NOMBRE]             monitor TUI filtrable por CPU/RAM\n\
            sys disks                    discos y uso\n\
            sys memory                   memoria y swap\n\
            sys sensors                  temperaturas de hardware disponibles\n\
@@ -1161,27 +1193,89 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     Ok(CommandOutput::ok(out))
 }
 
+/// Sample twice before reporting CPU, otherwise the first percentages are zero.
+fn sampled_processes() -> System {
+    let mut system = System::new_all();
+    system.refresh_all();
+    std::thread::sleep(Duration::from_millis(350));
+    system.refresh_all();
+    system
+}
+
+fn process_name_matches(name: &str, query: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    let query = query.trim().to_ascii_lowercase();
+    !query.is_empty()
+        && (name.contains(&query)
+            || (matches!(query.as_str(), "outlook" | "outlook new" | "outlook (new)")
+                && matches!(name.as_str(), "olk.exe" | "outlook.exe")))
+}
+
+/// Match a process or any of its ancestors. Outlook's WebView2 children can
+/// therefore be found without grouping unrelated Teams/Copilot WebView2s.
+pub(crate) fn process_matches_filter(system: &System, pid: Pid, query: &str) -> bool {
+    if query.trim().is_empty() { return false; }
+    let mut candidate = Some(pid);
+    let mut seen = HashSet::new();
+    while let Some(id) = candidate {
+        if !seen.insert(id) { break; }
+        let Some(process) = system.process(id) else { break; };
+        if process_name_matches(&process.name().to_string_lossy(), query)
+            || process.exe().is_some_and(|path|
+                path.to_string_lossy().to_ascii_lowercase().contains(&query.to_ascii_lowercase()))
+        {
+            return true;
+        }
+        candidate = process.parent();
+    }
+    false
+}
+
+fn sort_process_pids(system: &System, rows: &mut [Pid], sort_cpu: bool) {
+    rows.sort_by(|a, b| {
+        let (Some(pa), Some(pb)) = (system.process(*a), system.process(*b)) else {
+            return a.as_u32().cmp(&b.as_u32());
+        };
+        let order = if sort_cpu {
+            pb.cpu_usage().total_cmp(&pa.cpu_usage()).then_with(|| pb.memory().cmp(&pa.memory()))
+        } else {
+            pb.memory().cmp(&pa.memory()).then_with(|| pb.cpu_usage().total_cmp(&pa.cpu_usage()))
+        };
+        order.then_with(|| a.as_u32().cmp(&b.as_u32()))
+    });
+}
+
 fn processes(args: &[String]) -> anyhow::Result<CommandOutput> {
     if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(CommandOutput::ok(
-            "sys processes [--sort cpu|ram] [--top N] [--csv]: árbol interactivo o tabla CSV estructurada.\n",
+            "sys processes [NOMBRE | --find NOMBRE] [--sort cpu|ram] [--top N] [--tree] [--csv]\n\
+             Ejemplo: sys processes outlook | sys ps --find olk | sys ps --sort ram\n",
         ));
     }
-    let mut limit = 160usize;
-    let mut sort = "cpu";
-    let mut flat = false;
+    let mut limit = 50usize;
+    let mut sort_cpu = true;
+    let mut tree = false;
     let mut csv = false;
+    let mut filter: Option<&str> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--csv" => { csv = true; flat = true; }
+            "--csv" => csv = true,
+            "--tree" => tree = true,
+            "--find" => {
+                i += 1;
+                let query = args.get(i).map(String::as_str)
+                    .filter(|value| !value.starts_with('-') && !value.trim().is_empty())
+                    .ok_or_else(|| anyhow::anyhow!("sys processes: --find requiere un nombre"))?;
+                anyhow::ensure!(filter.is_none(), "sys processes: filtro duplicado");
+                filter = Some(query);
+            }
             "--sort" => {
                 i += 1;
-                sort = args.get(i).map(String::as_str)
+                let sort = args.get(i).map(String::as_str)
                     .ok_or_else(|| anyhow::anyhow!("sys processes: --sort requiere cpu o ram"))?;
-                anyhow::ensure!(matches!(sort, "cpu" | "ram"),
-                    "sys processes: orden inválido: {sort}");
-                flat = true;
+                anyhow::ensure!(matches!(sort, "cpu" | "ram"), "sys processes: orden inválido: {sort}");
+                sort_cpu = sort == "cpu";
             }
             "--top" => {
                 i += 1;
@@ -1191,60 +1285,53 @@ fn processes(args: &[String]) -> anyhow::Result<CommandOutput> {
                     .map_err(|_| anyhow::anyhow!("sys processes: --top inválido: {count}"))?;
                 anyhow::ensure!((1..=1000).contains(&limit),
                     "sys processes: --top debe estar entre 1 y 1000");
-                flat = true;
+            }
+            name if !name.starts_with('-') => {
+                anyhow::ensure!(filter.is_none(), "sys processes: filtro duplicado");
+                filter = Some(name);
             }
             other => anyhow::bail!("sys processes: opción desconocida: {other}"),
         }
         i += 1;
     }
-
-    let mut system = System::new_all();
-    system.refresh_all();
+    let system = sampled_processes();
+    let mut rows = if tree {
+        process_tree_rows(&system, sort_cpu)
+    } else {
+        let mut pids = system.processes().keys().copied().collect::<Vec<_>>();
+        sort_process_pids(&system, &mut pids, sort_cpu);
+        pids.into_iter().map(|pid| (pid, String::new())).collect::<Vec<_>>()
+    };
+    if let Some(query) = filter {
+        rows.retain(|(pid, _)| process_matches_filter(&system, *pid, query));
+    }
+    let total = rows.len();
     let mut out = if csv {
         String::from("PID,PPID,CPU_pct,RAM_MiB,Nombre\n")
     } else {
-        String::from("PID      PPID     CPU%     RAM MiB   PROCESS\n")
+        format!("PROCESOS ACTUALES: {}{}\nPID      PPID     CPU%     RAM MiB   PROCESO\n",
+            total, filter.map(|q| format!(" · filtro: {q}")).unwrap_or_default())
     };
-    if flat {
-        let mut rows: Vec<_> = system.processes().iter().collect();
-        rows.sort_by(|(pa, a), (pb, b)| {
-            let order = if sort == "ram" {
-                b.memory().cmp(&a.memory())
-            } else {
-                b.cpu_usage().total_cmp(&a.cpu_usage())
-            };
-            order.then_with(|| pa.as_u32().cmp(&pb.as_u32()))
-        });
-        for (pid, process) in rows.into_iter().take(limit) {
-            let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
-            if csv {
-                writeln!(
-                    out, "{},{},{:.2},{:.2},{}",
-                    pid.as_u32(), ppid,
-                    process.cpu_usage(),
-                    process.memory() as f64 / 1024.0 / 1024.0,
-                    crate::support::csv::escape(&process.name().to_string_lossy()),
-                )?;
-            } else {
-                writeln!(
-                    out, "{:<8} {:<8} {:>6.1} {:>10.1}   {}",
-                    pid, ppid, process.cpu_usage(),
-                    process.memory() as f64 / 1024.0 / 1024.0,
-                    process.name().to_string_lossy(),
-                )?;
-            }
-        }
-    } else {
-        for (pid, tree_prefix) in process_tree_rows(&system, true).into_iter().take(limit) {
-            let Some(process) = system.process(pid) else { continue; };
-            let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
-            writeln!(
-                out, "{:<8} {:<8} {:>6.1} {:>10.1}   {}{}",
+    if total == 0 && !csv {
+        out.push_str("Sin coincidencias entre los procesos actuales.\n");
+    }
+    for (pid, prefix) in rows.into_iter().take(limit) {
+        let Some(process) = system.process(pid) else { continue; };
+        let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
+        if csv {
+            writeln!(out, "{},{},{:.2},{:.2},{}",
+                pid.as_u32(), ppid, process.cpu_usage(),
+                process.memory() as f64 / 1024.0 / 1024.0,
+                crate::support::csv::escape(&process.name().to_string_lossy()))?;
+        } else {
+            writeln!(out, "{:<8} {:<8} {:>6.1} {:>10.1}   {}{}",
                 pid, ppid, process.cpu_usage(),
                 process.memory() as f64 / 1024.0 / 1024.0,
-                tree_prefix, process.name().to_string_lossy(),
-            )?;
+                prefix, process.name().to_string_lossy())?;
         }
+    }
+    if total > limit && !csv {
+        writeln!(out, "Mostrando {limit} de {total}; usa --top N para ampliar.")?;
     }
     Ok(CommandOutput::ok(out))
 }
@@ -1737,5 +1824,19 @@ mod fetch_text_logo_tests {
         let (lines, width) = fetch_logo(false);
         assert_eq!(width, 50);
         assert!(lines.iter().all(|line| line.starts_with("\x1b[")));
+    }
+}
+
+#[cfg(test)]
+mod process_filter_tests {
+    use super::process_name_matches;
+
+    #[test]
+    fn outlook_alias_matches_olk_but_not_unrelated_webview() {
+        assert!(process_name_matches("olk.exe", "outlook"));
+        assert!(process_name_matches("OUTLOOK.EXE", "Outlook"));
+        assert!(!process_name_matches("msedgewebview2.exe", "outlook"));
+        assert!(!process_name_matches("ms-teams.exe", "outlook"));
+        assert!(process_name_matches("msedgewebview2.exe", "webview"));
     }
 }
