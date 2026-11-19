@@ -1,0 +1,1 @@
+Validate and publish SST Blue.76 from latest main. Includes exact 100-column logo test, real instp local .sstpkg PowerShell installation, win/unix trees, no third-party EXEs, and source blue update channel. Block on all Windows tests.
