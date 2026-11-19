@@ -193,12 +193,13 @@ jobs:
         shell: pwsh
         run: ./scripts/package-release.ps1
 
-      - name: Archive installable SST PowerShell SDK package
+      - name: Build installable native SST PowerShell package
         shell: pwsh
         run: |
-          $archive = Join-Path $PWD 'dist/SST-PowerShell-win-x64.zip'
-          Compress-Archive -Path './target/plugin-powershell/*' -DestinationPath $archive -Force
-          if (-not (Test-Path -LiteralPath $archive)) { throw 'No se creó el paquete de PowerShell.' }
+          python ./scripts/pack-sstpkg.py --id powershell --version 7.5.13 --target win --kind embedded --source ./target/plugin-powershell --output ./dist/SST-PowerShell-win-x64.sstpkg --exclude-dotnet-apphost
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath './dist/SST-PowerShell-win-x64.sstpkg')) {
+            throw 'No se creó el paquete nativo SST-PowerShell.'
+          }
 
       - name: Verify final self-extractor by executing a disposable copy
         shell: pwsh
@@ -289,7 +290,7 @@ jobs:
             gh release create $tag --target $env:GITHUB_SHA --title "Shell Shock Tool $env:VERSION" --notes-file $notes
           }
 
-          gh release upload $tag dist/sst.exe dist/sst-updater.exe dist/sst-update.json dist/version.txt "dist/SST-Setup-$env:VERSION.exe" dist/SST-PowerShell-win-x64.zip --clobber
+          gh release upload $tag dist/sst.exe dist/sst-updater.exe dist/sst-update.json dist/version.txt "dist/SST-Setup-$env:VERSION.exe" dist/SST-PowerShell-win-x64.sstpkg --clobber
 
       - name: Publish source blue channel
         if: ${{ github.event_name == 'push' || inputs.publish_release }}
