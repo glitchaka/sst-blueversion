@@ -14,3 +14,4 @@ Rebuild native Windows UI after full-size fetch restoration and Slint native dow
 
 2026-11-19: verificar Windows blue.73: sys top orden global / scroll / filtro Outlook y triage por nombre, CPU con dos muestras, compatibilidad de Rust.
 2026-11-19: Windows build/test blue.74 — office diagnose vs verify regression, Outlook new/classic HWND response, guide index.
+2026-11-19: rebuild blue.75 after correcting Win32 BOOL callback signature in office verify.
