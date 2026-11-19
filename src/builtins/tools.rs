@@ -95,8 +95,10 @@ fn help_output() -> CommandOutput {
          oficial del fabricante. Los backends externos se descargan desde su fuente,\n\
          se validan antes de ejecutarse y permanecen aislados del código de SST.\n\n\
          Office\n\
-           diagnose/verify revisa instalación, residuos, versión/build, Outlook,\n\
-           WebView2, WAM/AAD Broker, TokenBroker, estado Entra/PRT y cachés.\n\
+           diagnose inventaría y entrega evidencia detallada de instalación, Outlook,\n\
+           WebView2, WAM/AAD Broker, TokenBroker, Entra/PRT y cachés.\n\
+           verify evalúa comprobaciones de salud, prioriza fallos y recomienda pasos.\n\
+           Ninguno repara ni modifica el equipo.\n\
            auth repair vuelve a registrar AAD BrokerPlugin para el usuario actual.\n\
            scrub/sara usa SaRACmd Enterprise legacy y valida la firma Microsoft.\n\
            scrub-current conserva GetHelpCmd como backend alternativo actual.\n",
@@ -112,14 +114,17 @@ fn office_tools(args: &[String]) -> Result<CommandOutput> {
     };
 
     match action.to_ascii_lowercase().as_str() {
-        "diagnose" | "status" | "verify" => {
+        "diagnose" | "status" => {
             if args.len() != 1 {
-                return Ok(CommandOutput::error(
-                    "tools office diagnose: demasiados argumentos",
-                    2,
-                ));
+                return Ok(CommandOutput::error("tools office diagnose: demasiados argumentos", 2));
             }
             run_office_diagnose()
+        }
+        "verify" => {
+            if args.len() != 1 {
+                return Ok(CommandOutput::error("tools office verify: demasiados argumentos", 2));
+            }
+            run_office_verify()
         }
         "auth" => office_auth_tools(&args[1..]),
         "scrub" | "sara" | "uninstall" | "remove" => {
@@ -254,6 +259,7 @@ if (-not $webViewVersion -and ${env:ProgramFiles(x86)}) {
     }
 }
 
+$newOutlook = Get-AppxPackage -Name Microsoft.OutlookForWindows -ErrorAction SilentlyContinue
 $aad = Get-AppxPackage -Name Microsoft.AAD.BrokerPlugin -ErrorAction SilentlyContinue
 $cloud = Get-AppxPackage -Name Microsoft.Windows.CloudExperienceHost -ErrorAction SilentlyContinue
 
@@ -289,6 +295,8 @@ Write-Output ("  ClickToRunSvc ........ {0}" -f $(if ($c2rSvc) { $c2rSvc.Status 
 Write-Output ("  Office16 root ........ {0}" -f $(if ($officeRoot) { $officeRoot } else { 'ABSENT' }))
 Write-Output ("  Outlook.exe .......... {0}" -f $(if ($outlookPath) { $outlookPath } else { 'ABSENT' }))
 Write-Output ("  Outlook version ...... {0}" -f (Value-OrUnknown $outlookVersion))
+Write-Output ''
+Write-Output ("  New Outlook AppX ..... {0}" -f $(if ($newOutlook) { $newOutlook.Version } else { 'ABSENT' }))
 Write-Output ''
 Write-Output 'AUTHENTICATION'
 Write-Output ("  WebView2 Runtime ..... {0}" -f (Value-OrUnknown $webViewVersion))
@@ -330,6 +338,299 @@ Write-Output ("  IdentityCache ........ {0}" -f $(if ($identityCache) { 'PRESENT
     }
 
     Ok(CommandOutput::ok(format!("Office / Outlook diagnostics\n\n{stdout}\n")))
+}
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CheckStatus {
+    Ok,
+    Warning,
+    Error,
+    Unknown,
+}
+
+impl CheckStatus {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Ok => "OK",
+            Self::Warning => "ADVERTENCIA",
+            Self::Error => "ERROR",
+            Self::Unknown => "NO EVALUABLE",
+        }
+    }
+}
+
+struct OfficeCheck {
+    status: CheckStatus,
+    topic: &'static str,
+    detail: String,
+    action: &'static str,
+}
+
+impl OfficeCheck {
+    fn new(status: CheckStatus, topic: &'static str, detail: impl Into<String>, action: &'static str) -> Self {
+        Self { status, topic, detail: detail.into(), action }
+    }
+}
+
+/// A stable extraction layer over the Office inventory snapshot. The snapshot
+/// is collected once by diagnose; verify applies policy and native liveness
+/// checks instead of simply duplicating the diagnostic report.
+fn office_report_value<'a>(report: &'a str, field: &str) -> Option<&'a str> {
+    report.lines().find_map(|line| {
+        line.trim().strip_prefix(field)
+            .map(|value| value.trim_start_matches(|c: char| c == '.' || c.is_whitespace()).trim())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+#[derive(Default)]
+struct OfficeWindowProbe {
+    target_pids: std::collections::HashSet<u32>,
+    visible: std::collections::HashSet<u32>,
+    hung: std::collections::HashSet<u32>,
+}
+
+/// EnumWindows and IsHungAppWindow check the *real* Outlook window message
+/// pump. A near-zero CPU measurement alone cannot establish a hang.
+fn outlook_windows(pids: std::collections::HashSet<u32>) -> OfficeWindowProbe {
+    use windows_sys::Win32::{
+        Foundation::{BOOL, HWND, LPARAM},
+        UI::WindowsAndMessaging::{
+            EnumWindows, GetWindowThreadProcessId, IsHungAppWindow, IsWindowVisible,
+        },
+    };
+    unsafe extern "system" fn collect(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        // SAFETY: callback is synchronous and receives a pointer to the
+        // living OfficeWindowProbe passed to EnumWindows below.
+        unsafe {
+            if IsWindowVisible(hwnd) == 0 { return 1; }
+            let probe = &mut *(lparam as *mut OfficeWindowProbe);
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, &mut pid);
+            if probe.target_pids.contains(&pid) {
+                probe.visible.insert(pid);
+                if IsHungAppWindow(hwnd) != 0 {
+                    probe.hung.insert(pid);
+                }
+            }
+            1
+        }
+    }
+    let mut probe = OfficeWindowProbe { target_pids: pids, ..OfficeWindowProbe::default() };
+    // SAFETY: EnumWindows is synchronous, and the pointer stays valid.
+    unsafe { EnumWindows(Some(collect), (&mut probe as *mut OfficeWindowProbe) as LPARAM); }
+    probe
+}
+
+fn evaluate_office_verification(
+    inventory: &str,
+    outlook_running: usize,
+    outlook_visible: usize,
+    outlook_hung: usize,
+    outlook_webview_children: usize,
+) -> Vec<OfficeCheck> {
+    use CheckStatus::{Error, Ok, Unknown, Warning};
+    let read = |field: &str| office_report_value(inventory, field).unwrap_or("UNKNOWN");
+    let installation = read("State");
+    let installed = installation.starts_with("INSTALLED");
+    let partial = installation.starts_with("INCOMPLETE");
+    let new_appx = read("New Outlook AppX");
+    let has_new_outlook = outlook_running > 0 || (new_appx != "ABSENT" && new_appx != "UNKNOWN");
+    let mut checks = Vec::new();
+
+    checks.push(if partial {
+        OfficeCheck::new(Error, "Instalación de Office", "Click-to-Run existe sin inventario válido.", "Revisar Office: tools office diagnose")
+    } else if installed {
+        OfficeCheck::new(Ok, "Instalación de Office", installation, "")
+    } else if has_new_outlook {
+        OfficeCheck::new(Ok, "Outlook (new)", "Se detecta Outlook nuevo como aplicación independiente de Office Click-to-Run.", "")
+    } else if installation.starts_with("ABSENT") {
+        OfficeCheck::new(Unknown, "Instalación de Office", "No se detecta Office Click-to-Run; puede ser una desinstalación deliberada.", "Confirmar objetivo: instalación o limpieza")
+    } else {
+        OfficeCheck::new(Unknown, "Instalación de Office", installation, "Consultar tools office diagnose")
+    });
+
+    let service = read("ClickToRunSvc");
+    if installed || partial {
+        checks.push(match service {
+            "Running" => OfficeCheck::new(Ok, "Servicio Click-to-Run", "En ejecución.", ""),
+            "Stopped" => OfficeCheck::new(Warning, "Servicio Click-to-Run", "Detenido; puede iniciarse bajo demanda.", "Comprobar si Office inicia antes de reparar"),
+            "ABSENT" => OfficeCheck::new(Error, "Servicio Click-to-Run", "No existe pese a haber componentes Office.", "Revisar instalación y servicio ClickToRunSvc"),
+            _ => OfficeCheck::new(Unknown, "Servicio Click-to-Run", "Estado no disponible.", "Consultar tools office diagnose"),
+        });
+    }
+
+    if has_new_outlook {
+        let webview = read("WebView2 Runtime");
+        checks.push(match webview {
+            "UNKNOWN" | "ABSENT" => OfficeCheck::new(Warning, "WebView2 Runtime", "Runtime no localizado; Outlook (new) lo necesita.", "Revisar instalación de WebView2"),
+            version => OfficeCheck::new(Ok, "WebView2 Runtime", format!("Versión detectada: {version}"), ""),
+        });
+        if outlook_running > 0 {
+            if outlook_hung > 0 {
+                checks.push(OfficeCheck::new(Error, "Respuesta de Outlook", format!(
+                    "{outlook_hung} proceso(s) con ventana sin respuesta (comprobación nativa de Windows)."
+                ), "Comprobar aplicación y trabajo sin guardar antes de cerrarla"));
+            } else if outlook_visible > 0 {
+                checks.push(OfficeCheck::new(Ok, "Respuesta de Outlook", format!(
+                    "{outlook_visible} proceso(s) con ventana visible sin bloqueo detectado ahora."
+                ), ""));
+            } else {
+                checks.push(OfficeCheck::new(Unknown, "Respuesta de Outlook", "Proceso activo, pero sin ventana visible que permita comprobar respuesta.", "Abrir Outlook y repetir verify"));
+            }
+            if outlook_webview_children == 0 {
+                checks.push(OfficeCheck::new(Warning, "Procesos WebView2 de Outlook",
+                    "Outlook (new) activo sin procesos WebView2 hijos identificables.",
+                    "Revisar arranque de Outlook y volver a comprobar"));
+            } else {
+                checks.push(OfficeCheck::new(Ok, "Procesos WebView2 de Outlook",
+                    format!("{outlook_webview_children} hijo(s) asociados a Outlook; no se cuentan los de Teams/Copilot."), ""));
+            }
+        } else {
+            checks.push(OfficeCheck::new(Unknown, "Respuesta de Outlook", "Outlook nuevo no está abierto; no se evalúa la respuesta de su ventana.", "Iniciar Outlook y repetir verify"));
+        }
+    }
+
+    let aad = read("AAD BrokerPlugin");
+    if installed || has_new_outlook {
+        checks.push(match aad {
+            "ABSENT" => OfficeCheck::new(Warning, "WAM / AAD Broker", "No se encontró el paquete de autenticación del usuario actual.", "Revisar con tools office diagnose antes de usar auth repair"),
+            "UNKNOWN" => OfficeCheck::new(Unknown, "WAM / AAD Broker", "No se pudo determinar el paquete.", "Revisar acceso a paquetes AppX"),
+            version => OfficeCheck::new(Ok, "WAM / AAD Broker", format!("Paquete registrado: {version}"), ""),
+        });
+        let token_broker = read("TokenBroker");
+        checks.push(match token_broker {
+            "ABSENT" => OfficeCheck::new(Warning, "TokenBroker", "Servicio no encontrado.", "Revisar servicios y autenticación de Windows"),
+            "UNKNOWN" => OfficeCheck::new(Unknown, "TokenBroker", "Estado no disponible.", "Consultar tools office diagnose"),
+            state => OfficeCheck::new(Ok, "TokenBroker", format!("Servicio detectado ({state}); el estado Stopped puede ser normal."), ""),
+        });
+    }
+
+    let joined = read("Entra Joined").eq_ignore_ascii_case("YES");
+    let prt = read("PRT");
+    if joined {
+        checks.push(if prt.eq_ignore_ascii_case("YES") {
+            OfficeCheck::new(Ok, "PRT Entra", "Windows informa PRT presente.", "")
+        } else if prt.eq_ignore_ascii_case("NO") {
+            OfficeCheck::new(Warning, "PRT Entra", "Equipo unido a Entra sin PRT en este contexto de usuario.", "Verificar sesión y dsregcmd /status; no borrar cachés automáticamente")
+        } else {
+            OfficeCheck::new(Unknown, "PRT Entra", "Sin lectura concluyente del PRT.", "Ejecutar dsregcmd /status en contexto del usuario afectado")
+        });
+    } else if installed || has_new_outlook {
+        checks.push(OfficeCheck::new(Unknown, "PRT Entra",
+            "No se exige PRT sin comprobar el modelo de unión y autenticación usado por la organización.", ""));
+    }
+    checks
+}
+
+fn format_office_verification(checks: &[OfficeCheck]) -> String {
+    let errors = checks.iter().filter(|c| c.status == CheckStatus::Error).count();
+    let warnings = checks.iter().filter(|c| c.status == CheckStatus::Warning).count();
+    let passed = checks.iter().filter(|c| c.status == CheckStatus::Ok).count();
+    let unknown = checks.iter().filter(|c| c.status == CheckStatus::Unknown).count();
+    let overall = if errors > 0 {
+        "ERROR: problemas identificados"
+    } else if warnings > 0 {
+        "ADVERTENCIA: comprobaciones requieren atención"
+    } else if unknown > 0 {
+        "PARCIAL: faltan comprobaciones operativas"
+    } else {
+        "SIN FALLOS DETECTADOS EN LAS COMPROBACIONES"
+    };
+    let mut report = format!(
+        "OFFICE / OUTLOOK — VERIFICACIÓN OPERATIVA\n\
+         ============================================================\n\
+         RESULTADO: {overall}\n\
+         OK: {passed} · advertencias: {warnings} · errores: {errors} · no evaluables: {unknown}\n\n"
+    );
+    for status in [CheckStatus::Error, CheckStatus::Warning, CheckStatus::Unknown, CheckStatus::Ok] {
+        for check in checks.iter().filter(|c| c.status == status) {
+            report.push_str(&format!("[{}] {}\n  {}\n", check.status.label(), check.topic, check.detail));
+            if !check.action.is_empty() && check.status != CheckStatus::Ok {
+                report.push_str(&format!("  Siguiente paso: {}\n", check.action));
+            }
+        }
+    }
+    report.push_str(
+        "\nALCANCE: lectura local puntual; comprobar que una ventana responde no\n\
+         demuestra que Outlook pueda enviar correo ni que el servidor esté disponible.\n\
+         Para el inventario y detalles de cada componente: tools office diagnose.\n"
+    );
+    report
+}
+
+fn run_office_verify() -> Result<CommandOutput> {
+    // Reuse the inventory collector, never its prose report: verification adds
+    // independent verdicts and native Windows responsiveness checks.
+    let inventory = run_office_diagnose()?;
+    if inventory.status != 0 { return Ok(inventory); }
+
+    let system = sysinfo::System::new_all();
+    let outlook_pids = system.processes().iter()
+        .filter(|(_, p)| matches!(
+            p.name().to_string_lossy().to_ascii_lowercase().as_str(),
+            "olk.exe" | "outlook.exe"
+        ))
+        .map(|(id, _)| id.as_u32())
+        .collect::<std::collections::HashSet<_>>();
+    let newer = system.processes().iter()
+        .filter(|(_, p)| p.name().eq_ignore_ascii_case(std::ffi::OsStr::new("olk.exe")))
+        .map(|(pid, _)| *pid)
+        .collect::<Vec<_>>();
+    let webview_children = system.processes().iter().filter(|(_, process)| {
+        process.name().to_string_lossy().eq_ignore_ascii_case("msedgewebview2.exe")
+            && process.parent().is_some_and(|parent| {
+                let mut seen = std::collections::HashSet::new();
+                let mut current = Some(parent);
+                while let Some(id) = current {
+                    if !seen.insert(id) { break; }
+                    if newer.contains(&id) { return true; }
+                    current = system.process(id).and_then(|p| p.parent());
+                }
+                false
+            })
+    }).count();
+    let windows = outlook_windows(outlook_pids.clone());
+    let checks = evaluate_office_verification(
+        &inventory.stdout,
+        outlook_pids.len(),
+        windows.visible.len(),
+        windows.hung.len(),
+        webview_children,
+    );
+    Ok(CommandOutput::ok(format_office_verification(&checks)))
+}
+
+#[cfg(test)]
+mod office_verification_tests {
+    use super::*;
+
+    const REPORT: &str = "OFFICE\n  State ................ INSTALLED / C2R INVENTORY PRESENT\n  ClickToRunSvc ........ Running\nAUTHENTICATION\n  WebView2 Runtime ..... 130.1\n  AAD BrokerPlugin ..... 10.0\n  TokenBroker .......... Running\nENTRA / WINDOWS\n  Entra Joined ......... YES\n  PRT .................. YES\n  New Outlook AppX ..... 1.0\n";
+    #[test]
+    fn verify_is_not_a_second_inventory_dump() {
+        let rows = evaluate_office_verification(REPORT, 1, 1, 0, 2);
+        let text = format_office_verification(&rows);
+        assert!(text.contains("VERIFICACIÓN OPERATIVA"));
+        assert!(text.contains("[OK] Respuesta de Outlook"));
+        assert!(!text.contains("AUTH CACHE"));
+        assert!(!text.contains("OfficeProductReleaseIds"));
+    }
+    #[test]
+    fn detects_unresponsive_outlook_as_error() {
+        let rows = evaluate_office_verification(REPORT, 1, 1, 1, 1);
+        assert!(rows.iter().any(|row| row.topic == "Respuesta de Outlook" && row.status == CheckStatus::Error));
+    }
+    #[test]
+    fn missing_prt_is_warning_on_joined_machine() {
+        let rows = evaluate_office_verification(&REPORT.replace("PRT .................. YES", "PRT .................. NO"), 0, 0, 0, 0);
+        assert!(rows.iter().any(|row| row.topic == "PRT Entra" && row.status == CheckStatus::Warning));
+    }
+    #[test]
+    fn no_office_is_not_an_error_without_cleanup_intent() {
+        let rows = evaluate_office_verification("State ................ ABSENT / CLEAN\n", 0, 0, 0, 0);
+        assert!(rows.iter().all(|row| row.status != CheckStatus::Error));
+    }
 }
 
 fn run_office_auth_repair() -> Result<CommandOutput> {
