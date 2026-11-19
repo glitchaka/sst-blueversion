@@ -206,7 +206,11 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
             validate_relative_payload_path(&execution.entry)?;
         }
         "environment" => {
-            if package.category != "environment" || package.portability != "system"
+            if package.install.kind == "sstpkg" {
+                if execution.target.as_deref() != Some("unix") {
+                    anyhow::bail!("instp: {} debe declarar plataforma Unix", package.id);
+                }
+            } else if package.category != "environment" || package.portability != "system"
                 || package.source.kind != "system" || package.install.kind != "system"
                 || execution.provider.as_deref() != Some("wsl")
                 || execution.distribution.as_deref() != Some("archlinux")
