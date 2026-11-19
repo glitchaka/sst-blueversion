@@ -73,7 +73,7 @@ jobs:
       - name: Build PowerShell SDK module
         shell: pwsh
         run: |
-          dotnet publish ./plugins/powershell/Sst.PowerShell.Bridge.csproj -c Release -r win-x64 --self-contained true -o ./target/plugin-powershell
+          dotnet publish ./plugins/powershell/Sst.PowerShell.Bridge.csproj -c Release -r win-x64 --self-contained true -o ./.build/plugin-powershell
           if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar PowerShell SDK.' }
 
       - name: Install Rust stable
@@ -134,7 +134,7 @@ jobs:
 
       - name: Execute .ps1 and PowerShell pipelines through actual SDK engine
         shell: pwsh
-        run: ./scripts/test-powershell-plugin.ps1 -SstPath ./target/debug/sst.exe -PluginDirectory ./target/plugin-powershell
+        run: ./scripts/test-powershell-plugin.ps1 -SstPath ./target/debug/sst.exe -PluginDirectory ./.build/plugin-powershell
 
       - name: Verify Arch WSL2 package manifest and discovery without system changes
         shell: pwsh
