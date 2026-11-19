@@ -232,7 +232,9 @@ impl PackageService {
                 id
             );
         }
-        if package.execution.as_ref().is_some_and(|e| e.kind == "environment") {
+        if package.install.kind == "system"
+            && package.execution.as_ref().is_some_and(|e| e.kind == "environment")
+        {
             return self.install_wsl_environment(&package, persistent);
         }
 
