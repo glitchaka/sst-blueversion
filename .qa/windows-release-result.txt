@@ -1,12 +1,20 @@
 SST Windows release CI report
-Source commit: e0a9144d6bd2ad3b1918296c3ce7a0650b3af456
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44580992150
-Recorded UTC: 2026-11-19 17:52:13Z
-Compile: failure
-Rust tests: skipped
-Software GUI startup: skipped
-Packaging: skipped
+Source commit: f3c84e472d156f2a48a6a787ba8b6f9ed235cb88
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44581875272
+Recorded UTC: 2026-11-19 18:01:06Z
+Compile: success
+Rust tests: success
+Software GUI startup: success
+Packaging: success
 Compiler log tail:
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded bytes v1.12.2
+  Downloaded pin-project v1.2.0
+  Downloaded pin-project-lite v0.2.18
+  Downloaded pin-project-internal v1.2.0
+  Downloaded regex v1.13.2
+  Downloaded regex-syntax v0.8.12
   Downloaded regex-automata v0.4.19
   Downloaded smallvec v1.16.6
   Downloaded zip v9.7.3
@@ -28,47 +36,30 @@ Compiler log tail:
    Compiling parley v0.11.1
    Compiling pin-project v1.2.0
    Compiling url v2.5.8
-   Compiling winit v0.30.13
    Compiling resvg v0.48.1
    Compiling i-slint-common v1.18.1
    Compiling i-slint-core v1.18.1
+   Compiling winit v0.30.13
    Compiling webbrowser v1.2.7
    Compiling softbuffer v0.4.8
    Compiling i-slint-compiler v1.18.1
+   Compiling i-slint-renderer-software v1.18.1
    Compiling parking_lot_core v0.9.12
+   Compiling i-slint-backend-winit v1.18.1
    Compiling nibble_vec v0.1.0
    Compiling regex-syntax v0.8.12
-   Compiling regex-automata v0.4.19
-   Compiling i-slint-renderer-software v1.18.1
-   Compiling i-slint-backend-winit v1.18.1
-   Compiling i-slint-backend-selector v1.18.1
    Compiling radix_trie v0.2.1
+   Compiling regex-automata v0.4.19
    Compiling tokio v1.54.1
    Compiling parking_lot v0.12.5
+   Compiling i-slint-backend-selector v1.18.1
    Compiling sst v0.1.9-blue.76 (D:\a\sst-blueversion\sst-blueversion)
    Compiling rusqlite v0.41.1
    Compiling zip v9.7.3
    Compiling rustyline v17.0.2
    Compiling slint-macros v1.18.1
-   Compiling snmp2 v0.5.3
    Compiling slint v1.18.1
+   Compiling snmp2 v0.5.3
    Compiling crossterm v0.29.0
    Compiling regex v1.13.2
-error: variant `Process` is never constructed
-  --> src\application\packages\execution.rs:11:5
-   |
- 9 | pub enum ScriptRunner {
-   |          ------------ variant in this enum
-10 |     Embedded(String),
-11 |     Process(PathBuf),
-   |     ^^^^^^^
-   |
-   = note: `ScriptRunner` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
-note: the lint level is defined here
-  --> src\main.rs:2:9
-   |
- 2 | #![deny(warnings)]
-   |         ^^^^^^^^
-   = note: `#[deny(dead_code)]` implied by `#[deny(warnings)]`
-
-error: could not compile `sst` (bin "sst") due to 1 previous error
+    Finished `release` profile [optimized] target(s) in 3m 18s
