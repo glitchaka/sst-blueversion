@@ -29,7 +29,7 @@ try {
     $catalog = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\packages\index.json') | ConvertFrom-Json
     if ($catalog.schema -ne 2) { throw 'El catálogo debe utilizar schema 2.' }
     $arch = @($catalog.packages | Where-Object { $_.id -eq 'arch' })[0]
-    if ($arch.execution.kind -ne 'environment' -or $arch.execution.provider -ne 'wsl' -or $arch.execution.distribution -ne 'archlinux') {
+    if ($arch.execution.kind -ne 'environment' -or $arch.execution.target -ne 'unix' -or $arch.execution.provider -ne 'wsl' -or $arch.execution.distribution -ne 'archlinux') {
         throw 'El entorno Arch no cumple SST-PACKAGE/1.'
     }
     Write-Host 'Arch: manifiesto y catálogo de WSL2 válidos, sin modificar Windows.'
