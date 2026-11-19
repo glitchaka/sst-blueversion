@@ -568,14 +568,11 @@ fn run_office_verify() -> Result<CommandOutput> {
 
     let system = sysinfo::System::new_all();
     let outlook_pids = system.processes().iter()
-        .filter(|(_, p)| matches!(
-            p.name().to_string_lossy().to_ascii_lowercase().as_str(),
-            "olk.exe" | "outlook.exe"
-        ))
+        .filter(|(_, p)| p.name().to_string_lossy().eq_ignore_ascii_case("olk.exe"))
         .map(|(id, _)| id.as_u32())
         .collect::<std::collections::HashSet<_>>();
     let newer = system.processes().iter()
-        .filter(|(_, p)| p.name().eq_ignore_ascii_case(std::ffi::OsStr::new("olk.exe")))
+        .filter(|(_, p)| p.name().to_string_lossy().eq_ignore_ascii_case("olk.exe"))
         .map(|(pid, _)| *pid)
         .collect::<Vec<_>>();
     let webview_children = system.processes().iter().filter(|(_, process)| {
