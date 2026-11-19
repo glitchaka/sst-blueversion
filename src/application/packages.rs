@@ -197,8 +197,12 @@ impl PackageService {
         let root = self.store.modules_dir().canonicalize()?;
         let path = self.store.resolve_root_relative(&package.install_dir).canonicalize()?;
         anyhow::ensure!(path.starts_with(&root), "instp: módulo fuera de su directorio autorizado");
-        anyhow::ensure!(path.join(execution.entry).is_file(),
+        anyhow::ensure!(path.join(&execution.entry).is_file(),
             "instp: módulo {} incompleto, reinstálalo", package.id);
+        for required in &execution.required_files {
+            anyhow::ensure!(path.join(required).is_file(),
+                "instp: módulo {} incompleto: falta {}", package.id, required);
+        }
         Ok(Some(path))
     }
 
@@ -273,12 +277,11 @@ impl PackageService {
                 anyhow::bail!("instp: {} no contiene su entrada {}: se conserva versión anterior",
                     package.id, execution.entry);
             }
-            if execution.kind == "embedded"
-                && (find_file(&staging, "Sst.PowerShell.Bridge.runtimeconfig.json")?.is_none()
-                    || find_file(&staging, "hostfxr.dll")?.is_none())
-            {
-                let _ = fs::remove_dir_all(&staging);
-                anyhow::bail!("instp: {} no contiene el host .NET completo", package.id);
+            for required in &execution.required_files {
+                if find_file(&staging, required)?.is_none() {
+                    let _ = fs::remove_dir_all(&staging);
+                    anyhow::bail!("instp: {} no contiene el archivo obligatorio {}", package.id, required);
+                }
             }
         }
 
