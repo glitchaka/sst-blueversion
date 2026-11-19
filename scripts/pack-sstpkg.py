@@ -46,8 +46,12 @@ def main() -> None:
             parser.error(f"archivo no regular: {file}")
         relative = file.relative_to(args.source).as_posix()
         if file.suffix.lower() in BAD_SUFFIXES:
-            if args.exclude_dotnet_apphost and relative == "Sst.PowerShell.Bridge.exe":
-                print(f"Apphost excluido del paquete: {relative}")
+            if args.exclude_dotnet_apphost and relative in (
+                "Sst.PowerShell.Bridge.exe", "createdump.exe"
+            ):
+                # The self-contained runtime publishes an optional diagnostics
+                # executable and an apphost. SST loads only the DLL via hostfxr.
+                print(f"Ejecutable auxiliar .NET excluido: {relative}")
                 continue
             parser.error(f"un paquete SST no puede contener ejecutables externos: {relative}")
         members.append((prefix + relative, file))
