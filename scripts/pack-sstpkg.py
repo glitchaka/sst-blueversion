@@ -31,7 +31,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--exclude-dotnet-apphost", action="store_true")
     args = parser.parse_args()
-    if not args.id or not all(c.isalnum() or c in "-_." for c in args.id):
+    if not args.id or args.id in (".", "..") or not all(c.isascii() and (c.isalnum() or c in "-_.") for c in args.id):
         parser.error("id inválido")
     if not args.source.is_dir():
         parser.error("el directorio de origen no existe")
