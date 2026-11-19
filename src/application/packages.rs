@@ -63,12 +63,9 @@ impl PackageService {
 
     pub fn activate_process_environment(&self) -> Result<()> {
         self.reconcile_for_functional_release()?;
-        let state = self.store.load_installed_state()?;
-        let mut entries = vec![self.store.bin_dir()];
+        let mut entries = Vec::new();
         // Do not expose installed third-party executables in SST's PATH.
         // Embedded modules are dispatched by their registered ABI instead.
-
-        let _ = state;
 
         let inherited = env::var_os("PATH").unwrap_or_default();
         entries.extend(env::split_paths(&inherited));
@@ -102,6 +99,24 @@ impl PackageService {
                 package.functional_generation = functional_generation().to_owned();
                 migrated = true;
             }
+            // Preserve previously installed PowerShell modules when migrating
+            // from the flat legacy packages/modules directory to win/modules.
+            if package.id.eq_ignore_ascii_case("powershell")
+                && package.execution.as_ref().is_some_and(|e| e.kind == "embedded")
+            {
+                let previous = self.store.resolve_root_relative(&package.install_dir);
+                let legacy = self.store.packages_dir().join("modules").join("powershell");
+                let destination = self.store.modules_dir().join("powershell");
+                if previous == legacy && previous.is_dir() && !destination.exists() {
+                    // The .NET apphost is not used: SST loads Bridge.dll in-process.
+                    let apphost = previous.join("Sst.PowerShell.Bridge.exe");
+                    if apphost.is_file() { fs::remove_file(apphost)?; }
+                    fs::rename(&previous, &destination)
+                        .context("instp: no se pudo migrar el módulo PowerShell")?;
+                    package.install_dir = self.store.root_relative(&destination);
+                    migrated = true;
+                }
+            }
         }
         if migrated {
             // Old versions left archives in the cache indefinitely.
@@ -119,7 +134,11 @@ impl PackageService {
                     && (target.starts_with(self.store.tools_dir())
                     || target.starts_with(self.store.runtimes_dir())
                     || target.starts_with(self.store.modules_dir())
-                    || target.starts_with(self.store.environments_dir())),
+                    || target.starts_with(self.store.environments_dir())
+                    || target.starts_with(self.store.packages_dir().join("tools"))
+                    || target.starts_with(self.store.packages_dir().join("runtimes"))
+                    || target.starts_with(self.store.packages_dir().join("modules"))
+                    || target.starts_with(self.store.packages_dir().join("environments"))),
                 "instp: ruta de paquete fuera de su área aislada: {}",
                 target.display()
             );
@@ -507,7 +526,11 @@ impl PackageService {
                 && (install_dir.starts_with(self.store.tools_dir())
                     || install_dir.starts_with(self.store.runtimes_dir())
                     || install_dir.starts_with(self.store.modules_dir())
-                    || install_dir.starts_with(self.store.environments_dir())),
+                    || install_dir.starts_with(self.store.environments_dir())
+                    || install_dir.starts_with(self.store.packages_dir().join("tools"))
+                    || install_dir.starts_with(self.store.packages_dir().join("runtimes"))
+                    || install_dir.starts_with(self.store.packages_dir().join("modules"))
+                    || install_dir.starts_with(self.store.packages_dir().join("environments"))),
             "instp: instalación fuera de su área aislada: {}",
             install_dir.display()
         );
