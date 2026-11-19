@@ -11,3 +11,5 @@ Rebuild native Windows UI after full-size fetch restoration and Slint native dow
 2026-11-11: verify UAC label restored, native SVG report heading widths, all native registry reports, and live external ping streaming without altering Bash capture.
 
 2026-11-11: validate general terminal text style with neutral palette, true 4-tier severity colors, all builtins and streaming external stdout ping; verify native heading lengths.
+
+2026-11-19: verificar Windows blue.73: sys top orden global / scroll / filtro Outlook y triage por nombre, CPU con dos muestras, compatibilidad de Rust.
