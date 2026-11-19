@@ -363,7 +363,7 @@ fn render(
         .map(|package| wrap_text(&format!("Comandos: {}", exposed_command_names(package)), columns))
         .unwrap_or_default();
     let message_lines = wrap_text(message, columns);
-    let fixed_rows = 9usize
+    let fixed_rows = 11usize
         .saturating_add(command_lines.len())
         .saturating_add(message_lines.len());
     let list_rows = height.saturating_sub(fixed_rows).max(3);
@@ -426,6 +426,20 @@ fn render(
 mod catalog_style_tests {
     use super::{catalog_row, PackageManifest};
     use std::collections::HashSet;
+
+    #[test]
+    fn packages_are_grouped_by_supported_execution_kind() {
+        let index: serde_json::Value = serde_json::from_str(include_str!("../../packages/index.json")).unwrap();
+        let packages = index["packages"].as_array().unwrap();
+        assert!(packages.iter().any(|p| p["execution"]["kind"] == "embedded"));
+        assert!(packages.iter().any(|p| p["execution"]["kind"] == "runtime"));
+        assert!(packages.iter().any(|p| p["execution"]["kind"] == "process"));
+        assert!(packages.iter().any(|p| p["execution"]["kind"] == "environment"));
+        let ps: PackageManifest = serde_json::from_value(packages.iter().find(|p| p["id"] == "powershell").unwrap().clone()).unwrap();
+        assert_eq!(super::package_type(&ps), "modulo");
+        let rg: PackageManifest = serde_json::from_value(packages.iter().find(|p| p["id"] == "ripgrep").unwrap().clone()).unwrap();
+        assert_eq!(super::package_type(&rg), "externo");
+    }
 
     #[test]
     fn only_selected_package_has_a_colored_background() {
