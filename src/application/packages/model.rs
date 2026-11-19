@@ -43,6 +43,8 @@ pub struct PackageExecution {
     #[serde(default)]
     pub entry: String,
     #[serde(default)]
+    pub required_files: Vec<String>,
+    #[serde(default)]
     pub commands: Vec<String>,
     #[serde(default)]
     pub extensions: Vec<String>,
@@ -205,6 +207,9 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
             }
         }
         other => anyhow::bail!("instp: {} usa adaptador desconocido: {other}", package.id),
+    }
+    for file in &execution.required_files {
+        validate_relative_payload_path(file)?;
     }
     for command in &execution.commands {
         validate_identifier(command)?;
