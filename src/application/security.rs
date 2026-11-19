@@ -1906,10 +1906,6 @@ fn auto_learnable_install_path(path: &str) -> bool {
             || lower.contains("\\windows\\system32\\"))
 }
 
-fn display_path(path: &str) -> &str {
-    if path.trim().is_empty() { "<no disponible>" } else { path }
-}
-
 fn triage_connections(pids: &HashSet<u32>) -> String {
     if pids.is_empty() {
         return "No hay PIDs de seguridad que correlacionar en esta muestra.\n".to_owned();
