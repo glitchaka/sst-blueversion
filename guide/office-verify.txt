@@ -1,0 +1,59 @@
+SST — tools office verify
+
+Qué hace
+Verifica el estado operativo de Office y Outlook (new). No es alias de diagnose.
+Ejecuta el colector de inventario en modo lectura y evalúa condiciones concretas
+de funcionamiento. Comprueba además con la API nativa Win32 si las ventanas
+principales de olk.exe están sin responder. NO modifica el equipo.
+
+Sintaxis
+  tools office verify
+
+Resultados
+  ERROR          se detectó una falla o bloqueo específico
+  ADVERTENCIA    condición que requiere confirmación, no demuestra falla
+  NO EVALUABLE   no existe contexto o evidencia suficiente para verificar
+  OK             comprobación puntual satisfactoria
+
+El resultado general prioriza errores, después advertencias y por último
+comprobaciones no evaluables. Un resultado OK NO significa que Office envíe
+correo o que la conectividad de Microsoft 365 esté disponible.
+
+Qué comprueba
+  - Presencia coherente de Office Click-to-Run, sin confundir ausencia de
+    Office clásico con ausencia de Outlook (new)
+  - Servicio ClickToRunSvc cuando existen componentes Office
+  - Paquete Microsoft.OutlookForWindows (AppX) y proceso olk.exe
+  - WebView2 Runtime y procesos descendientes de olk.exe; no mezcla los
+    procesos WebView2 de Teams, Copilot ni otras aplicaciones
+  - Ventanas visibles de olk.exe y respuesta del bombeo de mensajes de Windows
+    mediante EnumWindows/IsHungAppWindow
+  - AAD BrokerPlugin, TokenBroker y PRT si el contexto Entra lo requiere
+
+Interpretación importante
+  - Una ventana sin respuesta detectada por Windows es un ERROR operacional.
+  - Un proceso con 0 % de CPU no implica que su ventana esté bloqueada.
+  - La presencia de OneAuth, IdentityCache o TokenBroker como directorios
+    no acredita éxito o fracaso de la autenticación.
+  - ClickToRunSvc detenido puede ser normal cuando está bajo demanda.
+  - Si no hay ventana de Outlook abierta, la respuesta se marca NO EVALUABLE.
+  - PRT no se exige en contextos que no declaran unión Entra.
+
+Comparación de comandos
+  tools office diagnose     inventario de configuración y componentes
+  tools office verify       comprobaciones operativas con severidad y acciones
+  tools office auth repair  acción explícita de reparación WAM/AAD Broker
+
+Flujo sugerido ante Outlook bloqueado
+  tools office verify
+  tools office diagnose
+  sys processes outlook
+  triage outlook
+
+Ante ERROR de ventana bloqueada, comprueba si hay trabajo sin guardar antes
+de finalizar un proceso. verify nunca termina, reinicia ni repara por sí mismo.
+
+Limitaciones
+La verificación no sustituye pruebas de inicio de sesión, envío, sincronización,
+acceso al buzón, conexión de red ni diagnóstico del servidor. La salida del
+colector PowerShell puede depender del usuario y de sus permisos.
