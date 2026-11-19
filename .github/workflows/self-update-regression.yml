@@ -18,6 +18,7 @@ on:
       - 'src/composition/mod.rs'
       - 'packages/index.json'
       - 'scripts/test-powershell-plugin.ps1'
+      - 'scripts/pack-sstpkg.py'
       - 'plugins/powershell/**'
       - 'packages/**'
       - 'scripts/test-arch-package.ps1'
