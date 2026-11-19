@@ -27,6 +27,7 @@ impl PackageStore {
             self.packages_dir(),
             self.packages_dir().join("win"),
             self.packages_dir().join("unix"),
+            self.packages_dir().join("win/environments"),
             self.packages_dir().join("win/data"),
             self.packages_dir().join("unix/modules"),
             self.packages_dir().join("unix/runtimes"),
