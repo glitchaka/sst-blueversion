@@ -1,54 +1,65 @@
 SST Windows release CI report
-Source commit: e1872b3da5581f360594010b2a1b460285caef2d
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44559971379
-Recorded UTC: 2026-11-19 15:58:48Z
+Source commit: ae34b41ab88e869c3aab24408eb2f12d4ab8c025
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44579436385
+Recorded UTC: 2026-11-19 17:46:34Z
 Compile: success
-Rust tests: skipped
+Rust tests: failure
 Software GUI startup: skipped
 Packaging: skipped
 Compiler log tail:
     Updating crates.io index
  Downloading crates ...
   Downloaded bytes v1.12.2
+  Downloaded pin-project v1.2.0
+  Downloaded pin-project-internal v1.2.0
+  Downloaded pin-project-lite v0.2.18
   Downloaded regex v1.13.2
   Downloaded regex-syntax v0.8.12
   Downloaded regex-automata v0.4.19
   Downloaded smallvec v1.16.6
   Downloaded zip v9.7.3
    Compiling smallvec v1.16.6
-   Compiling regex-syntax v0.8.12
-   Compiling sst v0.1.9-blue.75 (D:\a\sst-blueversion\sst-blueversion)
+   Compiling pin-project-lite v0.2.18
+   Compiling pin-project-internal v1.2.0
+   Compiling tracing v0.1.44
    Compiling icu_normalizer v2.4.0
-   Compiling kurbo v0.13.1
    Compiling harfrust v0.12.0
+   Compiling kurbo v0.13.1
    Compiling svgtypes v0.16.2
    Compiling fixed_decimal v0.7.3
    Compiling fontique v0.11.1
-   Compiling usvg v0.48.1
    Compiling icu_decimal v2.4.0
+   Compiling usvg v0.48.1
    Compiling idna_adapter v1.2.2
    Compiling icu_segmenter v2.4.0
    Compiling resvg v0.48.1
    Compiling parley v0.11.1
    Compiling i-slint-common v1.18.1
    Compiling idna v1.1.0
-   Compiling url v2.5.8
+   Compiling pin-project v1.2.0
    Compiling i-slint-core v1.18.1
+   Compiling url v2.5.8
+   Compiling winit v0.30.13
    Compiling webbrowser v1.2.7
+   Compiling softbuffer v0.4.8
    Compiling i-slint-compiler v1.18.1
    Compiling parking_lot_core v0.9.12
    Compiling nibble_vec v0.1.0
-   Compiling radix_trie v0.2.1
-   Compiling parking_lot v0.12.5
-   Compiling regex-automata v0.4.19
-   Compiling rusqlite v0.41.1
+   Compiling regex-syntax v0.8.12
    Compiling i-slint-renderer-software v1.18.1
    Compiling i-slint-backend-winit v1.18.1
+   Compiling radix_trie v0.2.1
    Compiling i-slint-backend-selector v1.18.1
-   Compiling regex v1.13.2
+   Compiling regex-automata v0.4.19
+   Compiling tokio v1.54.1
+   Compiling parking_lot v0.12.5
+   Compiling sst v0.1.9-blue.76 (D:\a\sst-blueversion\sst-blueversion)
+   Compiling rusqlite v0.41.1
    Compiling zip v9.7.3
    Compiling rustyline v17.0.2
-   Compiling crossterm v0.29.0
    Compiling slint-macros v1.18.1
+   Compiling snmp2 v0.5.3
    Compiling slint v1.18.1
-    Finished `release` profile [optimized] target(s) in 2m 55s
+   Compiling crossterm v0.29.0
+   Compiling regex v1.13.2
+    Finished `release` profile [optimized] target(s) in 3m 44s
