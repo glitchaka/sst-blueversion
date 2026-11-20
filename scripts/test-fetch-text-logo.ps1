@@ -6,7 +6,7 @@ New-Item -ItemType Directory -Force -Path $root | Out-Null
 $fixture = Join-Path $root 'fetch.sh'
 $out = Join-Path $root 'stdout.txt'
 $err = Join-Path $root 'stderr.txt'
-$script = "fetch --plain`nfetch --full --plain`necho SST_FETCH_COMPLETE`n"
+$script = "fetch --startup`necho SST_STARTUP_FETCH_DONE`nfetch --plain`nfetch --full --plain`necho SST_FETCH_COMPLETE`n"
 [IO.File]::WriteAllText($fixture, $script, [Text.UTF8Encoding]::new($false))
 $process = $null
 try {
@@ -19,6 +19,14 @@ try {
     $stdout = Get-Content -Raw -LiteralPath $out
     $stderr = Get-Content -Raw -LiteralPath $err
     if ($process.ExitCode -ne 0) { throw "fetch falló: $stderr" }
+    $separator = $stdout.IndexOf('SST_STARTUP_FETCH_DONE')
+    if ($separator -lt 0) {
+        throw "fetch --startup no devolvió control a la consola: $stdout"
+    }
+    $initial = $stdout.Substring(0, $separator)
+    if ($initial.Contains('%%%') -or -not $initial.Contains('OS:')) {
+        throw "fetch --startup debe mostrar datos del sistema sin desplazar el logo: $initial"
+    }
     if ($stdout -notmatch '(?m)^   %{20,}' -or $stdout -notmatch '(?m)^%%.*?%{4,}') {
         throw "fetch no imprimió el logotipo ASCII SST: $stdout"
     }
@@ -32,7 +40,13 @@ try {
     if (-not $source.Contains('FETCH_LOGO_ASCII')) {
         throw 'No se encontró el nuevo logotipo ASCII SST en el código.'
     }
-    Write-Host 'fetch/neofetch: logotipo SST ASCII preservado en la salida de terminal.'
+    $gui = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\src\presentation\gui_slint.rs')
+    if (-not $gui.Contains('startup_logo_image()') -or
+        -not $gui.Contains('set_startup_logo_image') -or
+        -not $gui.Contains('startup-logo-visible')) {
+        throw 'El logo SST no está integrado como imagen nativa independiente del scroll.'
+    }
+    Write-Host 'SST startup: logo ASCII original en interfaz nativa y datos separados del scroll.'
 }
 finally {
     if ($process) {
