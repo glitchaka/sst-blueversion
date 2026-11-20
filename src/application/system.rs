@@ -50,9 +50,10 @@ impl SystemService {
     }
 
     pub fn execute(&self, args: &[String]) -> anyhow::Result<CommandOutput> {
-        let sub = args.first().map(String::as_str).unwrap_or("info");
+        let sub = args.first().map(String::as_str).unwrap_or("overview");
 
         match sub {
+            "overview" => Ok(system_help()),
             "info" => info(),
             "processes" | "ps" => processes(&args[1..]),
             "top" => self.top(&args[1..]),
@@ -436,15 +437,27 @@ fn services(args: &[String]) -> anyhow::Result<CommandOutput> {
 fn users(args: &[String]) -> anyhow::Result<CommandOutput> {
     if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(CommandOutput::ok(
-            "sys users — consulta cuentas de Windows\n\
-             uso:\n\
-               sys users                  cuentas locales\n\
-               sys users USUARIO          detalle de una cuenta\n\
-               sys users --domain         cuentas del dominio\n\
-               sys users USUARIO --domain detalle de cuenta de dominio\n",
+            "sys users — cuentas y perfiles (objetos distintos)\n\
+             sys users                 cuentas locales en SAM (net user)\n\
+             sys users NOMBRE          detalles de una cuenta local\n\
+             sys users --domain        cuentas del dominio\n\
+             sys users --profiles      carpetas de perfiles en Windows (no equivale a cuentas)\n",
         ));
     }
 
+    if options::has(args, "--profiles") {
+        if args.len() != 1 {
+            return Ok(CommandOutput::error(
+                "sys users --profiles no acepta nombres ni --domain", 2,
+            ));
+        }
+        return user_profile_directories();
+    }
+    if args.iter().any(|arg| arg.starts_with('-') && arg != "--domain") ||
+        args.iter().filter(|arg| !arg.starts_with('-')).count() > 1
+    {
+        return Ok(CommandOutput::error("sys users: argumentos incorrectos", 2));
+    }
     let mut native = vec!["user".to_owned()];
     if let Some(name) = args.first().filter(|arg| !arg.starts_with('-')) {
         native.push(name.clone());
@@ -452,8 +465,38 @@ fn users(args: &[String]) -> anyhow::Result<CommandOutput> {
     if options::has(args, "--domain") {
         native.push("/domain".to_owned());
     }
-
+    // net user reports SAM/AD account objects. Do not equate its output with
+    // on-disk C:\\Users profile folders, which may be orphaned or relocated.
     run_windows_tool("net.exe", &native)
+}
+
+fn user_profile_directories() -> anyhow::Result<CommandOutput> {
+    use std::path::PathBuf;
+    let root = env::var_os("PUBLIC")
+        .map(PathBuf::from)
+        .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+        .or_else(|| env::var_os("SystemDrive").map(|drive| PathBuf::from(drive).join("Users")))
+        .unwrap_or_else(|| PathBuf::from(r"C:\\Users"));
+    let mut profiles = std::fs::read_dir(&root)?
+        .filter_map(Result::ok)
+        .filter_map(|item| {
+            let kind = item.file_type().ok()?;
+            kind.is_dir().then_some(item.file_name().to_string_lossy().into_owned())
+        })
+        .collect::<Vec<_>>();
+    profiles.sort_by_key(|name| name.to_ascii_lowercase());
+    let mut out = format!(
+        "CARPETAS DE PERFILES — {}\n         Estas carpetas NO equivalen a cuentas activas de Windows.\n         La lista de cuentas SAM se consulta con sys users.\n\n",
+        root.display(),
+    );
+    if profiles.is_empty() {
+        out.push_str("(No hay subcarpetas visibles)\n");
+    } else {
+        for name in profiles {
+            writeln!(&mut out, "{name}")?;
+        }
+    }
+    Ok(CommandOutput::ok(out))
 }
 
 
