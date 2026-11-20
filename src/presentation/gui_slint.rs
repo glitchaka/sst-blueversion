@@ -274,10 +274,6 @@ slint::slint! {
         background: transparent;
 
         in property <image> terminal-image;
-        // Exact 37x100 ASCII artwork is rasterized from the author-supplied
-        // source and shown above the terminal only until its first interaction.
-        in property <image> startup-logo-image;
-        in property <bool> startup-logo-visible: true;
         in property <int> report-heading-count: 0;
         in property <float> report-grid-left: 0.0;
         in property <float> report-grid-top: 0.0;
@@ -366,22 +362,6 @@ slint::slint! {
                 height: 100%;
                 source: root.terminal-image;
                 image-fit: fill;
-            }
-
-            // The startup logo has its own scaled native surface: a 37-line
-            // terminal print would always scroll out of a typical viewport.
-            // This image is derived directly from FETCH_LOGO_ASCII, never an
-            // independently redrawn or substituted design.
-            Image {
-                // A narrow window uses the compact terminal ASCII logo
-                // instead of shrinking the full 37-line art beyond legibility.
-                visible: root.startup-logo-visible && parent.width >= 800px;
-                x: parent.width * 0.46;
-                y: 51px;
-                width: parent.width * 0.52;
-                height: min(250px, parent.height * 0.45);
-                source: root.startup-logo-image;
-                image-fit: contain;
             }
 
             // Ordinary SST help and reports receive the same genuine native
@@ -2094,8 +2074,6 @@ pub fn run() -> Result<()> {
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new()));
     let ui = SstBlueWindow::new()?;
-    ui.set_startup_logo_image(startup_logo_image()?);
-    ui.set_startup_logo_visible(true);
 
     // The sudo command starts a NEW Windows process for each privilege
     // escalation. Its token is immutable during this GUI session. Query that
@@ -2118,17 +2096,7 @@ pub fn run() -> Result<()> {
 
     {
         let model = model.clone();
-        let weak = ui.as_weak();
         ui.on_key_input(move |text, ctrl, alt, shift| {
-            // Receiving an initial focus/modifier/key event used to hide the
-            // logo before the user ever saw it. Keep the authored ASCII art
-            // visible through focus and editing; dismiss the overlay only
-            // when the user actually submits a command.
-            if key_is(text.as_str(), slint::platform::Key::Return)
-                && let Some(ui) = weak.upgrade()
-            {
-                ui.set_startup_logo_visible(false);
-            }
             handle_key(&mut model.borrow_mut(), text.as_str(), ctrl, alt, shift);
         });
     }
