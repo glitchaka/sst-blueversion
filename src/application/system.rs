@@ -1177,6 +1177,7 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         format!("{hours}h {minutes}m")
     };
 
+    let startup = args.iter().any(|arg| arg == "--startup");
     let plain = args.iter().any(|arg| matches!(arg.as_str(), "--plain" | "--stdout"));
     // En GUI el logo de 37 líneas desplazaba TODO el arte fuera del
     // viewport antes de llegar al prompt. Mantenerlo íntegro en --full y en
@@ -1225,6 +1226,12 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
             format!("{label}Arch:{reset} {arch}"),
         ]
     };
+
+    // In the native GUI, the 37-line ASCII logo is rendered independently
+    // from the scrolling VT100 grid. Do not print it here and scroll it away.
+    if startup {
+        return Ok(CommandOutput::ok(format!("{}\n", info.join("\n"))));
+    }
 
     // La obra ASCII original ocupa 100 columnas. Se dibuja íntegra sobre los
     // datos, evitando truncarla o forzar un ancho de más de 160 columnas.
