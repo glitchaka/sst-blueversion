@@ -274,6 +274,10 @@ slint::slint! {
         background: transparent;
 
         in property <image> terminal-image;
+        // Exact 37x100 ASCII artwork is rasterized from the author-supplied
+        // source and shown above the terminal only until its first interaction.
+        in property <image> startup-logo-image;
+        in property <bool> startup-logo-visible: true;
         in property <int> report-heading-count: 0;
         in property <float> report-grid-left: 0.0;
         in property <float> report-grid-top: 0.0;
@@ -362,6 +366,20 @@ slint::slint! {
                 height: 100%;
                 source: root.terminal-image;
                 image-fit: fill;
+            }
+
+            // The startup logo has its own scaled native surface: a 37-line
+            // terminal print would always scroll out of a typical viewport.
+            // This image is derived directly from FETCH_LOGO_ASCII, never an
+            // independently redrawn or substituted design.
+            Image {
+                visible: root.startup-logo-visible;
+                x: parent.width * 0.46;
+                y: 51px;
+                width: parent.width * 0.52;
+                height: min(250px, parent.height * 0.45);
+                source: root.startup-logo-image;
+                image-fit: contain;
             }
 
             // Ordinary SST help and reports receive the same genuine native
@@ -775,6 +793,44 @@ fn load_background_path(path: &std::path::Path) -> Result<Image> {
         decoded.height(),
     );
     Ok(Image::from_rgba8(buffer))
+}
+
+/// Render each original ASCII glyph with SST's embedded font, preserving
+/// all 37 rows and the exact order of all 100 columns. The GUI scales the
+/// resulting transparent pixel surface without modifying any source row.
+fn startup_logo_image() -> Result<Image> {
+    let lines = crate::application::system::FETCH_LOGO_ASCII;
+    let columns = lines.iter().map(|line| line.chars().count()).max().unwrap_or(0);
+    let rows = lines.len();
+    anyhow::ensure!(rows == 37 && columns == 100 && lines.iter().all(|line| line.chars().count() == columns),
+        "SST: el ASCII original de inicio debe medir 100 columnas por 37 filas");
+    let cell_width = 8u32;
+    let cell_height = 16u32;
+    let width = columns as u32 * cell_width;
+    let height = rows as u32 * cell_height;
+    let font = Font::from_bytes(NERD_FONT_BYTES, FontSettings::default())
+        .map_err(|error| anyhow::anyhow!("SST: no se pudo rasterizar el logo ASCII: {error}"))?;
+    let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
+    let mut glyphs = HashMap::<char, Glyph>::new();
+    for (row, line) in lines.iter().enumerate() {
+        let baseline = (row as i32 + 1) * cell_height as i32 - 4;
+        for (col, ch) in line.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let glyph = glyphs.entry(ch).or_insert_with(|| {
+                let (metrics, alpha) = font.rasterize(ch, 13.0);
+                Glyph { metrics, alpha }
+            });
+            let color = match ch {
+                '%' | '#' | '*' | '+' | '=' => Rgb(0xEB, 0xDB, 0xB2),
+                _ => Rgb(0x92, 0x83, 0x74),
+            };
+            draw_glyph(buffer.make_mut_slice(), width, height,
+                col as i32 * cell_width as i32, baseline, glyph, color);
+        }
+    }
+    Ok(Image::from_rgba8_premultiplied(buffer))
 }
 
 fn configured_background_path(
@@ -2036,6 +2092,8 @@ pub fn run() -> Result<()> {
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new()));
     let ui = SstBlueWindow::new()?;
+    ui.set_startup_logo_image(startup_logo_image()?);
+    ui.set_startup_logo_visible(true);
 
     // The sudo command starts a NEW Windows process for each privilege
     // escalation. Its token is immutable during this GUI session. Query that
@@ -2058,7 +2116,11 @@ pub fn run() -> Result<()> {
 
     {
         let model = model.clone();
+        let weak = ui.as_weak();
         ui.on_key_input(move |text, ctrl, alt, shift| {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_startup_logo_visible(false);
+            }
             handle_key(&mut model.borrow_mut(), text.as_str(), ctrl, alt, shift);
         });
     }
