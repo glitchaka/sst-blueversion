@@ -129,13 +129,7 @@ pub fn run_catalog(
                     continue;
                 }
                 if package.install.kind != "pkgx" {
-                    message = if package.execution.as_ref().is_some_and(|e|
-                        e.kind == "environment" && package.install.kind == "system")
-                    {
-                        format!("{}: entorno administrado por WSL2; autoriza su instalación explícitamente desde instp.", package.name)
-                    } else {
-                        format!("{}: herramienta externa no disponible como plugin SST. No se instalará otro .exe.", package.name)
-                    };
+                    message = format!("{}: no es un módulo .pkgx adaptado a SST.", package.name);
                     continue;
                 }
 
@@ -243,15 +237,10 @@ fn installed_ids(service: &PackageService) -> Result<HashSet<String>> {
 }
 
 fn package_type(package: &PackageManifest) -> &'static str {
-    if package.install.kind != "pkgx" && package.install.kind != "system" {
-        return "externo";
-    }
     match package.execution.as_ref().map(|execution| execution.kind.as_str()) {
         Some("embedded") => "modulo",
-        Some("runtime") => "interprete",
-        Some("process") => "externo",
-        Some("environment") => "entorno",
-        Some("system") => "sistema",
+        Some("data") => "datos",
+        Some("environment") => "entorno nativo",
         _ => "no soportado",
     }
 }
@@ -319,14 +308,8 @@ fn catalog_row(
     width: usize,
 ) -> String {
     let installed = installed.contains(&package.id.to_ascii_lowercase());
-    let external = package.install.kind != "pkgx" && package.install.kind != "system";
-    let restricted = package.install.kind == "system";
-    let state = if installed { "INSTALADO" }
-        else if external { "EXTERNO" }
-        else if restricted { "SISTEMA" }
-        else { "DISPONIBLE" };
+    let state = if installed { "INSTALADO" } else { "DISPONIBLE" };
     let state_color = if installed { "\x1b[38;2;184;187;38m" }
-        else if external || restricted { "\x1b[38;2;214;153;58m" }
         else { "\x1b[38;2;152;151;26m" };
     let marker = if active { "▌" } else { " " };
     let label = if width >= 84 {
@@ -435,17 +418,17 @@ mod catalog_style_tests {
     use std::collections::HashSet;
 
     #[test]
-    fn packages_are_grouped_by_supported_execution_kind() {
-        let index: serde_json::Value = serde_json::from_str(include_str!("../../packages/index.json")).unwrap();
+    fn catalog_only_lists_native_sst_packages() {
+        let index: serde_json::Value =
+            serde_json::from_str(include_str!("../../packages/index.json")).unwrap();
         let packages = index["packages"].as_array().unwrap();
-        assert!(packages.iter().any(|p| p["execution"]["kind"] == "embedded"));
-        assert!(packages.iter().any(|p| p["execution"]["kind"] == "runtime"));
-        assert!(packages.iter().any(|p| p["execution"]["kind"] == "process"));
-        assert!(packages.iter().any(|p| p["execution"]["kind"] == "environment"));
-        let ps: PackageManifest = serde_json::from_value(packages.iter().find(|p| p["id"] == "powershell").unwrap().clone()).unwrap();
+        assert!(!packages.is_empty());
+        assert!(packages.iter().all(|p| p["install"]["type"] == "pkgx"));
+        assert!(packages.iter().all(|p| p["id"] != "arch"));
+        let ps: PackageManifest = serde_json::from_value(
+            packages.iter().find(|p| p["id"] == "powershell").unwrap().clone()
+        ).unwrap();
         assert_eq!(super::package_type(&ps), "modulo");
-        let rg: PackageManifest = serde_json::from_value(packages.iter().find(|p| p["id"] == "ripgrep").unwrap().clone()).unwrap();
-        assert_eq!(super::package_type(&rg), "externo");
     }
 
     #[test]
