@@ -1,0 +1,1 @@
+Release SST v0.1.9-blue.78 with original 100-column, 37-row native Slint startup ASCII logo overlay and compact VT100 system facts. All Windows release checks must pass, including GUI compile and startup fetch regression.
