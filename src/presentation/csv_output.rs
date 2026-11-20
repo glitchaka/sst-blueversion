@@ -3,7 +3,8 @@
 //! cases or per-command formatting logic.
 use crate::support::csv::escape;
 
-pub fn csv_command(line: &str) -> Option<&str> {
+#[cfg(test)]
+fn csv_command(line: &str) -> Option<&str> {
     let trimmed = line.trim_end();
     let base = trimmed.strip_suffix("--csv")?;
     if !base.chars().last().is_some_and(char::is_whitespace) { return None; }
