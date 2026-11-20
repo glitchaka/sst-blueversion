@@ -1,0 +1,1 @@
+Publish SST 0.1.9-blue.78 only if Windows release checks pass. Verify original SST ASCII artwork is visible at startup on wide GUI, compact native ASCII appears in narrow GUI, Win32 HWND explicitly uses embedded official SST icon, and PowerShell .pkgx executes cmdlets and .ps1 through native runspace. Keep all tests blocking.
