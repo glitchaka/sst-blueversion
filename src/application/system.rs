@@ -1223,9 +1223,13 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         ]
     };
 
-    // Startup uses the same native left-hand Neofetch layout as `fetch --small`.
-    // Never separate the SST logo from the terminal output: a temporary GUI
-    // overlay can disappear on Enter and places the art outside the report.
+    // Keep the GUI startup clean: neither the downsampled compact glyph art
+    // nor the 37-row image overlay is acceptable at the current viewport.
+    // The complete author-provided art remains available with `fetch --full`.
+    // Startup metadata is printed once, without a duplicated logo.
+    if _startup {
+        return Ok(CommandOutput::ok(format!("{}\n", info.join("\n"))));
+    }
 
     if full_logo {
         // Keep the exact 37-line author-supplied artwork for --full and
