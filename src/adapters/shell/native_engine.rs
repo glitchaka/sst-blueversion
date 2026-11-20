@@ -529,7 +529,10 @@ impl ShellCommandHost for WindowsShellHost {
         // Global output modifier is part of the shell contract, even inside
         // .sh scripts: no builtin receives --csv as a command-specific flag.
         let csv = args.last().is_some_and(|arg| arg == "--csv");
-        let effective_args = if csv { &args[..args.len() - 1] } else { args };
+        // Preserve structured CSV already supplied by native network adapters.
+        // All other commands use one shared generic formatter below.
+        let native_csv = csv && matches!(name, "net" | "notsh");
+        let effective_args = if csv && !native_csv { &args[..args.len() - 1] } else { args };
         if name == "help" || name == "man" {
             let mut output = self.registry.help(effective_args.first().map(String::as_str));
             if csv && output.status == 0 {
@@ -554,7 +557,7 @@ impl ShellCommandHost for WindowsShellHost {
             )));
         }
         let mut output = self.registry.execute(name, effective_args, CommandContext { cwd, stdin })?;
-        if csv && output.status == 0 {
+        if csv && !native_csv && output.status == 0 {
             output.stdout = crate::presentation::csv_output::format_output(&output.stdout);
         }
         Ok(Some(ExecutionResult::from_parts(
@@ -2163,22 +2166,10 @@ impl ShellEngine for NativeShellEngine {
     fn execute_with_stdin(&mut self, line: &str, stdin: Option<&[u8]>) -> Result<ShellExecution> {
         self.interrupt.store(false, std::sync::atomic::Ordering::SeqCst);
         self.force_abort.store(false, std::sync::atomic::Ordering::SeqCst);
-        // --csv is a *global output modifier*. It is removed before any
-        // builtin or external command sees its arguments and formatted once
-        // after that command completes, at the same engine boundary.
-        let csv_command = crate::presentation::csv_output::csv_command(line);
-        let actual_line = csv_command.unwrap_or(line);
-        // Full-screen TUI programs do not yield a captured report. Reject a
-        // nonsensical CSV request rather than entering their interactive loop.
-        if csv_command.is_some() && matches!(
-            actual_line.split_whitespace().collect::<Vec<_>>().as_slice(),
-            ["keygen", ..] | ["top", ..] | ["sys", "top", ..]
-        ) {
-            let mut output = ShellExecution::continue_running(2);
-            output.stderr = "CSV: la pantalla interactiva no genera filas exportables; utiliza un comando de consulta.\n".to_owned();
-            return Ok(output);
-        }
-        let result = self.interpreter.execute_text_with_stdin(actual_line, stdin)?;
+        // CSV belongs to the command-host output boundary. Do not rewrite
+        // the whole input line here: doing so discards native CSV schemas
+        // (NOTSH LAN/WLAN) and breaks scripts and shell argument semantics.
+        let result = self.interpreter.execute_text_with_stdin(line, stdin)?;
 
         let mut execution = if result.exit_requested {
             ShellExecution::exit(result.status)
@@ -2188,9 +2179,7 @@ impl ShellEngine for NativeShellEngine {
         // Apply human-readable report presentation at one engine boundary,
         // rather than separately in every builtin. Machine output, scripts,
         // pipes, redirects and ANSI-native TUI output remain byte-for-byte.
-        execution.stdout = if csv_command.is_some() && result.status == 0 {
-            crate::presentation::csv_output::format_output(&result.stdout)
-        } else if stdin.is_none()
+        execution.stdout = if stdin.is_none()
             && self.interpreter.env.option_enabled("interactive")
             && crate::adapters::terminal::io::output_sender().is_some()
         {
