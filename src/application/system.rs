@@ -119,38 +119,53 @@ impl SystemService {
     fn keygen(&self, args: &[String]) -> anyhow::Result<CommandOutput> {
         if args.iter().any(|arg| matches!(arg.as_str(), "--help" | "-h")) {
             return Ok(CommandOutput::ok(
-                "keygen — animación retro SST con información real del sistema\n\
-                 Texto ondulante, colores cambiantes y métricas actualizadas.\n\
-                 Esc / q: salir | Espacio: pausar o reanudar\n",
+                "keygen — intro animada y banda sonora MP3 SST\n\
+                 Reproduce automáticamente los dos temas en bucle desde assets/keygen/.\n\
+                 1/2: seleccionar tema | Espacio: pausa/reanuda | Esc/q: salir\n",
             ));
         }
-        if !args.is_empty() {
-            return Ok(CommandOutput::error("keygen: usa keygen o keygen --help", 2));
-        }
+        let first = match args {
+            [] => 0,
+            [flag, value] if flag == "--track" && matches!(value.as_str(), "1" | "2") =>
+                value.parse::<usize>()?.saturating_sub(1),
+            _ => return Ok(CommandOutput::error(
+                "keygen: uso: keygen [--track 1|2] | keygen --help", 2)),
+        };
+        // Start sound before taking over the screen. A missing MP3 reports a
+        // useful error at the normal prompt, not a mute keygen animation.
+        let mut music = crate::application::keygen_audio::KeygenMusic::new(first)?;
         let mut terminal = self.terminal.alternate_screen()?;
         let mut system = System::new_all();
         system.refresh_all();
         let mut frame = 0u64;
-        let mut paused = false;
         loop {
-            // Separate samples keep the hardware figures live instead of
-            // reusing a startup snapshot.
-            if frame % 15 == 0 && !paused {
+            if frame % 15 == 0 && !music.is_paused() {
                 system.refresh_cpu_all();
                 system.refresh_memory();
             }
             let (cols, rows) = terminal.size()?;
             let facts = keygen_system_facts(&system);
-            let screen = keygen_frame(cols, rows, frame, paused, &facts);
+            let mut screen = keygen_frame(cols, rows, frame, music.is_paused(), &facts);
+            // Keep the player state visible even when changing tracks.
+            let status = format!("  [MP3 {} / 2]  1/2: pista  Espacio: pausa  ESC/Q: salir",
+                music.track_number());
+            screen.push_str(&format!("\x1b[{};1H\x1b[0m\x1b[38;2;189;174;147m{}\x1b[0m",
+                rows, status.chars().take(usize::from(cols.saturating_sub(1))).collect::<String>()));
             terminal.write(&screen)?;
             terminal.flush()?;
             match terminal.poll_key(Duration::from_millis(85))? {
                 Some(TerminalKey::Escape | TerminalKey::Char('q') | TerminalKey::Char('Q')) => break,
-                Some(TerminalKey::Space | TerminalKey::Char(' ')) => paused = !paused,
+                Some(TerminalKey::Space | TerminalKey::Char(' ')) =>
+                    music.pause_resume()?,
+                Some(TerminalKey::Char('1')) => music.select(0)?,
+                Some(TerminalKey::Char('2')) => music.select(1)?,
                 _ => {}
             }
-            if !paused { frame = frame.wrapping_add(1); }
+            if !music.is_paused() { frame = frame.wrapping_add(1); }
+            if frame % 5 == 0 { music.tick()?; }
         }
+        // Both resources are dropped here; the music handle is closed even on
+        // early exit (including resize/terminal errors).
         Ok(CommandOutput::ok(""))
     }
 
