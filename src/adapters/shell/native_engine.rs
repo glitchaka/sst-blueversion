@@ -2138,7 +2138,12 @@ impl ShellEngine for NativeShellEngine {
     fn execute_with_stdin(&mut self, line: &str, stdin: Option<&[u8]>) -> Result<ShellExecution> {
         self.interrupt.store(false, std::sync::atomic::Ordering::SeqCst);
         self.force_abort.store(false, std::sync::atomic::Ordering::SeqCst);
-        let result = self.interpreter.execute_text_with_stdin(line, stdin)?;
+        // --csv is a *global output modifier*. It is removed before any
+        // builtin or external command sees its arguments and formatted once
+        // after that command completes, at the same engine boundary.
+        let csv_command = crate::presentation::csv_output::csv_command(line);
+        let actual_line = csv_command.unwrap_or(line);
+        let result = self.interpreter.execute_text_with_stdin(actual_line, stdin)?;
 
         let mut execution = if result.exit_requested {
             ShellExecution::exit(result.status)
@@ -2148,7 +2153,9 @@ impl ShellEngine for NativeShellEngine {
         // Apply human-readable report presentation at one engine boundary,
         // rather than separately in every builtin. Machine output, scripts,
         // pipes, redirects and ANSI-native TUI output remain byte-for-byte.
-        execution.stdout = if stdin.is_none()
+        execution.stdout = if csv_command.is_some() && result.status == 0 {
+            crate::presentation::csv_output::format_output(&result.stdout)
+        } else if stdin.is_none()
             && self.interpreter.env.option_enabled("interactive")
             && crate::adapters::terminal::io::output_sender().is_some()
         {
