@@ -373,7 +373,9 @@ slint::slint! {
             // This image is derived directly from FETCH_LOGO_ASCII, never an
             // independently redrawn or substituted design.
             Image {
-                visible: root.startup-logo-visible;
+                // A narrow window uses the compact terminal ASCII logo
+                // instead of shrinking the full 37-line art beyond legibility.
+                visible: root.startup-logo-visible && parent.width >= 800px;
                 x: parent.width * 0.46;
                 y: 51px;
                 width: parent.width * 0.52;
