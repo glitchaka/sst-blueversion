@@ -11,7 +11,7 @@ pub(super) fn install_payload(
 ) -> Result<()> {
     match package.install.kind.as_str() {
         "single" => anyhow::bail!("{}: no se instalan ejecutables independientes", package.id),
-        "sstpkg" => super::sstpkg::install_sstpkg(package, source, destination),
+        "pkgx" => super::pkgx::install_pkgx(package, source, destination),
         "zip" => anyhow::bail!("{}: ZIP de proveedor no es un paquete SST", package.id),
         "archive" => anyhow::bail!("{}: archivo externo no es un paquete SST", package.id),
         "system" => anyhow::bail!("{} requiere instalación de sistema", package.id),
