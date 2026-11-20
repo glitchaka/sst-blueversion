@@ -119,9 +119,9 @@ impl SystemService {
     fn keygen(&self, args: &[String]) -> anyhow::Result<CommandOutput> {
         if args.iter().any(|arg| matches!(arg.as_str(), "--help" | "-h")) {
             return Ok(CommandOutput::ok(
-                "keygen — animación retro SST con datos reales del sistema\\n\\
-                 Colores cambiantes, texto flotante y ondas al estilo keygen 2000.\\n\\
-                 Esc / q: salir | Space: pausar o reanudar\\n",
+                "keygen — animación retro SST con información real del sistema\n\
+                 Texto ondulante, colores cambiantes y métricas actualizadas.\n\
+                 Esc / q: salir | Espacio: pausar o reanudar\n",
             ));
         }
         if !args.is_empty() {
