@@ -9,7 +9,7 @@ New-Item -ItemType Directory -Force -Path $root | Out-Null
 Copy-Item -LiteralPath (Resolve-Path $SstPath).Path -Destination (Join-Path $root 'sst.exe')
 $sourceDirectory = (Resolve-Path -LiteralPath $PluginDirectory).Path
 $archive = Join-Path $root 'powershell.pkgx'
-& python (Join-Path $PSScriptRoot 'pack-pkgx.py') --id powershell --version 7.5.13 --target win --kind embedded --source $sourceDirectory --output $archive --exclude-dotnet-apphost
+& python (Join-Path $PSScriptRoot 'pack-pkgx.py') --id powershell --version 7.5.13 --target win --kind embedded --source $sourceDirectory --output $archive --exclude-dotnet-apphost --require-file Sst.PowerShell.Bridge.dll --require-file hostfxr.dll --require-file Sst.PowerShell.Bridge.runtimeconfig.json
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $archive -PathType Leaf)) {
     throw 'El empaquetador nativo SST-PACKAGE/1 no produjo un módulo válido'
 }
