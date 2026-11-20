@@ -130,9 +130,10 @@ impl EmbeddedSession {
 
                 io::write(crate::presentation::shell::prompt::banner().as_bytes())?;
 
-                // Fetch is part of the visual startup and appears before the
-                // potentially slower security preload.
-                let fetch = engine.execute("fetch")?;
+                // GUI owns the full 37-line SST logo as a native overlay.
+                // Render only system facts in VT100 to avoid scrolling the
+                // entire logo off a short terminal before the prompt appears.
+                let fetch = engine.execute("fetch --startup")?;
                 io::write(fetch.stdout.as_bytes())?;
                 io::write(fetch.stderr.as_bytes())?;
 
