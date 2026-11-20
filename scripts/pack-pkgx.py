@@ -18,7 +18,6 @@ GROUPS = {
     "data": "data",
 }
 BAD_SUFFIXES = {".exe", ".com", ".bat", ".cmd"}
-REQUIRED = {"Sst.PowerShell.Bridge.dll", "hostfxr.dll", "Sst.PowerShell.Bridge.runtimeconfig.json"}
 
 
 def main() -> None:
@@ -30,6 +29,7 @@ def main() -> None:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--exclude-dotnet-apphost", action="store_true")
+    parser.add_argument("--require-file", action="append", default=[], help="Archivo obligatorio en payload; repetible")
     args = parser.parse_args()
     if not args.id or args.id in (".", "..") or not all(c.isascii() and (c.isalnum() or c in "-_.") for c in args.id):
         parser.error("id inválido")
@@ -59,10 +59,10 @@ def main() -> None:
         members.append((prefix + relative, file))
     if not members:
         parser.error("paquete vacío")
-    if args.id == "powershell":
-        names = {f.name for _, f in members}
-        if not REQUIRED.issubset(names):
-            parser.error(f"módulo PowerShell incompleto: faltan {sorted(REQUIRED - names)}")
+    present = {file.relative_to(args.source).as_posix() for _, file in members}
+    missing = sorted(set(args.require_file) - present)
+    if missing:
+        parser.error(f"paquete incompleto: faltan archivos obligatorios {missing}")
     manifest = {
         "format": 1,
         "id": args.id,
