@@ -55,8 +55,8 @@ impl InstpBuiltin {
 
         let mut out = String::new();
         for package in packages {
-            let status = if package.install.kind == "sstpkg" {
-                "SSTPKG"
+            let status = if package.install.kind == "pkgx" {
+                "PKGX"
             } else if package.execution.as_ref().is_some_and(|e| e.kind == "environment")
                 && package.install.kind == "system"
             {
@@ -112,7 +112,7 @@ impl InstpBuiltin {
 
         let adapter = package.execution.as_ref()
             .map(|execution| execution.kind.as_str()).unwrap_or("sin adaptador");
-        let support = if package.install.kind == "sstpkg" {
+        let support = if package.install.kind == "pkgx" {
             "PAQUETE NATIVO SST: instalable"
         } else if package.execution.as_ref().is_some_and(|e| e.kind == "environment")
             && package.install.kind == "system"
@@ -165,7 +165,7 @@ impl InstpBuiltin {
             ));
         }
 
-        let installation = if id.to_ascii_lowercase().ends_with(".sstpkg") {
+        let installation = if id.to_ascii_lowercase().ends_with(".pkgx") {
             let requested = Path::new(id);
             let file = if requested.is_absolute() {
                 requested.to_path_buf()
