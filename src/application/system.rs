@@ -65,6 +65,7 @@ impl SystemService {
             "kill" if args[1..].iter().any(|arg| arg == "--broker") => broker_process(crate::core::broker::Operation::Kill, &args[1..]),
             "kill" => kill_process(&args[1..]),
             "fetch" | "neofetch" | "fastfetch" => fetch(&args[1..]),
+            "keygen" => self.keygen(&args[1..]),
             "uptime" => uptime(),
             "services" if args[1..].iter().any(|arg| arg == "--impact") => {
                 self.security.services_impact()
@@ -107,11 +108,50 @@ impl SystemService {
             "kill" => kill_process(args),
             "uptime" => uptime(),
             "fetch" | "neofetch" | "fastfetch" => fetch(args),
+            "keygen" => self.keygen(args),
             _ => Ok(CommandOutput::error(
                 format!("comando de sistema desconocido: {name}"),
                 127,
             )),
         }
+    }
+
+    fn keygen(&self, args: &[String]) -> anyhow::Result<CommandOutput> {
+        if args.iter().any(|arg| matches!(arg.as_str(), "--help" | "-h")) {
+            return Ok(CommandOutput::ok(
+                "keygen — animación retro SST con datos reales del sistema\\n\\
+                 Colores cambiantes, texto flotante y ondas al estilo keygen 2000.\\n\\
+                 Esc / q: salir | Space: pausar o reanudar\\n",
+            ));
+        }
+        if !args.is_empty() {
+            return Ok(CommandOutput::error("keygen: usa keygen o keygen --help", 2));
+        }
+        let mut terminal = self.terminal.alternate_screen()?;
+        let mut system = System::new_all();
+        system.refresh_all();
+        let mut frame = 0u64;
+        let mut paused = false;
+        loop {
+            // Separate samples keep the hardware figures live instead of
+            // reusing a startup snapshot.
+            if frame % 15 == 0 && !paused {
+                system.refresh_cpu_all();
+                system.refresh_memory();
+            }
+            let (cols, rows) = terminal.size()?;
+            let facts = keygen_system_facts(&system);
+            let screen = keygen_frame(cols, rows, frame, paused, &facts);
+            terminal.write(&screen)?;
+            terminal.flush()?;
+            match terminal.poll_key(Duration::from_millis(85))? {
+                Some(TerminalKey::Escape | TerminalKey::Char('q') | TerminalKey::Char('Q')) => break,
+                Some(TerminalKey::Space | TerminalKey::Char(' ')) => paused = !paused,
+                _ => {}
+            }
+            if !paused { frame = frame.wrapping_add(1); }
+        }
+        Ok(CommandOutput::ok(""))
     }
 
     fn top(&self, args: &[String]) -> anyhow::Result<CommandOutput> {
@@ -1075,6 +1115,86 @@ fn info() -> anyhow::Result<CommandOutput> {
     )))
 }
 
+
+
+fn keygen_system_facts(system: &System) -> Vec<String> {
+    let username = env::var("USERNAME").unwrap_or_else(|_| "usuario".to_owned());
+    let host = System::host_name().unwrap_or_else(|| "equipo".to_owned());
+    let os = System::long_os_version().unwrap_or_else(|| "Windows".to_owned());
+    let kernel = System::kernel_version().unwrap_or_else(|| "desconocido".to_owned());
+    let cpu = system.cpus().first().map(|cpu| cpu.brand().trim().to_owned())
+        .unwrap_or_else(|| "CPU desconocida".to_owned());
+    let uptime = System::uptime();
+    let used = system.used_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
+    let total = system.total_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
+    vec![
+        format!("{username} @ {host}"),
+        format!("OS  :: {os}"),
+        format!("HOST :: {host}"),
+        format!("KERNEL :: {kernel}"),
+        format!("UPTIME :: {}h {}m", uptime / 3600, (uptime % 3600) / 60),
+        format!("SHELL :: Shell Shock Tool / Nwash"),
+        format!("VERSION :: {}", env!("CARGO_PKG_VERSION")),
+        "TERMINAL :: SST Native".to_owned(),
+        format!("CPU :: {cpu}"),
+        format!("CPU USO :: {:.1}%", system.global_cpu_usage()),
+        format!("RAM :: {used:.2} / {total:.2} GiB"),
+        format!("ARCH :: {}", env::consts::ARCH),
+    ]
+}
+
+/// Colors are per glyph, never one flat shade across the entire artwork.
+/// Render into the native alternate-screen terminal, not a GUI overlay.
+fn keygen_glyph_color(frame: u64, index: usize, row: usize) -> (u8, u8, u8) {
+    let phase = frame as f32 * 0.115 + index as f32 * 0.19 + row as f32 * 0.55;
+    let chan = |shift: f32| -> u8 {
+        (118.0 + 115.0 * (phase + shift).sin()).clamp(0.0, 255.0) as u8
+    };
+    (chan(0.0), chan(2.094), chan(4.188))
+}
+
+fn keygen_frame(cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String]) -> String {
+    let width = usize::from(cols);
+    let height = usize::from(rows);
+    let mut output = String::from("\x1b[0m\x1b[2J\x1b[H");
+    if width < 22 || height < 7 {
+        output.push_str("KEYGEN SST - amplia la ventana");
+        return output;
+    }
+    let title = "S H E L L   S H O C K   T O O L";
+    let subtitle = "S S T  /  K E Y G E N   2 0 0 0";
+    let mid = height / 2;
+    let title_y = mid.saturating_sub((facts.len() + 8) / 2 + 3).max(2);
+    let mut draw = |line: &str, base_y: usize, phase: f32, max_wave: f32| {
+        let chars: Vec<char> = line.chars().take(width.saturating_sub(2)).collect();
+        let start_x = (width.saturating_sub(chars.len())) / 2;
+        for (i, ch) in chars.into_iter().enumerate() {
+            if ch.is_control() || ch == ' ' { continue; }
+            let wave = ((frame as f32 * 0.13 + i as f32 * 0.32 + phase).sin() * max_wave).round() as isize;
+            let fy = (base_y as isize + wave).clamp(1, height.saturating_sub(2) as isize) as usize;
+            let fx = start_x + i + 1;
+            let (r, g, b) = keygen_glyph_color(frame, i, base_y);
+            output.push_str(&format!("\x1b[{fy};{fx}H\x1b[1;38;2;{r};{g};{b}m{ch}"));
+        }
+    };
+    draw(title, title_y, 0.0, 2.0);
+    draw(subtitle, title_y + 4, 1.2, 1.0);
+    let available = height.saturating_sub(title_y + 8);
+    let gap = if available >= facts.len() * 2 + 2 { 2 } else { 1 };
+    for (i, fact) in facts.iter().enumerate() {
+        let row = title_y + 7 + i * gap;
+        if row >= height.saturating_sub(2) { break; }
+        // Independent, low-amplitude waves produce a floating list
+        // without piling all status fields over one another.
+        draw(fact, row, i as f32 * 0.7, if gap > 1 { 0.45 } else { 0.0 });
+    }
+    let footer = if paused { "PAUSA  [SPACE] continuar  [ESC/Q] salir" }
+        else { "SST KEYGEN  [SPACE] pausa  [ESC/Q] salir" };
+    output.push_str(&format!("\x1b[{};1H\x1b[0m\x1b[38;2;189;174;147m{}",
+        height, footer.chars().take(width.saturating_sub(1)).collect::<String>()));
+    output.push_str("\x1b[0m");
+    output
+}
 
 /// El logo tipográfico SST proviene del ascii-art.txt proporcionado por el autor.
 /// Se conserva íntegro y sólo se reduce su representación durante el arranque.
