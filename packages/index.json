@@ -2,7 +2,7 @@
   "schema": 2,
   "repository": {
     "name": "sst-main",
-    "description": "SST native PKGX modules and explicitly managed environments; no third-party executable packages"
+    "description": "Catálogo de módulos SST adaptados y empaquetados en PKGX; sin programas, distribuciones ni ejecutables externos"
   },
   "packages": [
     {
@@ -43,35 +43,6 @@
           "hostfxr.dll"
         ],
         "target": "win"
-      }
-    },
-    {
-      "id": "arch",
-      "name": "Arch Linux (WSL2)",
-      "version": "rolling",
-      "description": "Entorno oficial Arch Linux para Windows Subsystem for Linux 2; requiere habilitación explícita de WSL",
-      "category": "environment",
-      "portability": "system",
-      "format": 1,
-      "source": {
-        "type": "system"
-      },
-      "install": {
-        "type": "system",
-        "expose": []
-      },
-      "execution": {
-        "kind": "environment",
-        "entry": "wsl.exe",
-        "commands": [
-          "arch"
-        ],
-        "extensions": [],
-        "provider": "wsl",
-        "distribution": "archlinux",
-        "startup": "discover",
-        "required_files": [],
-        "target": "unix"
       }
     }
   ]
