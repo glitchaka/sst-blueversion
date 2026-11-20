@@ -160,10 +160,7 @@ impl PackageService {
         let mut packages = self.catalog()?;
         if !term.is_empty() {
             packages.retain(|package| {
-                package.id.to_ascii_lowercase().contains(&term)
-                    || package.name.to_ascii_lowercase().contains(&term)
-                    || package.description.to_ascii_lowercase().contains(&term)
-                    || package.category.to_ascii_lowercase().contains(&term)
+                package.matches_query(&term)
             });
         }
         packages.sort_by(|left, right| left.id.cmp(&right.id));
