@@ -48,7 +48,6 @@ use crate::{
         EditorBuiltin,
         InstpBuiltin,
         NativePowerShellBuiltin,
-        WslEnvironmentBuiltin,
         SigSourBuiltin,
         NetworkBuiltin,
         PathBuiltin,
@@ -188,19 +187,6 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
         }
         Err(error) => eprintln!("SST: módulo PowerShell desactivado: {error:#}"),
         Ok(None) => {}
-    }
-    // Environment packages are registered only after the external provider
-    // has been explicitly installed and journaled by instp.
-    if let Some(arch) = package_service.installed()?.into_iter()
-        .find(|item| item.id == "arch" && item.execution.as_ref().is_some_and(
-            |e| e.kind == "environment" && e.provider.as_deref() == Some("wsl")
-                && e.distribution.as_deref() == Some("archlinux")
-        ))
-    {
-        let distro = arch.execution.as_ref()
-            .and_then(|e| e.distribution.clone())
-            .unwrap_or_default();
-        registry.register(Arc::new(WslEnvironmentBuiltin::new(distro)))?;
     }
     registry.register(Arc::new(SystemBuiltin::new(system_service)))?;
     registry.register(Arc::new(TriageBuiltin::new(Arc::clone(&security_service))))?;
