@@ -129,6 +129,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test-nwash-process-substitution.ps1 -SstPath ./target/debug/sst.exe
 
+      - name: Verify official SST Windows executable and taskbar icon
+        shell: pwsh
+        run: ./scripts/test-native-app-icon.ps1 -SstPath ./target/debug/sst.exe
+
       - name: Verify SST update commands through instp
         shell: pwsh
         run: ./scripts/test-instp-sst.ps1 -SstPath ./target/debug/sst.exe
