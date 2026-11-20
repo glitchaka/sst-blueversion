@@ -196,7 +196,7 @@ jobs:
       - name: Build installable native SST PowerShell package
         shell: pwsh
         run: |
-          python ./scripts/pack-pkgx.py --id powershell --version 7.5.13 --target win --kind embedded --source ./.build/plugin-powershell --output ./dist/SST-PowerShell-win-x64.pkgx --exclude-dotnet-apphost
+          python ./scripts/pack-pkgx.py --id powershell --version 7.5.13 --target win --kind embedded --source ./.build/plugin-powershell --output ./dist/SST-PowerShell-win-x64.pkgx --exclude-dotnet-apphost --require-file Sst.PowerShell.Bridge.dll --require-file hostfxr.dll --require-file Sst.PowerShell.Bridge.runtimeconfig.json
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath './dist/SST-PowerShell-win-x64.pkgx')) {
             throw 'No se creó el paquete nativo SST-PowerShell.'
           }
