@@ -1077,8 +1077,46 @@ fn info() -> anyhow::Result<CommandOutput> {
 
 
 /// El logo tipográfico SST proviene del ascii-art.txt proporcionado por el autor.
-/// La versión compacta conserva la composición y cabe junto a la información.
+/// Se conserva íntegro y sólo se reduce su representación durante el arranque.
 const FETCH_LOGO_ASCII: &[&str] = &["   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%=--::::--------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%=---------%%%%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%---#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=---------%%%%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%---#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=------%%%%%%%%%%%%%%%%%%%%%%%%----------%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=--+%%%%%%%%%%%%---------%%%---------=%%%%%%%%%%%%---------%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%---------%%%---------=%%%%%%%%%%%%---------%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%------------------------=%%%%%%%%%----------------------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%------------------------=%%%%%%%%%----------------------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%---------------------=%%%%%%%%%%%%-------------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%----------------------%%%%%%%%%%%%----------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%----------------------%%%%%%%%%%%%----------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%---------%%%%","%%%=---------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=---------------%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=---------------%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%*------------------%%%%%%%%%---*%%*------------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%*------------------%%%%%%%%%---*%%*------------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%%%%#---------------%%%%%%%%%---*%%%%%%---------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%---------%%%%%%%%%%%%=-----=%%%%%%---------%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%---------%%%%%%%%%%%%=-----=%%%%%%---------%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%%%%%%%%%%%%%---------=%%%%%%%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%%%%%%%%%%%%%---------=%%%%%%%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=---------%%%%%%%%%%%%----------------------%%%%%%%%%%%%-------------------%%%%%%%%%---------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    "];
+
+/// Reduce por cobertura de celdas el ASCII original sin redibujarlo ni
+/// recortarlo. Debe caber incluso en una ventana estrecha de SST.
+fn fetch_compact_logo(plain: bool) -> (Vec<String>, usize) {
+    const SX: usize = 3;
+    const SY: usize = 5;
+    let mut lines = Vec::new();
+    for chunk in FETCH_LOGO_ASCII.chunks(SY) {
+        let mut row = String::new();
+        for start in (0..100).step_by(SX) {
+            let mut filled = 0usize;
+            let mut total = 0usize;
+            for line in chunk {
+                for ch in line.chars().skip(start).take(SX) {
+                    total += 1;
+                    if matches!(ch, '%' | '#' | '*') {
+                        filled += 1;
+                    }
+                }
+            }
+            let coverage = filled as f32 / total.max(1) as f32;
+            row.push(if coverage >= 0.55 {
+                '%'
+            } else if coverage >= 0.18 {
+                '+'
+            } else {
+                ' '
+            });
+        }
+        let rendered = if plain {
+            row
+        } else {
+            format!("\x1b[1;38;2;235;219;178m{row}\x1b[0m")
+        };
+        lines.push(rendered);
+    }
+    (lines, 34)
+}
 
 fn fetch_logo(plain: bool) -> (Vec<String>, usize) {
     let width = FETCH_LOGO_ASCII.iter().map(|line| line.chars().count()).max().unwrap_or(0);
@@ -1106,9 +1144,9 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         return Ok(CommandOutput::ok(
             "fetch — muestra información del sistema con SST como texto nativo\n\
              uso: fetch [--small|--full] [--plain|--stdout]\n\
-             --small: logotipo SST compacto (predeterminado)\n\
-             --full: información del sistema detallada con el logo SST\n\
-             --plain/--stdout: salida sin secuencias ANSI, apta para archivos y pipes\n\
+             --small: logo SST compacto, visible al iniciar la terminal\n\
+             --full: logo ASCII SST original de 37 líneas\n\
+             --plain/--stdout: ASCII original sin ANSI, para archivos y pipes\n\
              alias: neofetch, fastfetch\n",
         ));
     }
@@ -1140,7 +1178,15 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     };
 
     let plain = args.iter().any(|arg| matches!(arg.as_str(), "--plain" | "--stdout"));
-    let (logo_lines, _logo_width) = fetch_logo(plain);
+    // En GUI el logo de 37 líneas desplazaba TODO el arte fuera del
+    // viewport antes de llegar al prompt. Mantenerlo íntegro en --full y en
+    // la exportación --plain, pero usar una muestra compacta al iniciar SST.
+    let full_logo = plain || args.iter().any(|arg| arg == "--full");
+    let (logo_lines, _logo_width) = if full_logo {
+        fetch_logo(plain)
+    } else {
+        fetch_compact_logo(false)
+    };
 
     let info = if plain {
         vec![
@@ -1809,6 +1855,18 @@ fn terminate_pid_native(pid: u32) -> anyhow::Result<()> {
 #[cfg(test)]
 mod fetch_text_logo_tests {
     use super::fetch_logo;
+
+    #[test]
+    fn startup_logo_is_visible_in_short_terminal_viewport() {
+        let (lines, width) = super::fetch_compact_logo(true);
+        assert_eq!(lines.len(), 8);
+        assert_eq!(width, 34);
+        assert!(lines.iter().all(|line| line.chars().count() == width));
+        assert!(lines.iter().any(|line| line.contains("%%%%%")));
+        // 8 logo + 2 gap + 12 data + 7 greeting/notification/prompt
+        // = 29 rows, smaller than INITIAL_ROWS=31 in GUI.
+        assert!(lines.len() + 2 + 12 + 7 <= 31);
+    }
 
     #[test]
     fn logo_is_ascii_and_has_uniform_columns() {
