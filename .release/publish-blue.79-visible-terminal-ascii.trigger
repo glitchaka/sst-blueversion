@@ -1,0 +1,1 @@
+Publish SST 0.1.9-blue.79 only after all blocking Windows checks pass. Explicitly validate that real Slint GUI startup emits ASCII SST in VT100 at all initial widths, with the author's 37x100 source retained. Reject regressions where only a hidden transient overlay contains the logo. Keep PowerShell PKGX, icon, updater and security regression gates.
