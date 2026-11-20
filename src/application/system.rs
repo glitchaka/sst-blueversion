@@ -1082,17 +1082,17 @@ const FETCH_LOGO_ASCII: &[&str] = &["   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 /// Reduce por cobertura de celdas el ASCII original sin redibujarlo ni
 /// recortarlo. Debe caber incluso en una ventana estrecha de SST.
-fn fetch_compact_logo(plain: bool) -> (Vec<String>, usize) {
-    const SX: usize = 3;
+fn fetch_compact_logo(plain: bool, columns: usize) -> (Vec<String>, usize) {
+    let sx: usize = if columns < 60 { 5 } else { 4 };
     const SY: usize = 5;
     let mut lines = Vec::new();
     for chunk in FETCH_LOGO_ASCII.chunks(SY) {
         let mut row = String::new();
-        for start in (0..100).step_by(SX) {
+        for start in (0..100).step_by(sx) {
             let mut filled = 0usize;
             let mut total = 0usize;
             for line in chunk {
-                for ch in line.chars().skip(start).take(SX) {
+                for ch in line.chars().skip(start).take(sx) {
                     total += 1;
                     if matches!(ch, '%' | '#' | '*') {
                         filled += 1;
@@ -1115,7 +1115,7 @@ fn fetch_compact_logo(plain: bool) -> (Vec<String>, usize) {
         };
         lines.push(rendered);
     }
-    (lines, 34)
+    (lines, 100usize.div_ceil(sx))
 }
 
 fn fetch_logo(plain: bool) -> (Vec<String>, usize) {
@@ -1179,15 +1179,11 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
 
     let startup = args.iter().any(|arg| arg == "--startup");
     let plain = args.iter().any(|arg| matches!(arg.as_str(), "--plain" | "--stdout"));
-    // En GUI el logo de 37 líneas desplazaba TODO el arte fuera del
-    // viewport antes de llegar al prompt. Mantenerlo íntegro en --full y en
-    // la exportación --plain, pero usar una muestra compacta al iniciar SST.
     let full_logo = plain || args.iter().any(|arg| arg == "--full");
-    let (logo_lines, _logo_width) = if full_logo {
-        fetch_logo(plain)
-    } else {
-        fetch_compact_logo(false)
-    };
+    let columns = args.iter().find_map(|arg| arg.strip_prefix("--startup-cols="))
+        .and_then(|text| text.parse::<usize>().ok())
+        .unwrap_or(80)
+        .clamp(35, 240);
 
     let info = if plain {
         vec![
@@ -1233,16 +1229,54 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         return Ok(CommandOutput::ok(format!("{}\n", info.join("\n"))));
     }
 
-    // La obra ASCII original ocupa 100 columnas. Se dibuja íntegra sobre los
-    // datos, evitando truncarla o forzar un ancho de más de 160 columnas.
-    let mut out = logo_lines.join("\n");
-    out.push('\n');
-    out.push('\n');
-    for line in &info {
-        out.push_str(line);
+    if full_logo {
+        // Keep the exact 37-line author-supplied artwork for --full and
+        // --plain. It cannot fit inside a short interactive GUI viewport.
+        let (logo_lines, _) = fetch_logo(plain);
+        let mut out = logo_lines.join("\n");
         out.push('\n');
+        out.push('\n');
+        for line in &info {
+            out.push_str(line);
+            out.push('\n');
+        }
+        return Ok(CommandOutput::ok(out));
     }
 
+    // The interactive startup must fit into the available terminal HEIGHT:
+    // putting the logo above twelve metadata rows scrolls it out of sight
+    // before the prompt is shown. Display the compact view *beside* seven
+    // essential live facts; --full retains all metadata and the original art.
+    let (logo_lines, logo_width) = fetch_compact_logo(false, columns);
+    let compact_facts = [
+        format!("{user}@{host}"),
+        format!("OS: {os}"),
+        format!("Kernel: {kernel} / {arch}"),
+        format!("Uptime: {uptime_text}"),
+        format!("Shell: SST/Nwash {}", env!("CARGO_PKG_VERSION")),
+        format!("CPU: {cpu}"),
+        format!("RAM: {used:.2} / {total:.2} GiB"),
+        "Terminal: SST Native".to_owned(),
+    ];
+    let fact_width = columns.saturating_sub(logo_width + 2).max(8);
+    let mut out = String::new();
+    for (index, logo) in logo_lines.iter().enumerate() {
+        out.push_str(logo);
+        if let Some(fact) = compact_facts.get(index) {
+            let fact = truncate_fetch(fact, fact_width);
+            out.push_str("  ");
+            if index == 0 {
+                out.push_str(&format!("\x1b[1;38;2;235;219;178m{fact}\x1b[0m"));
+            } else if let Some((name, value)) = fact.split_once(':') {
+                out.push_str(&format!(
+                    "\x1b[1;38;2;250;189;47m{name}:\x1b[0m{value}"
+                ));
+            } else {
+                out.push_str(&fact);
+            }
+        }
+        out.push('\n');
+    }
     Ok(CommandOutput::ok(out))
 }
 
@@ -1865,14 +1899,16 @@ mod fetch_text_logo_tests {
 
     #[test]
     fn startup_logo_is_visible_in_short_terminal_viewport() {
-        let (lines, width) = super::fetch_compact_logo(true);
+        let (lines, width) = super::fetch_compact_logo(true, 58);
         assert_eq!(lines.len(), 8);
-        assert_eq!(width, 34);
+        assert_eq!(width, 20);
         assert!(lines.iter().all(|line| line.chars().count() == width));
         assert!(lines.iter().any(|line| line.contains("%%%%%")));
-        // 8 logo + 2 gap + 12 data + 7 greeting/notification/prompt
-        // = 29 rows, smaller than INITIAL_ROWS=31 in GUI.
-        assert!(lines.len() + 2 + 12 + 7 <= 31);
+        // Eight rows for the logo AND facts, leaving the rest of the
+        // viewport for the greeting, update notice and editable prompt.
+        assert!(lines.len() + 7 <= 18);
+        let (_, wide_width) = super::fetch_compact_logo(true, 80);
+        assert_eq!(wide_width, 25);
     }
 
     #[test]
