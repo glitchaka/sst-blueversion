@@ -1,11 +1,11 @@
 SST Windows release CI report
-Source commit: c0b409c060ed7010153d01a5d8a35ce549016de6
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44771776036
-Recorded UTC: 2026-11-20 16:27:29Z
+Source commit: 46d10a46c30b7ba1bdfd8ecf87ff6db30fb01c9b
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44773771731
+Recorded UTC: 2026-11-20 16:38:54Z
 Compile: success
-Rust tests: skipped
-Software GUI startup: skipped
-Packaging: skipped
+Rust tests: success
+Software GUI startup: success
+Packaging: success
 Compiler log tail:
     Updating crates.io index
  Downloading crates ...
@@ -16,4 +16,4 @@ Compiler log tail:
    Compiling zip v9.8.1
    Compiling libsqlite3-sys v0.39.1
    Compiling rusqlite v0.41.1
-    Finished `release` profile [optimized] target(s) in 6m 37s
+    Finished `release` profile [optimized] target(s) in 5m 20s
