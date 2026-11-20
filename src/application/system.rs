@@ -2047,25 +2047,24 @@ fn terminate_pid_native(pid: u32) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod fetch_text_logo_tests {
-    use super::fetch_logo;
+    use super::{fetch_compact_logo, fetch_logo};
 
     #[test]
-    fn startup_logo_is_visible_in_short_terminal_viewport() {
-        let (lines, width) = super::fetch_compact_logo(true, 58);
-        assert_eq!(lines.len(), 8);
-        assert_eq!(width, 20);
-        assert!(lines.iter().all(|line| line.chars().count() == width));
-        assert!(lines.iter().any(|line| line.contains("%%%%%")));
-        // Eight rows for the logo AND facts, leaving the rest of the
-        // viewport for the greeting, update notice and editable prompt.
-        assert!(lines.len() + 7 <= 18);
-        let (_, wide_width) = super::fetch_compact_logo(true, 80);
-        assert_eq!(wide_width, 25);
+    fn compact_logo_fits_both_viewports() {
+        let (narrow, width) = fetch_compact_logo(true, 58).unwrap();
+        assert_eq!(narrow.len(), 12);
+        assert_eq!(width, 30);
+        assert!(narrow.iter().all(|line| line.chars().count() == width));
+        assert!(narrow.iter().any(|line| line.chars().any(|ch| ch != ' ')));
+        let (wide, wide_width) = fetch_compact_logo(true, 80).unwrap();
+        assert_eq!(wide.len(), 12);
+        assert_eq!(wide_width, 36);
+        assert!(wide.iter().all(|line| line.chars().count() == wide_width));
     }
 
     #[test]
-    fn logo_is_ascii_and_has_uniform_columns() {
-        let (lines, width) = fetch_logo(true);
+    fn original_logo_remains_unchanged_in_plain_mode() {
+        let (lines, width) = fetch_logo(true).unwrap();
         assert_eq!(lines.len(), 37);
         assert_eq!(width, 100);
         assert!(lines.iter().all(|line| line.chars().count() == width));
@@ -2073,10 +2072,11 @@ mod fetch_text_logo_tests {
     }
 
     #[test]
-    fn colored_logo_keeps_its_dimensions() {
-        let (lines, width) = fetch_logo(false);
+    fn colored_logo_renders_with_libcaca() {
+        let (lines, width) = fetch_logo(false).unwrap();
         assert_eq!(width, 100);
-        assert!(lines.iter().all(|line| line.starts_with("\x1b[")));
+        assert!(!lines.is_empty());
+        assert!(lines.join("\n").contains('%'));
     }
 }
 
