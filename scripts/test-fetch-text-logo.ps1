@@ -39,7 +39,10 @@ try {
     if ($stdout -notmatch '(?m)^   %{20,}' -or $stdout -notmatch '(?m)^%%.*?%{4,}') {
         throw "fetch no imprimió el logotipo ASCII SST: $stdout"
     }
-    if ($stdout -match [char]27) {
+    # The interactive compact fetch intentionally uses ANSI colors.
+    # Only inspect the two subsequent --plain renders for color leakage.
+    $plainOutput = $stdout.Substring($narrowEnd + 'SST_NARROW_FETCH_DONE'.Length)
+    if ($plainOutput -match [char]27) {
         throw 'fetch --plain imprimió códigos ANSI.'
     }
     if (-not $stdout.Contains('SST_FETCH_COMPLETE')) {
