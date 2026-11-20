@@ -78,6 +78,17 @@ impl PackageService {
         self.ensure_layout()?;
         let mut state = self.store.load_installed_state()?;
         let mut migrated = false;
+        // Retire obsolete WSL and external executable registrations from the
+        // SST journal. Never touch an actual WSL distribution or user files.
+        let old_count = state.packages.len();
+        state.packages.retain(|package| {
+            !package.id.eq_ignore_ascii_case("arch")
+                && !package.execution.as_ref().is_some_and(|execution| {
+                    execution.provider.as_deref() == Some("wsl")
+                        || matches!(execution.kind.as_str(), "process" | "runtime" | "system")
+                })
+        });
+        let retired_legacy = old_count != state.packages.len();
         // Older installed.json files do not contain lifetime metadata.
         // Migrate them to this generation rather than destructively deleting
         // everything on the first startup with the new manager.
@@ -135,7 +146,7 @@ impl PackageService {
             }
             self.store.clean_package_cache(&package.id)?;
         }
-        if migrated || !expired.is_empty() {
+        if migrated || retired_legacy || !expired.is_empty() {
             state.packages.retain(|package| {
                 !expires_on_generation(package, functional_generation())
             });
@@ -147,9 +158,6 @@ impl PackageService {
     pub fn search(&self, term: Option<&str>) -> Result<Vec<PackageManifest>> {
         let term = term.unwrap_or_default().trim().to_ascii_lowercase();
         let mut packages = self.catalog()?;
-        // Metasploit permanece definido en el repositorio, pero se excluye
-        // temporalmente del listado y de las búsquedas visibles de instp.
-        packages.retain(|package| !package.id.eq_ignore_ascii_case("metasploit"));
         if !term.is_empty() {
             packages.retain(|package| {
                 package.id.to_ascii_lowercase().contains(&term)
@@ -617,9 +625,19 @@ impl PackageService {
                 continue;
             }
             let bytes = fs::read(&cache)?;
-            let index: PackageIndex = serde_json::from_slice(&bytes)
-                .with_context(|| format!("índice cacheado inválido: {}", repo.name))?;
-            validate_index(&index)?;
+            let index: PackageIndex = match serde_json::from_slice(&bytes) {
+                Ok(index) => index,
+                Err(error) => {
+                    eprintln!("instp: catálogo cacheado {} ignorado: {error}", repo.name);
+                    continue;
+                }
+            };
+            if let Err(error) = validate_index(&index) {
+                // Old repository caches can contain vendor executables or WSL
+                // descriptors. Ignore them instead of blocking SST startup.
+                eprintln!("instp: catálogo cacheado {} no compatible con PKGX: {error:#}", repo.name);
+                continue;
+            }
             for package in index.packages {
                 if seen.insert(package.id.to_ascii_lowercase()) {
                     packages.push(package);
