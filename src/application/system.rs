@@ -1177,7 +1177,7 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         format!("{hours}h {minutes}m")
     };
 
-    let startup = args.iter().any(|arg| arg == "--startup");
+    let _startup = args.iter().any(|arg| arg == "--startup");
     let plain = args.iter().any(|arg| matches!(arg.as_str(), "--plain" | "--stdout"));
     let full_logo = plain || args.iter().any(|arg| arg == "--full");
     let columns = args.iter().find_map(|arg| arg.strip_prefix("--startup-cols="))
@@ -1223,11 +1223,9 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         ]
     };
 
-    // In the native GUI, the 37-line ASCII logo is rendered independently
-    // from the scrolling VT100 grid. Do not print it here and scroll it away.
-    if startup {
-        return Ok(CommandOutput::ok(format!("{}\n", info.join("\n"))));
-    }
+    // Startup uses the same native left-hand Neofetch layout as `fetch --small`.
+    // Never separate the SST logo from the terminal output: a temporary GUI
+    // overlay can disappear on Enter and places the art outside the report.
 
     if full_logo {
         // Keep the exact 37-line author-supplied artwork for --full and
