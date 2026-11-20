@@ -23,7 +23,7 @@ $script = Join-Path $root 'native-packages.sh'
 $out = Join-Path $root 'stdout.txt'
 $err = Join-Path $root 'stderr.txt'
 [IO.File]::WriteAllText($script, @'
-instp search arch
+instp info arch
 instp search powershell
 echo SST_NATIVE_PACKAGE_CHECK_DONE
 '@, [Text.UTF8Encoding]::new($false))
@@ -37,10 +37,11 @@ try {
     $stdout = Get-Content -Raw -LiteralPath $out
     $stderr = Get-Content -Raw -LiteralPath $err
     if ($p.ExitCode -ne 0) { throw "El catálogo SST falló: $stderr | $stdout" }
-    if (-not $stdout.Contains('No se encontraron paquetes.') -or
+    $combined = "$stdout`n$stderr"
+    if (-not $combined.Contains('paquete no encontrado: arch') -or
         -not $stdout.Contains('powershell') -or
         -not $stdout.Contains('SST_NATIVE_PACKAGE_CHECK_DONE')) {
-        throw "instp no cumple el catálogo nativo: $stdout"
+        throw "instp no cumple el catálogo nativo: $combined"
     }
     Write-Host 'SST: módulos PKGX, sin Arch/WSL ni ejecutables externos'
 }
