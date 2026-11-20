@@ -1,5 +1,5 @@
 mod installer;
-mod sstpkg;
+mod pkgx;
 mod execution;
 mod lifecycle;
 mod model;
@@ -224,11 +224,11 @@ impl PackageService {
             .info(id)?
             .ok_or_else(|| anyhow::anyhow!("instp: paquete no encontrado: {id}"))?;
 
-        if package.install.kind != "sstpkg"
+        if package.install.kind != "pkgx"
             && !package.execution.as_ref().is_some_and(|e| e.kind == "environment")
         {
             anyhow::bail!(
-                "instp: {} se distribuye como ejecutable externo o archivo de proveedor; sólo se admiten módulos .sstpkg sin nuevos .exe",
+                "instp: {} se distribuye como ejecutable externo o archivo de proveedor; sólo se admiten módulos .pkgx sin nuevos .exe",
                 id
             );
         }
@@ -259,20 +259,20 @@ impl PackageService {
         self.reconcile_for_functional_release()?;
         anyhow::ensure!(
             input.extension().and_then(|value| value.to_str())
-                .is_some_and(|value| value.eq_ignore_ascii_case("sstpkg")) && input.is_file(),
-            "instp: no existe un archivo local .sstpkg válido"
+                .is_some_and(|value| value.eq_ignore_ascii_case("pkgx")) && input.is_file(),
+            "instp: no existe un archivo local .pkgx válido"
         );
-        let (id, version) = sstpkg::read_header(input)?;
+        let (id, version) = pkgx::read_header(input)?;
         let package = self.info(&id)?.ok_or_else(|| anyhow::anyhow!(
             "instp: el paquete local {} no está registrado en un repositorio SST",
             id
         ))?;
-        anyhow::ensure!(package.install.kind == "sstpkg",
+        anyhow::ensure!(package.install.kind == "pkgx",
             "instp: {} no es un paquete nativo SST registrado", id);
         let source = ResolvedSource {
             url: format!("archivo local: {}", input.display()),
             file_name: input.file_name().map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| format!("{id}.sstpkg")),
+                .unwrap_or_else(|| format!("{id}.pkgx")),
             version,
             sha256: None,
             size: None,
@@ -292,7 +292,7 @@ impl PackageService {
         let target = execution.target.as_deref().unwrap_or("win");
         anyhow::ensure!(matches!(target, "win" | "unix"),
             "instp: plataforma de paquete desconocida");
-        let folder = sstpkg::kind_folder(&execution.kind)?;
+        let folder = pkgx::kind_folder(&execution.kind)?;
         let install_dir = self.store.packages_dir()
             .join(target).join(folder).join(&package.id);
 
