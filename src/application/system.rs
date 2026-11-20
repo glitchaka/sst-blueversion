@@ -1094,7 +1094,7 @@ fn sst_caca_palette(x: usize, y: usize, width: usize) -> libcaca::Color {
 }
 
 fn caca_ansi(canvas: &libcaca::Canvas) -> anyhow::Result<String> {
-    Ok(String::from_utf8(canvas.export_to_memory("ansi")?)?)
+    Ok(String::from_utf8(canvas.export_to_memory("utf8")?)?)
 }
 
 /// Reduce el original proporcionalmente y con niveles de cobertura reales,
@@ -1117,7 +1117,7 @@ fn fetch_compact_logo(plain: bool, columns: usize) -> anyhow::Result<(Vec<String
             for sy in y0..y1.min(source_height) {
                 for ch in FETCH_LOGO_ASCII[sy].as_bytes().iter().skip(x0).take(x1 - x0) {
                     total += 1;
-                    if matches!(ch, b'%' | b'#' | b'*' | b'+') { ink += 1; }
+                    if matches!(*ch, b'%' | b'#' | b'*' | b'+') { ink += 1; }
                 }
             }
             let coverage = ink as f32 / total.max(1) as f32;
