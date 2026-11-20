@@ -128,7 +128,7 @@ pub fn run_catalog(
                     );
                     continue;
                 }
-                if package.install.kind != "sstpkg" {
+                if package.install.kind != "pkgx" {
                     message = if package.execution.as_ref().is_some_and(|e|
                         e.kind == "environment" && package.install.kind == "system")
                     {
@@ -243,7 +243,7 @@ fn installed_ids(service: &PackageService) -> Result<HashSet<String>> {
 }
 
 fn package_type(package: &PackageManifest) -> &'static str {
-    if package.install.kind != "sstpkg" && package.install.kind != "system" {
+    if package.install.kind != "pkgx" && package.install.kind != "system" {
         return "externo";
     }
     match package.execution.as_ref().map(|execution| execution.kind.as_str()) {
@@ -319,7 +319,7 @@ fn catalog_row(
     width: usize,
 ) -> String {
     let installed = installed.contains(&package.id.to_ascii_lowercase());
-    let external = package.install.kind != "sstpkg" && package.install.kind != "system";
+    let external = package.install.kind != "pkgx" && package.install.kind != "system";
     let restricted = package.install.kind == "system";
     let state = if installed { "INSTALADO" }
         else if external { "EXTERNO" }
