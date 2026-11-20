@@ -130,10 +130,15 @@ impl EmbeddedSession {
 
                 io::write(crate::presentation::shell::prompt::banner().as_bytes())?;
 
-                // GUI owns the full 37-line SST logo as a native overlay.
-                // Render only system facts in VT100 to avoid scrolling the
-                // entire logo off a short terminal before the prompt appears.
-                let fetch = engine.execute("fetch --startup")?;
+                // Wide GUI: the exact 37-line artwork is a native overlay.
+                // Narrow GUI: show a compact ASCII logo next to metadata,
+                // keeping the mark visible in a small terminal viewport.
+                let startup_fetch = if cols >= 90 {
+                    "fetch --startup".to_owned()
+                } else {
+                    format!("fetch --startup-cols={cols}")
+                };
+                let fetch = engine.execute(&startup_fetch)?;
                 io::write(fetch.stdout.as_bytes())?;
                 io::write(fetch.stderr.as_bytes())?;
 
