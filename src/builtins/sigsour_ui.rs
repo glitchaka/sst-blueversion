@@ -435,9 +435,11 @@ mod catalog_style_tests {
     fn only_selected_package_has_a_colored_background() {
         let package: PackageManifest = serde_json::from_str(r#"{
             "id":"test", "name":"Test", "version":"1.0", "description":"Un paquete",
-            "category":"cli", "portability":"pure",
-            "source":{"type":"url","url":"https://example.com/test"},
-            "install":{"type":"zip","expose":["test.exe"]}
+            "category":"module", "portability":"isolated",
+            "source":{"type":"url","url":"https://example.com/test.pkgx"},
+            "install":{"type":"pkgx","expose":[]},
+            "execution":{"kind":"embedded","target":"win","entry":"test.dll",
+                "commands":["test"],"extensions":[],"abi":"sst-hostfxr/1","startup":"load"}
         }"#).unwrap();
         let installed = HashSet::new();
         let selected = catalog_row(&package, &installed, true, 100);
