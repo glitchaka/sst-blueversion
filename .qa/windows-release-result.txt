@@ -1,65 +1,19 @@
 SST Windows release CI report
-Source commit: f3c84e472d156f2a48a6a787ba8b6f9ed235cb88
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44581875272
-Recorded UTC: 2026-11-19 18:01:06Z
+Source commit: c0b409c060ed7010153d01a5d8a35ce549016de6
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44771776036
+Recorded UTC: 2026-11-20 16:27:29Z
 Compile: success
-Rust tests: success
-Software GUI startup: success
-Packaging: success
+Rust tests: skipped
+Software GUI startup: skipped
+Packaging: skipped
 Compiler log tail:
     Updating crates.io index
  Downloading crates ...
-  Downloaded bytes v1.12.2
-  Downloaded pin-project v1.2.0
-  Downloaded pin-project-lite v0.2.18
-  Downloaded pin-project-internal v1.2.0
-  Downloaded regex v1.13.2
-  Downloaded regex-syntax v0.8.12
-  Downloaded regex-automata v0.4.19
-  Downloaded smallvec v1.16.6
-  Downloaded zip v9.7.3
-   Compiling smallvec v1.16.6
-   Compiling pin-project-lite v0.2.18
-   Compiling pin-project-internal v1.2.0
-   Compiling tracing v0.1.44
-   Compiling icu_normalizer v2.4.0
-   Compiling kurbo v0.13.1
-   Compiling harfrust v0.12.0
-   Compiling fixed_decimal v0.7.3
-   Compiling svgtypes v0.16.2
-   Compiling fontique v0.11.1
-   Compiling icu_decimal v2.4.0
-   Compiling idna_adapter v1.2.2
-   Compiling icu_segmenter v2.4.0
-   Compiling idna v1.1.0
-   Compiling usvg v0.48.1
-   Compiling parley v0.11.1
-   Compiling pin-project v1.2.0
-   Compiling url v2.5.8
-   Compiling resvg v0.48.1
-   Compiling i-slint-common v1.18.1
-   Compiling i-slint-core v1.18.1
-   Compiling winit v0.30.13
-   Compiling webbrowser v1.2.7
-   Compiling softbuffer v0.4.8
-   Compiling i-slint-compiler v1.18.1
-   Compiling i-slint-renderer-software v1.18.1
-   Compiling parking_lot_core v0.9.12
-   Compiling i-slint-backend-winit v1.18.1
-   Compiling nibble_vec v0.1.0
-   Compiling regex-syntax v0.8.12
-   Compiling radix_trie v0.2.1
-   Compiling regex-automata v0.4.19
-   Compiling tokio v1.54.1
-   Compiling parking_lot v0.12.5
-   Compiling i-slint-backend-selector v1.18.1
-   Compiling sst v0.1.9-blue.76 (D:\a\sst-blueversion\sst-blueversion)
+  Downloaded cc v1.11.3
+  Downloaded zip v9.8.1
+   Compiling cc v1.11.3
+   Compiling sst v0.1.9-blue.77 (D:\a\sst-blueversion\sst-blueversion)
+   Compiling zip v9.8.1
+   Compiling libsqlite3-sys v0.39.1
    Compiling rusqlite v0.41.1
-   Compiling zip v9.7.3
-   Compiling rustyline v17.0.2
-   Compiling slint-macros v1.18.1
-   Compiling slint v1.18.1
-   Compiling snmp2 v0.5.3
-   Compiling crossterm v0.29.0
-   Compiling regex v1.13.2
-    Finished `release` profile [optimized] target(s) in 3m 18s
+    Finished `release` profile [optimized] target(s) in 6m 37s
