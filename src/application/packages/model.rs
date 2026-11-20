@@ -33,6 +33,31 @@ pub struct PackageManifest {
     pub execution: Option<PackageExecution>,
 }
 
+impl PackageManifest {
+    /// Reuse the same search semantics in instp and sigsour. A short name
+    /// such as "arch" must not match the unrelated word "archivos".
+    pub fn matches_query(&self, input: &str) -> bool {
+        let term = input.trim().to_ascii_lowercase();
+        if term.is_empty() {
+            return true;
+        }
+        if self.id.to_ascii_lowercase().contains(&term)
+            || self.name.to_ascii_lowercase().contains(&term)
+            || self.category.to_ascii_lowercase().contains(&term)
+        {
+            return true;
+        }
+        let description = self.description.to_ascii_lowercase();
+        if term.chars().any(char::is_whitespace) {
+            description.contains(&term)
+        } else {
+            description
+                .split(|ch: char| !ch.is_alphanumeric())
+                .any(|word| word == term)
+        }
+    }
+}
+
 fn format_v1() -> u32 { 1 }
 
 /// Versioned execution contract common to CLI, runtimes, in-process modules
@@ -333,6 +358,18 @@ mod manifest_security_tests {
 #[cfg(test)]
 mod standard_manifest_tests {
     use super::*;
+
+    #[test]
+    fn description_search_does_not_confuse_arch_with_archivos() {
+        let index: PackageIndex = serde_json::from_str(include_str!(
+            "../../../packages/index.json"
+        )).unwrap();
+        let powershell = index.packages.iter().find(|p| p.id == "powershell").unwrap();
+        assert!(powershell.description.to_ascii_lowercase().contains("archivos"));
+        assert!(!powershell.matches_query("arch"));
+        assert!(powershell.matches_query("powers"));
+        assert!(powershell.matches_query("archivos"));
+    }
 
     #[test]
     fn all_bundled_packages_follow_sst_package_1() {
