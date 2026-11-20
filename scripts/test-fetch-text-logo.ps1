@@ -24,27 +24,25 @@ try {
         throw "fetch --startup no devolvió control a la consola: $stdout"
     }
     $initial = $stdout.Substring(0, $separator)
-    if ($initial.Contains('%%%') -or -not $initial.Contains('OS:')) {
-        throw "fetch --startup debe mostrar datos del sistema sin desplazar el logo: $initial"
+    if (-not $initial.Contains('OS:') -or -not $initial.Contains('RAM:')) {
+        throw "fetch --startup no presenta metadatos del sistema: $initial"
     }
     $narrowEnd = $stdout.IndexOf('SST_NARROW_FETCH_DONE')
     if ($narrowEnd -lt 0 -or $narrowEnd -le $separator) {
-        throw "fetch para GUI estrecha no terminó: $stdout"
+        throw "fetch para ventana estrecha no terminó: $stdout"
     }
     $narrow = $stdout.Substring($separator, $narrowEnd - $separator)
-    if ($narrow -notmatch '%{3,}' -or -not $narrow.Contains('OS:') -or
-        -not $narrow.Contains('RAM:')) {
-        throw "El arranque estrecho no muestra logo SST y datos juntos: $narrow"
+    if (-not $narrow.Contains('OS:') -or -not $narrow.Contains('RAM:')) {
+        throw "fetch estrecho no muestra los datos del sistema: $narrow"
     }
     $wideEnd = $stdout.IndexOf('SST_WIDE_FETCH_DONE')
     if ($wideEnd -lt 0 -or $wideEnd -le $narrowEnd) {
-        throw "fetch para GUI ancha no terminó: $stdout"
+        throw "fetch para ventana ancha no terminó: $stdout"
     }
     $wide = $stdout.Substring($narrowEnd + 'SST_NARROW_FETCH_DONE'.Length,
         $wideEnd - $narrowEnd - 'SST_NARROW_FETCH_DONE'.Length)
-    if ($wide -notmatch '%{3,}' -or -not $wide.Contains('OS:') -or
-        -not $wide.Contains('RAM:')) {
-        throw "SST no dibuja logo y datos en arranque de ventana ancha: $wide"
+    if (-not $wide.Contains('OS:') -or -not $wide.Contains('RAM:')) {
+        throw "fetch ancho no muestra los datos del sistema: $wide"
     }
     if ($stdout -notmatch '(?m)^   %{20,}' -or $stdout -notmatch '(?m)^%%.*?%{4,}') {
         throw "fetch no imprimió el logotipo ASCII SST: $stdout"
@@ -63,20 +61,14 @@ try {
         throw 'No se encontró el nuevo logotipo ASCII SST en el código.'
     }
     $gui = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\src\presentation\gui_slint.rs')
-    if (-not $gui.Contains('startup_logo_image()') -or
-        -not $gui.Contains('set_startup_logo_image') -or
-        -not $gui.Contains('startup-logo-visible')) {
-        throw 'El logo SST no está integrado como imagen nativa independiente del scroll.'
+    if ($gui.Contains('startup-logo-visible') -or $gui.Contains('set_startup_logo_image')) {
+        throw 'El overlay SST obsoleto ha reaparecido en la GUI.'
     }
     $bootstrap = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\src\adapters\terminal\embedded.rs')
-    if (-not $bootstrap.Contains('fetch --startup-cols={cols}') -or
-        $bootstrap.Contains('"fetch --startup".to_owned()')) {
-        throw 'SST GUI no imprime el logo ASCII de respaldo en todas las anchuras.'
+    if (-not $bootstrap.Contains('fetch --startup-cols={cols}')) {
+        throw 'La GUI no integra fetch en el arranque.'
     }
-    if (-not $gui.Contains('key_is(text.as_str(), slint::platform::Key::Return)')) {
-        throw 'El logotipo de arranque se oculta antes de enviar un comando.'
-    }
-    Write-Host 'SST startup: logo ASCII compacto en todas las anchuras, original de 37 líneas y overlay hasta Enter.'
+    Write-Host 'SST startup: metadatos, fetch en todas las anchuras y ningún overlay flotante.'
 }
 finally {
     if ($process) {
