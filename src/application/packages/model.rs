@@ -196,17 +196,14 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
             );
         }
         "environment" => {
-            if package.install.kind == "pkgx" {
-                if execution.target.as_deref() != Some("unix") {
-                    anyhow::bail!("instp: {} debe declarar plataforma Unix", package.id);
-                }
-            } else if package.category != "environment" || package.portability != "system"
-                || package.source.kind != "system" || package.install.kind != "system"
-                || execution.provider.as_deref() != Some("wsl")
-                || execution.distribution.as_deref() != Some("archlinux")
-                || execution.entry != "wsl.exe"
+            // Data/configuration environments are native PKGX payloads only.
+            // External WSL distributions are never managed by instp.
+            if package.install.kind != "pkgx"
+                || execution.target.as_deref() != Some("unix")
+                || execution.provider.is_some()
+                || execution.distribution.is_some()
             {
-                anyhow::bail!("instp: entorno {} sin proveedor WSL reconocido", package.id);
+                anyhow::bail!("instp: {} no es un entorno .pkgx nativo de SST", package.id);
             }
         }
         "data" => {
@@ -215,9 +212,7 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
             }
         }
         "system" => {
-            if package.install.kind != "system" {
-                anyhow::bail!("instp: {} no es un paquete de sistema", package.id);
-            }
+            anyhow::bail!("instp: {} requiere un instalador externo, no admitido por SST", package.id);
         }
         other => anyhow::bail!("instp: {} usa adaptador desconocido: {other}", package.id),
     }
@@ -297,7 +292,7 @@ fn validate_portability(value: &str) -> Result<()> {
 }
 
 fn validate_install_kind(value: &str) -> Result<()> {
-    if !matches!(value, "pkgx" | "system") {
+    if value != "pkgx" {
         anyhow::bail!("instp: tipo de instalación desconocido: {value}");
     }
     Ok(())
@@ -348,13 +343,9 @@ mod standard_manifest_tests {
         assert_eq!(index.schema, 2);
         assert!(index.packages.iter().all(|package| package.format == 1
             && package.execution.is_some()));
-        assert_eq!(index.packages.len(), 2);
-        assert!(index.packages.iter().all(|package| {
-            package.install.kind == "pkgx"
-                || (package.id == "arch"
-                    && package.install.kind == "system"
-                    && package.execution.as_ref().is_some_and(|e| e.kind == "environment"))
-        }));
+        assert_eq!(index.packages.len(), 1);
+        assert!(index.packages.iter().all(|package| package.install.kind == "pkgx"));
+        assert!(!index.packages.iter().any(|package| package.id == "arch"));
     }
 
     #[test]
@@ -370,16 +361,20 @@ mod standard_manifest_tests {
     }
 
     #[test]
-    fn arch_wsl2_is_an_environment_not_a_windows_executable() {
-        let index: PackageIndex = serde_json::from_str(include_str!(
+    fn refuses_wsl_environment_catalog_entries() {
+        let mut index: PackageIndex = serde_json::from_str(include_str!(
             "../../../packages/index.json"
         )).unwrap();
-        let arch = index.packages.iter().find(|package| package.id == "arch").unwrap();
-        let exec = arch.execution.as_ref().unwrap();
-        assert_eq!(exec.kind, "environment");
-        assert_eq!(exec.provider.as_deref(), Some("wsl"));
-        assert_eq!(exec.distribution.as_deref(), Some("archlinux"));
-        assert!(arch.install.expose.is_empty());
+        let mut invalid = index.packages[0].clone();
+        invalid.id = "arch".to_owned();
+        invalid.category = "environment".to_owned();
+        invalid.portability = "system".to_owned();
+        invalid.install.kind = "system".to_owned();
+        invalid.execution.as_mut().unwrap().kind = "environment".to_owned();
+        invalid.execution.as_mut().unwrap().provider = Some("wsl".to_owned());
+        invalid.execution.as_mut().unwrap().distribution = Some("archlinux".to_owned());
+        index.packages.push(invalid);
+        assert!(validate_index(&index).is_err());
     }
 
     #[test]
