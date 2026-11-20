@@ -1,0 +1,1 @@
+Retry 0.1.9-blue.78 from latest main after correcting the false-positive ANSI regression for colored narrow startup + plain fetch, with native SST Windows icon RT_GROUP_ICON and PowerShell .pkgx mandatory tests. Keep all Windows release checks blocking.
