@@ -137,7 +137,7 @@ jobs:
         shell: pwsh
         run: ./scripts/test-powershell-plugin.ps1 -SstPath ./target/debug/sst.exe -PluginDirectory ./.build/plugin-powershell
 
-      - name: Verify native PKGX boundary: Arch is not installed through SST
+      - name: Verify native PKGX boundary (Arch is not installed through SST)
         shell: pwsh
         run: ./scripts/test-native-package-boundary.ps1 -SstPath ./target/debug/sst.exe
 
