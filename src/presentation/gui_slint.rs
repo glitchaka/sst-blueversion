@@ -2120,7 +2120,13 @@ pub fn run() -> Result<()> {
         let model = model.clone();
         let weak = ui.as_weak();
         ui.on_key_input(move |text, ctrl, alt, shift| {
-            if let Some(ui) = weak.upgrade() {
+            // Receiving an initial focus/modifier/key event used to hide the
+            // logo before the user ever saw it. Keep the authored ASCII art
+            // visible through focus and editing; dismiss the overlay only
+            // when the user actually submits a command.
+            if key_is(text.as_str(), slint::platform::Key::Return)
+                && let Some(ui) = weak.upgrade()
+            {
                 ui.set_startup_logo_visible(false);
             }
             handle_key(&mut model.borrow_mut(), text.as_str(), ctrl, alt, shift);
