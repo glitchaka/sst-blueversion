@@ -266,12 +266,7 @@ fn visible_packages<'a>(
         .iter()
         .filter(|package| category == "todos" || package_type(package) == category)
         .filter(|package| {
-            query.is_empty()
-                || package.id.to_ascii_lowercase().contains(&query)
-                || package.name.to_ascii_lowercase().contains(&query)
-                || package.description.to_ascii_lowercase().contains(&query)
-                || package.category.to_ascii_lowercase().contains(&query)
-                || package_type(package).contains(&query)
+            package.matches_query(&query) || package_type(package).contains(&query)
         })
         .collect::<Vec<_>>();
     rows.sort_by(|left, right| left.id.cmp(&right.id));
