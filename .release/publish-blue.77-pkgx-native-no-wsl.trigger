@@ -1,0 +1,1 @@
+Publish SST v0.1.9-blue.77 only after all blocking Windows regression and packaging checks succeed. PKGX is the sole installable package container. Arch is only a list of candidates for native SST porting; no WSL installer, WSL command, or executable package catalog.
