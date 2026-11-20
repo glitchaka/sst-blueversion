@@ -2143,6 +2143,16 @@ impl ShellEngine for NativeShellEngine {
         // after that command completes, at the same engine boundary.
         let csv_command = crate::presentation::csv_output::csv_command(line);
         let actual_line = csv_command.unwrap_or(line);
+        // Full-screen TUI programs do not yield a captured report. Reject a
+        // nonsensical CSV request rather than entering their interactive loop.
+        if csv_command.is_some() && matches!(
+            actual_line.split_whitespace().collect::<Vec<_>>().as_slice(),
+            ["keygen", ..] | ["top", ..] | ["sys", "top", ..]
+        ) {
+            let mut output = ShellExecution::continue_running(2);
+            output.stderr = "CSV: la pantalla interactiva no genera filas exportables; utiliza un comando de consulta.\n".to_owned();
+            return Ok(output);
+        }
         let result = self.interpreter.execute_text_with_stdin(actual_line, stdin)?;
 
         let mut execution = if result.exit_requested {
