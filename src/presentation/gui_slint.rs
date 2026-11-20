@@ -41,6 +41,7 @@ use windows_sys::Win32::{
             WS_CAPTION, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE,
             SWP_NOZORDER, SWP_NOACTIVATE,
             SetForegroundWindow, SetWindowTextW, ShowWindow, SW_RESTORE,
+            LoadIconW, SendMessageW, WM_SETICON, ICON_BIG, ICON_SMALL,
         },
     },
 };
@@ -1920,6 +1921,26 @@ fn slint_hwnd(ui: &SstBlueWindow) -> Option<HWND> {
 }
 
 // Expose the verified token level to the OS task switcher as well.
+/// Slint/winit's undecorated HWND can retain its generic window icon even
+/// when sst.exe contains RT_GROUP_ICON. Bind the embedded Win32 resource
+/// explicitly for the taskbar, Alt+Tab and the native window identity.
+fn apply_embedded_sst_icon(hwnd: HWND) {
+    unsafe {
+        let module = GetModuleHandleW(std::ptr::null());
+        if module.is_null() {
+            return;
+        }
+        // winres::WindowsResource::set_icon stores the application icon as
+        // resource ID 1. This loads the existing official .ico, never a
+        // generated/placeholder visual or a separate on-disk resource.
+        let icon = LoadIconW(module, 1usize as *const u16);
+        if !icon.is_null() {
+            SendMessageW(hwnd, WM_SETICON, ICON_BIG as usize, icon as isize);
+            SendMessageW(hwnd, WM_SETICON, ICON_SMALL as usize, icon as isize);
+        }
+    }
+}
+
 fn set_native_privilege_title(hwnd: HWND, privilege_label: &str) {
     let title: Vec<u16> = format!("Shell Shock Tool [{}]", privilege_label)
         .encode_utf16()
@@ -2102,6 +2123,7 @@ pub fn run() -> Result<()> {
             if let Some(ui) = weak.upgrade() {
                 apply_slint_window_effects(&ui, &appearance);
                 if let Some(hwnd) = slint_hwnd(&ui) {
+                    apply_embedded_sst_icon(hwnd);
                     set_native_privilege_title(hwnd, &privilege_label);
                     unsafe { focus_native_window(hwnd); }
                 }
