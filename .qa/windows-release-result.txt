@@ -1,12 +1,12 @@
 SST Windows release CI report
-Source commit: 766d9c63758671f6376e233ed0b01a41cd40401f
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44777738759
-Recorded UTC: 2026-11-20 17:00:13Z
+Source commit: be0712d6284f3ad74cc463ab5d1f0c83fb74fc29
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44785029468
+Recorded UTC: 2026-11-20 17:48:32Z
 Compile: success
 Rust tests: success
 Software GUI startup: success
 Packaging: success
 Compiler log tail:
     Updating crates.io index
-   Compiling sst v0.1.9-blue.78 (D:\a\sst-blueversion\sst-blueversion)
-    Finished `release` profile [optimized] target(s) in 3m 24s
+   Compiling sst v0.1.9-blue.79 (D:\a\sst-blueversion\sst-blueversion)
+    Finished `release` profile [optimized] target(s) in 3m 55s
