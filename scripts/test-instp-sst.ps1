@@ -32,9 +32,12 @@ echo SST_INSTP_HELP_RETURNED
         }
     }
     $manifest = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\Cargo.toml')
-    $version = [regex]::Match($manifest, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
-    if (-not $version -or -not $output.Contains("SST $version")) {
-        throw "instp sst no informa la versión real: $output"
+    $match = [regex]::Match($manifest, '(?m)^version\s*=\s*"([^"]+)"')
+    if (-not $match.Success) { throw 'Cargo.toml no contiene una versión canónica.' }
+    $version = $match.Groups[1].Value.Trim()
+    $reported = [regex]::Match($output, 'SST\s+(\d+\.\d+\.\d+-blue\.\d+)')
+    if (-not $reported.Success -or $reported.Groups[1].Value -ne $version) {
+        throw "instp sst informa versión incorrecta: esperada [$version], reportada [$($reported.Groups[1].Value)]"
     }
     Write-Host 'instp SST status/help: comprobación funcional superada en Windows.'
 } finally {
