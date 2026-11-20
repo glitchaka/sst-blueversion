@@ -165,7 +165,7 @@ pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
         })?;
         // Entries for external vendor tools may stay in the catalog for
         // discovery, but cannot be installed until an SST plugin exists.
-        if package.install.kind == "sstpkg" || package.install.kind == "system" {
+        if package.install.kind == "pkgx" || package.install.kind == "system" {
             validate_execution(package, execution)?;
         }
 
@@ -182,7 +182,7 @@ pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
 fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -> Result<()> {
     match execution.kind.as_str() {
         "embedded" => {
-            if package.category != "module" || package.install.kind != "sstpkg"
+            if package.category != "module" || package.install.kind != "pkgx"
                 || execution.abi.as_deref() != Some("sst-hostfxr/1")
                 || execution.startup.as_deref() != Some("load")
             {
@@ -200,7 +200,7 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
             );
         }
         "environment" => {
-            if package.install.kind == "sstpkg" {
+            if package.install.kind == "pkgx" {
                 if execution.target.as_deref() != Some("unix") {
                     anyhow::bail!("instp: {} debe declarar plataforma Unix", package.id);
                 }
@@ -214,8 +214,8 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
             }
         }
         "data" => {
-            if package.install.kind != "sstpkg" {
-                anyhow::bail!("instp: los datos de {} requieren un .sstpkg", package.id);
+            if package.install.kind != "pkgx" {
+                anyhow::bail!("instp: los datos de {} requieren un .pkgx", package.id);
             }
         }
         "system" => {
@@ -225,7 +225,7 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
         }
         other => anyhow::bail!("instp: {} usa adaptador desconocido: {other}", package.id),
     }
-    if package.install.kind == "sstpkg" && execution.target.is_none() {
+    if package.install.kind == "pkgx" && execution.target.is_none() {
         anyhow::bail!("instp: {} no declara su plataforma win/unix", package.id);
     }
     if let Some(target) = execution.target.as_deref() {
@@ -235,11 +235,11 @@ fn validate_execution(package: &PackageManifest, execution: &PackageExecution) -
     }
     for file in &execution.required_files {
         validate_relative_payload_path(file)?;
-        if package.install.kind == "sstpkg" && forbidden_executable(file) {
+        if package.install.kind == "pkgx" && forbidden_executable(file) {
             anyhow::bail!("instp: {} no puede instalar ejecutables externos", package.id);
         }
     }
-    if package.install.kind == "sstpkg" && forbidden_executable(&execution.entry) {
+    if package.install.kind == "pkgx" && forbidden_executable(&execution.entry) {
         anyhow::bail!("instp: {} no puede incluir un .exe como entrada", package.id);
     }
     for command in &execution.commands {
@@ -301,7 +301,7 @@ fn validate_portability(value: &str) -> Result<()> {
 }
 
 fn validate_install_kind(value: &str) -> Result<()> {
-    if !matches!(value, "sstpkg" | "system") {
+    if !matches!(value, "pkgx" | "system") {
         anyhow::bail!("instp: tipo de instalación desconocido: {value}");
     }
     Ok(())
