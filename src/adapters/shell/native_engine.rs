@@ -526,12 +526,17 @@ impl ShellCommandHost for WindowsShellHost {
                 }
             }
         }
+        // Global output modifier is part of the shell contract, even inside
+        // .sh scripts: no builtin receives --csv as a command-specific flag.
+        let csv = args.last().is_some_and(|arg| arg == "--csv");
+        let effective_args = if csv { &args[..args.len() - 1] } else { args };
         if name == "help" || name == "man" {
-            let output = self.registry.help(args.first().map(String::as_str));
+            let mut output = self.registry.help(effective_args.first().map(String::as_str));
+            if csv && output.status == 0 {
+                output.stdout = crate::presentation::csv_output::format_output(&output.stdout);
+            }
             return Ok(Some(ExecutionResult::from_parts(
-                output.stdout,
-                output.stderr,
-                output.status,
+                output.stdout, output.stderr, output.status,
             )));
         }
 
@@ -539,11 +544,21 @@ impl ShellCommandHost for WindowsShellHost {
             return Ok(None);
         }
 
-        let output = self.registry.execute(name, args, CommandContext { cwd, stdin })?;
+        // TUI commands cannot be captured as a static CSV report.
+        if csv && (name == "keygen" || name == "top"
+            || (name == "sys" && effective_args.first().is_some_and(|arg| arg == "top")))
+        {
+            return Ok(Some(ExecutionResult::from_parts(
+                String::new(),
+                "CSV: la pantalla interactiva no genera una tabla exportable.\n".to_owned(), 2,
+            )));
+        }
+        let mut output = self.registry.execute(name, effective_args, CommandContext { cwd, stdin })?;
+        if csv && output.status == 0 {
+            output.stdout = crate::presentation::csv_output::format_output(&output.stdout);
+        }
         Ok(Some(ExecutionResult::from_parts(
-            output.stdout,
-            output.stderr,
-            output.status,
+            output.stdout, output.stderr, output.status,
         )))
     }
 
