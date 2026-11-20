@@ -1,19 +1,25 @@
 SST Windows release CI report
-Source commit: 46d10a46c30b7ba1bdfd8ecf87ff6db30fb01c9b
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44773771731
-Recorded UTC: 2026-11-20 16:38:54Z
-Compile: success
-Rust tests: success
-Software GUI startup: success
-Packaging: success
+Source commit: c1b7c6f7d0df013d6debeef8fb98244f94b2890e
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/44776022406
+Recorded UTC: 2026-11-20 16:45:39Z
+Compile: failure
+Rust tests: skipped
+Software GUI startup: skipped
+Packaging: skipped
 Compiler log tail:
     Updating crates.io index
- Downloading crates ...
-  Downloaded cc v1.11.3
-  Downloaded zip v9.8.1
-   Compiling cc v1.11.3
-   Compiling sst v0.1.9-blue.77 (D:\a\sst-blueversion\sst-blueversion)
-   Compiling zip v9.8.1
-   Compiling libsqlite3-sys v0.39.1
-   Compiling rusqlite v0.41.1
-    Finished `release` profile [optimized] target(s) in 5m 20s
+   Compiling sst v0.1.9-blue.78 (D:\a\sst-blueversion\sst-blueversion)
+error[E0603]: constant `FETCH_LOGO_ASCII` is private
+    --> src\presentation\gui_slint.rs:802:45
+     |
+ 802 |     let lines = crate::application::system::FETCH_LOGO_ASCII;
+     |                                             ^^^^^^^^^^^^^^^^ private constant
+     |
+note: the constant `FETCH_LOGO_ASCII` is defined here
+    --> src\application\system.rs:1081:1
+     |
+1081 | const FETCH_LOGO_ASCII: &[&str] = &["   %%%%...%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    "];
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For more information about this error, try `rustc --explain E0603`.
+error: could not compile `sst` (bin "sst") due to 1 previous error
