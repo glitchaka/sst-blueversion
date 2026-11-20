@@ -23,6 +23,7 @@ $script = Join-Path $root 'native-packages.sh'
 $out = Join-Path $root 'stdout.txt'
 $err = Join-Path $root 'stderr.txt'
 [IO.File]::WriteAllText($script, @'
+instp search arch
 instp info arch
 instp search powershell
 echo SST_NATIVE_PACKAGE_CHECK_DONE
@@ -39,6 +40,7 @@ try {
     if ($p.ExitCode -ne 0) { throw "El catálogo SST falló: $stderr | $stdout" }
     $combined = "$stdout`n$stderr"
     if (-not $combined.Contains('paquete no encontrado: arch') -or
+        -not $stdout.Contains('No se encontraron paquetes.') -or
         -not $stdout.Contains('powershell') -or
         -not $stdout.Contains('SST_NATIVE_PACKAGE_CHECK_DONE')) {
         throw "instp no cumple el catálogo nativo: $combined"
