@@ -31,7 +31,9 @@ echo SST_INSTP_HELP_RETURNED
             throw "instp no mostró $expected. STDOUT: $output STDERR: $errorLog"
         }
     }
-    if ($output -notmatch 'SST\s+0\.1\.9-blue\.\d+') {
+    $manifest = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\Cargo.toml')
+    $version = [regex]::Match($manifest, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+    if (-not $version -or -not $output.Contains("SST $version")) {
         throw "instp sst no informa la versión real: $output"
     }
     Write-Host 'instp SST status/help: comprobación funcional superada en Windows.'
