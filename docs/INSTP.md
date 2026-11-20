@@ -97,7 +97,7 @@ generación funcional.
 La lista de aplicaciones de Arch y otras fuentes externas sirve para
 identificar capacidades deseadas. Para convertir una de ellas en módulo
 SST se necesita código o un adaptador real que atienda Nwash y un archivo
-`.pkgx` firmado/verificable según el estándar. No basta con comprimir
+`.pkgx` con integridad SHA-256 verificable según el estándar. No basta con comprimir
 un ejecutable de terceros.
 
 Generar un paquete de módulo:
