@@ -159,6 +159,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test-notsh-native.ps1 -SstPath ./target/release/sst.exe
 
+      - name: Verify official SST Windows executable and taskbar icon
+        shell: pwsh
+        run: ./scripts/test-native-app-icon.ps1 -SstPath ./target/release/sst.exe
+
       - name: Verify SST logo is native text, not pixel art
         shell: pwsh
         run: ./scripts/test-fetch-text-logo.ps1 -SstPath ./target/release/sst.exe
