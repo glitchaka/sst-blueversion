@@ -1080,54 +1080,76 @@ fn info() -> anyhow::Result<CommandOutput> {
 /// Se conserva íntegro y sólo se reduce su representación durante el arranque.
 pub(crate) const FETCH_LOGO_ASCII: &[&str] = &["   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%=--::::--------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%=---------%%%%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%---#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=---------%%%%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%---#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=------%%%%%%%%%%%%%%%%%%%%%%%%----------%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=--+%%%%%%%%%%%%---------%%%---------=%%%%%%%%%%%%---------%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%---------%%%---------=%%%%%%%%%%%%---------%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%------------------------=%%%%%%%%%----------------------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%------------------------=%%%%%%%%%----------------------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%---------------------=%%%%%%%%%%%%-------------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%----------------------%%%%%%%%%%%%----------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%----------------------%%%%%%%%%%%%----------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%---------%%%%","%%%=---------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=---------------%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=---------------%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%*------------------%%%%%%%%%---*%%*------------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%*------------------%%%%%%%%%---*%%*------------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%%%%#---------------%%%%%%%%%---*%%%%%%---------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%---------%%%%%%%%%%%%=-----=%%%%%%---------%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%---------%%%%%%%%%%%%=-----=%%%%%%---------%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%%%%%%%%%%%%%---------=%%%%%%%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%%%%%%%%%%%%%---------=%%%%%%%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=---------%%%%%%%%%%%%----------------------%%%%%%%%%%%%-------------------%%%%%%%%%---------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    "];
 
-/// Reduce por cobertura de celdas el ASCII original sin redibujarlo ni
-/// recortarlo. Debe caber incluso en una ventana estrecha de SST.
-fn fetch_compact_logo(plain: bool, columns: usize) -> (Vec<String>, usize) {
-    let sx: usize = if columns < 60 { 5 } else { 4 };
-    const SY: usize = 5;
-    let mut lines = Vec::new();
-    for chunk in FETCH_LOGO_ASCII.chunks(SY) {
-        let mut row = String::new();
-        for start in (0..100).step_by(sx) {
-            let mut filled = 0usize;
-            let mut total = 0usize;
-            for line in chunk {
-                for ch in line.chars().skip(start).take(sx) {
-                    total += 1;
-                    if matches!(ch, '%' | '#' | '*') {
-                        filled += 1;
-                    }
-                }
-            }
-            let coverage = filled as f32 / total.max(1) as f32;
-            row.push(if coverage >= 0.55 {
-                '%'
-            } else if coverage >= 0.18 {
-                '+'
-            } else {
-                ' '
-            });
-        }
-        let rendered = if plain {
-            row
-        } else {
-            format!("\x1b[1;38;2;235;219;178m{row}\x1b[0m")
-        };
-        lines.push(rendered);
+/// Construye el logo SST mediante libcaca. Cada celda conserva su carácter
+/// y su atributo de color; ningún overlay independiente tapa el terminal.
+fn sst_caca_palette(x: usize, y: usize, width: usize) -> libcaca::Color {
+    use libcaca::Color;
+    match (x * 5 / width.max(1) + y / 4) % 5 {
+        0 => Color::Yellow,
+        1 => Color::Brown,
+        2 => Color::LightRed,
+        3 => Color::LightGreen,
+        _ => Color::Green,
     }
-    (lines, 100usize.div_ceil(sx))
 }
 
-fn fetch_logo(plain: bool) -> (Vec<String>, usize) {
-    let width = FETCH_LOGO_ASCII.iter().map(|line| line.chars().count()).max().unwrap_or(0);
-    let lines = FETCH_LOGO_ASCII.iter().map(|line| {
-        if plain {
-            (*line).to_owned()
-        } else {
-            format!("\x1b[1;38;2;235;219;178m{line}\x1b[0m")
+fn caca_ansi(canvas: &libcaca::Canvas) -> anyhow::Result<String> {
+    Ok(String::from_utf8(canvas.export_to_memory("ansi")?)?)
+}
+
+/// Reduce el original proporcionalmente y con niveles de cobertura reales,
+/// respetando la matriz de origen. Nunca sustituir por texto de color plano.
+fn fetch_compact_logo(plain: bool, columns: usize) -> anyhow::Result<(Vec<String>, usize)> {
+    let width = if columns < 70 { 30usize } else { 36usize };
+    let height = 12usize;
+    let source_height = FETCH_LOGO_ASCII.len();
+    let source_width = FETCH_LOGO_ASCII.iter().map(|s| s.len()).max().unwrap_or(100);
+    let mut cv = libcaca::Canvas::new(width as i32, height as i32)?;
+    let mut plain_rows = vec![String::new(); height];
+    for y in 0..height {
+        for x in 0..width {
+            let x0 = x * source_width / width;
+            let x1 = ((x + 1) * source_width / width).max(x0 + 1);
+            let y0 = y * source_height / height;
+            let y1 = ((y + 1) * source_height / height).max(y0 + 1);
+            let mut ink = 0usize;
+            let mut total = 0usize;
+            for sy in y0..y1.min(source_height) {
+                for ch in FETCH_LOGO_ASCII[sy].as_bytes().iter().skip(x0).take(x1 - x0) {
+                    total += 1;
+                    if matches!(ch, b'%' | b'#' | b'*' | b'+') { ink += 1; }
+                }
+            }
+            let coverage = ink as f32 / total.max(1) as f32;
+            let glyph = if coverage > 0.72 { '█' }
+                else if coverage > 0.48 { '▓' }
+                else if coverage > 0.25 { '▒' }
+                else if coverage > 0.09 { '░' }
+                else { ' ' };
+            plain_rows[y].push(glyph);
+            cv.set_color_ansi(sst_caca_palette(x, y, width), libcaca::Color::Default)?;
+            cv.put_char(x as i32, y as i32, glyph as u32);
         }
-    }).collect();
-    (lines, width)
+    }
+    if plain { return Ok((plain_rows, width)); }
+    let rendered = caca_ansi(&cv)?;
+    Ok((rendered.lines().map(str::to_owned).collect(), width))
+}
+
+fn fetch_logo(plain: bool) -> anyhow::Result<(Vec<String>, usize)> {
+    let width = FETCH_LOGO_ASCII.iter().map(|s| s.len()).max().unwrap_or(0);
+    if plain {
+        return Ok((FETCH_LOGO_ASCII.iter().map(|line| (*line).to_owned()).collect(), width));
+    }
+    let mut cv = libcaca::Canvas::new(width as i32, FETCH_LOGO_ASCII.len() as i32)?;
+    for (y, line) in FETCH_LOGO_ASCII.iter().enumerate() {
+        for (x, glyph) in line.chars().enumerate() {
+            cv.set_color_ansi(sst_caca_palette(x, y, width), libcaca::Color::Default)?;
+            cv.put_char(x as i32, y as i32, glyph as u32);
+        }
+    }
+    let rendered = caca_ansi(&cv)?;
+    Ok((rendered.lines().map(str::to_owned).collect(), width))
 }
 
 fn truncate_fetch(value: &str, max: usize) -> String {
@@ -1223,18 +1245,11 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         ]
     };
 
-    // Keep the GUI startup clean: neither the downsampled compact glyph art
-    // nor the 37-row image overlay is acceptable at the current viewport.
-    // The complete author-provided art remains available with `fetch --full`.
-    // Startup metadata is printed once, without a duplicated logo.
-    if _startup {
-        return Ok(CommandOutput::ok(format!("{}\n", info.join("\n"))));
-    }
 
     if full_logo {
         // Keep the exact 37-line author-supplied artwork for --full and
         // --plain. It cannot fit inside a short interactive GUI viewport.
-        let (logo_lines, _) = fetch_logo(plain);
+        let (logo_lines, _) = fetch_logo(plain)?;
         let mut out = logo_lines.join("\n");
         out.push('\n');
         out.push('\n');
@@ -1249,7 +1264,7 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
     // putting the logo above twelve metadata rows scrolls it out of sight
     // before the prompt is shown. Display the compact view *beside* seven
     // essential live facts; --full retains all metadata and the original art.
-    let (logo_lines, logo_width) = fetch_compact_logo(false, columns);
+    let (logo_lines, logo_width) = fetch_compact_logo(false, columns)?;
     let compact_facts = [
         format!("{user}@{host}"),
         format!("OS: {os}"),
