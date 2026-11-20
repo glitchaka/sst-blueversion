@@ -6,7 +6,7 @@ New-Item -ItemType Directory -Force -Path $root | Out-Null
 $fixture = Join-Path $root 'fetch.sh'
 $out = Join-Path $root 'stdout.txt'
 $err = Join-Path $root 'stderr.txt'
-$script = "fetch --startup`necho SST_STARTUP_FETCH_DONE`nfetch --plain`nfetch --full --plain`necho SST_FETCH_COMPLETE`n"
+$script = "fetch --startup`necho SST_STARTUP_FETCH_DONE`nfetch --startup-cols=58`necho SST_NARROW_FETCH_DONE`nfetch --plain`nfetch --full --plain`necho SST_FETCH_COMPLETE`n"
 [IO.File]::WriteAllText($fixture, $script, [Text.UTF8Encoding]::new($false))
 $process = $null
 try {
@@ -26,6 +26,15 @@ try {
     $initial = $stdout.Substring(0, $separator)
     if ($initial.Contains('%%%') -or -not $initial.Contains('OS:')) {
         throw "fetch --startup debe mostrar datos del sistema sin desplazar el logo: $initial"
+    }
+    $narrowEnd = $stdout.IndexOf('SST_NARROW_FETCH_DONE')
+    if ($narrowEnd -lt 0 -or $narrowEnd -le $separator) {
+        throw "fetch para GUI estrecha no terminó: $stdout"
+    }
+    $narrow = $stdout.Substring($separator, $narrowEnd - $separator)
+    if ($narrow -notmatch '%{3,}' -or -not $narrow.Contains('OS:') -or
+        -not $narrow.Contains('RAM:')) {
+        throw "El arranque estrecho no muestra logo SST y datos juntos: $narrow"
     }
     if ($stdout -notmatch '(?m)^   %{20,}' -or $stdout -notmatch '(?m)^%%.*?%{4,}') {
         throw "fetch no imprimió el logotipo ASCII SST: $stdout"
