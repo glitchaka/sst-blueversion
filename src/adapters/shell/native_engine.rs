@@ -874,6 +874,8 @@ impl ShellCommandHost for WindowsShellHost {
         env: &HashMap<String, String>,
         stdin: Option<&[u8]>,
     ) -> Result<ExecutionResult> {
+        let csv = args.last().is_some_and(|arg| arg == "--csv");
+        let effective_args = if csv { &args[..args.len() - 1] } else { args };
         let spawn_cwd = super::native_process::working_directory(cwd)?;
         let resolved_program = super::native_process::resolve_program(program, &spawn_cwd, env);
         let script = resolve_shell_script(program, cwd);
@@ -885,7 +887,7 @@ impl ShellCommandHost for WindowsShellHost {
             Command::new(&resolved_program)
         };
         command
-            .args(args)
+            .args(effective_args)
             .current_dir(&spawn_cwd)
             .envs(env)
             .stdout(Stdio::piped())
@@ -941,6 +943,9 @@ impl ShellCommandHost for WindowsShellHost {
                 let status = output.status.code().unwrap_or(1);
                 let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
                 let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+                let stdout = if csv && status == 0 {
+                    crate::presentation::csv_output::format_output(&stdout)
+                } else { stdout };
                 return Ok(ExecutionResult::from_parts(stdout, stderr, status));
             }
 
@@ -960,6 +965,11 @@ impl ShellCommandHost for WindowsShellHost {
         // Only SST's embedded terminal can receive incremental process
         // events. All CLI, pipeline and redirection paths retain the normal
         // captured execution result, without asynchronous writes.
+        // Machine-readable output is captured completely, never styled or
+        // emitted as partial live lines.
+        if args.last().is_some_and(|arg| arg == "--csv") {
+            return self.execute_external(program, args, cwd, env, stdin);
+        }
         let Some(display) = crate::adapters::terminal::io::output_sender() else {
             return self.execute_external(program, args, cwd, env, stdin);
         };
