@@ -18,10 +18,10 @@ on:
       - 'src/composition/mod.rs'
       - 'packages/index.json'
       - 'scripts/test-powershell-plugin.ps1'
-      - 'scripts/pack-sstpkg.py'
+      - 'scripts/pack-pkgx.py'
       - 'plugins/powershell/**'
       - 'packages/**'
-      - 'scripts/test-arch-package.ps1'
+      - 'scripts/test-native-package-boundary.ps1'
       - 'src/application/packages.rs'
       - 'src/application/packages/**'
       - 'src/builtins/powershell_native.rs'
@@ -139,7 +139,7 @@ jobs:
 
       - name: Verify Arch WSL2 package manifest and discovery without system changes
         shell: pwsh
-        run: ./scripts/test-arch-package.ps1 -SstPath ./target/debug/sst.exe
+        run: ./scripts/test-native-package-boundary.ps1 -SstPath ./target/debug/sst.exe
 
       - name: Exercise native NOTSH contexts (Windows APIs)
         shell: pwsh
