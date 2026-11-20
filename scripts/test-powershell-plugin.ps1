@@ -8,13 +8,13 @@ $plugin = Join-Path $root 'packages\win\modules\powershell'
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 Copy-Item -LiteralPath (Resolve-Path $SstPath).Path -Destination (Join-Path $root 'sst.exe')
 $sourceDirectory = (Resolve-Path -LiteralPath $PluginDirectory).Path
-$archive = Join-Path $root 'powershell.sstpkg'
-& python (Join-Path $PSScriptRoot 'pack-sstpkg.py') --id powershell --version 7.5.13 --target win --kind embedded --source $sourceDirectory --output $archive --exclude-dotnet-apphost
+$archive = Join-Path $root 'powershell.pkgx'
+& python (Join-Path $PSScriptRoot 'pack-pkgx.py') --id powershell --version 7.5.13 --target win --kind embedded --source $sourceDirectory --output $archive --exclude-dotnet-apphost
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $archive -PathType Leaf)) {
     throw 'El empaquetador nativo SST-PACKAGE/1 no produjo un módulo válido'
 }
 $installScript = Join-Path $root 'install.sh'
-[IO.File]::WriteAllText($installScript, "instp install powershell.sstpkg -p`necho SST_PLUGIN_INSTALL_DONE`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($installScript, "instp install powershell.pkgx -p`necho SST_PLUGIN_INSTALL_DONE`n", [Text.UTF8Encoding]::new($false))
 $ps1 = Join-Path $root 'example.ps1'
 [IO.File]::WriteAllText($ps1, @'
 param([string]$Name)
@@ -48,7 +48,7 @@ function Run-SST([string]$target, [string]$argsText) {
     return ($stdout + "`n--- STDERR SST $target ---`n" + $stderr)
 }
 try {
-    $installed = Run-SST 'instp install local .sstpkg' ('"' + $installScript + '"')
+    $installed = Run-SST 'instp install local .pkgx' ('"' + $installScript + '"')
     if (-not $installed.Contains('Instalado:') -or -not $installed.Contains('SST_PLUGIN_INSTALL_DONE')) {
         throw "instp no instaló el archivo SST-PACKAGE/1: $installed"
     }
