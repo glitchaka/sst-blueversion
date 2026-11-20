@@ -476,9 +476,9 @@ fn user_profile_directories() -> anyhow::Result<CommandOutput> {
         .map(PathBuf::from)
         .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
         .or_else(|| env::var_os("SystemDrive").map(|drive| PathBuf::from(drive).join("Users")))
-        .unwrap_or_else(|| PathBuf::from(r"C:\\Users"));
+        .unwrap_or_else(|| PathBuf::from(r"C:\Users"));
     let mut profiles = std::fs::read_dir(&root)?
-        .filter_map(Result::ok)
+        .filter_map(|entry| entry.ok())
         .filter_map(|item| {
             let kind = item.file_type().ok()?;
             kind.is_dir().then_some(item.file_name().to_string_lossy().into_owned())
