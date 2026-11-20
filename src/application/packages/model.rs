@@ -154,20 +154,16 @@ pub(super) fn validate_index(index: &PackageIndex) -> Result<()> {
             anyhow::bail!("instp: paquete duplicado en índice: {}", package.id);
         }
         validate_portability(&package.portability)?;
-        if !matches!(package.install.kind.as_str(), "single" | "zip" | "archive") {
-            validate_install_kind(&package.install.kind)?;
-        }
+        validate_install_kind(&package.install.kind)?;
         if package.format != 1 {
             anyhow::bail!("instp: formato SST-PACKAGE desconocido: {}", package.format);
         }
         let execution = package.execution.as_ref().ok_or_else(|| {
             anyhow::anyhow!("instp: {} no declara adaptador execution", package.id)
         })?;
-        // Entries for external vendor tools may stay in the catalog for
-        // discovery, but cannot be installed until an SST plugin exists.
-        if package.install.kind == "pkgx" || package.install.kind == "system" {
-            validate_execution(package, execution)?;
-        }
+        // All catalog entries must be genuinely installable SST packages or
+        // explicitly authorized system environments. No vendor EXE metadata.
+        validate_execution(package, execution)?;
 
         if let Some(name) = package.install.rename.as_deref() {
             validate_relative_payload_path(name)?;
@@ -352,6 +348,25 @@ mod standard_manifest_tests {
         assert_eq!(index.schema, 2);
         assert!(index.packages.iter().all(|package| package.format == 1
             && package.execution.is_some()));
+        assert_eq!(index.packages.len(), 2);
+        assert!(index.packages.iter().all(|package| {
+            package.install.kind == "pkgx"
+                || (package.id == "arch"
+                    && package.install.kind == "system"
+                    && package.execution.as_ref().is_some_and(|e| e.kind == "environment"))
+        }));
+    }
+
+    #[test]
+    fn rejects_external_executable_catalog_entries() {
+        let json = include_str!("../../../packages/index.json");
+        let mut index: PackageIndex = serde_json::from_str(json).unwrap();
+        let mut rogue = index.packages.iter().find(|p| p.id == "powershell").unwrap().clone();
+        rogue.id = "foreign-exe".to_owned();
+        rogue.install.kind = "zip".to_owned();
+        rogue.execution.as_mut().unwrap().kind = "process".to_owned();
+        index.packages.push(rogue);
+        assert!(validate_index(&index).is_err());
     }
 
     #[test]
