@@ -134,7 +134,7 @@ jobs:
         shell: pwsh
         run: ./scripts/test-powershell-plugin.ps1 -SstPath ./target/release/sst.exe -PluginDirectory ./.build/plugin-powershell
 
-      - name: Verify native PKGX package boundary: Arch is reference only
+      - name: Verify native PKGX package boundary (Arch is reference only)
         shell: pwsh
         run: ./scripts/test-native-package-boundary.ps1 -SstPath ./target/release/sst.exe
 
