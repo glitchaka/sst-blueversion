@@ -55,15 +55,7 @@ impl InstpBuiltin {
 
         let mut out = String::new();
         for package in packages {
-            let status = if package.install.kind == "pkgx" {
-                "PKGX"
-            } else if package.execution.as_ref().is_some_and(|e| e.kind == "environment")
-                && package.install.kind == "system"
-            {
-                "WSL"
-            } else {
-                "EXTERNO"
-            };
+            let status = if package.install.kind == "pkgx" { "PKGX" } else { "NO ADAPTADO" };
             out.push_str(&format!(
                 "{:<18} {:<9} {:<12} {:<10} {}\n",
                 package.id,
@@ -114,12 +106,8 @@ impl InstpBuiltin {
             .map(|execution| execution.kind.as_str()).unwrap_or("sin adaptador");
         let support = if package.install.kind == "pkgx" {
             "PAQUETE NATIVO SST: instalable"
-        } else if package.execution.as_ref().is_some_and(|e| e.kind == "environment")
-            && package.install.kind == "system"
-        {
-            "ENTORNO WSL: instalación explícita"
         } else {
-            "EXTERNO: no instalable como plugin SST, no se añaden .exe"
+            "NO ADAPTADO: fuera del catálogo instalable"
         };
         let extensions = package.execution.as_ref()
             .map(|execution| execution.extensions.join(", "))
@@ -223,10 +211,6 @@ impl InstpBuiltin {
                     out.push_str(
                         "Reinicia SST para cargar el motor real del módulo y asociar sus scripts.\n",
                     );
-                } else if report.package.execution.as_ref().is_some_and(|e| e.kind == "environment") {
-                    out.push_str(
-                        "Arch Linux se administra con WSL2; reinicia SST para activar arch COMANDO.\n",
-                    );
                 } else if !report.package.commands.is_empty() {
                     out.push_str(
                         "Reinicia SST para incorporar los nuevos comandos al PATH de esta sesión.\n",
@@ -245,11 +229,7 @@ impl InstpBuiltin {
         if self.service.remove(id)? {
             Ok(CommandOutput::ok(format!(
                 "Eliminado de SST: {id}\n{}\n",
-                if id.eq_ignore_ascii_case("arch") {
-                    "Se desconectó SST de Arch; NO se eliminó la distribución WSL ni sus datos. Reinicia SST."
-                } else {
-                    "Reinicia SST para retirar el módulo o sus rutas de la sesión actual."
-                },
+                "Reinicia SST para retirar el módulo o sus rutas de la sesión actual.",
             )))
         } else {
             Ok(CommandOutput::error(
