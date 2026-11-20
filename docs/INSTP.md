@@ -1,197 +1,109 @@
-# instp — gestor portable de paquetes SST
+# instp — paquetes nativos de Shell Shock Tool
 
-`instp` significa **Install Package**. Su objetivo no es reemplazar el gestor de paquetes de Windows, sino permitir que Shell Shock Tool transporte runtimes y herramientas sin instalarlos globalmente en el equipo anfitrión.
+`instp` es el gestor de paquetes de SST; `sigsour` es su interfaz
+interactiva. Ambos utilizan `PackageService`, un catálogo validado, el
+mismo registro `installed.json` y las mismas reglas de activación.
 
-## Principios
+## Qué se puede instalar
 
-1. **SST primero.** Los paquetes se guardan bajo la carpeta portable de SST.
-2. **No tocar el PATH global.** SST modifica solamente el entorno de su propio proceso antes de crear Nwash.
-3. **Repositorios de metadatos.** El repositorio SST describe paquetes; los binarios pueden seguir alojados en GitHub Releases, Microsoft, RubyInstaller u otros upstream oficiales.
-4. **Sin scripts arbitrarios.** Un manifiesto puede seleccionar un backend soportado, pero no introducir PowerShell, cmd o Bash libre para ejecutarlo durante una instalación.
-5. **Procedencia visible.** `instp info` y el resultado de `instp install` muestran de dónde se obtiene el paquete.
-6. **Verificación.** Cuando el upstream entrega un SHA-256, SST lo verifica antes de extraer. Los repositorios futuros deben añadir firma del índice.
-7. **SYSTEM no es portable.** Drivers, servicios e instaladores que modifican Windows se catalogan como `system` y no se instalan silenciosamente.
+Un paquete instalable en SST tiene extensión **`.pkgx`** y contrato
+**SST-PACKAGE/1**. El contenedor es TAR comprimido mediante GZIP con
+`manifest.json`, rutas `payload/` y SHA-256 por archivo. No es un
+`.exe` ni un instalador externo.
 
-## Capas
+En la actualidad el catálogo oficial ofrece el módulo PowerShell adaptado
+al proceso SST. Los nombres de herramientas externas son candidatos para
+implementación futura, **no paquetes instalables**. Por ejemplo, la lista
+de paquetes de Arch es una referencia para desarrollar equivalentes
+nativos SST; **no instala Arch Linux, WSL2 ni ejecuta `pacman`**.
 
-```text
-Nwash
-  └─ builtin instp
-       └─ application::packages::PackageService
-            ├─ catálogo/repositories
-            ├─ resolución de versiones y fuentes
-            ├─ descarga
-            ├─ SHA-256
-            ├─ cache
-            ├─ instalación/extracción
-            ├─ estado instalado
-            └─ entorno portable SST
-```
-
-Nwash no conoce GitHub Releases, ZIP, Ruby ni la estructura de los repositorios. El builtin traduce comandos y delega en `PackageService`.
-
-## Layout portable
-
-```text
-SST/
-├─ sst.exe
-├─ packages/
-│  ├─ bin/
-│  ├─ cache/
-│  ├─ repositories/
-│  ├─ runtimes/
-│  ├─ tools/
-│  ├─ ecosystems/
-│  ├─ installed.json
-│  └─ repos.json
-├─ config/
-├─ data/
-└─ bg/
-```
-
-Las rutas guardadas en `installed.json` son relativas a la raíz de SST para que la carpeta pueda moverse entre unidades/equipos.
-
-## Repositorio inicial
-
-El catálogo compilado está en:
-
-```text
-packages/index.json
-```
-
-SST siempre puede usarlo como fallback. El repositorio remoto por defecto apunta al mismo archivo en `main` mediante `raw.githubusercontent.com`. Por eso una instalación ya existente puede aprender paquetes nuevos con:
-
-```bash
-instp update
-instp upgrade [PAQUETE]
-```
-
-sin recompilar `sst.exe`.
-
-Los repositorios cacheados tienen prioridad sobre el catálogo embebido. Cada ID aparece una sola vez y gana el repositorio habilitado con mayor prioridad.
-
-## Esquema de paquete
-
-Ejemplo conceptual:
-
-```json
-{
-  "id": "ripgrep",
-  "name": "ripgrep",
-  "version": "latest",
-  "description": "Fast recursive text search",
-  "category": "cli",
-  "portability": "pure",
-  "source": {
-    "type": "github_release",
-    "repository": "BurntSushi/ripgrep",
-    "asset_contains": ["x86_64-pc-windows-msvc", ".zip"],
-    "asset_excludes": []
-  },
-  "install": {
-    "type": "zip",
-    "expose": ["rg.exe"]
-  }
-}
-```
-
-### Fuentes admitidas en la primera implementación
-
-- `github_release`: consulta `releases/latest`, selecciona un asset mediante filtros y utiliza el digest SHA-256 de GitHub cuando esté presente.
-- `url`: URL HTTPS directa del proveedor.
-
-Backends previstos: PyPI/uv, RubyGems, npm, crates.io/Cargo, Packagist/Composer y repositorios offline.
-
-### Instaladores admitidos en la primera implementación
-
-- `single`: un solo ejecutable.
-- `zip`: extracción interna con protección contra zip-slip.
-- `archive`: extracción con `tar.exe` de System32.
-- `system`: declarado pero rechazado por el instalador portable actual.
-
-## Portabilidad
-
-| Clase | Significado |
-| --- | --- |
-| `pure` | binario/archivo autocontenido, sin modificación del sistema |
-| `isolated` | runtime/herramienta con árbol propio dentro de SST |
-| `system` | necesita MSI/EXE, servicio, driver o cambios permanentes en Windows |
-
-Los tipos `system` quedan en el catálogo para búsqueda/planificación, pero esta fase no los instala automáticamente.
-
-## Separación de interfaces y retención
-
-- `instp` es exclusivamente CLI, comparable al motor de pacman. Sin argumentos muestra su ayuda y `instp PAQUETE` solo consulta el estado.
-- `sigsour` es el comando independiente de la TUI de paquetes de SST y utiliza el mismo `PackageService` que `instp`. El nombre fue elegido explícitamente para la interfaz visual.
-- `instp install PAQUETE` instala temporalmente. `-p` o `--persistent` indica explícitamente que debe conservarse al actualizar la versión funcional.
-- La edición `blue` identifica SST TI. El número `blue.N` identifica revisiones de corrección; no debe interpretarse como otra edición ni como frontera de caducidad.
-- La versión funcional se deriva de la versión oficial `Cargo.toml` (por ejemplo `0.1.9-blue.27` pertenece a la generación `0.1.9`). Cuando cambia esa generación, se limpian los paquetes temporales y sus archivos, manteniendo los persistentes. La migración inicial respeta los paquetes existentes hasta una actualización futura.
-- `instp update` refresca índices. `instp upgrade [PAQUETE]` busca las versiones publicadas actualmente y actualiza las herramientas ya instaladas, conservando la política temporal/persistente.
+Cada módulo debe declarar cómo se carga (`execution.kind`, `entry`,
+`abi`, `commands`, `extensions`, `required_files` y `target`).
+El archivo no implementa por sí mismo un intérprete: la funcionalidad
+requiere un adaptador de SST.
 
 ## Comandos
 
 ```text
-instp [PAQUETE]
-instp search [TEXTO]
-instp info PAQUETE
-instp install PAQUETE [-p|--persistent]
-instp remove PAQUETE
-instp list
-instp update
-instp which COMANDO
-
-instp repo list
-instp repo add NOMBRE URL [PRIORIDAD]
-instp repo remove NOMBRE
-instp repo update
-
-instp cache clean
-instp doctor
+instp search [TEXTO]                    buscar módulos adaptados
+instp info PAQUETE                      identidad, origen, contrato y estado
+instp install PAQUETE                   instalar temporalmente
+instp install PAQUETE -p                conservar entre generaciones
+instp install RUTA\\MODULO.pkgx -p     instalar desde archivo local válido
+instp list                              ver instalaciones activas
+instp remove PAQUETE                    retirar de SST
+instp upgrade [PAQUETE]                 actualizar un módulo instalado
+instp update                            actualizar solo índices de paquetes
+instp check sst                         consultar actualizaciones del núcleo
+instp upgrade sst                       verificar y preparar actualización SST
+instp sst                               estado de instalación y canal SST
+instp repo list                         ver repositorios
+instp repo add NOMBRE URL [PRIORIDAD]   registrar catálogo HTTPS
+instp repo remove NOMBRE                retirar catálogo
+instp repo update                       refrescar índices
+instp cache clean                       limpiar descargas temporales
+instp doctor                            diagnóstico del gestor
+sigsour                                 abrir el catálogo interactivo
 ```
 
-## Entorno
+**`instp update` no actualiza el ejecutable de SST.** La actualización del
+núcleo utiliza `instp upgrade sst`, descarga un ejecutable verificado y
+lo aplica al cerrar la consola, sin reemplazar el archivo que está abierto.
 
-Antes de crear `NativeShellEngine`, SST reconstruye el PATH de su proceso usando `installed.json`. `ShellEnvironment::new()` hereda ese entorno y los procesos hijos reciben después el mismo PATH mediante Nwash.
-
-Nunca se utiliza `setx`, el registro de `Environment`, el PATH del usuario ni el PATH del sistema.
-
-Para Ruby, SST reserva además:
+## Directorios
 
 ```text
-packages/ecosystems/ruby
+<SST_HOME>/
+  packages/
+    installed.json
+    repositories/
+    cache/
+    win/
+      modules/
+        powershell/
+      data/
+    unix/
+      modules/
+      data/
 ```
 
-como `GEM_HOME`/`GEM_PATH`.
+La estructura contempla subárboles de plataforma, pero ninguna carpeta
+`unix` implica instalar o ejecutar una distribución Linux. Solo se
+cargan módulos que tengan contrato y estado de instalación válidos.
 
-## Seguridad
+## Seguridad y actualización
 
-- fuentes remotas del catálogo: HTTPS obligatorio;
-- `curl.exe`: System32, no resolución por el directorio actual;
-- `tar.exe`: System32;
-- ZIP: nombres encerrados (`enclosed_name`) para impedir extracción fuera del destino;
-- identificadores restringidos a caracteres seguros;
-- hashes SHA-256 comprobados cuando el upstream los expone;
-- no hay comandos de instalación arbitrarios en el índice;
-- paquetes `system` rechazados en esta fase.
+1. Obtener el `.pkgx` desde un catálogo HTTPS aprobado o ruta local.
+2. Comprobar el manifiesto, rutas, límites, SHA-256 y archivos obligatorios.
+3. Descomprimir en staging, nunca directamente sobre un módulo activo.
+4. Activar el directorio y registrar `installed.json` de forma transaccional.
+5. En el siguiente arranque, cargar exclusivamente los módulos instalados
+   cuyo adaptador es compatible.
+6. Conservar la instalación anterior si falla la actualización.
 
-### Pendiente antes de considerar estable el formato de repositorio
+No se aceptan ejecutables externos dentro de `.pkgx` ni referencias a
+instaladores de sistemas operativos en el catálogo nativo. Los índices
+antiguos incompatibles se omiten para no bloquear el arranque; los registros
+antiguos de ejecutables externos o WSL dejan de activarse, sin destruir
+archivos del usuario ni distribuciones ajenas.
 
-- firma criptográfica del índice y gestión de claves confiables;
-- lockfile con versión/digest exactos;
-- rollback transaccional de instalaciones fallidas;
-- dependencias declarativas;
-- mirrors/offline bundles;
-- adapters de ecosistemas (`py:`, `gem:`, `npm:`, `cargo:`);
-- política explícita para SYSTEM/DRIVER y elevación mediante el broker de SST.
+**Persistencia:** `instp install PAQUETE` es temporal;
+`-p`/`--persistent` mantiene el módulo entre generaciones funcionales
+de SST. El sufijo de corrección `-blue.N` no cambia por sí solo la
+generación funcional.
 
-## Bundles/offline — siguiente etapa
+## Desarrollar adaptaciones
 
-El mismo formato debe poder materializarse posteriormente en una carpeta o unidad extraíble:
+La lista de aplicaciones de Arch y otras fuentes externas sirve para
+identificar capacidades deseadas. Para convertir una de ellas en módulo
+SST se necesita código o un adaptador real que atienda Nwash y un archivo
+`.pkgx` firmado/verificable según el estándar. No basta con comprimir
+un ejecutable de terceros.
+
+Generar un paquete de módulo:
 
 ```text
-repo/
-├─ index.json
-└─ objects/
+python scripts/pack-pkgx.py --id powershell --version 7.5.13 --target win --kind embedded --source .build/plugin-powershell --output dist/SST-PowerShell-win-x64.pkgx --exclude-dotnet-apphost --require-file Sst.PowerShell.Bridge.dll --require-file hostfxr.dll --require-file Sst.PowerShell.Bridge.runtimeconfig.json
 ```
 
-`instp bundle fetch admision E:\RepoAdmision` deberá descargar los objetos y hashes necesarios desde una máquina con Internet. La red cerrada podrá consumir el mirror sin cambiar los manifiestos ni el resolver.
+Para el contrato exacto, ver `packages/SST-PACKAGE-v1.md`.
