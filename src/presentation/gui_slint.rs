@@ -777,44 +777,6 @@ fn load_background_path(path: &std::path::Path) -> Result<Image> {
     Ok(Image::from_rgba8(buffer))
 }
 
-/// Render each original ASCII glyph with SST's embedded font, preserving
-/// all 37 rows and the exact order of all 100 columns. The GUI scales the
-/// resulting transparent pixel surface without modifying any source row.
-fn startup_logo_image() -> Result<Image> {
-    let lines = crate::application::system::FETCH_LOGO_ASCII;
-    let columns = lines.iter().map(|line| line.chars().count()).max().unwrap_or(0);
-    let rows = lines.len();
-    anyhow::ensure!(rows == 37 && columns == 100 && lines.iter().all(|line| line.chars().count() == columns),
-        "SST: el ASCII original de inicio debe medir 100 columnas por 37 filas");
-    let cell_width = 8u32;
-    let cell_height = 16u32;
-    let width = columns as u32 * cell_width;
-    let height = rows as u32 * cell_height;
-    let font = Font::from_bytes(NERD_FONT_BYTES, FontSettings::default())
-        .map_err(|error| anyhow::anyhow!("SST: no se pudo rasterizar el logo ASCII: {error}"))?;
-    let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
-    let mut glyphs = HashMap::<char, Glyph>::new();
-    for (row, line) in lines.iter().enumerate() {
-        let baseline = (row as i32 + 1) * cell_height as i32 - 4;
-        for (col, ch) in line.chars().enumerate() {
-            if ch == ' ' {
-                continue;
-            }
-            let glyph = glyphs.entry(ch).or_insert_with(|| {
-                let (metrics, alpha) = font.rasterize(ch, 13.0);
-                Glyph { metrics, alpha }
-            });
-            let color = match ch {
-                '%' | '#' | '*' | '+' | '=' => Rgb(0xEB, 0xDB, 0xB2),
-                _ => Rgb(0x92, 0x83, 0x74),
-            };
-            draw_glyph(buffer.make_mut_slice(), width, height,
-                col as i32 * cell_width as i32, baseline, glyph, color);
-        }
-    }
-    Ok(Image::from_rgba8_premultiplied(buffer))
-}
-
 fn configured_background_path(
     paths: &AppPaths,
     appearance: &TerminalAppearance,
