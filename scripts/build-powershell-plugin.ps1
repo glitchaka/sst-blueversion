@@ -23,7 +23,7 @@ foreach ($filename in @(
         throw "El módulo PowerShell no contiene $filename"
     }
 }
-& python (Join-Path $PSScriptRoot 'pack-pkgx.py') --id powershell --version 7.5.13 --target win --kind embedded --source $OutputDirectory --output $PackagePath --exclude-dotnet-apphost
+& python (Join-Path $PSScriptRoot 'pack-pkgx.py') --id powershell --version 7.5.13 --target win --kind embedded --source $OutputDirectory --output $PackagePath --exclude-dotnet-apphost --require-file Sst.PowerShell.Bridge.dll --require-file hostfxr.dll --require-file Sst.PowerShell.Bridge.runtimeconfig.json
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
     throw 'No se generó SST-PowerShell-win-x64.pkgx'
 }
