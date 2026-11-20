@@ -130,15 +130,11 @@ impl EmbeddedSession {
 
                 io::write(crate::presentation::shell::prompt::banner().as_bytes())?;
 
-                // Wide GUI: the exact 37-line artwork is a native overlay.
-                // Narrow GUI: show a compact ASCII logo next to metadata,
-                // keeping the mark visible in a small terminal viewport.
-                let startup_fetch = if cols >= 90 {
-                    "fetch --startup".to_owned()
-                } else {
-                    format!("fetch --startup-cols={cols}")
-                };
-                let fetch = engine.execute(&startup_fetch)?;
+                // Always print SST's ASCII mark in the *terminal itself*.
+                // The Slint overlay of the full author artwork is additional
+                // decoration, never the only logo: keyboard focus, window
+                // resize or renderer state must not make SST brandless.
+                let fetch = engine.execute(&format!("fetch --startup-cols={cols}"))?;
                 io::write(fetch.stdout.as_bytes())?;
                 io::write(fetch.stderr.as_bytes())?;
 
