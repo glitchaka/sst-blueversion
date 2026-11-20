@@ -287,7 +287,7 @@ mod tests {
     #[test]
     fn rejects_programs_and_path_traversal() {
         assert!(valid_payload_path("payload/win/modules/powershell/bridge.dll").is_ok());
-        assert!(valid_payload_path("payload/unix/environments/arch/etc/pacman.conf").is_ok());
+        assert!(valid_payload_path("payload/unix/data/example/etc/sample.conf").is_ok());
         for name in [
             "payload/win/modules/ps/../escape", "payload/win/tools/x/other.exe",
             "payload/win/modules/ps/CON", "payload/unix/modules/ps\\bad.so",
