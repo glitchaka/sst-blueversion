@@ -46,11 +46,22 @@ $current = $currentText | ConvertFrom-Json
 if (-not $current.sha) { throw 'El manifiesto actual no dispone de SHA para actualización segura.' }
 $previousBytes = [Convert]::FromBase64String(($current.content -replace '\s', ''))
 $previous = [Text.Encoding]::UTF8.GetString($previousBytes) | ConvertFrom-Json
-$previousNumber = [regex]::Match([string]$previous.version, '-blue\.(\d+)$')
-$nextNumber = [regex]::Match($Version, '-blue\.(\d+)$')
-if (-not $nextNumber.Success -or
-    ($previousNumber.Success -and [int]$previousNumber.Groups[1].Value -gt [int]$nextNumber.Groups[1].Value)) {
-    throw "Se rechazó publicar una versión más antigua que $($previous.version)."
+# Compare the entire SST version tuple. Comparing only blue.N incorrectly
+# considers 0.1.10-blue.1 older than 0.1.9-blue.79.
+$pattern = '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)-blue\.(?<blue>\d+)$'
+$old = [regex]::Match([string]$previous.version, $pattern)
+$new = [regex]::Match([string]$Version, $pattern)
+if (-not $old.Success -or -not $new.Success) {
+    throw "Formato de versión SST inválido: $($previous.version) -> $Version"
+}
+$parts = @('major','minor','patch','blue')
+foreach ($part in $parts) {
+    $prior = [int64]$old.Groups[$part].Value
+    $next = [int64]$new.Groups[$part].Value
+    if ($next -lt $prior) {
+        throw "Se rechazó publicar una versión más antigua que $($previous.version)."
+    }
+    if ($next -gt $prior) { break }
 }
 $bytes = [IO.File]::ReadAllBytes($manifestFile)
 $payload = [ordered]@{
