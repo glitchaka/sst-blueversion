@@ -1,0 +1,50 @@
+name: Activate verified SST update channel
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.release/activate-existing-*.trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  activate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read SST version
+        id: version
+        shell: pwsh
+        run: |
+          $text = Get-Content -Raw Cargo.toml
+          $match = [regex]::Match($text, '(?m)^version\s*=\s*"([^"]+)"')
+          if (-not $match.Success) { throw 'No canonical SST version.' }
+          "version=$($match.Groups[1].Value)" >> $env:GITHUB_OUTPUT
+      - name: Download manifest from already published verified release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          gh release download "v$env:VERSION" --pattern 'sst-update.json' --dir dist
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to download published update manifest.' }
+      - name: Activate verified source update channel
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/publish-source-update-channel.ps1 -Version $env:VERSION
+      - name: Verify activated manifest from GitHub
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $manifest = gh api "repos/$env:GITHUB_REPOSITORY/contents/updates/blue/sst-update.json?ref=main" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot read live SST channel.' }
+          $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($manifest.content -replace '\s',''))) | ConvertFrom-Json
+          if ($json.version -ne $env:VERSION) { throw "Source channel does not advertise $env:VERSION." }
+          Write-Host "Source update channel verified: $env:VERSION"
