@@ -43,7 +43,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          $manifest = gh api "repos/$env:GITHUB_REPOSITORY/contents/updates/blue/sst-update.json?ref=main" | ConvertFrom-Json
+          $manifest = gh api "repos/$env:GITHUB_REPOSITORY/contents/updates/blue/sst-update.json" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Cannot read live SST channel.' }
           $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($manifest.content -replace '\s',''))) | ConvertFrom-Json
           if ($json.version -ne $env:VERSION) { throw "Source channel does not advertise $env:VERSION." }
