@@ -47,7 +47,7 @@ try {
     }
     # The Windows runner can use only virtual NICs or deny ETW tracing.
     # Those states must be explicit, never replaced by fake metrics.
-    if (-not ($output.Contains('VELOCIDAD Y ESTADO DE INTERFACES')
+    if (-not ($output.Contains('ADAPTADORES FÍSICOS — Windows IP Helper')
         -or $errors.Contains('no hay interfaces Ethernet/Wi-Fi activas'))) {
         throw "netcheck speed no proporcionó medición ni diagnóstico de ausencia de NIC: $output / $errors"
     }
