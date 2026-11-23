@@ -62,7 +62,7 @@ try {
     if ($output -match 'Pérdida: 100.0%' -and $output -notmatch 'Errores locales de la API: 0') {
         throw "netcheck confundió errores de API con pérdida de paquetes."
     }
-    if (-not $errors.Contains('se requiere la IPv4 asignada a la NIC local')) {
+    if (-not $errors.Contains('debe ser una IPv4 local activa')) {
         throw "netcheck capture aceptó 0.0.0.0 como interfaz o no informó el error esperado: $errors"
     }
     Write-Host 'netcheck: diagnóstico, ICMP pérdida/estabilidad, velocidad de NIC (pasivo) y tráfico ETW verificados.'
