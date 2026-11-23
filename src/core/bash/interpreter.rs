@@ -2181,7 +2181,11 @@ impl Interpreter {
         }
 
         let name = words[0].clone();
-        let args = &words[1..];
+        // Output formats belong to Nwash, not to each command. Consume the
+        // modifier after word expansion, then convert the completed result
+        // BEFORE output redirection writes it to disk or a pipeline reads it.
+        let csv_output = words.len() > 1 && words.last().is_some_and(|word| word == "--csv");
+        let args = if csv_output { &words[1..words.len() - 1] } else { &words[1..] };
 
         let mut temporary_assignments: Vec<(String, super::environment::LocalBinding)> = Vec::new();
         for assignment in &raw[..assignment_count] {
@@ -2418,6 +2422,9 @@ impl Interpreter {
             } else if trace_fd == 2 || !self.host.write_fd(trace_fd, trace.as_bytes())? {
                 result.stderr = format!("{trace}{}", result.stderr);
             }
+        }
+        if csv_output && result.status == 0 {
+            result.stdout = crate::presentation::csv_output::format_output(&result.stdout);
         }
         self.apply_output_redirects(command, &mut result)?;
         self.finalize_process_substitutions(&mut result)?;
