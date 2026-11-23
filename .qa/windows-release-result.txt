@@ -1,27 +1,12 @@
 SST Windows release CI report
-Source commit: 1685c3c781bd5335248fad9b8751323218b1cae3
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45272202261
-Recorded UTC: 2026-11-23 21:46:31Z
-Compile: failure
-Rust tests: skipped
+Source commit: e0bfa8ac26a70fe529111217f8c375a024e60a83
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45273681121
+Recorded UTC: 2026-11-23 21:57:37Z
+Compile: success
+Rust tests: success
 Software GUI startup: skipped
 Packaging: skipped
 Compiler log tail:
     Updating crates.io index
    Compiling sst v0.1.12-blue.1 (D:\a\sst-blueversion\sst-blueversion)
-error[E0369]: binary operation `==` cannot be applied to type `std::result::Result<Cow<'_, str>, ZipError>`
-  --> src\application\keygen_audio.rs:69:74
-   |
-69 |         let selected_key = if zip.file_names().any(|candidate| candidate == key) { &key } else { &legacy_key };
-   |                                                                --------- ^^ --- std::string::String
-   |                                                                |
-   |                                                                std::result::Result<Cow<'_, str>, ZipError>
-   |
-note: `std::result::Result<Cow<'_, str>, ZipError>` does not implement `PartialEq<std::string::String>`
-  --> /rustc/0ef1bc386059596dada8fb65b50425aab2ea637a/library/core\src\result.rs:558:0
-   |
-   = note: `std::result::Result<Cow<'_, str>, ZipError>` is defined in another crate
-
-For more information about this error, try `rustc --explain E0369`.
-error: could not compile `sst` (bin "sst") due to 1 previous error
-warning: build failed, waiting for other jobs to finish...
+    Finished `release` profile [optimized] target(s) in 4m 15s
