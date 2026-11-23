@@ -303,6 +303,35 @@ fn extract_bundle(executable: &Path, destination: &Path, package_offset: u64) ->
         target.flush()?;
     }
 
+    // Keep the bundled soundtrack below SST/data/.sst in Windows, without
+    // launching attrib.exe or any external helper process.
+    #[cfg(windows)]
+    if destination.join("data").join(".sst").is_dir() {
+        mark_sst_data_hidden(&destination.join("data").join(".sst"))?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn mark_sst_data_hidden(path: &Path) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetFileAttributesW(filename: *const u16) -> u32;
+        fn SetFileAttributesW(filename: *const u16, attributes: u32) -> i32;
+    }
+    let wide = path.as_os_str().encode_wide()
+        .chain(std::iter::once(0)).collect::<Vec<_>>();
+    let current = unsafe { GetFileAttributesW(wide.as_ptr()) };
+    if current == u32::MAX {
+        return Err(std::io::Error::last_os_error())
+            .context("no se pudieron leer atributos de SST/data/.sst");
+    }
+    // FILE_ATTRIBUTE_HIDDEN = 0x2. Preserve all existing attributes.
+    if unsafe { SetFileAttributesW(wide.as_ptr(), current | 0x2) } == 0 {
+        return Err(std::io::Error::last_os_error())
+            .context("no se pudo ocultar SST/data/.sst");
+    }
     Ok(())
 }
 
