@@ -157,8 +157,9 @@ pub fn unlock(account: &str) -> Result<String> {
     let session = Session(unsafe { ldap_initW(wide(&dc).as_ptr(), 389) });
     if session.0.is_null() { bail!("no se pudo crear una sesión LDAP con {dc}"); }
     // SSPI Negotiate with sign + seal; fail closed if privacy can't be enabled.
+    let encryption = 1_u32;
     ldap_check(unsafe { ldap_set_optionW(session.0, LDAP_OPT_ENCRYPT,
-        1_usize as *const c_void) }, "cifrado de sesión LDAP")?;
+        (&encryption as *const u32).cast()) }, "cifrado de sesión LDAP")?;
     let limit = 12_i32;
     ldap_check(unsafe { ldap_set_optionW(session.0, LDAP_OPT_TIMELIMIT,
         (&limit as *const i32).cast()) }, "límite de consulta LDAP")?;
