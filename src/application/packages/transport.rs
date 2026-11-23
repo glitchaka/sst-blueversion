@@ -68,7 +68,12 @@ fn resolve_github_release(package: &PackageManifest) -> Result<ResolvedSource> {
         .repository
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("{}: source.repository ausente", package.id))?;
-    let url = format!("https://api.github.com/repos/{repository}/releases/latest");
+    let url = match package.source.release_tag.as_deref() {
+        Some(tag) if !tag.is_empty() && tag.bytes().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, b'.' | b'-' | b'_')) =>
+            format!("https://api.github.com/repos/{repository}/releases/tags/{tag}"),
+        Some(_) => anyhow::bail!("{}: release_tag inválido", package.id),
+        None => format!("https://api.github.com/repos/{repository}/releases/latest"),
+    };
     let bytes = get(&url)?;
     let release: GitHubRelease = serde_json::from_slice(&bytes)
         .with_context(|| format!("{}: respuesta de GitHub Releases inválida", package.id))?;
