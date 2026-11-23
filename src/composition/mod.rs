@@ -45,6 +45,7 @@ use crate::{
         DeviceBuiltin,
         DiagnosticsBuiltin,
         DomainBuiltin,
+        UnbanBuiltin,
         EditorBuiltin,
         InstpBuiltin,
         NativePowerShellBuiltin,
