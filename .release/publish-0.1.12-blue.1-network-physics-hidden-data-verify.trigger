@@ -1,0 +1,1 @@
+Verify all latest Windows sources: native netdiag packet capture, faithful SST palette, persistent keygen physics, hidden audio directory, strict original MP3 validation. Keep release gate blocking missing audio.
