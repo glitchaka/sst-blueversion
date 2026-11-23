@@ -6,6 +6,7 @@ use anyhow::{bail, Result};
 
 type ServiceHandle = *mut c_void;
 #[repr(C)]
+#[allow(dead_code)] // Native SERVICE_STATUS_PROCESS layout fields are required by SCM.
 #[derive(Clone, Copy)]
 struct ServiceStatusProcess {
     service_type: u32,
@@ -19,6 +20,7 @@ struct ServiceStatusProcess {
     service_flags: u32,
 }
 #[repr(C)]
+#[allow(dead_code)] // Display-name pointer is a required part of the Win32 layout.
 #[derive(Clone, Copy)]
 struct EnumServiceStatusProcess {
     service_name: *const u16,
