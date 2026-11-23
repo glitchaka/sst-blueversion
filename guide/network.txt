@@ -529,7 +529,37 @@ Temas:
   net help neighbors
   net help arp
 
-19. Relación con otras herramientas SST
+19. Herramienta de aislamiento de fallas: netcheck
+
+  netcheck
+    Evalúa la conectividad al destino predeterminado example.com:443.
+
+  netcheck HOST
+    Verifica interfaz, APIPA/DHCP, ruta por defecto IPv4, puerta de
+    enlace, resolución de nombre, ICMP y conexión TCP al destino.
+
+  netcheck HOST --port PUERTO
+    Usa un servicio TCP específico, por ejemplo 443, 445, 3389 o 9100.
+
+  netcheck --help
+    Ayuda y condiciones de interpretación.
+
+Análisis:
+  Estado          Separa evidencia confirmada de hipótesis.
+  Conclusión      Conectividad TCP confirmada / Requiere revisión / Indeterminado.
+  Advertencias    Indican qué comprobar a continuación, no diagnostican sin evidencia.
+  APIPA           Una 169.254.x.x implica que falta configuración IPv4 administrada,
+                  pero no demuestra por sí sola que el cable esté desconectado.
+  ICMP            Si el destino no responde, puede estar bloqueado por firewall;
+                  comparar con la conexión TCP.
+  Gateway         Se comprueba la ruta IPv4 predeterminada y su respuesta ICMP.
+  DNS             Una falla de resolución puede coexistir con conectividad IP.
+  NAC 802.1X      Un enlace físico no equivale a autorización de red.
+
+Esta herramienta no cambia IP, DNS, DHCP, firewall, servicios o perfiles
+de autenticación; reutiliza consultas Windows nativas para enlace, ruta e ICMP.
+
+20. Relación con otras herramientas SST
 
   device            inventario persistente
   switch            MAC -> switch/puerto
@@ -540,6 +570,6 @@ Temas:
   sys domain / domain
                     dominio local/consulta remota
 
-20. Regla de exactitud
+21. Regla de exactitud
 
 No se debe inferir soporte por semejanza con netsh/ip/ss. Solo las opciones enumeradas aquí están implementadas por la superficie pública actual de `notsh`/`net`.
