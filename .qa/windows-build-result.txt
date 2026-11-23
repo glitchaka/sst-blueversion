@@ -1,60 +1,6 @@
-Commit: c1adb7ef72dfe4534a4eff1deb22280ebc9a8f6d
-Tested UTC: 2026-11-19 15:13:31Z
-Test: failure
-Windows release build: skipped
+Commit: 8717881314888a57761b3dfcd3e445e747d0ae27
+Tested UTC: 2026-11-23 17:38:58Z
+Test: success
+Windows release build: success
 Log tail:
-   Compiling filedescriptor v0.8.3
-   Compiling crossterm_winapi v0.9.1
-   Compiling chacha20 v0.9.1
-   Compiling aes v0.8.4
-   Compiling des v0.8.1
-   Compiling cfb-mode v0.8.2
-   Compiling cbc v0.1.2
-   Compiling sha2 v0.10.9
-   Compiling hmac v0.12.1
-   Compiling sha1 v0.10.7
-   Compiling md-5 v0.10.6
-   Compiling blake2 v0.10.6
-   Compiling serial2 v0.2.39
-   Compiling home v0.5.12
-   Compiling hashlink v0.12.2
-   Compiling aead v0.5.2
-   Compiling vte v0.15.0
-   Compiling downcast-rs v1.2.1
-   Compiling fallible-streaming-iterator v0.1.9
-   Compiling shell-words v1.1.1
-   Compiling typed-path v0.13.0
-   Compiling widestring v1.2.1
-   Compiling fallible-iterator v0.3.0
-   Compiling rusqlite v0.41.1
-   Compiling ferrisetw v1.2.0
-   Compiling slint-macros v1.18.1
-   Compiling slint v1.18.1
-   Compiling zip v9.7.3
-   Compiling portable-pty v0.9.0
-   Compiling vt100 v0.16.2
-   Compiling chacha20poly1305 v0.10.1
-   Compiling rustyline v17.0.2
-   Compiling argon2 v0.5.3
-   Compiling snmp2 v0.5.3
-   Compiling crossterm v0.29.0
-   Compiling tar v0.4.46
-   Compiling fontdue v0.9.5
-   Compiling x25519-dalek v2.0.1
-   Compiling regex v1.13.2
-   Compiling dns-lookup v2.1.1
-   Compiling libcaca-rs v0.1.0
-   Compiling spellbook v0.4.2
-   Compiling ipnet v2.12.2
-   Compiling base64 v0.22.1
-   Compiling similar v2.7.0
-   Compiling glob v0.3.4
-   Compiling sysinfo v0.37.2
-error[E0432]: unresolved import `windows_sys::Win32::Foundation::BOOL`
-   --> src\builtins\tools.rs:398:22
-    |
-398 |         Foundation::{BOOL, HWND, LPARAM},
-    |                      ^^^^ no `BOOL` in `Win32::Foundation`
-
-For more information about this error, try `rustc --explain E0432`.
-error: could not compile `sst` (bin "sst" test) due to 1 previous error
+No failed compiler/test log.
