@@ -262,8 +262,12 @@ fn speed(args: &[String]) -> Result<CommandOutput> {
         return Ok(CommandOutput::error("netcheck speed: no hay interfaces Ethernet/Wi-Fi activas", 1));
     }
     let started = Instant::now();
+    let max_mib = match option_u32(args, "--max-mib", 64, 1, 256) {
+        Ok(value) => value,
+        Err(error) => return Ok(CommandOutput::error(error, 2)),
+    };
     let active = option_string(args, "--download").map(|url| {
-        crate::adapters::windows::https_download::measure(url, seconds, option_u32(args, "--max-mib", 64, 1, 256).unwrap_or(64))
+        crate::adapters::windows::https_download::measure(url, seconds, max_mib)
     });
     if active.is_none() { thread::sleep(Duration::from_secs(seconds as u64)); }
     let elapsed = started.elapsed().as_secs_f64().max(0.001);
@@ -359,6 +363,7 @@ fn traffic_report(
     let names = process_system.processes().iter().map(|(pid, process)| (
         pid.as_u32(), process.name().to_string_lossy().into_owned()
     )).collect::<HashMap<_,_>>();
+    let services = crate::adapters::windows::service_map::services_by_pid();
     let mut rows = rates.into_iter().filter(|(id,counters)| {
         (counters.sent > 0 || counters.received > 0)
             && pid.is_none_or(|filter| filter == *id)
@@ -378,6 +383,16 @@ fn traffic_report(
         let name = names.get(&id).map(String::as_str).unwrap_or("proceso finalizado/desconocido");
         report.push_str(&format!("PID {id} | {name} | TX {} B/s | RX {} B/s\n",
             counter.sent, counter.received));
+        if let Ok(service_map) = &services {
+            if let Some(items) = service_map.get(&id) {
+                report.push_str(&format!("  Servicios Windows asociados: {}\n", items.join(", ")));
+                if items.len() > 1 {
+                    report.push_str("  ATENCIÓN: PID compartido; ETW no permite atribuir cada byte a un servicio individual.\n");
+                }
+            }
+        } else {
+            report.push_str("  Consulta SCM no disponible: no se confirmó qué servicios comparten este PID.\n");
+        }
         let mut shown = HashSet::new();
         for socket in sockets.iter().filter(|socket| socket.pid == id) {
             let endpoint = format!("{} {} -> {} [{}]",
