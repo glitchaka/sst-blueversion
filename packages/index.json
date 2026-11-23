@@ -15,6 +15,7 @@
       "source": {
         "type": "github_release",
         "repository": "glitchaka/sst-blueversion",
+        "release_tag": "powershell-v7.5.13",
         "asset_contains": [
           "SST-PowerShell-win-x64.pkgx"
         ],
