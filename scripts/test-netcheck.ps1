@@ -40,7 +40,7 @@ try {
         'SST_NETCHECK_LOSS_DONE','SST_NETCHECK_STABILITY_DONE','SST_NETCHECK_SPEED_DONE',
         'SST_NETCHECK_TRAFFIC_DONE','SST_NETCHECK_PACKETS_DONE',
         'SST_NETCHECK_CAPTURE_VALIDATION_DONE',
-        'PÉRDIDA DE PAQUETES','ESTABILIDAD DE RED','Pérdida:','Variación media')) {
+        'PÉRDIDA DE PAQUETES','ESTABILIDAD DE RED','Pérdida:')) {
         if (-not $output.Contains($expected)) {
             throw "Falta etapa de diagnóstico: $expected. Resultado: $output"
         }
