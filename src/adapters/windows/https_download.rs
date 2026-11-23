@@ -1,6 +1,6 @@
 //! Active HTTPS download throughput through WinHTTP. No curl.exe, external
-//! helper, forced target, credential export or implicit bandwidth test.
-use std::{ffi::c_void, ptr, time::{Duration, Instant}};
+//! helper, credential export or shell commands. Supports bounded active tests.
+use std::{ffi::c_void, mem::size_of, ptr, time::{Duration, Instant}};
 use anyhow::{bail, Result};
 
 type HandleRaw = *mut c_void;
@@ -23,6 +23,8 @@ unsafe extern "system" {
         buffer: *mut c_void, length: *mut u32, index: *mut u32) -> i32;
     fn WinHttpReadData(handle: HandleRaw, buffer: *mut c_void, to_read: u32,
         bytes_read: *mut u32) -> i32;
+    fn WinHttpWriteData(handle: HandleRaw, buffer: *const c_void, to_write: u32,
+        bytes_written: *mut u32) -> i32;
     fn WinHttpCloseHandle(handle: HandleRaw) -> i32;
 }
 struct Handle(HandleRaw);
@@ -54,7 +56,7 @@ struct UrlParts {
 
 fn parse_https(value: &str) -> Result<UrlParts> {
     let Some(raw) = value.strip_prefix("https://") else {
-        bail!("la prueba activa requiere URL HTTPS explícita");
+        bail!("la prueba activa requiere URL HTTPS");
     };
     let (hostport, resource) = match raw.find(&['/', '?'][..]) {
         Some(i) if raw.as_bytes()[i] == b'?' => (&raw[..i], format!("/{}", &raw[i..])),
@@ -135,6 +137,116 @@ pub fn measure(url: &str, max_seconds: u32, max_mib: u32) -> Result<DownloadMeas
     Ok(DownloadMeasurement {
         url: url.to_owned(), http_status: code, bytes, elapsed_seconds
     })
+}
+
+
+/// A native HTTP(S) latency probe: one GET request, no ICMP or raw sockets.
+/// Includes connection and TLS setup; it must not be described as ICMP ping.
+pub fn latency(url: &str) -> Result<f64> {
+    let parts = parse_https(url)?;
+    let started = Instant::now();
+    let session = Handle::checked(unsafe {
+        WinHttpOpen(wide("SST-Netcheck/1.0").as_ptr(), 4, ptr::null(), ptr::null(), 0)
+    }, "WinHttpOpen")?;
+    if unsafe { WinHttpSetTimeouts(session.0, 3000, 4000, 4000, 4000) } == 0 {
+        bail!("WinHttpSetTimeouts: {}", std::io::Error::last_os_error());
+    }
+    let connection = Handle::checked(unsafe {
+        WinHttpConnect(session.0, wide(&parts.host).as_ptr(), parts.port, 0)
+    }, "WinHttpConnect")?;
+    let request = Handle::checked(unsafe {
+        WinHttpOpenRequest(connection.0, wide("GET").as_ptr(), wide(&parts.resource).as_ptr(),
+            ptr::null(), ptr::null(), ptr::null(), 0x00800000)
+    }, "WinHttpOpenRequest")?;
+    if unsafe { WinHttpSendRequest(request.0, ptr::null(), 0, ptr::null(), 0, 0, 0) } == 0 {
+        bail!("WinHttpSendRequest: {}", std::io::Error::last_os_error());
+    }
+    if unsafe { WinHttpReceiveResponse(request.0, ptr::null_mut()) } == 0 {
+        bail!("WinHttpReceiveResponse: {}", std::io::Error::last_os_error());
+    }
+    let millis = started.elapsed().as_secs_f64() * 1000.0;
+    if !(200..300).contains(&status_code(request.0)?) {
+        bail!("el servidor de latencia respondió con un estado HTTP no exitoso");
+    }
+    Ok(millis)
+}
+
+fn status_code(request: HandleRaw) -> Result<u32> {
+    let mut code = 0u32;
+    let mut len = size_of::<u32>() as u32;
+    if unsafe { WinHttpQueryHeaders(request, 0x2000_0000 | 19, ptr::null(),
+        (&mut code as *mut u32).cast(), &mut len, ptr::null_mut()) } == 0 {
+        bail!("WinHttpQueryHeaders: {}", std::io::Error::last_os_error());
+    }
+    Ok(code)
+}
+
+pub struct UploadMeasurement {
+    pub url: String,
+    pub http_status: u32,
+    pub bytes: u64,
+    pub elapsed_seconds: f64,
+}
+
+/// Upload generated non-user data over a single WinHTTP HTTPS POST.
+/// A response with HTTP 2xx is required before any throughput is reported.
+/// If the transfer exceeds the time budget, it is explicitly a failed sample.
+pub fn upload(url: &str, max_seconds: u32, max_mib: u32) -> Result<UploadMeasurement> {
+    let parts = parse_https(url)?;
+    let size = u64::from(max_mib.min(32)) * 1024 * 1024;
+    if size == 0 { bail!("la transferencia de subida requiere al menos 1 MiB"); }
+    let session = Handle::checked(unsafe {
+        WinHttpOpen(wide("SST-Netcheck/1.0").as_ptr(), 4, ptr::null(), ptr::null(), 0)
+    }, "WinHttpOpen")?;
+    let timeout = (max_seconds.clamp(1, 30) * 1000).min(5000) as i32;
+    if unsafe { WinHttpSetTimeouts(session.0, 3000, timeout, timeout, timeout) } == 0 {
+        bail!("WinHttpSetTimeouts: {}", std::io::Error::last_os_error());
+    }
+    let connection = Handle::checked(unsafe {
+        WinHttpConnect(session.0, wide(&parts.host).as_ptr(), parts.port, 0)
+    }, "WinHttpConnect")?;
+    let request = Handle::checked(unsafe {
+        WinHttpOpenRequest(connection.0, wide("POST").as_ptr(), wide(&parts.resource).as_ptr(),
+            ptr::null(), ptr::null(), ptr::null(), 0x00800000)
+    }, "WinHttpOpenRequest")?;
+    let headers = wide("Content-Type: application/octet-stream\r\n");
+    if unsafe {
+        WinHttpSendRequest(request.0, headers.as_ptr(), u32::MAX,
+            ptr::null(), 0, size as u32, 0)
+    } == 0 {
+        bail!("WinHttpSendRequest POST: {}", std::io::Error::last_os_error());
+    }
+    // Non-sensitive generated bytes. No files, user information or secrets.
+    let mut chunk = [0u8; 64 * 1024];
+    let mut state = 0x57e5_79b9u32;
+    for byte in &mut chunk {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        *byte = (state & 0xff) as u8;
+    }
+    let mut sent = 0u64;
+    let start = Instant::now();
+    while sent < size {
+        if start.elapsed() >= Duration::from_secs(max_seconds as u64) {
+            bail!("subida incompleta: límite de tiempo alcanzado tras {sent} bytes");
+        }
+        let wanted = (size - sent).min(chunk.len() as u64) as u32;
+        let mut written = 0u32;
+        if unsafe { WinHttpWriteData(request.0, chunk.as_ptr().cast(), wanted, &mut written) } == 0 {
+            bail!("WinHttpWriteData: {}", std::io::Error::last_os_error());
+        }
+        if written == 0 { bail!("WinHTTP no transmitió datos de subida"); }
+        sent += u64::from(written);
+    }
+    if unsafe { WinHttpReceiveResponse(request.0, ptr::null_mut()) } == 0 {
+        bail!("WinHttpReceiveResponse POST: {}", std::io::Error::last_os_error());
+    }
+    let seconds = start.elapsed().as_secs_f64();
+    let code = status_code(request.0)?;
+    if !(200..300).contains(&code) { bail!("HTTP {code}: el servidor rechazó la subida"); }
+    Ok(UploadMeasurement { url: url.to_owned(), http_status: code,
+        bytes: sent, elapsed_seconds: seconds })
 }
 
 #[cfg(test)]
