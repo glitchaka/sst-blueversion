@@ -41,14 +41,19 @@ impl NetcheckBuiltin {
         }
         let mut output = format!("DIAGNÓSTICO DE RED\nDestino: {host}:{port}\nModo: solo lectura\n");
         let mut findings = Vec::<(&'static str, String)>::new();
-        match self.probe.interfaces() {
+        // Restrict the assessment to physical wired and Wi-Fi adapters.
+        // Virtual NICs, tunnels and NDIS filters must not mask a dead cable.
+        let physical = self.probe.lan_interfaces().and_then(|lan| {
+            self.probe.wlan_interfaces().map(|wlan| format!("{lan}\n{wlan}"))
+        });
+        match physical {
             Ok(interfaces) => {
                 let (status, evidence, issue) = evaluate_interfaces(&interfaces);
-                output.push_str(&format!("\n1. INTERFACES\n  Estado: {status}\n  Evidencia: {evidence}\n"));
+                output.push_str(&format!("\n1. INTERFACES FÍSICAS\n  Estado: {status}\n  Evidencia: {evidence}\n"));
                 if let Some(issue) = issue { findings.push(issue); }
             }
             Err(error) => {
-                output.push_str(&format!("\n1. INTERFACES\n  Estado: INDETERMINADO\n  Error: {error}\n"));
+                output.push_str(&format!("\n1. INTERFACES FÍSICAS\n  Estado: INDETERMINADO\n  Error: {error}\n"));
             }
         }
         let gateway = match self.probe.routes() {
@@ -116,7 +121,7 @@ impl NetcheckBuiltin {
             output.push_str("\n6. TCP\n  Estado: NO EVALUADO\n");
         } else {
             let mut error = String::new();
-            for ip in &addresses {
+            for ip in addresses.iter().take(4) {
                 let socket = SocketAddr::new(*ip, port);
                 match TcpStream::connect_timeout(&socket, Duration::from_millis(1200)) {
                     Ok(stream) => {
