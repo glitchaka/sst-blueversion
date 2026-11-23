@@ -118,21 +118,16 @@ pub(super) fn arch_package_details(name: &str) -> Option<String> {
     #[cfg(not(windows))]
     let executable = PathBuf::from("curl");
 
-    let response = Command::new(executable)
-        .args([
-            "--location", "--fail", "--silent", "--show-error",
-            "--proto", "=https", "--tlsv1.2", "--connect-timeout", "3",
-            "--max-time", "8", "--retry", "0", "--max-filesize", "262144",
-        ])
-        .arg(format!("https://archlinux.org/packages/search/json/?name={name}"));
+    let mut request = Command::new(executable);
+    request.args([
+        "--location", "--fail", "--silent", "--show-error",
+        "--proto", "=https", "--tlsv1.2", "--connect-timeout", "3",
+        "--max-time", "8", "--retry", "0", "--max-filesize", "262144",
+    ]);
+    request.arg(format!("https://archlinux.org/packages/search/json/?name={name}"));
     #[cfg(windows)]
-    let response = {
-        let mut request = response;
-        request.creation_flags(0x0800_0000);
-        request.output().ok()?
-    };
-    #[cfg(not(windows))]
-    let response = response.output().ok()?;
+    request.creation_flags(0x0800_0000);
+    let response = request.output().ok()?;
     if !response.status.success() || response.stdout.len() > 256 * 1024 {
         return None;
     }
