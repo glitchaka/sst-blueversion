@@ -1,29 +1,27 @@
 {
   "schema": 1,
-  "version": "0.1.11-blue.1",
+  "version": "0.1.11-blue.2",
   "channel": "blue",
-  "published_at": "2026-11-23T17:41:19.6999609+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.11-blue.1/sst.exe",
-  "sha256": "030dbe81e78517fb39cc4e53f3bb596039d6e93887b1868f90d57bf817fdb2d4",
-  "size": 56480256,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.11-blue.1/sst-updater.exe",
-  "updater_sha256": "548ac0649a5922356cad773ae6c5fe079e5789ae5b686c3651e95806ce6a3958",
+  "published_at": "2026-11-23T17:51:45.0778259+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.11-blue.2/sst.exe",
+  "sha256": "bbe4e6d13bf722a810c8529cef30aa9b3cb41b89f718d6bdf2a5e0ed7999283b",
+  "size": 56488448,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.11-blue.2/sst-updater.exe",
+  "updater_sha256": "fcfae4e44530638aaa22473f54143688baef22dbadbbdfe9270217d840c8a383",
   "updater_size": 433664,
   "changes": [
-    "Se incorpora el comando nativo `netcheck` para investigar fallas de conectividad desde SST, con conclusiones basadas en evidencias y sin reparaciones automáticas.",
-    "Revisa interfaces físicas Ethernet y Wi-Fi, direcciones APIPA, ruta IPv4 predeterminada, respuesta ICMP de puerta de enlace, resolución DNS, respuesta ICMP del destino y conexión TCP al servicio indicado.",
-    "Informa estados, limitaciones y acciones de investigación en orden. Una ausencia de respuesta ICMP no se interpreta automáticamente como una falla de enlace o de Internet.",
-    "Uso: `netcheck`, `netcheck HOST` o `netcheck HOST --port PUERTO`.",
-    "Integra ayuda con `help netcheck`, `netcheck --help` y ficha de `guide`, incluyendo compatibilidad con índices de guía no actualizados.",
-    "Pruebas Rust para clasificación de APIPA, falta de enlace y ruta predeterminada, más prueba funcional Windows obligatoria para publicación.",
-    "Conserva los cambios anteriores de descripción de paquetes Arch en guide."
+    "Netcheck incorpora la consulta nativa de Wired AutoConfig mediante la API Dot3 de Windows, distinguiendo un perfil 802.1X configurado de una autorización NAC realmente demostrada.",
+    "La clasificación de DNS evita declarar caída de red cuando únicamente falla el nombre de destino.",
+    "Las conclusiones ordenan primero los hallazgos críticos y luego las advertencias.",
+    "Conserva todos los diagnósticos de SST 0.1.11-blue.1: enlace físico, APIPA/DHCP, puerta de enlace, DNS, ICMP y TCP.",
+    "No cambia la configuración de la red ni expone credenciales."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.11-blue.1.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.11-blue.1/SST-Setup-0.1.11-blue.1.exe",
-    "sha256": "52c516d6f1f7b712860dcd1ae89e570843e0f8a55fd11786c6215b03cddd4902",
-    "size": 57508553,
+    "name": "SST-Setup-0.1.11-blue.2.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.11-blue.2/SST-Setup-0.1.11-blue.2.exe",
+    "sha256": "3dc611e29181a74a722a70ea649fd598fd732ee68688352acb5899b28b2bc47a",
+    "size": 57516745,
     "single_use": true,
-    "package_id": "64de2d55f6d8790591a3023e9595fb52"
+    "package_id": "1d06c80cb093ee5dfb0128466817bd84"
   }
 }
