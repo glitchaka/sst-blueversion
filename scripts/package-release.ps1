@@ -86,9 +86,9 @@ if ($onePresent -and $twoPresent) {
             throw "SST keygen: pista inválida o truncada: $track"
         }
     }
-    $stageAssets = Join-Path $stage 'assets'
-    New-Item -ItemType Directory -Force -Path $stageAssets | Out-Null
-    Copy-Item -Recurse -LiteralPath $keygenSource -Destination (Join-Path $stageAssets 'keygen')
+    $stageMedia = Join-Path $stage 'data\.sst\media'
+    New-Item -ItemType Directory -Force -Path $stageMedia | Out-Null
+    Copy-Item -Recurse -LiteralPath $keygenSource -Destination (Join-Path $stageMedia 'keygen')
     Write-Host 'SST: ambos MP3 de keygen incluidos en el instalador SFX.'
 } else {
     Write-Warning 'SST: sin audio keygen en source assets; no se empaquetan pistas falsas. El reproductor puede recuperarlas del instalador de audio local.'
@@ -148,9 +148,9 @@ Copy-Item -LiteralPath $updater -Destination $rawUpdater
 # La distribución portable conserva exactamente la misma guía sin Internet.
 Copy-Item -Recurse -LiteralPath $guide -Destination (Join-Path $dist 'guide')
 if ($onePresent -and $twoPresent) {
-    $distAssets = Join-Path $dist 'assets'
-    New-Item -ItemType Directory -Force -Path $distAssets | Out-Null
-    Copy-Item -Recurse -LiteralPath $keygenSource -Destination (Join-Path $distAssets 'keygen')
+    $distMedia = Join-Path $dist 'data\.sst\media'
+    New-Item -ItemType Directory -Force -Path $distMedia | Out-Null
+    Copy-Item -Recurse -LiteralPath $keygenSource -Destination (Join-Path $distMedia 'keygen')
 }
 
 $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $rawExe).Hash.ToLowerInvariant()
