@@ -21,7 +21,9 @@ try {
         'netcheck traffic --seconds 1 --top 3',
         'echo SST_NETCHECK_TRAFFIC_DONE',
         'netcheck packets --seconds 1 --top 3',
-        'echo SST_NETCHECK_PACKETS_DONE'
+        'echo SST_NETCHECK_PACKETS_DONE',
+        'netcheck capture --interface 0.0.0.0 --seconds 1',
+        'echo SST_NETCHECK_CAPTURE_VALIDATION_DONE'
     )
     [IO.File]::WriteAllLines($script, $commands, [Text.UTF8Encoding]::new($false))
     $p = Start-Process -FilePath $exe -ArgumentList ('"' + $script + '"') -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
@@ -37,6 +39,7 @@ try {
         'DIAGNÓSTICO DE RED','INTERFACES FÍSICAS','RUTA IPv4','DNS','TCP','CONCLUSIÓN',
         'SST_NETCHECK_LOSS_DONE','SST_NETCHECK_STABILITY_DONE','SST_NETCHECK_SPEED_DONE',
         'SST_NETCHECK_TRAFFIC_DONE','SST_NETCHECK_PACKETS_DONE',
+        'SST_NETCHECK_CAPTURE_VALIDATION_DONE',
         'PÉRDIDA DE PAQUETES','ESTABILIDAD DE RED','Pérdida:','Variación media')) {
         if (-not $output.Contains($expected)) {
             throw "Falta etapa de diagnóstico: $expected. Resultado: $output"
@@ -58,6 +61,9 @@ try {
     }
     if ($output -match 'Pérdida: 100.0%' -and $output -notmatch 'Errores locales de la API: 0') {
         throw "netcheck confundió errores de API con pérdida de paquetes."
+    }
+    if (-not $errors.Contains('se requiere la IPv4 asignada a la NIC local')) {
+        throw "netcheck capture aceptó 0.0.0.0 como interfaz o no informó el error esperado: $errors"
     }
     Write-Host 'netcheck: diagnóstico, ICMP pérdida/estabilidad, velocidad de NIC y tráfico ETW verificados.'
 } finally {
