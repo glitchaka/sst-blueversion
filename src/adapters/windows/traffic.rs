@@ -160,6 +160,7 @@ fn process_network_event(
     }
 }
 
+#[derive(Clone, Copy)]
 enum Direction {
     Sent,
     Received,
