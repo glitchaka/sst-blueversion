@@ -69,7 +69,7 @@ try {
     if ($redirectProcess.ExitCode -ne 0 -or -not $redirectText.Contains('__CSV_REDIRECTS_DONE')) {
         throw "SST falló exportando CSV con redirección: $redirectErrors / $redirectText"
     }
-    if ($redirectErrors.Contains('no está disponible para este subcomando')) {
+    if ($null -ne $redirectErrors -and $redirectErrors -match 'no está disponible para este subcomando') {
         throw "NOTSH sigue rechazando --csv: $redirectErrors"
     }
     foreach ($filename in @('ethernet.csv','routes.csv','system.csv','echo.csv','netcheck.csv')) {
