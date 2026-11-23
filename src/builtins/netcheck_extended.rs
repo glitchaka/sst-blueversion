@@ -10,7 +10,7 @@ use std::{
 use anyhow::Result;
 use sysinfo::System;
 use crate::{
-    adapters::windows::network::{interface_counters, InterfaceCounter},
+    adapters::windows::network::interface_counters,
     core::{CommandOutput, ports::{NetworkProbe, TrafficMonitorFactory}},
 };
 
