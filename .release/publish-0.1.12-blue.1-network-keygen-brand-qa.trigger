@@ -1,0 +1,1 @@
+Run all Windows verification gates for new network diagnostics, SST logo palette, projected keygen letter physics and required soundtrack packaging. Never publish a release without both matching MP3 assets.
