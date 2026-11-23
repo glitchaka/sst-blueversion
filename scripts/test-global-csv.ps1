@@ -21,7 +21,7 @@ try {
     }
     $text = Get-Content -Raw $out
     $header = 'tipo,seccion,fila,campo,valor'
-    $count = ([regex]::Matches($text, '(?m)^' + [regex]::Escape($header) + '\r?
+    $count = ([regex]::Matches($text, '(?m)^tipo,seccion,fila,campo,valor\r?$')).Count
     if ($count -ne 3) {
         throw "Se esperaban 3 salidas CSV independientes; encontradas: $count. STDOUT: $text"
     }
