@@ -356,6 +356,7 @@ fn traffic_report(
     let clock = Instant::now();
     thread::sleep(Duration::from_secs(seconds as u64));
     let after = monitor.snapshot();
+    let events = if mode == "packets" { monitor.events() } else { Vec::new() };
     let rates = factory.rates(&before, &after, clock.elapsed());
     let sockets = probe.connections()?;
     let mut process_system = System::new_all();
@@ -407,6 +408,22 @@ fn traffic_report(
         }
     }
     if mode == "packets" {
+        report.push_str("\nEVENTOS DE RED OBSERVADOS (ETW, hasta 1024 recientes)\n");
+        let mut seen = 0usize;
+        for event in &events {
+            if pid.is_some_and(|filter| filter != event.pid) { continue; }
+            let process = names.get(&event.pid).map(String::as_str).unwrap_or("desconocido");
+            report.push_str(&format!(
+                "  {} | {} B | PID {} ({}) | ETW ID {}\n",
+                event.direction, event.size, event.pid, process, event.event_id
+            ));
+            seen += 1;
+            if seen >= 40 { break; }
+        }
+        if seen == 0 {
+            report.push_str("  Ningún evento ETW con tamaño y PID válido observado.\n");
+        }
+        report.push_str("  Los eventos pueden no representar una trama Ethernet individual.\n");
         report.push_str("\nLÍMITE DE CAPTURA\n  ETW de tamaños/PID no es una captura de paquetes.\n\
                          No se identifican cargas útiles, URL HTTPS, cuerpos de solicitudes ni archivos.\n\
                          Para inspección de contenido se requiere una captura autorizada con un controlador NDIS/WFP.\n\
