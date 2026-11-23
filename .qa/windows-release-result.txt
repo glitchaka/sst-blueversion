@@ -1,62 +1,12 @@
 SST Windows release CI report
-Source commit: 604a56936c3204fb1500bc9f25678d56d9683447
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45229113656
-Recorded UTC: 2026-11-23 17:41:53Z
+Source commit: 8fcdcd2bdd30a1a57b7b962cee6ba2aa0e5411c4
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45230795921
+Recorded UTC: 2026-11-23 17:52:50Z
 Compile: success
 Rust tests: success
 Software GUI startup: success
 Packaging: success
 Compiler log tail:
     Updating crates.io index
- Downloading crates ...
-  Downloaded anyhow v1.0.105
-  Downloaded form_urlencoded v1.2.3
-  Downloaded hashbrown v0.17.2
-  Downloaded toml v1.2.2+spec-1.1.0
-  Downloaded toml_parser v1.1.6+spec-1.1.0
-  Downloaded toml_edit v0.25.20+spec-1.1.0
-  Downloaded url v2.5.9
-  Downloaded zerocopy v0.8.64
-  Downloaded zerocopy-derive v0.8.64
-  Downloaded zip v9.8.2
-   Compiling zerocopy v0.8.64
-   Compiling zerocopy-derive v0.8.64
-   Compiling hashbrown v0.17.2
-   Compiling fontique v0.11.1
-   Compiling indexmap v2.14.2
-   Compiling toml_parser v1.1.6+spec-1.1.0
-   Compiling toml_edit v0.25.20+spec-1.1.0
-   Compiling form_urlencoded v1.2.3
-   Compiling i-slint-common v1.18.1
-   Compiling parley v0.11.1
-   Compiling proc-macro-crate v3.5.0
-   Compiling num_enum_derive v0.7.6
-   Compiling url v2.5.9
-   Compiling webbrowser v1.2.7
-   Compiling num_enum v0.7.6
-   Compiling anyhow v1.0.105
-   Compiling sst v0.1.11-blue.1 (D:\a\sst-blueversion\sst-blueversion)
-   Compiling i-slint-compiler v1.18.1
-   Compiling hashlink v0.12.2
-   Compiling zip v9.8.2
-   Compiling rusqlite v0.41.1
-   Compiling portable-pty v0.9.0
-   Compiling half v2.7.1
-   Compiling tiff v0.11.3
-   Compiling ppv-lite86 v0.2.21
-   Compiling rand_chacha v0.9.0
-   Compiling rand_chacha v0.3.1
-   Compiling rand v0.8.8
-   Compiling image v0.25.10
-   Compiling rand v0.9.5
-   Compiling snmp2 v0.5.3
-   Compiling ferrisetw v1.2.0
-   Compiling i-slint-core v1.18.1
-   Compiling arboard v3.7.0
-   Compiling spellbook v0.4.2
-   Compiling i-slint-renderer-software v1.18.1
-   Compiling i-slint-backend-winit v1.18.1
-   Compiling i-slint-backend-selector v1.18.1
-   Compiling slint-macros v1.18.1
-   Compiling slint v1.18.1
-    Finished `release` profile [optimized] target(s) in 3m 20s
+   Compiling sst v0.1.11-blue.2 (D:\a\sst-blueversion\sst-blueversion)
+    Finished `release` profile [optimized] target(s) in 4m 13s
