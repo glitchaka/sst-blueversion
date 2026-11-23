@@ -267,8 +267,8 @@ fn evaluate_interfaces(text: &str) -> (&'static str, &'static str, Option<(&'sta
 }
 
 impl BuiltinCommand for NetcheckBuiltin {
-    fn name(&self) -> &'static str { "netcheck" }
-    fn aliases(&self) -> &'static [&'static str] { &["netdiag", "nettest"] }
+    fn name(&self) -> &'static str { "netdiag" }
+    fn aliases(&self) -> &'static [&'static str] { &["netcheck", "nettest"] }
     fn help(&self) -> &'static str {
         "netcheck / netdiag / nettest — diagnóstico integral: velocidad real, estabilidad, pérdida, tráfico, servicios y paquetes IPv4"
     }
