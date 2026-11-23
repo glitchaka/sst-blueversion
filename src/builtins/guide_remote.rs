@@ -93,6 +93,102 @@ fn fetch_repo_file(filename: &str, max_bytes: usize) -> Option<String> {
         .or_else(|| read_local_or_bundled(filename, max_bytes))
 }
 
+/// Official Arch repository metadata for choosing functionality to adapt.
+/// This is RESEARCH ONLY: it never installs, executes or imports Arch packages.
+pub(super) fn arch_package_details(name: &str) -> Option<String> {
+    if name.is_empty() || name.len() > 128 ||
+        !name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'+'))
+    {
+        return None;
+    }
+
+    // Reuse downloaded metadata offline; do not require another request on
+    // every redraw, resize or return to the same package.
+    let cache = AppPaths::detect().root_dir()
+        .join("guide").join("upstream").join("arch-meta")
+        .join(format!("{name}.json"));
+    if let Some(raw) = read_text(&cache, 256 * 1024) {
+        if let Some(details) = parse_arch_package_details(name, &raw) {
+            return Some(details);
+        }
+    }
+
+    #[cfg(windows)]
+    let executable = crate::support::windows::system32_executable("curl.exe").ok()?;
+    #[cfg(not(windows))]
+    let executable = PathBuf::from("curl");
+
+    let response = Command::new(executable)
+        .args([
+            "--location", "--fail", "--silent", "--show-error",
+            "--proto", "=https", "--tlsv1.2", "--connect-timeout", "3",
+            "--max-time", "8", "--retry", "0", "--max-filesize", "262144",
+        ])
+        .arg(format!("https://archlinux.org/packages/search/json/?name={name}"));
+    #[cfg(windows)]
+    let response = {
+        let mut request = response;
+        request.creation_flags(0x0800_0000);
+        request.output().ok()?
+    };
+    #[cfg(not(windows))]
+    let response = response.output().ok()?;
+    if !response.status.success() || response.stdout.len() > 256 * 1024 {
+        return None;
+    }
+    let raw = String::from_utf8(response.stdout).ok()?;
+    let details = parse_arch_package_details(name, &raw)?;
+    if let Some(parent) = cache.parent() {
+        if fs::create_dir_all(parent).is_ok() {
+            let _ = fs::write(&cache, raw);
+        }
+    }
+    Some(details)
+}
+
+fn parse_arch_package_details(name: &str, raw: &str) -> Option<String> {
+    let payload: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let results = payload.get("results")?.as_array()?;
+    let entry = results.iter()
+        .filter(|value| value.get("pkgname").and_then(|v| v.as_str()) == Some(name))
+        .max_by_key(|value| {
+            let arch = value.get("arch").and_then(|v| v.as_str()).unwrap_or("");
+            let repo = value.get("repo").and_then(|v| v.as_str()).unwrap_or("");
+            (u8::from(arch == "x86_64"), u8::from(repo == "extra"))
+        })?;
+    let str_field = |field: &str| entry.get(field).and_then(|value| value.as_str()).unwrap_or("");
+    let description = str_field("pkgdesc");
+    if description.trim().is_empty() { return None; }
+    let mut details = format!(
+        "Descripción oficial (Arch Linux): {description}\n\
+         Paquete: {name}\n\
+         Versión en Arch: {}\n\
+         Repositorio: {}\n\
+         Arquitectura: {}\n",
+        str_field("pkgver"), str_field("repo"), str_field("arch")
+    );
+    let url = str_field("url");
+    if !url.is_empty() { details.push_str(&format!("Proyecto: {url}\n")); }
+    for (field, caption) in [
+        ("licenses", "Licencias"),
+        ("depends", "Dependencias"),
+        ("optdepends", "Dependencias opcionales"),
+    ] {
+        if let Some(values) = entry.get(field).and_then(|v| v.as_array()) {
+            let values = values.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>();
+            if !values.is_empty() {
+                details.push_str(&format!("{caption}: {}\n", values.join(", ")));
+            }
+        }
+    }
+    details.push_str(
+        "\nReferencia técnica para decidir una adaptación nativa a SST.\n\
+         Aprobar este elemento NO instala ni ejecuta paquetes de Arch.\n\
+         Fuente: https://archlinux.org/packages/\n"
+    );
+    Some(details)
+}
+
 fn read_text(path: &std::path::Path, max_bytes: usize) -> Option<String> {
     let metadata = fs::metadata(path).ok()?;
     if !metadata.is_file() || metadata.len() == 0 || metadata.len() > max_bytes as u64 {
