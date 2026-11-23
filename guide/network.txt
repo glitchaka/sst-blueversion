@@ -577,6 +577,21 @@ Temas:
     PID y código de evento, con cola acotada a 1024 observaciones.
     NO es un sniffer de tramas NDIS ni inspecciona el contenido del payload.
 
+  netcheck capture --interface IPV4_LOCAL --seconds 5 --limit 100
+    Captura real de paquetes IPv4 mediante Winsock SOCK_RAW + SIO_RCVALL,
+    únicamente para la IPv4 indicada en una interfaz local, sin procesos
+    externos, y muestra IP origen/destino, puertos TCP/UDP, flags TCP, bytes,
+    dirección TX/RX y servicio probable (inferido del puerto).
+    Requiere permiso de Administrador y adaptador/política compatible.
+    Sólo recibe tráfico IPv4 hacia/desde la IP de interfaz elegida.
+
+  netcheck capture --interface IPV4_LOCAL --seconds 5 --payload-bytes 32
+    Añade el prefijo hexadecimal de hasta 32 bytes de carga útil por paquete
+    si el operador lo solicita expresamente. El contenido puede ser sensible.
+    El límite es de 64 bytes y nunca se muestra por defecto.
+    HTTPS/TLS sigue cifrado. No se reconstruyen sesiones, archivos, imágenes
+    ni datos de aplicación; el nombre de servicio inferido no es garantía.
+
   netcheck --help
     Ayuda de todas las modalidades.
 
