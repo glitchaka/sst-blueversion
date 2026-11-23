@@ -96,6 +96,10 @@ catch {
     Write-Host ("CSV failure at line {0}: {1}" -f $_.InvocationInfo.ScriptLineNumber, $_.Exception.ToString())
     throw
 }
+catch {
+    Write-Error ("CSV test error at line {0}: {1}" -f $_.InvocationInfo.ScriptLineNumber, $_.Exception.ToString())
+    throw
+}
 finally {
     if ($process -and -not $process.HasExited) { $process.Kill() }
     Remove-Item -Recurse -Force -LiteralPath $root -ErrorAction SilentlyContinue
