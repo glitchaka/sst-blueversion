@@ -91,7 +91,8 @@ impl CommandRegistry {
 
         out.push_str("\nModificador global de salida: COMANDO [ARGUMENTOS] --csv\n");
         out.push_str("Convierte la salida capturada a CSV (tipo,seccion,fila,campo,valor).\n");
-        out.push_str("No afecta tuberías, redirecciones ni aplicaciones interactivas.\n");
+        out.push_str("Compatible con redirecciones y tuberías: notsh show lan interfaces --csv > ethernet.csv.\n");
+        out.push_str("No aplica a interfaces interactivas de pantalla completa.\n");
         out.push_str("\nUsa 'guide' para explorar comandos o 'guide COMANDO' para abrir directamente su ficha.\n");
         CommandOutput::ok(out)
     }
