@@ -74,9 +74,9 @@ try {
     # It must produce valid CSV for both LAN and WLAN, independent of
     # whether those commands have specialized exporters.
     $lanMatch = [regex]::Match(
-        $result, '(?s)SST_CSV_LAN_BEGIN\\s*(.*?)\\s*SST_CSV_LAN_END')
+        $result, '(?s)SST_CSV_LAN_BEGIN\s*(.*?)\s*SST_CSV_LAN_END')
     $wlanMatch = [regex]::Match(
-        $result, '(?s)SST_CSV_WLAN_BEGIN\\s*(.*?)\\s*SST_CSV_WLAN_END')
+        $result, '(?s)SST_CSV_WLAN_BEGIN\s*(.*?)\s*SST_CSV_WLAN_END')
     foreach ($selection in @(@{Label='LAN';Match=$lanMatch}, @{Label='WLAN';Match=$wlanMatch})) {
         if (-not $selection.Match.Success) {
             throw "NOTSH $($selection.Label) --csv no entregó su salida."
