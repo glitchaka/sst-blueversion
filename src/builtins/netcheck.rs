@@ -62,7 +62,7 @@ impl NetcheckBuiltin {
                  netcheck loss [HOST] --count 20 --interval 400\n\
                  netcheck stability [HOST] --seconds 10 [--tcp PUERTO]\n\
                  netcheck speed                    Descarga, subida y latencia HTTPS reales, automáticamente\n\
-                 netcheck speed --passive          Solo velocidad de enlace y tráfico de NIC\n\\
+                 netcheck speed --passive          Solo velocidad de enlace y tráfico de NIC\n\
                  netcheck speed --download https://SERVIDOR/archivo.bin --upload https://SERVIDOR/subir\n\
                  netcheck traffic --seconds 5 [--pid PID] [--top N]\n\
                  netcheck inspect --seconds 5 --pid PID\n\
@@ -71,7 +71,7 @@ impl NetcheckBuiltin {
                    Cabeceras IPv4 y opcionalmente bytes hexadecimales (Administrador).\n\
                  Predeterminado: HOST=example.com, puerto 443.\n\
                  IPv4 ICMP, DNS, gateway, NAC, pérdida, jitter y TCP según modalidad.\n\
-                 Por defecto: Cloudflare Speed Test por HTTPS; tráfico de prueba limitado.\n\\
+                 Por defecto: Cloudflare Speed Test por HTTPS; tráfico de prueba limitado.\n\
                  Ajustes: --seconds 8 --max-mib 32 (capacidad de prueba).\n\
                  No modifica DHCP, DNS, firewall, VLAN ni perfiles 802.1X.\n"));
         }
