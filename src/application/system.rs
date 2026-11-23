@@ -1258,17 +1258,43 @@ fn keygen_frame(cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String]
 /// Se conserva íntegro y sólo se reduce su representación durante el arranque.
 pub(crate) const FETCH_LOGO_ASCII: &[&str] = &["   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%=--::::--------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%=---------%%%%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%---#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=---------%%%%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%---#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=------%%%%%%%%%%%%%%%%%%%%%%%%----------%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=--+%%%%%%%%%%%%---------%%%---------=%%%%%%%%%%%%---------%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%---------%%%---------=%%%%%%%%%%%%---------%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%------------------------=%%%%%%%%%----------------------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%------------------------=%%%%%%%%%----------------------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%---------------------=%%%%%%%%%%%%-------------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%----------------------%%%%%%%%%%%%----------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%----------------------%%%%%%%%%%%%----------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%---------%%%%","%%%=---------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=---------------%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=---------------%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%*------------------%%%%%%%%%---*%%*------------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%*------------------%%%%%%%%%---*%%*------------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%%%%#---------------%%%%%%%%%---*%%%%%%---------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%---------%%%%%%%%%%%%=-----=%%%%%%---------%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%---------%%%%%%%%%%%%=-----=%%%%%%---------%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%%%%%%%%%%%%%---------=%%%%%%%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%%%%%%%%%%%%%---------=%%%%%%%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=---------%%%%%%%%%%%%----------------------%%%%%%%%%%%%-------------------%%%%%%%%%---------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    "];
 
-/// Construye el logo SST mediante libcaca. Cada celda conserva su carácter
-/// y su atributo de color; ningún overlay independiente tapa el terminal.
-fn sst_caca_palette(x: usize, y: usize, width: usize) -> libcaca::Color {
-    use libcaca::Color;
-    match (x * 5 / width.max(1) + y / 4) % 5 {
-        0 => Color::Yellow,
-        1 => Color::Brown,
-        2 => Color::LightRed,
-        3 => Color::LightGreen,
-        _ => Color::Green,
+/// Colores muestreados del icono SST original (assets/sst-icon.png):
+/// azul marino #23346A, azul secundario #364C77,
+/// azul acero #6D8FAB y gris plata #BABDC6.
+/// El color se elige por densidad del glifo, no por coordenadas:
+/// los bloques no forman bandas aleatorias de amarillo/rojo/verde.
+fn sst_icon_rgb(glyph: char) -> Option<(u8, u8, u8)> {
+    match glyph {
+        '█' | '%' | '#' => Some((35, 52, 106)),
+        '▓' | '*' | '+' => Some((54, 76, 119)),
+        '▒' | '=' => Some((109, 143, 171)),
+        '░' | '-' | ':' => Some((186, 189, 198)),
+        _ => None,
     }
+}
+
+/// Conservar la geometría renderizada por libcaca y emitir el RGB original
+/// en ANSI TrueColor. libcaca::Color sólo ofrece una paleta aproximada de 16
+/// colores, por lo que no debe sustituir los valores del icono oficial.
+fn sst_icon_truecolor(lines: Vec<String>) -> Vec<String> {
+    lines.into_iter().map(|line| {
+        let mut out = String::with_capacity(line.len() * 2);
+        let mut current = None;
+        for glyph in line.chars() {
+            let color = sst_icon_rgb(glyph);
+            if color != current {
+                if let Some((r, g, b)) = color {
+                    out.push_str(&format!("\x1b[38;2;{r};{g};{b}m"));
+                } else if current.is_some() {
+                    out.push_str("\x1b[0m");
+                }
+                current = color;
+            }
+            out.push(glyph);
+        }
+        if current.is_some() { out.push_str("\x1b[0m"); }
+        out
+    }).collect()
 }
 
 fn caca_ansi(canvas: &libcaca::Canvas) -> anyhow::Result<String> {
@@ -1305,13 +1331,13 @@ fn fetch_compact_logo(plain: bool, columns: usize) -> anyhow::Result<(Vec<String
                 else if coverage > 0.09 { '░' }
                 else { ' ' };
             plain_rows[y].push(glyph);
-            cv.set_color_ansi(sst_caca_palette(x, y, width), libcaca::Color::Default)?;
+            cv.set_color_ansi(libcaca::Color::Default, libcaca::Color::Default)?;
             cv.put_char(x as i32, y as i32, glyph as u32);
         }
     }
     if plain { return Ok((plain_rows, width)); }
     let rendered = caca_ansi(&cv)?;
-    Ok((rendered.lines().map(str::to_owned).collect(), width))
+    Ok((sst_icon_truecolor(rendered.lines().map(str::to_owned).collect()), width))
 }
 
 fn fetch_logo(plain: bool) -> anyhow::Result<(Vec<String>, usize)> {
@@ -1322,12 +1348,12 @@ fn fetch_logo(plain: bool) -> anyhow::Result<(Vec<String>, usize)> {
     let mut cv = libcaca::Canvas::new(width as i32, FETCH_LOGO_ASCII.len() as i32)?;
     for (y, line) in FETCH_LOGO_ASCII.iter().enumerate() {
         for (x, glyph) in line.chars().enumerate() {
-            cv.set_color_ansi(sst_caca_palette(x, y, width), libcaca::Color::Default)?;
+            cv.set_color_ansi(libcaca::Color::Default, libcaca::Color::Default)?;
             cv.put_char(x as i32, y as i32, glyph as u32);
         }
     }
     let rendered = caca_ansi(&cv)?;
-    Ok((rendered.lines().map(str::to_owned).collect(), width))
+    Ok((sst_icon_truecolor(rendered.lines().map(str::to_owned).collect()), width))
 }
 
 fn truncate_fetch(value: &str, max: usize) -> String {
