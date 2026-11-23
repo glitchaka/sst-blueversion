@@ -1,0 +1,1 @@
+Compile and test latest 0.1.12-blue.1 native network troubleshooting, including WinHTTP throughput, NIC counters, ICMP stability/loss, ETW PID events, SCM service association and opt-in SIO_RCVALL capture.
