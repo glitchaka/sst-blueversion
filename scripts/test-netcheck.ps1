@@ -16,7 +16,7 @@ try {
         'echo SST_NETCHECK_LOSS_DONE',
         'netcheck stability 127.0.0.1 --seconds 2 --interval 400 --timeout 200',
         'echo SST_NETCHECK_STABILITY_DONE',
-        'netcheck speed --seconds 1',
+        'netcheck speed --passive --seconds 1',
         'echo SST_NETCHECK_SPEED_DONE',
         'netcheck traffic --seconds 1 --top 3',
         'echo SST_NETCHECK_TRAFFIC_DONE',
@@ -65,7 +65,7 @@ try {
     if (-not $errors.Contains('se requiere la IPv4 asignada a la NIC local')) {
         throw "netcheck capture aceptó 0.0.0.0 como interfaz o no informó el error esperado: $errors"
     }
-    Write-Host 'netcheck: diagnóstico, ICMP pérdida/estabilidad, velocidad de NIC y tráfico ETW verificados.'
+    Write-Host 'netcheck: diagnóstico, ICMP pérdida/estabilidad, velocidad de NIC (pasivo) y tráfico ETW verificados.'
 } finally {
     if ($p -and -not $p.HasExited) { $p.Kill() }
     Remove-Item -Recurse -Force -LiteralPath $dir -ErrorAction SilentlyContinue
