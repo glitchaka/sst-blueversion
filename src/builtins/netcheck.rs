@@ -1,17 +1,69 @@
 use std::{net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs},sync::Arc,time::Duration};
 use anyhow::Result;
-use crate::{core::{CommandContext, CommandOutput, ports::NetworkProbe},builtins::BuiltinCommand};
+use crate::{core::{CommandContext, CommandOutput, ports::{NetworkProbe, TrafficMonitorFactory}},builtins::BuiltinCommand};
 
-pub struct NetcheckBuiltin { probe: Arc<dyn NetworkProbe> }
+pub struct NetcheckBuiltin {
+    probe: Arc<dyn NetworkProbe>,
+    traffic_factory: Arc<dyn TrafficMonitorFactory>,
+}
 impl NetcheckBuiltin {
-    pub fn new(probe: Arc<dyn NetworkProbe>) -> Self { Self { probe } }
+    pub fn new(probe: Arc<dyn NetworkProbe>, traffic_factory: Arc<dyn TrafficMonitorFactory>) -> Self {
+        Self { probe, traffic_factory }
+    }
+    fn full(&self, args: &[String]) -> Result<CommandOutput> {
+        let Some(base_args) = args.first().map(|x| vec![x.clone()]) else {
+            let mut base = self.diagnose(&["--port".into(), "443".into()])?;
+            base.stdout.push_str("\nNota: para un destino interno usa netcheck full HOST.\n");
+            self.append_measurements(&mut base, None);
+            return Ok(base);
+        };
+        let target = base_args[0].clone();
+        let mut base = self.diagnose(&base_args)?;
+        self.append_measurements(&mut base, Some(&target));
+        Ok(base)
+    }
+
+    fn append_measurements(&self, base: &mut CommandOutput, host: Option<&str>) {
+        let mut probes = vec![
+            vec!["speed".into(), "--seconds".into(), "2".into()],
+            vec!["loss".into(), "--count".into(), "6".into(), "--interval".into(), "300".into()],
+            vec!["traffic".into(), "--seconds".into(), "2".into(), "--top".into(), "8".into()],
+        ];
+        if let Some(host) = host { probes[1].insert(1, host.to_owned()); }
+        for cmd in probes {
+            let name = cmd[0].to_uppercase();
+            base.stdout.push_str(&format!("\n=== {name} ===\n"));
+            match super::netcheck_extended::execute(&cmd, &*self.probe, &*self.traffic_factory) {
+                Ok(output) if output.status == 0 => base.stdout.push_str(&output.stdout),
+                Ok(output) => base.stdout.push_str(&format!("NO DISPONIBLE: {}\n", output.stderr.trim())),
+                Err(error) => base.stdout.push_str(&format!("ERROR: {error:#}\n")),
+            }
+        }
+    }
+
     fn diagnose(&self, args: &[String]) -> Result<CommandOutput> {
+        if let Some(mode) = args.first() {
+            if matches!(mode.as_str(), "loss" | "stability" | "speed" | "traffic" | "inspect" | "packets") {
+                return super::netcheck_extended::execute(args, &*self.probe, &*self.traffic_factory);
+            }
+            if mode == "full" { return self.full(&args[1..]); }
+        }
+        if args.is_empty() { return self.full(&[]); }
         if args.iter().any(|s| matches!(s.as_str(), "-h" | "--help" | "help")) {
             return Ok(CommandOutput::ok(
                 "netcheck — diagnóstico ordenado de conectividad (solo lectura)\n\
-                 Uso: netcheck [HOST] [--port PUERTO]\n\
-                 Predeterminado: HOST=example.com, PUERTO=443\n\
-                 Comprueba enlace, IP/APIPA, gateway, DNS, ICMP y TCP.\n\
+                 netcheck [HOST] [--port PUERTO]    Diagnóstico de conectividad y causa probable\n\
+                 netcheck full [HOST]             Diagnóstico completo con velocidad, estabilidad y tráfico\n\
+                 netcheck loss [HOST] --count 20 --interval 400\n\
+                 netcheck stability [HOST] --seconds 10 [--tcp PUERTO]\n\
+                 netcheck speed --seconds 4        Velocidad física y tráfico medido por NIC\n\
+                 netcheck speed --download https://SERVIDOR/archivo.bin --seconds 10\n\
+                 netcheck traffic --seconds 5 [--pid PID] [--top N]\n\
+                 netcheck inspect --seconds 5 --pid PID\n\
+                 netcheck packets --seconds 5     Metadatos ETW por proceso; NO contenido\n\
+                 Predeterminado: HOST=example.com, puerto 443.\n\
+                 IPv4 ICMP, DNS, gateway, NAC, pérdida, jitter y TCP según modalidad.\n\
+                 La velocidad de Internet requiere un servidor de descarga explícito.\n\
                  No modifica DHCP, DNS, firewall, VLAN ni perfiles 802.1X.\n"));
         }
         let mut host = "example.com".to_owned();
@@ -207,7 +259,7 @@ fn evaluate_interfaces(text: &str) -> (&'static str, &'static str, Option<(&'sta
 impl BuiltinCommand for NetcheckBuiltin {
     fn name(&self) -> &'static str { "netcheck" }
     fn help(&self) -> &'static str {
-        "netcheck — diagnóstico de enlace, APIPA, DHCP, gateway, DNS, ICMP y TCP"
+        "netcheck — diagnóstico integral: estabilidad, pérdida, velocidad real y tráfico por proceso"
     }
     fn execute(&self, _invoked_name: &str, args: &[String], _context: CommandContext<'_>) -> Result<CommandOutput> {
         self.diagnose(args)
