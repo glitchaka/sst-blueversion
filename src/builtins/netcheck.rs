@@ -158,7 +158,9 @@ fn ipv4_default_gateway(text: &str) -> Option<Ipv4Addr> {
 
 fn evaluate_interfaces(text: &str) -> (&'static str, &'static str, Option<(&'static str, String)>) {
     let apipa = text.lines().any(|line| line.trim_start().starts_with("IP: 169.254."));
-    let connected = text.lines().any(|line| matches!(line.trim(), "Estado: ENLACE ACTIVO" | "Estado: OPERATIVA"));
+    // Prefer verified physical Ethernet or Wi-Fi evidence over virtual NICs.
+    let connected = text.lines().any(|line| line.trim() == "Estado: ENLACE ACTIVO")
+        || (text.contains("Tipo: Wi-Fi") && text.lines().any(|line| line.trim() == "Estado: OPERATIVA"));
     if apipa {
         ("ADVERTENCIA", "IPv4 APIPA 169.254.x.x: no se obtuvo configuración IPv4 administrada.",
             Some(("ADVERTENCIA", "Revisar DHCP, VLAN y autorización NAC 802.1X.".to_owned())))
