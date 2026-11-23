@@ -70,20 +70,25 @@ try {
     if ($result -match 'Uso: notsh show interfaces') {
         throw "NOTSH rechazó la sintaxis contextual LAN/WLAN: $result"
     }
+    # --csv is a universal Nwash output mode, not a NOTSH subcommand.
+    # It must produce valid CSV for both LAN and WLAN, independent of
+    # whether those commands have specialized exporters.
     $lanMatch = [regex]::Match(
-        $result, '(?s)SST_CSV_LAN_BEGIN\s*(.*?)\s*SST_CSV_LAN_END')
-    if (-not $lanMatch.Success -or $lanMatch.Groups[1].Value -notmatch '^Nombre,Tipo,Estado,Administrativo,Enlace,Operativo,Velocidad_bps,MAC,IP,Adaptador,Diagnostico') {
-        throw "NOTSH LAN --csv no produjo un encabezado CSV válido."
-    }
-    $lanRows = @($lanMatch.Groups[1].Value | ConvertFrom-Csv)
-    # A machine with no physical Ethernet still emits valid header-only CSV.
-    if ($lanRows.Count -gt 0 -and $null -eq $lanRows[0].Nombre) {
-        throw "Las columnas de NOTSH LAN --csv no se pudieron analizar."
-    }
+        $result, '(?s)SST_CSV_LAN_BEGIN\\s*(.*?)\\s*SST_CSV_LAN_END')
     $wlanMatch = [regex]::Match(
-        $result, '(?s)SST_CSV_WLAN_BEGIN\s*(.*?)\s*SST_CSV_WLAN_END')
-    if (-not $wlanMatch.Success -or $wlanMatch.Groups[1].Value -notmatch '^Adaptador,Estado,Perfil,SSID,BSSID,Senal_pct,RX_Kbps,TX_Kbps,Autenticacion,8021X') {
-        throw "NOTSH WLAN --csv no produjo CSV nativo."
+        $result, '(?s)SST_CSV_WLAN_BEGIN\\s*(.*?)\\s*SST_CSV_WLAN_END')
+    foreach ($selection in @(@{Label='LAN';Match=$lanMatch}, @{Label='WLAN';Match=$wlanMatch})) {
+        if (-not $selection.Match.Success) {
+            throw "NOTSH $($selection.Label) --csv no entregó su salida."
+        }
+        $csv = $selection.Match.Groups[1].Value.Trim()
+        if (-not $csv.StartsWith('tipo,seccion,fila,campo,valor')) {
+            throw "NOTSH $($selection.Label) no usa el formateador CSV global: $csv"
+        }
+        $parsed = @($csv | ConvertFrom-Csv)
+        if ($parsed.Count -gt 0 -and $null -eq $parsed[0].campo) {
+            throw "NOTSH $($selection.Label) devolvió columnas CSV ilegibles."
+        }
     }
     if ($result -notmatch 'LAN|Dot3|Ethernet') { throw "Diagnóstico LAN sin contexto: $result" }
     if ($result -notmatch 'WLAN|Wi-Fi|WiFi') { throw "Diagnóstico WLAN sin contexto: $result" }
