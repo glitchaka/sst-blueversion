@@ -1251,9 +1251,18 @@ fn keygen_frame(cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String]
             let depth = ((t * 0.67 + i as f32 * 0.23).sin() * 0.95)
                 + height_3d * 0.24;
             let perspective = 1.0 / (1.0 + (1.5 - depth) * 0.12);
-            let world_x = i as f32 - (count - 1.0) * 0.5;
+            let rest_x = i as f32 - (count - 1.0) * 0.5;
+            // Inertia across the horizontal axis, independently damped
+            // following the letter's rebound. This is not a synchronous sine.
+            let impulse_x = (cycle * 3.0 + i as f32 * 0.33).sin()
+                * 1.8 * (-cycle * 0.42).exp();
+            let world_x = rest_x + impulse_x;
+            // Curved 3D title track, like the original keygen arc, not a
+            // straight text row moved up and down as a single object.
+            let half = (count * 0.5).max(1.0);
+            let arc_lift = (1.0 - (rest_x / half).powi(2)).max(0.0) * max_wave * 2.8;
             let px = (center + world_x * perspective).round() as isize;
-            let py = (baseline - height_3d * 1.35
+            let py = (baseline - arc_lift - height_3d * 1.35
                 - depth * 0.62).round() as isize;
             if px < 0 || px >= width as isize || py < 1 || py >= height as isize - 1 {
                 continue;
