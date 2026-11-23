@@ -106,6 +106,33 @@ fn parse_ipv4(raw: &[u8]) -> Option<IpPacket<'_>> {
         flags,payload: &raw[payload_pos.min(total)..total],
     })
 }
+#[derive(Debug, Clone)]
+pub struct FlowOwner {
+    pub protocol: String,
+    pub local_port: u16,
+    pub remote_ip: Option<Ipv4Addr>,
+    pub remote_port: Option<u16>,
+    pub pid: u32,
+    pub process: String,
+    pub services: Vec<String>,
+}
+
+fn flow_owner<'a>(packet: &IpPacket<'_>, local: Ipv4Addr, owners: &'a [FlowOwner]) -> Option<&'a FlowOwner> {
+    let (local_port, remote_ip, remote_port) = if packet.source == local {
+        (packet.src_port?, packet.destination, packet.dst_port)
+    } else {
+        (packet.dst_port?, packet.source, packet.src_port)
+    };
+    let mut matches = owners.iter().filter(|owner| {
+        owner.local_port == local_port && owner.protocol == packet.protocol
+            && owner.remote_ip.is_none_or(|ip| ip == remote_ip)
+            && owner.remote_port.is_none_or(|port| Some(port) == remote_port)
+    });
+    let first = matches.next()?;
+    if matches.any(|other| other.pid != first.pid) { return None; }
+    Some(first)
+}
+
 fn port_label(port: Option<u16>) -> String {
     port.map(|value| format!(":{value}")).unwrap_or_default()
 }
@@ -124,7 +151,7 @@ fn describe_protocol(port: Option<u16>, protocol: &str) -> &'static str {
         _ => "desconocido (puerto no acredita servicio)",
     }
 }
-pub fn capture(local: Ipv4Addr, seconds: u32, limit: u32, payload_bytes: usize) -> Result<String> {
+pub fn capture(local: Ipv4Addr, seconds: u32, limit: u32, payload_bytes: usize, owners: &[FlowOwner]) -> Result<String> {
     if local.is_unspecified() || local.is_broadcast() || local.is_multicast() {
         bail!("se requiere la IPv4 asignada a la NIC local (no 0.0.0.0)");
     }
@@ -190,6 +217,15 @@ pub fn capture(local: Ipv4Addr, seconds: u32, limit: u32, payload_bytes: usize) 
             port_label(packet.dst_port), packet.protocol, packet.bytes,
             packet.flags, describe_protocol(remote_port,packet.protocol),
         ));
+        if let Some(owner) = flow_owner(&packet, local, owners) {
+            out.push_str(&format!("      PID probable {} | Proceso: {} | Servicios asociados: {}\n",
+                owner.pid, owner.process, if owner.services.is_empty() { "-".to_owned() } else { owner.services.join(", ") }));
+            if owner.services.len() > 1 {
+                out.push_str("      PID compartido: no se puede atribuir este paquete a un servicio individual.\n");
+            }
+        } else {
+            out.push_str("      PID: NO IDENTIFICADO (sin coincidencia de socket inequívoca).\n");
+        }
         if payload_bytes > 0 && !packet.payload.is_empty() {
             let preview = packet.payload.iter().take(payload_bytes)
                 .map(|byte| format!("{byte:02X}")).collect::<Vec<_>>().join(" ");
@@ -199,6 +235,7 @@ pub fn capture(local: Ipv4Addr, seconds: u32, limit: u32, payload_bytes: usize) 
     out.push_str(&format!(
         "\nRESUMEN\n  Paquetes observados: {shown}\n  Bytes TX/RX: {tx}/{rx}\n\
          Nota: tramas Ethernet, VLAN, IPv6 y payload cifrado TLS no se descifran.\n\
+         PID/proceso son coincidencias de la tabla de sockets consultada al inicio de la captura, no evidencia de atribución por paquete.\n\
          Los puertos permiten inferir servicios probables, pero no los identifican con certeza.\n"
     ));
     Ok(out)
