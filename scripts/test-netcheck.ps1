@@ -47,16 +47,13 @@ try {
     }
     # The Windows runner can use only virtual NICs or deny ETW tracing.
     # Those states must be explicit, never replaced by fake metrics.
-    if (-not ($output.Contains('ADAPTADORES FÍSICOS — Windows IP Helper')
-        -or $errors.Contains('no hay interfaces Ethernet/Wi-Fi activas'))) {
+    if (-not ($output.Contains('ADAPTADORES FÍSICOS — Windows IP Helper') -or $errors.Contains('no hay interfaces Ethernet/Wi-Fi activas'))) {
         throw "netcheck speed no proporcionó medición ni diagnóstico de ausencia de NIC: $output / $errors"
     }
-    if (-not ($output.Contains('TRÁFICO POR PROCESO')
-        -or $errors.Contains('ETW no disponible'))) {
+    if (-not ($output.Contains('TRÁFICO POR PROCESO') -or $errors.Contains('ETW no disponible'))) {
         throw "netcheck traffic no produjo informe ETW ni error verificable: $output / $errors"
     }
-    if (-not ($output.Contains('EVENTOS DE RED OBSERVADOS')
-        -or $errors.Contains('ETW no disponible'))) {
+    if (-not ($output.Contains('EVENTOS DE RED OBSERVADOS') -or $errors.Contains('ETW no disponible'))) {
         throw "netcheck packets no proporcionó eventos ni explicó la falta de ETW: $output / $errors"
     }
     if ($output -match 'Pérdida: 100.0%' -and $output -notmatch 'Errores locales de la API: 0') {
