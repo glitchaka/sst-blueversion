@@ -230,6 +230,10 @@ pub fn capture(local: Ipv4Addr, seconds: u32, limit: u32, payload_bytes: usize, 
             let preview = packet.payload.iter().take(payload_bytes)
                 .map(|byte| format!("{byte:02X}")).collect::<Vec<_>>().join(" ");
             out.push_str(&format!("      Payload hexadecimal (limitado): {preview}\n"));
+            let ascii = packet.payload.iter().take(payload_bytes)
+                .map(|b| if b.is_ascii_graphic() || *b == b' ' { char::from(*b) } else { '.' })
+                .collect::<String>();
+            out.push_str(&format!("      Vista ASCII imprimible: {ascii}\n"));
         }
     }
     out.push_str(&format!(
