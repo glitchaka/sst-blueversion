@@ -305,10 +305,29 @@ impl GuideBuiltin {
                                     entry.manual.topic.as_deref(),
                                 )
                             });
-                            let lines = manual
-                                .as_deref()
-                                .map(|text| manual_lines(text, width))
-                                .unwrap_or_default();
+                            let mut details = String::new();
+                            if entry.area == ARCH_AREA {
+                                // Arch review requires actual package functionality, not
+                                // a name/version-only selection screen.
+                                if let Some(metadata) = super::guide_remote::arch_package_details(&entry.name) {
+                                    details.push_str(&metadata);
+                                } else {
+                                    details.push_str(&format!(
+                                        "Paquete Arch: {}\nDato del catálogo: {}\n\
+                                         Descripción oficial no disponible en este momento.\n\
+                                         No se puede evaluar este paquete solo por su versión.\n\
+                                         Fuente para consulta: https://archlinux.org/packages/\n",
+                                        entry.name, entry.summary,
+                                    ));
+                                }
+                                details.push_str("\n");
+                            } else {
+                                details.push_str(&format!("{}\n\n", entry.summary));
+                            }
+                            if let Some(text) = manual.as_deref() {
+                                details.push_str(text);
+                            }
+                            let lines = manual_lines(&details, width);
                             let body = Arc::new(lines);
                             wrapped_cache.insert((entry_index, width), Arc::clone(&body));
                             body
