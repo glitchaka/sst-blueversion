@@ -1,27 +1,29 @@
 {
   "schema": 1,
-  "version": "0.1.10-blue.1",
+  "version": "0.1.11-blue.1",
   "channel": "blue",
-  "published_at": "2026-11-20T22:05:41.4045257+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.10-blue.1/sst.exe",
-  "sha256": "ac172e9e3f1ba0b7638616961ab4e386f242cdfad925fabdee1cff46888d8965",
-  "size": 56455168,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.10-blue.1/sst-updater.exe",
-  "updater_sha256": "bf37aad7be315f9efc44e8cc91db43d82aeb6f2761ad112bcb5184f827fac6fe",
+  "published_at": "2026-11-23T17:41:19.6999609+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.11-blue.1/sst.exe",
+  "sha256": "030dbe81e78517fb39cc4e53f3bb596039d6e93887b1868f90d57bf817fdb2d4",
+  "size": 56480256,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.11-blue.1/sst-updater.exe",
+  "updater_sha256": "548ac0649a5922356cad773ae6c5fe079e5789ae5b686c3651e95806ce6a3958",
   "updater_size": 433664,
   "changes": [
-    "Se incorpora `keygen`: textos flotantes con colores RGB cambiantes, nombre de SST y datos de sistema de `fetch`.",
-    "Banda sonora MP3 reproducida mediante WinMM dentro de SST; controles `1`, `2`, `Espacio`, `Esc` y `q`.",
-    "Se retira el overlay duplicado que tapaba la terminal y se actualiza el tratamiento de salida ASCII.",
-    "Los archivos musicales cargan desde `assets/keygen/track01.mp3` y `track02.mp3`; los MP3 no forman parte del ejecutable ni del paquete público.",
-    "Actualización de versión menor funcional: `0.1.9-blue.79` a `0.1.10-blue.1`."
+    "Se incorpora el comando nativo `netcheck` para investigar fallas de conectividad desde SST, con conclusiones basadas en evidencias y sin reparaciones automáticas.",
+    "Revisa interfaces físicas Ethernet y Wi-Fi, direcciones APIPA, ruta IPv4 predeterminada, respuesta ICMP de puerta de enlace, resolución DNS, respuesta ICMP del destino y conexión TCP al servicio indicado.",
+    "Informa estados, limitaciones y acciones de investigación en orden. Una ausencia de respuesta ICMP no se interpreta automáticamente como una falla de enlace o de Internet.",
+    "Uso: `netcheck`, `netcheck HOST` o `netcheck HOST --port PUERTO`.",
+    "Integra ayuda con `help netcheck`, `netcheck --help` y ficha de `guide`, incluyendo compatibilidad con índices de guía no actualizados.",
+    "Pruebas Rust para clasificación de APIPA, falta de enlace y ruta predeterminada, más prueba funcional Windows obligatoria para publicación.",
+    "Conserva los cambios anteriores de descripción de paquetes Arch en guide."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.10-blue.1.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.10-blue.1/SST-Setup-0.1.10-blue.1.exe",
-    "sha256": "cde9267ef387f4b4a9b21c0624090993739cd0c328229bbd991161d4eb7f4be4",
-    "size": 57481816,
+    "name": "SST-Setup-0.1.11-blue.1.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.11-blue.1/SST-Setup-0.1.11-blue.1.exe",
+    "sha256": "52c516d6f1f7b712860dcd1ae89e570843e0f8a55fd11786c6215b03cddd4902",
+    "size": 57508553,
     "single_use": true,
-    "package_id": "9d338c586b9e529f732e34667f500be9"
+    "package_id": "64de2d55f6d8790591a3023e9595fb52"
   }
 }
