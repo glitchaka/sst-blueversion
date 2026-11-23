@@ -1,7 +1,7 @@
 SST Windows release CI report
-Source commit: 50e9e132c2bdd838b3b2cec8c0c09522f2181895
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45260215026
-Recorded UTC: 2026-11-23 20:34:45Z
+Source commit: 1ea29c8ccfaf07995bda12348a87d31917b53602
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45261071566
+Recorded UTC: 2026-11-23 20:40:18Z
 Compile: failure
 Rust tests: skipped
 Software GUI startup: skipped
@@ -9,17 +9,31 @@ Packaging: skipped
 Compiler log tail:
     Updating crates.io index
    Compiling sst v0.1.12-blue.1 (D:\a\sst-blueversion\sst-blueversion)
-error: mismatched closing delimiter: `}`
-   --> src\builtins\netcheck_extended.rs:280:25
+error[E0382]: the type `Arc` does not implement `Copy`
+   --> src\composition\mod.rs:178:92
     |
-278 |     match crate::adapters::windows::raw_capture::capture(local, seconds, limit, payload as usize) {
-    |                                                                                                   - closing delimiter possibly meant for this
-279 |         Ok(report) => Ok(CommandOutput::ok(report)),
-280 |         Err(error) => Ok(CommandOutput::error(format!(
-    |                         ^ unclosed delimiter
+120 |     let traffic_factory: Arc<dyn TrafficMonitorFactory> =
+    |         --------------- this move could be avoided by cloning the original `Arc`, which is inexpensive
 ...
-283 |     }
-    |     ^ mismatched closing delimiter
+150 |         traffic_factory,
+    |         --------------- value moved here
+...
+178 |     registry.register(Arc::new(NetcheckBuiltin::new(Arc::clone(&network_probe), Arc::clone(&traffic_factory))))?;
+    |                                                                                            ^^^^^^^^^^^^^^^^ value borrowed here after move
+    |
+    = note: consider using `Arc::clone`
+note: consider changing this parameter type in method `new` to borrow instead if owning the value isn't necessary
+   --> src\application\network\traffic.rs:37:26
+    |
+ 34 |     pub fn new(
+    |            --- in this method
+...
+ 37 |         monitor_factory: Arc<dyn TrafficMonitorFactory>,
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this parameter takes ownership of the value
+help: clone the value to increment its reference count
+    |
+150 |         traffic_factory.clone(),
+    |                        ++++++++
 
+For more information about this error, try `rustc --explain E0382`.
 error: could not compile `sst` (bin "sst") due to 1 previous error
-warning: build failed, waiting for other jobs to finish...
