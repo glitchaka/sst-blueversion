@@ -1,4 +1,6 @@
 pub mod domain;
+#[cfg(windows)]
+pub mod ad_unlock;
 pub mod network;
 #[cfg(windows)]
 pub mod https_download;
