@@ -254,14 +254,31 @@ fn capture(args: &[String], probe: &dyn NetworkProbe) -> Result<CommandOutput> {
     if let Some(problem) = unknown_arguments(args, &options, 0) {
         return Ok(CommandOutput::error(format!("netcheck capture: {problem}"), 2));
     }
-    let Some(address) = option_string(args, "--interface") else {
-        return Ok(CommandOutput::error(
-            "netcheck capture: indica --interface IPv4_LOCAL (obligatoria)\n\
-             Ejemplo: netcheck capture --interface 192.168.1.50 --seconds 5 --limit 100\n\
-             Requiere Administrador. --payload-bytes N muestra N bytes hexadecimales (0..64).", 2));
-    };
-    let Ok(local) = address.parse::<Ipv4Addr>() else {
-        return Ok(CommandOutput::error("netcheck capture: --interface requiere IPv4 local", 2));
+    let local = if let Some(address) = option_string(args, "--interface") {
+        match address.parse::<Ipv4Addr>() {
+            Ok(ip) if !ip.is_unspecified() && !ip.is_loopback() => ip,
+            _ => return Ok(CommandOutput::error(
+                "netcheck capture: --interface debe ser una IPv4 local activa", 2)),
+        }
+    } else {
+        // A connected UDP socket selects the outbound route without sending
+        // any datagram. No hardcoded IPv4 adapter or manual interface required.
+        let detected = std::net::UdpSocket::bind(("0.0.0.0", 0))
+            .ok()
+            .and_then(|socket| {
+                socket.connect(("1.1.1.1", 443)).ok()?;
+                match socket.local_addr().ok()?.ip() {
+                    std::net::IpAddr::V4(ip) if !ip.is_unspecified()
+                        && !ip.is_loopback() => Some(ip),
+                    _ => None,
+                }
+            });
+        match detected {
+            Some(ip) => ip,
+            None => return Ok(CommandOutput::error(
+                "netcheck capture: no se pudo determinar IPv4 local; \
+                 utiliza --interface IPv4_LOCAL.", 1)),
+        }
     };
     let seconds = match option_u32(args, "--seconds", 5, 1, 30) {
         Ok(value) => value,
