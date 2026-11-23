@@ -26,6 +26,7 @@ pub fn execute(
         "loss" => loss(rest, probe, false),
         "stability" => loss(rest, probe, true),
         "speed" => speed(rest),
+        "capture" => capture(rest),
         "traffic" | "inspect" | "packets" => traffic_report(rest, probe, traffic, command),
         _ => Ok(CommandOutput::error("netcheck: subcomando desconocido", 2)),
     }
@@ -246,6 +247,40 @@ fn loss(args: &[String], probe: &dyn NetworkProbe, stability: bool) -> Result<Co
     }
     out.push_str(&events);
     Ok(CommandOutput::ok(out))
+}
+
+fn capture(args: &[String]) -> Result<CommandOutput> {
+    let options = ["--interface","--seconds","--limit","--payload-bytes"];
+    if let Some(problem) = unknown_arguments(args, &options, 0) {
+        return Ok(CommandOutput::error(format!("netcheck capture: {problem}"), 2));
+    }
+    let Some(address) = option_string(args, "--interface") else {
+        return Ok(CommandOutput::error(
+            "netcheck capture: indica --interface IPv4_LOCAL (obligatoria)\n\
+             Ejemplo: netcheck capture --interface 192.168.1.50 --seconds 5 --limit 100\n\
+             Requiere Administrador. --payload-bytes N muestra N bytes hexadecimales (0..64).", 2));
+    };
+    let Ok(local) = address.parse::<Ipv4Addr>() else {
+        return Ok(CommandOutput::error("netcheck capture: --interface requiere IPv4 local", 2));
+    };
+    let seconds = match option_u32(args, "--seconds", 5, 1, 30) {
+        Ok(value) => value,
+        Err(error) => return Ok(CommandOutput::error(error, 2)),
+    };
+    let limit = match option_u32(args, "--limit", 100, 1, 500) {
+        Ok(value) => value,
+        Err(error) => return Ok(CommandOutput::error(error, 2)),
+    };
+    let payload = match option_u32(args, "--payload-bytes", 0, 0, 64) {
+        Ok(value) => value,
+        Err(error) => return Ok(CommandOutput::error(error, 2)),
+    };
+    match crate::adapters::windows::raw_capture::capture(local, seconds, limit, payload as usize) {
+        Ok(report) => Ok(CommandOutput::ok(report)),
+        Err(error) => Ok(CommandOutput::error(format!(
+            "netcheck capture: {error:#}\n\
+             No se ha simulado captura alguna. Verifica IPv4 local, permisos y política del adaptador.", 1)),
+    }
 }
 
 fn speed(args: &[String]) -> Result<CommandOutput> {
