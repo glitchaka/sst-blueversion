@@ -385,7 +385,7 @@ fn traffic_report(
         Ok(monitor) => monitor,
         Err(error) => return Ok(CommandOutput::error(format!(
             "netcheck {mode}: ETW no disponible: {error}\n\
-             Verifica permisos de administración/servicios de seguimiento de Windows; no se sustituyen cifras por estimaciones.", 1))
+             Verifica permisos de administración/servicios de seguimiento de Windows; no se sustituyen cifras por estimaciones."), 1))
     };
     let before = monitor.snapshot();
     let clock = Instant::now();
