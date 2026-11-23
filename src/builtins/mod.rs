@@ -21,6 +21,7 @@ mod guide_new;
 mod guide_remote;
 mod tools;
 
+pub use unban::UnbanBuiltin;
 pub use admin::{
     DeviceBuiltin, DiagnosticsBuiltin, DomainBuiltin, NetworkBuiltin, SwitchBuiltin,
     WakeOnLanBuiltin,
