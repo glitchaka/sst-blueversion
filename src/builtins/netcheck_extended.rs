@@ -308,7 +308,7 @@ fn capture(args: &[String], probe: &dyn NetworkProbe) -> Result<CommandOutput> {
         Ok(report) => Ok(CommandOutput::ok(report)),
         Err(error) => Ok(CommandOutput::error(format!(
             "netcheck capture: {error:#}\n\
-             No se ha simulado captura alguna. Verifica IPv4 local, permisos y política del adaptador.", 1)),
+             No se ha simulado captura alguna. Verifica IPv4 local, permisos y política del adaptador."), 1)),
     }
 }
 
