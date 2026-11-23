@@ -94,6 +94,8 @@ pub struct PackageSource {
     #[serde(default)]
     pub repository: Option<String>,
     #[serde(default)]
+    pub release_tag: Option<String>,
+    #[serde(default)]
     pub asset_contains: Vec<String>,
     #[serde(default)]
     pub asset_excludes: Vec<String>,
