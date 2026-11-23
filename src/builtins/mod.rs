@@ -9,6 +9,7 @@ mod sigsour;
 mod registry;
 mod nwash;
 mod netcheck;
+mod netcheck_extended;
 mod security;
 mod system;
 mod sudo;
