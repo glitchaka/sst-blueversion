@@ -1,12 +1,25 @@
 SST Windows release CI report
-Source commit: 8a65ce53adcc4df5e4d255de58eb1a6d9cce45c3
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45256674425
-Recorded UTC: 2026-11-23 20:17:13Z
-Compile: success
-Rust tests: success
+Source commit: 7c4fd8c5bfe5c5f6b991a76aee03bfd40994d23d
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45259264107
+Recorded UTC: 2026-11-23 20:29:02Z
+Compile: failure
+Rust tests: skipped
 Software GUI startup: skipped
 Packaging: skipped
 Compiler log tail:
     Updating crates.io index
-   Compiling sst v0.1.11-blue.3 (D:\a\sst-blueversion\sst-blueversion)
-    Finished `release` profile [optimized] target(s) in 3m 14s
+   Compiling sst v0.1.12-blue.1 (D:\a\sst-blueversion\sst-blueversion)
+error: mismatched closing delimiter: `}`
+   --> src\builtins\netcheck_extended.rs:351:32
+    |
+349 |     let monitor = match factory.start() {
+    |                                         - closing delimiter possibly meant for this
+350 |         Ok(monitor) => monitor,
+351 |         Err(error) => return Ok(CommandOutput::error(format!(
+    |                                ^ unclosed delimiter
+...
+354 |     };
+    |     ^ mismatched closing delimiter
+
+error: could not compile `sst` (bin "sst") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
