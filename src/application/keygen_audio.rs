@@ -34,13 +34,100 @@ fn mci(command: &str) -> Result<String> {
     Ok(String::from_utf16_lossy(&reply[..end]))
 }
 
+const TRACK_SHA256: [&str; 2] = [
+    "ffecd8d5d7c96dfba062aedc02742a5fad1987f2367a1ef14bb71a7f1419013d",
+    "e49c316532be0e8c235ceb08a208f52821c0e07479715e143346a3177972b516",
+];
+const ORIGINAL_NAMES: [&str; 2] = [
+    "The Best Keygen Song Ever! [HQ] - Kinespojken.mp3",
+    "Keygen Music By FFF - Foundeer.mp3",
+];
+
+fn verify_track_bytes(bytes: &[u8], index: usize) -> bool {
+    use sha2::{Digest, Sha256};
+    if bytes.len() > 10 * 1024 * 1024 || bytes.len() < 100_000 { return false; }
+    let hash = Sha256::digest(bytes);
+    let actual = hash.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    actual == TRACK_SHA256[index]
+}
+
+fn verified_directory(dir: &std::path::Path) -> bool {
+    TRACK_NAMES.iter().enumerate().all(|(index, name)| {
+        std::fs::read(dir.join(name)).is_ok_and(|bytes| verify_track_bytes(&bytes, index))
+    })
+}
+
+fn read_zip_tracks(archive: &std::path::Path) -> Option<[Vec<u8>; 2]> {
+    use std::io::Read;
+    let file = std::fs::File::open(archive).ok()?;
+    if file.metadata().ok()?.len() > 30 * 1024 * 1024 { return None; }
+    let mut zip = zip::ZipArchive::new(file).ok()?;
+    let mut tracks = [Vec::new(), Vec::new()];
+    for (index, name) in TRACK_NAMES.iter().enumerate() {
+        let key = format!("assets/keygen/{name}");
+        let mut file = zip.by_name(&key).ok()?;
+        if file.size() > 10 * 1024 * 1024 { return None; }
+        file.take(10 * 1024 * 1024 + 1).read_to_end(&mut tracks[index]).ok()?;
+        if !verify_track_bytes(&tracks[index], index) { return None; }
+    }
+    Some(tracks)
+}
+
+/// A complete SST installer supplies assets/keygen directly. For existing
+/// installations, recover the two *original user-provided* files from local
+/// Downloads or from the soundtrack ZIP if present. Never execute anything,
+/// fetch media from a network or ask the operator to create directories.
 fn soundtrack_directory() -> Result<PathBuf> {
     if let Some(directory) = env::var_os("SST_KEYGEN_MUSIC_DIR") {
-        return Ok(PathBuf::from(directory));
+        let dir = PathBuf::from(directory);
+        if verified_directory(&dir) { return Ok(dir); }
+        bail!("keygen: SST_KEYGEN_MUSIC_DIR no contiene las dos pistas originales verificadas.");
     }
     let exe = env::current_exe().context("No se encuentra sst.exe")?;
     let root = exe.parent().context("No se encuentra la carpeta de SST")?;
-    Ok(root.join("assets").join("keygen"))
+    let installed = root.join("assets").join("keygen");
+    if verified_directory(&installed) { return Ok(installed); }
+
+    let cache = env::var_os("LOCALAPPDATA").map(PathBuf::from)
+        .unwrap_or_else(env::temp_dir).join("SST").join("assets").join("keygen");
+    if verified_directory(&cache) { return Ok(cache); }
+
+    let Some(profile) = env::var_os("USERPROFILE") else {
+        bail!("keygen: falta la banda sonora en la distribución SST.");
+    };
+    let downloads = PathBuf::from(profile).join("Downloads");
+    let mut tracks = [Vec::<u8>::new(), Vec::<u8>::new()];
+    let archive_paths = [
+        downloads.join("sst-keygen-soundtrack.zip"),
+        downloads.join("SST-Keygen-Autoinstalador.zip"),
+    ];
+    let from_archive = archive_paths.iter().find_map(|path| read_zip_tracks(path));
+    if let Some(found) = from_archive {
+        tracks = found;
+    } else {
+        for (index, name) in ORIGINAL_NAMES.iter().enumerate() {
+            let Ok(bytes) = std::fs::read(downloads.join(name)) else {
+                bail!("keygen: la distribución SST no contiene los dos MP3. El instalador debe incluirlos.");
+            };
+            if !verify_track_bytes(&bytes, index) {
+                bail!("keygen: la pista {name} no corresponde al archivo original.");
+            }
+            tracks[index] = bytes;
+        }
+    }
+    std::fs::create_dir_all(&cache).context("No se pudo preparar el caché de audio de SST")?;
+    for (index, name) in TRACK_NAMES.iter().enumerate() {
+        let path = cache.join(name);
+        let temporary = cache.join(format!("{name}.tmp"));
+        std::fs::write(&temporary, &tracks[index])
+            .with_context(|| format!("No se pudo preparar {name}"))?;
+        std::fs::rename(&temporary, &path)
+            .with_context(|| format!("No se pudo instalar automáticamente {name}"))?;
+    }
+    if !verified_directory(&cache) {
+        bail!("keygen: no se pudo verificar la instalación automática de la banda sonora.");
+    }
+    Ok(cache)
 }
 
 /// Owns the MCI alias. Drop closes it synchronously, including on errors.
@@ -58,10 +145,7 @@ impl KeygenMusic {
         let tracks = [folder.join(TRACK_NAMES[0]), folder.join(TRACK_NAMES[1])];
         for track in &tracks {
             if !track.is_file() {
-                bail!(
-                    "keygen: falta {}. Copia los dos MP3 al directorio {}",
-                    track.display(), folder.display()
-                );
+                bail!("keygen: la banda sonora no está instalada: {}", track.display());
             }
         }
         let mut player = Self {
