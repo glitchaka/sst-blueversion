@@ -147,7 +147,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     let network_traffic = Arc::new(NetworkTrafficService::new(
         Arc::clone(&network_probe),
         foreground,
-        traffic_factory,
+        Arc::clone(&traffic_factory),
         Arc::clone(&terminal),
     ));
     let network_provider = Arc::new(NetworkProviderService::new(providers));
