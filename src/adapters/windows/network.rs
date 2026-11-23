@@ -6,6 +6,59 @@ use windows_sys::Win32::{Foundation::*, NetworkManagement::IpHelper::*, Networki
 
 pub struct WindowsNetworkProbe;
 
+#[derive(Debug, Clone)]
+pub struct InterfaceCounter {
+    pub index: u32,
+    pub name: String,
+    pub medium: &'static str,
+    pub link_rx_bps: u64,
+    pub link_tx_bps: u64,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+    pub rx_errors: u64,
+    pub tx_errors: u64,
+    pub rx_discards: u64,
+    pub tx_discards: u64,
+}
+
+/// Windows IP Helper counters: physical Ethernet/Wi-Fi only, not synthesized
+/// bandwidth results. Samples must be separated by an elapsed interval.
+pub fn interface_counters() -> Result<Vec<InterfaceCounter>> {
+    unsafe {
+        let mut table = std::ptr::null_mut();
+        check(GetIfTable2(&mut table))?;
+        if table.is_null() { return Ok(Vec::new()); }
+        let rows = std::slice::from_raw_parts(
+            std::ptr::addr_of!((*table).Table).cast::<MIB_IF_ROW2>(),
+            (*table).NumEntries as usize,
+        );
+        let mut result = Vec::new();
+        for row in rows {
+            let flags = std::ptr::addr_of!(row.InterfaceAndOperStatusFlags).cast::<u8>().read();
+            let medium = row.PhysicalMediumType as u32;
+            let wired = is_wired_nic(row.Type, medium, flags);
+            let wireless = in_scope(InterfaceScope::Wlan, row.Type, medium, flags);
+            if !(wired || wireless) || row.OperStatus as u32 != 1 { continue; }
+            result.push(InterfaceCounter {
+                index: row.InterfaceIndex,
+                name: wide(&row.Alias),
+                medium: if wired { "Ethernet" } else { "Wi-Fi" },
+                link_rx_bps: row.ReceiveLinkSpeed,
+                link_tx_bps: row.TransmitLinkSpeed,
+                rx_bytes: row.InOctets,
+                tx_bytes: row.OutOctets,
+                rx_errors: row.InErrors,
+                tx_errors: row.OutErrors,
+                rx_discards: row.InDiscards,
+                tx_discards: row.OutDiscards,
+            });
+        }
+        FreeMibTable(table.cast());
+        Ok(result)
+    }
+}
+
+
 fn check(status: u32) -> Result<()> {
     if status != 0 { return Err(std::io::Error::from_raw_os_error(status as i32).into()); }
     Ok(())
