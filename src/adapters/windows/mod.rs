@@ -5,6 +5,8 @@ pub mod https_download;
 #[cfg(windows)]
 pub mod service_map;
 #[cfg(windows)]
+pub mod raw_capture;
+#[cfg(windows)]
 pub mod powershell_host;
 pub mod foreground;
 pub mod traffic;
