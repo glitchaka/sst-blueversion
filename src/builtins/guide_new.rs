@@ -112,9 +112,27 @@ struct GuideIndex {
 
 impl GuideIndex {
     fn from_json(raw: &str) -> Option<Self> {
-        let spec: CatalogSpec = serde_json::from_str(raw).ok()?;
+        let mut spec: CatalogSpec = serde_json::from_str(raw).ok()?;
         if spec.schema != 1 || spec.areas.is_empty() {
             return None;
+        }
+        // The upstream documentation can lag behind a newly built-in
+        // diagnostic. Keep the local native tool discoverable immediately.
+        if !spec.entries.iter().any(|item| item.name == "netcheck")
+            && spec.areas.iter().any(|area| area.id == "diagnostics")
+        {
+            spec.entries.push(EntrySpec {
+                name: "netcheck".to_owned(),
+                aliases: Vec::new(),
+                area: "diagnostics".to_owned(),
+                summary: "Diagnóstico de enlace, IP/DHCP, gateway, DNS, ICMP y TCP.".to_owned(),
+                manual: ManualSpec {
+                    file: "network".to_owned(),
+                    extension: "txt".to_owned(),
+                    section: "whole".to_owned(),
+                    topic: None,
+                },
+            });
         }
 
         let mut area_lookup = HashMap::new();
