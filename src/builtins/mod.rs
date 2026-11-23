@@ -1,4 +1,5 @@
 mod admin;
+mod unban;
 mod command;
 mod config;
 mod editor;
