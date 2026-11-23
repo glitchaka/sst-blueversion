@@ -1,20 +1,16 @@
 # SST — banda sonora de `keygen`
 
-El comando `keygen` utiliza el reproductor nativo WinMM/MCI de Windows: no ejecuta programas externos ni deja un proceso de audio residente.
+`keygen` usa el reproductor nativo WinMM/MCI de Windows. No ejecuta programas externos ni deja un reproductor residente.
 
-## Instalación de pistas
+## Instalación sin pasos manuales
 
-Los MP3 se distribuyen **separadamente** del repositorio público, por tratarse de archivos musicales proporcionados por el usuario.
+Una distribución SST que incluya la banda sonora coloca automáticamente las dos pistas en `assets/keygen/` durante el empaquetado SFX. El paquete portátil conserva la misma carpeta.
 
-```text
-sst.exe
-assets/
-  keygen/
-    track01.mp3  # The Best Keygen Song Ever! — Kinespojken
-    track02.mp3  # Keygen Music By FFF — Foundeer
-```
+Para reparar instalaciones antiguas, SST también localiza y valida las dos pistas originales en **Descargas**, con los nombres suministrados por el autor, o en los archivos `sst-keygen-soundtrack.zip` y `SST-Keygen-Autoinstalador.zip`. Si las encuentra, instala una copia verificada en `%LOCALAPPDATA%\SST\assets\keygen`, sin pedir al operador que cree directorios o copie archivos.
 
-La carpeta puede cambiarse mediante la variable de entorno `SST_KEYGEN_MUSIC_DIR`.
+Los recursos se verifican mediante SHA-256 antes de reproducirlos. No hay descarga automática desde servicios de terceros ni sustitución por audio inventado. Para un directorio administrado explícitamente se admite `SST_KEYGEN_MUSIC_DIR`.
+
+El código fuente de SST y el empaquetado están preparados para incluir las pistas cuando se suministran como assets de compilación. **La ausencia de los MP3 en el repositorio de origen impide que una release pública incorpore esas pistas**: no debe declararse lo contrario.
 
 ## Uso
 
@@ -24,14 +20,14 @@ keygen --track 2
 keygen --help
 ```
 
-Al abrir `keygen`, empieza el audio y se muestran los textos animados. Al finalizar cada pista cambia a la siguiente, en bucle.
+Al abrir `keygen`, empieza el audio y se muestra la animación. Al finalizar cada pista cambia a la siguiente, en bucle.
 
-- **1** y **2**: cambiar la pista inmediatamente.
+- **1** y **2**: cambiar la pista.
 - **Espacio**: pausar/reanudar sonido y animación.
-- **Esc** o **q**: cerrar el modo y detener/descargar el dispositivo de audio.
+- **Esc** o **q**: cerrar y detener el reproductor.
 
-Se informa si faltan los recursos. En cualquier ruta de salida (incluidos errores), el destructor de `KeygenMusic` ejecuta `stop` y `close` del alias MCI. El audio no sigue sonando tras cerrar el comando.
+## Verificación y seguridad
 
-## Verificación pendiente
+La recuperación compara SHA-256 con los dos archivos originales suministrados; nunca acepta un MP3 diferente con el mismo nombre. El destructor de `KeygenMusic` ejecuta `stop` y `close` al salir, incluidos los errores. El empaquetador rechaza un conjunto parcial de pistas.
 
-El código requiere compilación y prueba real en Windows con los dos MP3 y el renderer Slint/VT100 de SST. La presencia del código en `main` no equivale a una versión publicada o verificada.
+La verificación de la lógica Rust no sustituye una prueba de reproducción real en Windows.
