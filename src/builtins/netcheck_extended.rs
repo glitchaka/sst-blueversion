@@ -313,41 +313,131 @@ fn capture(args: &[String], probe: &dyn NetworkProbe) -> Result<CommandOutput> {
 }
 
 fn speed(args: &[String]) -> Result<CommandOutput> {
-    let flags = ["--seconds","--download","--max-mib"];
-    if let Some(error) = unknown_arguments(args, &flags, 0) {
+    // netcheck speed is an active end-to-end Internet test by default.
+    // --passive retains the no-external-traffic NIC diagnostics.
+    let passive = args.iter().any(|arg| arg == "--passive");
+    let values = args.iter().filter(|arg| arg.as_str() != "--passive")
+        .cloned().collect::<Vec<_>>();
+    let flags = ["--seconds", "--download", "--upload", "--max-mib"];
+    if let Some(error) = unknown_arguments(&values, &flags, 0) {
         return Ok(CommandOutput::error(format!("netcheck speed: {error}"), 2));
     }
-    let seconds = match option_u32(args, "--seconds", 4, 1, 30) {
-        Ok(n) => n,
-        Err(e) => return Ok(CommandOutput::error(e, 2)),
-    };
-    let before = interface_counters()?;
-    if before.is_empty() {
-        return Ok(CommandOutput::error("netcheck speed: no hay interfaces Ethernet/Wi-Fi activas", 1));
+    if passive && (option_string(&values, "--download").is_some()
+        || option_string(&values, "--upload").is_some()) {
+        return Ok(CommandOutput::error(
+            "netcheck speed: --passive no puede combinarse con URLs activas", 2));
     }
-    let started = Instant::now();
-    let max_mib = match option_u32(args, "--max-mib", 64, 1, 256) {
+    let seconds = match option_u32(&values, "--seconds", 8, 1, 30) {
         Ok(value) => value,
         Err(error) => return Ok(CommandOutput::error(error, 2)),
     };
-    let active = option_string(args, "--download").map(|url| {
-        crate::adapters::windows::https_download::measure(url, seconds, max_mib)
-    });
-    if active.is_none() { thread::sleep(Duration::from_secs(seconds as u64)); }
+    let max_mib = match option_u32(&values, "--max-mib", 32, 1, 256) {
+        Ok(value) => value,
+        Err(error) => return Ok(CommandOutput::error(error, 2)),
+    };
+    let before = interface_counters()?;
+    if before.is_empty() {
+        return Ok(CommandOutput::error(
+            "netcheck speed: no hay interfaces Ethernet/Wi-Fi activas", 1));
+    }
+    let started = Instant::now();
+    let mut report = String::from(
+        "TEST DE VELOCIDAD DE INTERNET — WinHTTP NATIVO\n\
+         Separación: Internet activo (transferencias) vs. enlace y tráfico de NIC.\n");
+    if passive {
+        thread::sleep(Duration::from_secs(seconds as u64));
+        report.push_str("Modo: PASIVO — sin tráfico de prueba hacia Internet.\n");
+    } else {
+        let download_url = option_string(&values, "--download")
+            .map(ToOwned::to_owned).unwrap_or_else(|| format!(
+                "https://speed.cloudflare.com/__down?bytes={}",
+                u64::from(max_mib) * 1024 * 1024
+            ));
+        let upload_url = option_string(&values, "--upload")
+            .unwrap_or("https://speed.cloudflare.com/__up");
+        report.push_str(
+            "Modo: ACTIVO — realiza peticiones HTTPS de prueba a Cloudflare \
+             (o a los destinos explícitos indicados).\n\
+             Datos enviados: únicamente bytes sintéticos; ningún archivo personal.\n\
+             El resultado corresponde a estos servidores, no a toda Internet.\n"
+        );
+
+        let mut latencies = Vec::new();
+        for _ in 0..3 {
+            if let Ok(ms) = crate::adapters::windows::https_download::latency(
+                "https://speed.cloudflare.com/__down?bytes=0"
+            ) {
+                latencies.push(ms);
+            }
+        }
+        if latencies.len() >= 2 {
+            let jitter = latencies.windows(2)
+                .map(|window| (window[1] - window[0]).abs())
+                .sum::<f64>() / (latencies.len() - 1) as f64;
+            let mean = latencies.iter().sum::<f64>() / latencies.len() as f64;
+            report.push_str(&format!(
+                "\nLATENCIA HTTP/TLS (no ICMP)\n  Promedio: {mean:.1} ms\n\
+                 Variación media: {jitter:.1} ms\n  Muestras: {}\n",
+                latencies.len()
+            ));
+        } else {
+            report.push_str(
+                "\nLATENCIA HTTP/TLS: NO MEDIDA (servidor inaccesible o muestras insuficientes)\n"
+            );
+        }
+
+        match crate::adapters::windows::https_download::measure(
+            &download_url, seconds, max_mib
+        ) {
+            Ok(measure) => report.push_str(&format!(
+                "\nDESCARGA REAL HTTPS\n\
+                 Destino: {}\nEstado HTTP: {}\nBytes recibidos: {}\n\
+                 Tiempo de transferencia: {:.2} s\n\
+                 Velocidad de descarga: {:.2} Mbps\n",
+                measure.url, measure.http_status, measure.bytes,
+                measure.elapsed_seconds, rate_mbps(measure.bytes, measure.elapsed_seconds)
+            )),
+            Err(error) => report.push_str(&format!(
+                "\nDESCARGA REAL HTTPS: NO MEDIDA\n  Motivo: {error}\n"
+            )),
+        }
+
+        match crate::adapters::windows::https_download::upload(
+            upload_url, seconds, max_mib.min(16)
+        ) {
+            Ok(measure) => report.push_str(&format!(
+                "\nSUBIDA REAL HTTPS\n\
+                 Destino: {}\nEstado HTTP: {}\nBytes enviados: {}\n\
+                 Tiempo de transferencia: {:.2} s\n\
+                 Velocidad de subida: {:.2} Mbps\n",
+                measure.url, measure.http_status, measure.bytes,
+                measure.elapsed_seconds, rate_mbps(measure.bytes, measure.elapsed_seconds)
+            )),
+            Err(error) => report.push_str(&format!(
+                "\nSUBIDA REAL HTTPS: NO MEDIDA\n  Motivo: {error}\n"
+            )),
+        }
+        report.push_str(
+            "\nInterpretación: estimaciones de transferencias HTTPS individuales \
+             limitadas por duración y volumen; no representan capacidad máxima \
+             de una conexión multipath ni garantía del ISP.\n"
+        );
+    }
+
     let elapsed = started.elapsed().as_secs_f64().max(0.001);
     let after = interface_counters()?;
-    let by_index = before.into_iter().map(|row| (row.index, row)).collect::<HashMap<_,_>>();
-    let mut report = String::from(
-        "VELOCIDAD Y ESTADO DE INTERFACES — IP HELPER NATIVO\n\
-         Modo pasivo: mide tráfico real observado durante la ventana, NO capacidad máxima de Internet.\n");
-    report.push_str(&format!("Ventana: {elapsed:.2} s\n"));
+    let by_index = before.into_iter()
+        .map(|row| (row.index, row)).collect::<HashMap<_, _>>();
+    report.push_str(&format!(
+        "\nADAPTADORES FÍSICOS — Windows IP Helper\nVentana: {elapsed:.2} s\n"
+    ));
     for sample in after {
         if let Some(old) = by_index.get(&sample.index) {
             let rx_mbps = rate_mbps(sample.rx_bytes.saturating_sub(old.rx_bytes), elapsed);
             let tx_mbps = rate_mbps(sample.tx_bytes.saturating_sub(old.tx_bytes), elapsed);
             report.push_str(&format!(
                 "\nAdaptador: {} ({})\n  Enlace negociado RX/TX: {:.1}/{:.1} Mbps\n\
-                 Tráfico real RX/TX: {rx_mbps:.2}/{tx_mbps:.2} Mbps\n\
+                 Tráfico total RX/TX: {rx_mbps:.2}/{tx_mbps:.2} Mbps\n\
                  Bytes recibidos/enviados: {}/{}\n\
                  Errores RX/TX: {}/{}\nDescartes RX/TX: {}/{}\n",
                 sample.name, sample.medium,
@@ -357,29 +447,9 @@ fn speed(args: &[String]) -> Result<CommandOutput> {
                 sample.rx_errors.saturating_sub(old.rx_errors),
                 sample.tx_errors.saturating_sub(old.tx_errors),
                 sample.rx_discards.saturating_sub(old.rx_discards),
-                sample.tx_discards.saturating_sub(old.tx_discards),
+                sample.tx_discards.saturating_sub(old.tx_discards)
             ));
         }
-    }
-    if let Some(active) = active {
-        match active {
-            Ok(measure) => report.push_str(&format!(
-                "\nTRANSFERENCIA HTTPS ACTIVA (destino elegido explícitamente)\n\
-                 URL: {}\nEstado HTTP: {}\nBytes descargados: {}\n\
-                 Duración de descarga: {:.2} s\n\
-                 Velocidad de descarga medida: {:.2} Mbps\n\
-                 No es un resultado de subida ni velocidad máxima universal.\n",
-                measure.url, measure.http_status, measure.bytes,
-                measure.elapsed_seconds, rate_mbps(measure.bytes, measure.elapsed_seconds),
-            )),
-            Err(error) => report.push_str(&format!(
-                "\nTRANSFERENCIA HTTPS ACTIVA: FALLÓ\nMotivo: {error}\n\
-                 No se inventa una velocidad de descarga.\n"
-            )),
-        }
-    } else {
-        report.push_str("\nPrueba activa de descarga: netcheck speed --download https://SERVIDOR/archivo.bin\n\
-                         El servidor y el volumen de descarga deben ser conocidos y autorizados.\n");
     }
     Ok(CommandOutput::ok(report))
 }
