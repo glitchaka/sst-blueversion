@@ -77,22 +77,30 @@ $keygenOne = Join-Path $keygenSource 'track01.mp3'
 $keygenTwo = Join-Path $keygenSource 'track02.mp3'
 $onePresent = Test-Path -LiteralPath $keygenOne -PathType Leaf
 $twoPresent = Test-Path -LiteralPath $keygenTwo -PathType Leaf
-if ($onePresent -xor $twoPresent) {
-    throw 'SST keygen: solo se encontró uno de los MP3. El instalador exige el conjunto completo.'
+if (-not ($onePresent -and $twoPresent)) {
+    throw "SST keygen: faltan los dos MP3 originales en assets/keygen. No se permite publicar un instalador sin banda sonora."
 }
-if ($onePresent -and $twoPresent) {
-    foreach ($track in @($keygenOne, $keygenTwo)) {
-        if ((Get-Item -LiteralPath $track).Length -lt 100000) {
-            throw "SST keygen: pista inválida o truncada: $track"
-        }
+$expectedHashes = @(
+    'ffecd8d5d7c96dfba062aedc02742a5fad1987f2367a1ef14bb71a7f1419013d',
+    'e49c316532be0e8c235ceb08a208f52821c0e07479715e143346a3177972b516'
+)
+$tracks = @($keygenOne, $keygenTwo)
+for ($i = 0; $i -lt $tracks.Count; $i++) {
+    if ((Get-Item -LiteralPath $tracks[$i]).Length -lt 100000) {
+        throw "SST keygen: pista incompleta o truncada: $($tracks[$i])"
     }
-    $stageMedia = Join-Path $stage 'data\.sst\media'
-    New-Item -ItemType Directory -Force -Path $stageMedia | Out-Null
-    Copy-Item -Recurse -LiteralPath $keygenSource -Destination (Join-Path $stageMedia 'keygen')
-    Write-Host 'SST: ambos MP3 de keygen incluidos en el instalador SFX.'
-} else {
-    Write-Warning 'SST: sin audio keygen en source assets; no se empaquetan pistas falsas. El reproductor puede recuperarlas del instalador de audio local.'
+    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $tracks[$i]).Hash.ToLowerInvariant()
+    if ($hash -ne $expectedHashes[$i]) {
+        throw "SST keygen: la pista $($tracks[$i]) no coincide con el original."
+    }
 }
+$stageMedia = Join-Path $stage 'data\.sst\media'
+New-Item -ItemType Directory -Force -Path $stageMedia | Out-Null
+$stageMusic = Join-Path $stageMedia 'keygen'
+New-Item -ItemType Directory -Force -Path $stageMusic | Out-Null
+Copy-Item -LiteralPath $keygenOne -Destination (Join-Path $stageMusic 'track01.mp3')
+Copy-Item -LiteralPath $keygenTwo -Destination (Join-Path $stageMusic 'track02.mp3')
+Write-Host 'SST: banda sonora completa verificada por SHA256 y empaquetada bajo data/.sst/media/keygen.'
 $bg = Join-Path $release 'bg'
 if (Test-Path -LiteralPath $bg -PathType Container) {
     Copy-Item -Recurse -LiteralPath $bg -Destination (Join-Path $stage 'bg')
