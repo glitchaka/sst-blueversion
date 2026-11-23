@@ -179,6 +179,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(NetcheckBuiltin::new(Arc::clone(&network_probe), Arc::clone(&traffic_factory))))?;
     registry.register(Arc::new(DeviceBuiltin::new(device_service)))?;
     registry.register(Arc::new(DomainBuiltin::new(domain_service)))?;
+    registry.register(Arc::new(UnbanBuiltin))?;
     registry.register(Arc::new(SwitchBuiltin::new(switch_service)))?;
     registry.register(Arc::new(WakeOnLanBuiltin::new(wol_service)))?;
     registry.register(Arc::new(DiagnosticsBuiltin::new(diagnostics_service)))?;
