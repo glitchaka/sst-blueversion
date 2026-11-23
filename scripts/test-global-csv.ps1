@@ -19,7 +19,11 @@ try {
     if ($process.ExitCode -ne 0) {
         throw "SST salió con código $($process.ExitCode): $(Get-Content -Raw $err)"
     }
-    $text = Get-Content -Raw $out
+    $text = [string](Get-Content -Raw -LiteralPath $out)
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        $stderrText = [string](Get-Content -Raw -LiteralPath $err)
+        throw "SST no produjo salida CSV inicial. STDERR: $stderrText"
+    }
     $header = 'tipo,seccion,fila,campo,valor'
     $count = ([regex]::Matches($text, '(?m)^tipo,seccion,fila,campo,valor\r?$')).Count
     if ($count -ne 3) {
