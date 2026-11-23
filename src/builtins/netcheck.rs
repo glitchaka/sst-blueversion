@@ -56,6 +56,27 @@ impl NetcheckBuiltin {
                 output.push_str(&format!("\n1. INTERFACES FÍSICAS\n  Estado: INDETERMINADO\n  Error: {error}\n"));
             }
         }
+        // Wired AutoConfig is a different question from physical link.
+        // A configured 802.1X profile is NOT proof that RADIUS authorized it.
+        match crate::adapters::network::dot3_native::interfaces() {
+            Ok(dot3) if dot3.status == 0 => {
+                let enabled = dot3.stdout.contains("802.1X configurado: SÍ");
+                let managed = dot3.stdout.contains("Perfil: configurado");
+                output.push_str(&format!(
+                    "\n1b. NAC / 802.1X CABLEADO\n  Estado: {}\n  Autorización efectiva: NO VERIFICADA\n",
+                    if enabled { "802.1X CONFIGURADO" }
+                    else if managed { "PERFIL PRESENTE; MODO INDETERMINADO" }
+                    else { "SIN PERFIL DOT3 CONFIRMADO" },
+                ));
+            }
+            Ok(dot3) => output.push_str(&format!(
+                "\n1b. NAC / 802.1X CABLEADO\n  Estado: NO EVALUADO\n  Motivo: {}\n",
+                dot3.stderr.trim(),
+            )),
+            Err(error) => output.push_str(&format!(
+                "\n1b. NAC / 802.1X CABLEADO\n  Estado: INDETERMINADO\n  Motivo: {error}\n",
+            )),
+        }
         let gateway = match self.probe.routes() {
             Ok(routes) => {
                 let gateway = ipv4_default_gateway(&routes);
