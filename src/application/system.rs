@@ -1313,7 +1313,8 @@ fn keygen_frame(
     let title = "S H E L L   S H O C K   T O O L";
     let subtitle = "S S T  /  K E Y G E N   2 0 0 0";
     let mid = height / 2;
-    let title_y = mid.saturating_sub((facts.len() + 8) / 2 + 3).max(2);
+    let title_y = mid.saturating_sub((facts.len() + 8) / 2 + 3)
+        .saturating_add(4).min(height.saturating_sub(12)).max(3);
     let mut draw = |line: &str, line_id: usize, base_y: usize, arc: f32| {
         let chars: Vec<char> = line.chars().take(width.saturating_sub(2)).collect();
         let count = chars.len() as f32;
