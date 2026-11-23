@@ -4,13 +4,13 @@
 
 ## Instalación sin pasos manuales
 
-Una distribución SST que incluya la banda sonora coloca automáticamente las dos pistas en `data/.sst/media/keygen/` durante el empaquetado SFX. El paquete portátil conserva la misma carpeta.
+El instalador SFX y la distribución portátil deben incluir obligatoriamente las dos pistas originales en `data/.sst/media/keygen/`. En Windows, el instalador marca la carpeta `data/.sst` como oculta mediante la API nativa.
 
 Para reparar instalaciones antiguas, SST también localiza y valida las dos pistas originales en **Descargas**, con los nombres suministrados por el autor, o en los archivos `sst-keygen-soundtrack.zip` y `SST-Keygen-Autoinstalador.zip`. Si las encuentra, instala una copia verificada en `%LOCALAPPDATA%\SST\data\.sst\media\keygen`, sin pedir al operador que cree directorios o copie archivos.
 
 Los recursos se verifican mediante SHA-256 antes de reproducirlos. No hay descarga automática desde servicios de terceros ni sustitución por audio inventado. Para un directorio administrado explícitamente se admite `SST_KEYGEN_MUSIC_DIR`.
 
-El código fuente de SST y el empaquetado están preparados para incluir las pistas cuando se suministran como assets de compilación. **La ausencia de los MP3 en el repositorio de origen impide que una release pública incorpore esas pistas**: no debe declararse lo contrario.
+El empaquetador comprueba el tamaño y los SHA-256 de las dos pistas y **rechaza la publicación** si falta alguna o sus bytes no son los originales. La release no debe anunciar banda sonora incorporada hasta que GitHub reciba los dos archivos fuente y genere un instalador verificado.
 
 ## Uso
 
