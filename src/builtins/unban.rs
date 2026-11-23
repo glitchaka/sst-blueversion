@@ -1,7 +1,7 @@
 //! Native Active Directory account unlock over Windows LDAP (Wldap32).
 //! No PowerShell module, shell commands, passwords in argv, or unauthenticated binds.
 //! Uses the current elevated SST token via SSPI Negotiate with LDAP sealing.
-use anyhow::{bail, Result};
+use anyhow::Result;
 use crate::core::{CommandContext, CommandOutput};
 use super::BuiltinCommand;
 
