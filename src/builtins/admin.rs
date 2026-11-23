@@ -181,8 +181,18 @@ impl NetworkBuiltin {
                     Some("scan" | "traffic" | "presence" | "usage")) => {
                     self.service.execute(args)
                 }
-                _ => Ok(CommandOutput::error(
-                    "notsh: --csv no está disponible para este subcomando.", 2)),
+                // The switch is global. Older native exporters may return
+                // richer typed CSV, but every other NOTSH subcommand must
+                // remain exportable through the same shared formatter.
+                _ => {
+                    let regular = args.iter().filter(|word| word.as_str() != "--csv")
+                        .cloned().collect::<Vec<_>>();
+                    let mut output = self.dispatch(&regular, cwd)?;
+                    if output.status == 0 {
+                        output.stdout = crate::presentation::csv_output::format_output(&output.stdout);
+                    }
+                    Ok(output)
+                },
             };
         }
         let sub = args[0].as_str();
