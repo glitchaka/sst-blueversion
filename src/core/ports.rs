@@ -128,8 +128,19 @@ pub trait ForegroundProcessProvider: Send + Sync {
     fn foreground_pid(&self) -> Option<u32>;
 }
 
+/// One observed ETW network event, not an NDIS packet capture.
+#[derive(Debug, Clone)]
+pub struct NetworkPacketEvent {
+    pub pid: u32,
+    pub size: u32,
+    pub direction: &'static str,
+    pub event_id: u16,
+}
+
 pub trait TrafficMonitor: Send {
     fn snapshot(&self) -> HashMap<u32, ByteCounters>;
+    /// Raw event metadata when provided by the native ETW adapter.
+    fn events(&self) -> Vec<NetworkPacketEvent> { Vec::new() }
 }
 
 pub trait TrafficMonitorFactory: Send + Sync {
