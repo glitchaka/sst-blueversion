@@ -30,6 +30,7 @@ impl NetcheckBuiltin {
             vec!["stability".into(), "--seconds".into(), "3".into(), "--interval".into(), "400".into()],
             vec!["traffic".into(), "--seconds".into(), "2".into(), "--top".into(), "8".into()],
             vec!["packets".into(), "--seconds".into(), "2".into(), "--top".into(), "8".into()],
+            vec!["capture".into(), "--seconds".into(), "2".into(), "--limit".into(), "60".into(), "--payload-bytes".into(), "32".into()],
         ];
         if let Some(host) = host {
             probes[1].insert(1, host.to_owned());
@@ -67,8 +68,8 @@ impl NetcheckBuiltin {
                  netcheck traffic --seconds 5 [--pid PID] [--top N]\n\
                  netcheck inspect --seconds 5 --pid PID\n\
                  netcheck packets --seconds 5     Metadatos ETW por proceso; NO contenido\n\
-                 netcheck capture --interface IPV4_LOCAL --seconds 5 [--payload-bytes N]\n\
-                   Cabeceras IPv4 y opcionalmente bytes hexadecimales (Administrador).\n\
+                 netcheck capture --seconds 5 [--interface IPV4_LOCAL] [--payload-bytes N]\n\
+                   Detección automática de interfaz; cabeceras y bytes hexadecimales (Administrador).\n\
                  Predeterminado: HOST=example.com, puerto 443.\n\
                  IPv4 ICMP, DNS, gateway, NAC, pérdida, jitter y TCP según modalidad.\n\
                  Por defecto: Cloudflare Speed Test por HTTPS; tráfico de prueba limitado.\n\
@@ -267,6 +268,7 @@ fn evaluate_interfaces(text: &str) -> (&'static str, &'static str, Option<(&'sta
 
 impl BuiltinCommand for NetcheckBuiltin {
     fn name(&self) -> &'static str { "netcheck" }
+    fn aliases(&self) -> &'static [&'static str] { &["netdiag", "nettest"] }
     fn help(&self) -> &'static str {
         "netcheck — diagnóstico integral: estabilidad, pérdida, velocidad real y tráfico por proceso"
     }
