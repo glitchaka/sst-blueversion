@@ -121,7 +121,7 @@ impl SystemService {
         if args.iter().any(|arg| matches!(arg.as_str(), "--help" | "-h")) {
             return Ok(CommandOutput::ok(
                 "keygen — intro animada y banda sonora MP3 SST\n\
-                 Reproduce automáticamente los dos temas en bucle desde assets/keygen/.\n\
+                 Reproduce automáticamente los dos temas en bucle desde data/.sst/media/keygen/.\n\
                  1/2: seleccionar tema | Espacio: pausa/reanuda | Esc/q: salir\n",
             ));
         }
@@ -1228,7 +1228,20 @@ fn keygen_frame(cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String]
         let start_x = (width.saturating_sub(chars.len())) / 2;
         for (i, ch) in chars.into_iter().enumerate() {
             if ch.is_control() || ch == ' ' { continue; }
-            let wave = ((frame as f32 * 0.13 + i as f32 * 0.32 + phase).sin() * max_wave).round() as isize;
+            // Each glyph behaves like a damped spring-mass with its own impulse.
+            // Unlike the old uniform sine wave, an impulse lifts the letter,
+            // gravity brings it back and successive bounces lose energy.
+            let local_time = ((frame as f32 * 0.085 + i as f32 * 0.117 + phase * 0.53)
+                % 11.0).max(0.0);
+            let launch = 3.1 + (i % 5) as f32 * 0.34;
+            let gravity = 5.8;
+            let flight = 2.0 * launch / gravity;
+            let bounce_index = (local_time / flight).floor();
+            let bounce_speed = launch * 0.58_f32.powf(bounce_index);
+            let bounce_time = local_time - bounce_index * flight;
+            let rise = (bounce_speed * bounce_time - 0.5 * gravity * bounce_time * bounce_time)
+                .max(0.0);
+            let wave = (-(rise * max_wave * 0.75)).round() as isize;
             let fy = (base_y as isize + wave).clamp(1, height.saturating_sub(2) as isize) as usize;
             let fx = start_x + i + 1;
             let (r, g, b) = keygen_glyph_color(frame, i, base_y);
