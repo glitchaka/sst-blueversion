@@ -43,7 +43,7 @@ impl NetcheckBuiltin {
 
     fn diagnose(&self, args: &[String]) -> Result<CommandOutput> {
         if let Some(mode) = args.first() {
-            if matches!(mode.as_str(), "loss" | "stability" | "speed" | "traffic" | "inspect" | "packets") {
+            if matches!(mode.as_str(), "loss" | "stability" | "speed" | "traffic" | "inspect" | "packets" | "capture") {
                 return super::netcheck_extended::execute(args, &*self.probe, &*self.traffic_factory);
             }
             if mode == "full" { return self.full(&args[1..]); }
@@ -61,6 +61,8 @@ impl NetcheckBuiltin {
                  netcheck traffic --seconds 5 [--pid PID] [--top N]\n\
                  netcheck inspect --seconds 5 --pid PID\n\
                  netcheck packets --seconds 5     Metadatos ETW por proceso; NO contenido\n\
+                 netcheck capture --interface IPV4_LOCAL --seconds 5 [--payload-bytes N]\n\
+                   Cabeceras IPv4 y opcionalmente bytes hexadecimales (Administrador).\n\
                  Predeterminado: HOST=example.com, puerto 443.\n\
                  IPv4 ICMP, DNS, gateway, NAC, pérdida, jitter y TCP según modalidad.\n\
                  La velocidad de Internet requiere un servidor de descarga explícito.\n\
