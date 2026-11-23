@@ -4,9 +4,9 @@
 
 ## Instalación sin pasos manuales
 
-Una distribución SST que incluya la banda sonora coloca automáticamente las dos pistas en `assets/keygen/` durante el empaquetado SFX. El paquete portátil conserva la misma carpeta.
+Una distribución SST que incluya la banda sonora coloca automáticamente las dos pistas en `data/.sst/media/keygen/` durante el empaquetado SFX. El paquete portátil conserva la misma carpeta.
 
-Para reparar instalaciones antiguas, SST también localiza y valida las dos pistas originales en **Descargas**, con los nombres suministrados por el autor, o en los archivos `sst-keygen-soundtrack.zip` y `SST-Keygen-Autoinstalador.zip`. Si las encuentra, instala una copia verificada en `%LOCALAPPDATA%\SST\assets\keygen`, sin pedir al operador que cree directorios o copie archivos.
+Para reparar instalaciones antiguas, SST también localiza y valida las dos pistas originales en **Descargas**, con los nombres suministrados por el autor, o en los archivos `sst-keygen-soundtrack.zip` y `SST-Keygen-Autoinstalador.zip`. Si las encuentra, instala una copia verificada en `%LOCALAPPDATA%\SST\data\.sst\media\keygen`, sin pedir al operador que cree directorios o copie archivos.
 
 Los recursos se verifican mediante SHA-256 antes de reproducirlos. No hay descarga automática desde servicios de terceros ni sustitución por audio inventado. Para un directorio administrado explícitamente se admite `SST_KEYGEN_MUSIC_DIR`.
 
