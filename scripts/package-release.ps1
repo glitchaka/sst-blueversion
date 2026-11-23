@@ -155,11 +155,10 @@ $rawUpdater = Join-Path $dist 'sst-updater.exe'
 Copy-Item -LiteralPath $updater -Destination $rawUpdater
 # La distribución portable conserva exactamente la misma guía sin Internet.
 Copy-Item -Recurse -LiteralPath $guide -Destination (Join-Path $dist 'guide')
-if ($onePresent -and $twoPresent) {
-    $distMedia = Join-Path $dist 'data\.sst\media'
-    New-Item -ItemType Directory -Force -Path $distMedia | Out-Null
-    Copy-Item -Recurse -LiteralPath $keygenSource -Destination (Join-Path $distMedia 'keygen')
-}
+$distMusic = Join-Path $dist 'data\.sst\media\keygen'
+New-Item -ItemType Directory -Force -Path $distMusic | Out-Null
+Copy-Item -LiteralPath $keygenOne -Destination (Join-Path $distMusic 'track01.mp3')
+Copy-Item -LiteralPath $keygenTwo -Destination (Join-Path $distMusic 'track02.mp3')
 
 $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $rawExe).Hash.ToLowerInvariant()
 $setupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash.ToLowerInvariant()
