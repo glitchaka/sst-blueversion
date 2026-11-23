@@ -1282,10 +1282,10 @@ pub(crate) const FETCH_LOGO_ASCII: &[&str] = &["   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 /// los bloques no forman bandas aleatorias de amarillo/rojo/verde.
 fn sst_icon_rgb(glyph: char) -> Option<(u8, u8, u8)> {
     match glyph {
-        '█' | '%' | '#' => Some((35, 52, 106)),
+        '█' | '%' | '#' => Some((109, 143, 171)),
         '▓' | '*' | '+' => Some((54, 76, 119)),
-        '▒' | '=' => Some((109, 143, 171)),
-        '░' | '-' | ':' => Some((186, 189, 198)),
+        '▒' | '=' => Some((186, 189, 198)),
+        '░' | '-' | ':' => Some((35, 52, 106)),
         _ => None,
     }
 }
@@ -2159,10 +2159,10 @@ mod fetch_text_logo_tests {
 
     #[test]
     fn original_icon_palette_is_used_without_rainbow_colors() {
-        assert_eq!(sst_icon_rgb('█'), Some((35, 52, 106)));
+        assert_eq!(sst_icon_rgb('█'), Some((109, 143, 171)));
         assert_eq!(sst_icon_rgb('▓'), Some((54, 76, 119)));
-        assert_eq!(sst_icon_rgb('▒'), Some((109, 143, 171)));
-        assert_eq!(sst_icon_rgb('░'), Some((186, 189, 198)));
+        assert_eq!(sst_icon_rgb('▒'), Some((186, 189, 198)));
+        assert_eq!(sst_icon_rgb('░'), Some((35, 52, 106)));
         assert_eq!(sst_icon_rgb(' '), None);
 
         let painted = sst_icon_truecolor(vec!["█▓▒░".to_owned()]).join("\n");
