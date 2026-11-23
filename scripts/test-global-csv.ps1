@@ -58,8 +58,10 @@ try {
         throw 'SST se bloqueó al exportar NOTSH mediante redirección.'
     }
     $redirectProcess.Refresh()
-    $redirectText = Get-Content -Raw -LiteralPath $redirectOut
-    $redirectErrors = Get-Content -Raw -LiteralPath $redirectErr
+    # Get-Content -Raw returns $null for an empty file. Force the
+    # captured streams to string before using string methods.
+    $redirectText = [string](Get-Content -Raw -LiteralPath $redirectOut)
+    $redirectErrors = [string](Get-Content -Raw -LiteralPath $redirectErr)
     if ($redirectProcess.ExitCode -ne 0 -or -not $redirectText.Contains('__CSV_REDIRECTS_DONE')) {
         throw "SST falló exportando CSV con redirección: $redirectErrors / $redirectText"
     }
