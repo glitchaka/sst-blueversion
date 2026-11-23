@@ -2116,7 +2116,7 @@ fn terminate_pid_native(pid: u32) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod fetch_text_logo_tests {
-    use super::{fetch_compact_logo, fetch_logo};
+    use super::{fetch_compact_logo, fetch_logo, sst_icon_rgb, sst_icon_truecolor};
 
     #[test]
     fn compact_logo_fits_both_viewports() {
@@ -2138,6 +2138,38 @@ mod fetch_text_logo_tests {
         assert_eq!(width, 100);
         assert!(lines.iter().all(|line| line.chars().count() == width));
         assert!(lines.iter().any(|line| line.contains("%%%%")));
+    }
+
+    #[test]
+    fn original_icon_palette_is_used_without_rainbow_colors() {
+        assert_eq!(sst_icon_rgb('█'), Some((35, 52, 106)));
+        assert_eq!(sst_icon_rgb('▓'), Some((54, 76, 119)));
+        assert_eq!(sst_icon_rgb('▒'), Some((109, 143, 171)));
+        assert_eq!(sst_icon_rgb('░'), Some((186, 189, 198)));
+        assert_eq!(sst_icon_rgb(' '), None);
+
+        let painted = sst_icon_truecolor(vec!["█▓▒░".to_owned()]).join("\n");
+        for rgb in [
+            "\x1b[38;2;35;52;106m",
+            "\x1b[38;2;54;76;119m",
+            "\x1b[38;2;109;143;171m",
+            "\x1b[38;2;186;189;198m",
+        ] {
+            assert!(painted.contains(rgb), "missing original SST icon tone");
+        }
+        for forbidden in ["38;2;255;0;0", "38;2;255;255;0", "38;2;0;255;0"] {
+            assert!(!painted.contains(forbidden));
+        }
+    }
+
+    #[test]
+    fn compact_fetch_keeps_geometry_and_uses_icon_colors() {
+        let (plain, width) = fetch_compact_logo(true, 80).unwrap();
+        let (colored, colored_width) = fetch_compact_logo(false, 80).unwrap();
+        assert_eq!(width, colored_width);
+        assert_eq!(plain.len(), 12);
+        assert_eq!(colored.len(), plain.len());
+        assert!(colored.join("\n").contains("\x1b[38;2;35;52;106m"));
     }
 
     #[test]
