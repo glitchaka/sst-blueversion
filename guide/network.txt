@@ -529,35 +529,67 @@ Temas:
   net help neighbors
   net help arp
 
-19. Herramienta de aislamiento de fallas: netcheck
+19. netcheck — diagnóstico integral, medidas y tráfico
 
   netcheck
-    Evalúa la conectividad al destino predeterminado example.com:443.
+    Ejecuta el diagnóstico general, medición de tráfico real en interfaces,
+    pérdida ICMP contra el gateway predeterminado y breve observación ETW.
 
-  netcheck HOST
-    Verifica interfaz, APIPA/DHCP, ruta por defecto IPv4, puerta de
-    enlace, resolución de nombre, ICMP y conexión TCP al destino.
+  netcheck full HOST
+    Realiza pruebas de enlace, IP/APIPA, gateway, NAC/802.1X, DNS, ICMP, TCP,
+    velocidad de NIC, pérdida, jitter y tráfico por proceso sobre ese destino.
 
-  netcheck HOST --port PUERTO
-    Usa un servicio TCP específico, por ejemplo 443, 445, 3389 o 9100.
+  netcheck HOST [--port PUERTO]
+    Inspección rápida de conectividad y servicio TCP. No mide velocidad.
+
+  netcheck loss [HOST] --count 20 --interval 400 --timeout 800
+    Prueba repetida ICMP IPv4 (gateway por defecto cuando se omite HOST).
+    Informa enviados, recibidos, pérdidas %, RTT mínimo/medio/máximo,
+    variación de RTT y racha máxima de fallos. Errores de API se separan.
+
+  netcheck stability [HOST] --seconds 20 --interval 1000
+    Mide disponibilidad y oscilaciones de RTT a lo largo del tiempo.
+    Con --tcp PUERTO evalúa disponibilidad TCP (no pérdida de paquetes IP).
+
+  netcheck speed --seconds 4
+    Mide con IP Helper los contadores de bytes reales RX/TX de NIC Ethernet
+    y Wi-Fi físicas, velocidad de enlace negociado y errores/descartes.
+    No equivale a velocidad máxima hacia Internet.
+
+  netcheck speed --download https://SERVIDOR/archivo.bin --seconds 10 --max-mib 64
+    Prueba activa de DESCARGA HTTPS con WinHTTP, sin curl.exe ni otros
+    ejecutables. Usa un endpoint elegido por el operador, hasta el tiempo
+    y volumen máximos indicados, sin guardar los datos descargados.
+    El resultado no mide velocidad de subida. No hay servidor predefinido.
+
+  netcheck traffic --seconds 5 [--pid PID] [--top N]
+    Captura eventos de red ETW y presenta bytes por segundo TX/RX por proceso,
+    nombre de proceso, PID, conexiones activas TCP/UDP, destinos y servicios
+    Windows relacionados con ese PID según Service Control Manager.
+    Si el proceso aloja múltiples servicios, NO se atribuyen los bytes a uno
+    individual: sólo se indica que comparten el proceso.
+
+  netcheck inspect --seconds 5 --pid PID
+    Misma observación ETW filtrada al PID, con conexiones y servicios.
+
+  netcheck packets --seconds 5 [--pid PID]
+    Muestra eventos individuales de red ETW con dirección TX/RX, bytes,
+    PID y código de evento, con cola acotada a 1024 observaciones.
+    NO es un sniffer de tramas NDIS ni inspecciona el contenido del payload.
 
   netcheck --help
-    Ayuda y condiciones de interpretación.
+    Ayuda de todas las modalidades.
 
-Análisis:
-  Estado          Separa evidencia confirmada de hipótesis.
-  Conclusión      Conectividad TCP confirmada / Requiere revisión / Indeterminado.
-  Advertencias    Indican qué comprobar a continuación, no diagnostican sin evidencia.
-  APIPA           Una 169.254.x.x implica que falta configuración IPv4 administrada,
-                  pero no demuestra por sí sola que el cable esté desconectado.
-  ICMP            Si el destino no responde, puede estar bloqueado por firewall;
-                  comparar con la conexión TCP.
-  Gateway         Se comprueba la ruta IPv4 predeterminada y su respuesta ICMP.
-  DNS             Una falla de resolución puede coexistir con conectividad IP.
-  NAC 802.1X      Un enlace físico no equivale a autorización de red.
-
-Esta herramienta no cambia IP, DNS, DHCP, firewall, servicios o perfiles
-de autenticación; reutiliza consultas Windows nativas para enlace, ruta e ICMP.
+Limitaciones explícitas:
+  - Un ICMP perdido puede obedecer a un firewall, no necesariamente a una
+    interrupción real del enlace. La ausencia de ICMPv6 se informa.
+  - Los contadores de velocidad pasiva indican tráfico actual, no capacidad
+    total. La descarga HTTP sí genera tráfico pero sólo al destino elegido.
+  - ETW permite contar tráfico por proceso, pero no leer texto, documentos,
+    payload ni tráfico TLS descifrado. Para captura real de contenido se
+    necesita un controlador NDIS/WFP con autorización; SST no lo suplanta
+    ni presenta datos inexistentes.
+  - No se modifica la configuración de red ni se exportan credenciales.
 
 20. Relación con otras herramientas SST
 
