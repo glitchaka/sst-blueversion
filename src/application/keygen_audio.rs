@@ -66,7 +66,7 @@ fn read_zip_tracks(archive: &std::path::Path) -> Option<[Vec<u8>; 2]> {
     for (index, name) in TRACK_NAMES.iter().enumerate() {
         let key = format!("data/.sst/media/keygen/{name}");
         let legacy_key = format!("assets/keygen/{name}");
-        let selected_key = if zip.file_names().any(|candidate| candidate == key) { &key } else { &legacy_key };
+        let selected_key = if zip.file_names().any(|candidate| candidate.as_ref().is_ok_and(|name| name == &key)) { &key } else { &legacy_key };
         let file = zip.by_name(selected_key).ok()?;
         if file.size() > 10 * 1024 * 1024 { return None; }
         file.take(10 * 1024 * 1024 + 1).read_to_end(&mut tracks[index]).ok()?;
