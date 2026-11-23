@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
     time::Duration,
@@ -15,7 +15,7 @@ use ferrisetw::{
 
 use crate::core::{
     models::network::ByteCounters,
-    ports::{TrafficMonitor, TrafficMonitorFactory},
+    ports::{NetworkPacketEvent, TrafficMonitor, TrafficMonitorFactory},
 };
 
 const NETWORK_PROVIDER: &str = "7dd42a49-5329-4832-8dfd-43d979153a88";
@@ -40,6 +40,7 @@ impl TrafficMonitorFactory for EtwTrafficMonitorFactory {
 
 struct EtwTrafficMonitor {
     counters: Arc<Mutex<HashMap<u32, ByteCounters>>>,
+    events: Arc<Mutex<VecDeque<NetworkPacketEvent>>>,
     trace: Option<UserTrace>,
     processor: Option<JoinHandle<()>>,
 }
@@ -48,10 +49,12 @@ impl EtwTrafficMonitor {
     fn start() -> Result<Self> {
         let counters = Arc::new(Mutex::new(HashMap::new()));
         let callback_counters = Arc::clone(&counters);
+        let events = Arc::new(Mutex::new(VecDeque::with_capacity(1024)));
+        let callback_events = Arc::clone(&events);
 
         let provider = Provider::by_guid(NETWORK_PROVIDER)
             .add_callback(move |record, schema_locator| {
-                process_network_event(record, schema_locator, &callback_counters);
+                process_network_event(record, schema_locator, &callback_counters, &callback_events);
             })
             .build();
 
@@ -72,6 +75,7 @@ impl EtwTrafficMonitor {
 
         Ok(Self {
             counters,
+            events,
             trace: Some(trace),
             processor: Some(processor),
         })
@@ -83,6 +87,11 @@ impl TrafficMonitor for EtwTrafficMonitor {
         self.counters
             .lock()
             .map(|counters| counters.clone())
+            .unwrap_or_default()
+    }
+
+    fn events(&self) -> Vec<NetworkPacketEvent> {
+        self.events.lock().map(|events| events.iter().cloned().collect())
             .unwrap_or_default()
     }
 }
@@ -101,6 +110,7 @@ fn process_network_event(
     record: &EventRecord,
     schema_locator: &SchemaLocator,
     counters: &Arc<Mutex<HashMap<u32, ByteCounters>>>,
+    events: &Arc<Mutex<VecDeque<NetworkPacketEvent>>>,
 ) {
     let direction = match record.event_id() {
         10 | 12 | 13 | 14 | 16 | 26 | 28 | 29 | 30 | 32 | 42 | 58 => Direction::Sent,
@@ -137,6 +147,16 @@ fn process_network_event(
     match direction {
         Direction::Sent => entry.sent = entry.sent.saturating_add(u64::from(size)),
         Direction::Received => entry.received = entry.received.saturating_add(u64::from(size)),
+    }
+    drop(counters);
+    if let Ok(mut queue) = events.lock() {
+        if queue.len() == 1024 { queue.pop_front(); }
+        queue.push_back(NetworkPacketEvent {
+            pid,
+            size,
+            direction: match direction { Direction::Sent => "TX", Direction::Received => "RX" },
+            event_id: record.event_id() as u16,
+        });
     }
 }
 
