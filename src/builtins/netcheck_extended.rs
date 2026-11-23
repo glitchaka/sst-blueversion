@@ -26,7 +26,7 @@ pub fn execute(
         "loss" => loss(rest, probe, false),
         "stability" => loss(rest, probe, true),
         "speed" => speed(rest),
-        "capture" => capture(rest),
+        "capture" => capture(rest, probe),
         "traffic" | "inspect" | "packets" => traffic_report(rest, probe, traffic, command),
         _ => Ok(CommandOutput::error("netcheck: subcomando desconocido", 2)),
     }
@@ -249,7 +249,7 @@ fn loss(args: &[String], probe: &dyn NetworkProbe, stability: bool) -> Result<Co
     Ok(CommandOutput::ok(out))
 }
 
-fn capture(args: &[String]) -> Result<CommandOutput> {
+fn capture(args: &[String], probe: &dyn NetworkProbe) -> Result<CommandOutput> {
     let options = ["--interface","--seconds","--limit","--payload-bytes"];
     if let Some(problem) = unknown_arguments(args, &options, 0) {
         return Ok(CommandOutput::error(format!("netcheck capture: {problem}"), 2));
@@ -275,7 +275,36 @@ fn capture(args: &[String]) -> Result<CommandOutput> {
         Ok(value) => value,
         Err(error) => return Ok(CommandOutput::error(error, 2)),
     };
-    match crate::adapters::windows::raw_capture::capture(local, seconds, limit, payload as usize) {
+    let connections = probe.connections().unwrap_or_default();
+    let mut system = System::new_all();
+    system.refresh_all();
+    let names = system.processes().iter().map(|(pid, process)| (
+        pid.as_u32(), process.name().to_string_lossy().into_owned()
+    )).collect::<HashMap<_,_>>();
+    let services = crate::adapters::windows::service_map::services_by_pid().unwrap_or_default();
+    let mut owners = Vec::new();
+    for row in &connections {
+        if !matches!(row.protocol.as_str(), "TCP" | "UDP") { continue; }
+        let Ok(local_addr) = row.local.parse::<SocketAddr>() else { continue; };
+        let std::net::IpAddr::V4(local_ip) = local_addr.ip() else { continue };
+        if local_ip != local && !local_ip.is_unspecified() { continue; }
+        let remote_addr = row.remote.parse::<SocketAddr>().ok();
+        let remote_ip = remote_addr.as_ref().and_then(|addr| match addr.ip() {
+            std::net::IpAddr::V4(ip) => Some(ip),
+            std::net::IpAddr::V6(_) => None,
+        });
+        let remote_port = remote_addr.map(|addr| addr.port());
+        owners.push(crate::adapters::windows::raw_capture::FlowOwner {
+            protocol: row.protocol.clone(),
+            local_port: local_addr.port(),
+            remote_ip,
+            remote_port,
+            pid: row.pid,
+            process: names.get(&row.pid).cloned().unwrap_or_else(|| "-".to_owned()),
+            services: services.get(&row.pid).cloned().unwrap_or_default(),
+        });
+    }
+    match crate::adapters::windows::raw_capture::capture(local, seconds, limit, payload as usize, &owners) {
         Ok(report) => Ok(CommandOutput::ok(report)),
         Err(error) => Ok(CommandOutput::error(format!(
             "netcheck capture: {error:#}\n\
