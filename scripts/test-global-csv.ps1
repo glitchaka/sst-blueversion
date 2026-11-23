@@ -30,7 +30,7 @@ try {
         throw "Se esperaban 3 salidas CSV independientes; encontradas: $count. STDOUT: $text"
     }
     foreach ($marker in @('__CSV_SYS__', '__CSV_WHOAMI__', '__CSV_HELP__')) {
-        if (-not $text.Contains($marker)) {
+        if ($null -eq $text -or $text -notmatch [regex]::Escape($marker)) {
             throw "El shell no recuperó el control después del CSV: $marker"
         }
     }
@@ -66,7 +66,7 @@ try {
     # captured streams to string before using string methods.
     $redirectText = [string](Get-Content -Raw -LiteralPath $redirectOut)
     $redirectErrors = [string](Get-Content -Raw -LiteralPath $redirectErr)
-    if ($redirectProcess.ExitCode -ne 0 -or -not $redirectText.Contains('__CSV_REDIRECTS_DONE')) {
+    if ($redirectProcess.ExitCode -ne 0 -or $null -eq $redirectText -or $redirectText -notmatch '__CSV_REDIRECTS_DONE') {
         throw "SST falló exportando CSV con redirección: $redirectErrors / $redirectText"
     }
     if ($null -ne $redirectErrors -and $redirectErrors -match 'no está disponible para este subcomando') {
