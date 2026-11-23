@@ -122,6 +122,22 @@ mod viewport_regression_tests {
     }
 
     #[test]
+    fn original_sst_icon_rgb_is_preserved_in_the_terminal() {
+        for rgb in [
+            super::Rgb(35, 52, 106),
+            super::Rgb(54, 76, 119),
+            super::Rgb(109, 143, 171),
+            super::Rgb(186, 189, 198),
+        ] {
+            assert_eq!(super::gruvbox_terminal_color(rgb), rgb);
+            assert_eq!(
+                super::terminal_color(vt100::Color::Rgb(rgb.0, rgb.1, rgb.2), super::FG),
+                rgb,
+            );
+        }
+    }
+
+    #[test]
     fn reject_iconic_and_transient_window_sizes() {
         assert!(!valid_terminal_viewport(0, 0, 1.0, false));
         assert!(!valid_terminal_viewport(150, 30, 1.0, false));
@@ -1406,6 +1422,16 @@ impl TerminalModel {
 // Semantic red/amber/green and the muted blue used for explicitly optimal
 // states remain distinguishable.
 fn gruvbox_terminal_color(color: Rgb) -> Rgb {
+    // Brand colors from assets/sst-icon.png are reserved for the SST logo.
+    // Do not reinterpret them as blue UI chrome: the rest of the terminal
+    // continues to follow the Gruvbox palette.
+    if matches!(
+        color,
+        Rgb(35, 52, 106) | Rgb(54, 76, 119)
+            | Rgb(109, 143, 171) | Rgb(186, 189, 198)
+    ) {
+        return color;
+    }
     let Rgb(r, g, b) = color;
     if b >= 120 && b.saturating_add(5) >= g
         && b <= g.saturating_add(48) && g > r.saturating_add(18)
