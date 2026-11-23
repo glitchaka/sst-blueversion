@@ -11,7 +11,7 @@ on:
       - '.github/workflows/powershell-pkgx.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   powershell-pkgx:
@@ -38,3 +38,16 @@ jobs:
           name: SST-PowerShell-win-x64
           path: ./dist/SST-PowerShell-win-x64.pkgx
           if-no-files-found: error
+      - name: Publish standalone PowerShell PKGX release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'powershell-v7.5.13'
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --target $env:GITHUB_SHA --title 'SST PowerShell module 7.5.13' --notes 'Independent SST PowerShell SDK package for installation with instp.' --latest=false
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to create standalone PowerShell module release' }
+          }
+          gh release upload $tag ./dist/SST-PowerShell-win-x64.pkgx --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to publish PowerShell PKGX' }
