@@ -27,9 +27,14 @@ impl NetcheckBuiltin {
         let mut probes = vec![
             vec!["speed".into(), "--seconds".into(), "2".into()],
             vec!["loss".into(), "--count".into(), "6".into(), "--interval".into(), "300".into()],
+            vec!["stability".into(), "--seconds".into(), "3".into(), "--interval".into(), "400".into()],
             vec!["traffic".into(), "--seconds".into(), "2".into(), "--top".into(), "8".into()],
+            vec!["packets".into(), "--seconds".into(), "2".into(), "--top".into(), "8".into()],
         ];
-        if let Some(host) = host { probes[1].insert(1, host.to_owned()); }
+        if let Some(host) = host {
+            probes[1].insert(1, host.to_owned());
+            probes[2].insert(1, host.to_owned());
+        }
         for cmd in probes {
             let name = cmd[0].to_uppercase();
             base.stdout.push_str(&format!("\n=== {name} ===\n"));
