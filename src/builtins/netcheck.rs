@@ -270,7 +270,7 @@ impl BuiltinCommand for NetcheckBuiltin {
     fn name(&self) -> &'static str { "netcheck" }
     fn aliases(&self) -> &'static [&'static str] { &["netdiag", "nettest"] }
     fn help(&self) -> &'static str {
-        "netcheck — diagnóstico integral: estabilidad, pérdida, velocidad real y tráfico por proceso"
+        "netcheck / netdiag / nettest — diagnóstico integral: velocidad real, estabilidad, pérdida, tráfico, servicios y paquetes IPv4"
     }
     fn execute(&self, _invoked_name: &str, args: &[String], _context: CommandContext<'_>) -> Result<CommandOutput> {
         self.diagnose(args)
