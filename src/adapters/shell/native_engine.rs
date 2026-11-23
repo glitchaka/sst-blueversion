@@ -526,13 +526,10 @@ impl ShellCommandHost for WindowsShellHost {
                 }
             }
         }
-        // Global output modifier is part of the shell contract, even inside
-        // .sh scripts: no builtin receives --csv as a command-specific flag.
+        // Nwash normally handles --csv before this boundary. Direct host
+        // invocations use the same fallback without command-name exceptions.
         let csv = args.last().is_some_and(|arg| arg == "--csv");
-        // Preserve structured CSV already supplied by native network adapters.
-        // All other commands use one shared generic formatter below.
-        let native_csv = csv && matches!(name, "net" | "notsh");
-        let effective_args = if csv && !native_csv { &args[..args.len() - 1] } else { args };
+        let effective_args = if csv { &args[..args.len() - 1] } else { args };
         if name == "help" || name == "man" {
             let mut output = self.registry.help(effective_args.first().map(String::as_str));
             if csv && output.status == 0 {
@@ -557,7 +554,7 @@ impl ShellCommandHost for WindowsShellHost {
             )));
         }
         let mut output = self.registry.execute(name, effective_args, CommandContext { cwd, stdin })?;
-        if csv && !native_csv && output.status == 0 {
+        if csv && output.status == 0 {
             output.stdout = crate::presentation::csv_output::format_output(&output.stdout);
         }
         Ok(Some(ExecutionResult::from_parts(
