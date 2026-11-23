@@ -2187,6 +2187,22 @@ impl Interpreter {
         let csv_output = words.len() > 1 && words.last().is_some_and(|word| word == "--csv");
         let args = if csv_output { &words[1..words.len() - 1] } else { &words[1..] };
 
+        // Full-screen tools have no stable tabular stdout; do not enter their
+        // interactive loop when asked for a CSV export.
+        if csv_output && (
+            matches!(name.as_str(), "keygen" | "top" | "guide" | "helix" | "edit")
+            || (name == "sys" && args.first().is_some_and(|arg| arg == "top"))
+            || (matches!(name.as_str(), "net" | "notsh")
+                && args.first().is_some_and(|arg| arg == "monitor"))
+        ) {
+            self.cleanup_variable_fds(&allocated_fds);
+            return Ok(ExecutionResult::from_parts(
+                String::new(),
+                "CSV: esta interfaz interactiva no genera un informe exportable.\n".to_owned(),
+                2,
+            ));
+        }
+
         let mut temporary_assignments: Vec<(String, super::environment::LocalBinding)> = Vec::new();
         for assignment in &raw[..assignment_count] {
             let (variable, value) = assignment.split_once('=').unwrap();
