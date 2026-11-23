@@ -32,8 +32,8 @@ try {
         throw 'netcheck quedó bloqueado durante una prueba local.'
     }
     $p.Refresh()
-    $output = Get-Content -Raw -LiteralPath $stdout
-    $errors = Get-Content -Raw -LiteralPath $stderr
+    $output = [string](Get-Content -Raw -LiteralPath $stdout)
+    $errors = [string](Get-Content -Raw -LiteralPath $stderr)
     if ($p.ExitCode -ne 0) { throw "netcheck falló: $errors / $output" }
     foreach ($expected in @('SST_NETCHECK_HELP_DONE','SST_NETCHECK_PROBE_DONE',
         'DIAGNÓSTICO DE RED','INTERFACES FÍSICAS','RUTA IPv4','DNS','TCP','CONCLUSIÓN',
@@ -59,7 +59,7 @@ try {
     if ($output -match 'Pérdida: 100.0%' -and $output -notmatch 'Errores locales de la API: 0') {
         throw "netcheck confundió errores de API con pérdida de paquetes."
     }
-    if (-not $errors.Contains('debe ser una IPv4 local activa')) {
+    if ($output -notmatch 'debe ser una IPv4 local activa' -and $errors -notmatch 'debe ser una IPv4 local activa') {
         throw "netcheck capture aceptó 0.0.0.0 como interfaz o no informó el error esperado: $errors"
     }
     Write-Host 'netcheck: diagnóstico, ICMP pérdida/estabilidad, velocidad de NIC (pasivo) y tráfico ETW verificados.'
