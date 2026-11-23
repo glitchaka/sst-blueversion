@@ -422,3 +422,31 @@ fn is_bash_builtin_name(value: &str) -> bool {
         | "ulimit" | "umask" | "unalias" | "unset" | "wait"
     )
 }
+
+
+#[cfg(test)]
+mod arch_package_metadata_tests {
+    use super::parse_arch_package_details;
+
+    #[test]
+    fn shows_official_description_and_dependencies() {
+        let payload = r#"{"results":[{"pkgname":"0ad","pkgver":"0.28.0-3","pkgdesc":"A historically-based real-time strategy game","repo":"extra","arch":"x86_64","url":"https://example.org/0ad","licenses":["GPL-2.0-or-later"],"depends":["sdl2","zlib"]}]}"#;
+        let output = parse_arch_package_details("0ad", payload).expect("Arch package details");
+        assert!(output.contains("A historically-based real-time strategy game"));
+        assert!(output.contains("Dependencias: sdl2, zlib"));
+        assert!(output.contains("Licencias: GPL-2.0-or-later"));
+        assert!(output.contains("NO instala ni ejecuta paquetes de Arch"));
+    }
+
+    #[test]
+    fn does_not_assign_a_description_to_a_different_package() {
+        let payload = r#"{"results":[{"pkgname":"other","pkgdesc":"Unrelated tool","pkgver":"1","repo":"extra","arch":"x86_64"}]}"#;
+        assert!(parse_arch_package_details("0ad", payload).is_none());
+    }
+
+    #[test]
+    fn missing_description_is_not_fabricated() {
+        let payload = r#"{"results":[{"pkgname":"0ad","pkgver":"0.28.0-3","repo":"extra","arch":"x86_64"}]}"#;
+        assert!(parse_arch_package_details("0ad", payload).is_none());
+    }
+}
