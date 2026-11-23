@@ -1235,11 +1235,15 @@ fn keygen_frame(cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String]
                 % 11.0).max(0.0);
             let launch = 3.1 + (i % 5) as f32 * 0.34;
             let gravity = 5.8;
-            let flight = 2.0 * launch / gravity;
-            let bounce_index = (local_time / flight).floor();
-            let bounce_speed = launch * 0.58_f32.powf(bounce_index);
-            let bounce_time = local_time - bounce_index * flight;
-            let rise = (bounce_speed * bounce_time - 0.5 * gravity * bounce_time * bounce_time)
+            let mut elapsed = local_time;
+            let mut speed = launch;
+            for _ in 0..12 {
+                let flight = 2.0 * speed / gravity;
+                if elapsed <= flight { break; }
+                elapsed -= flight;
+                speed *= 0.58;
+            }
+            let rise = (speed * elapsed - 0.5 * gravity * elapsed * elapsed)
                 .max(0.0);
             let wave = (-(rise * max_wave * 0.75)).round() as isize;
             let fy = (base_y as isize + wave).clamp(1, height.saturating_sub(2) as isize) as usize;
