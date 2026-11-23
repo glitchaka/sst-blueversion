@@ -1,0 +1,20 @@
+UNBAN — desbloquear usuario de Active Directory (nativo SST)
+
+Uso:
+  sudo
+  unban NOMBRE_DE_USUARIO
+
+Requisitos:
+  1. SST debe estar en una sesión sudo con token realmente elevado.
+  2. La identidad de Windows autenticada en esa sesión debe tener permisos delegados
+     para modificar lockoutTime de la cuenta en Active Directory.
+  3. El equipo debe encontrar un controlador de dominio escribible.
+
+Implementación:
+  Windows DsGetDcNameW + WinLDAP (SSPI Negotiate, conexión cifrada).
+  Solo modifica lockoutTime=0 de una única cuenta encontrada por sAMAccountName.
+  Nunca solicita ni admite contraseñas en argumentos, ni ejecuta PowerShell.
+  Un fallo de permisos, conexión o búsqueda no se considera un desbloqueo exitoso.
+
+Nota: sudo es una condición obligatoria, pero no concede automáticamente privilegios
+sobre Active Directory. Los permisos efectivos dependen del servidor y de la cuenta.
