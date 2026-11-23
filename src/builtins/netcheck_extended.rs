@@ -205,33 +205,28 @@ fn loss(args: &[String], probe: &dyn NetworkProbe, stability: bool) -> Result<Co
         let attempt = Instant::now();
         let outcome = if let Some(port) = tcp {
             match TcpStream::connect_timeout(&SocketAddr::new(ip.into(), port), Duration::from_millis(timeout as u64)) {
-                Ok(stream) => { drop(stream); Some(true) },
+                Ok(stream) => { drop(stream); Some(attempt.elapsed().as_secs_f64() * 1000.0) },
                 Err(error) if matches!(error.kind(), std::io::ErrorKind::TimedOut
                     | std::io::ErrorKind::ConnectionRefused
                     | std::io::ErrorKind::NetworkUnreachable
-                    | std::io::ErrorKind::HostUnreachable) => Some(false),
+                    | std::io::ErrorKind::HostUnreachable) => Some(-1.0),
                 Err(_) => None,
             }
         } else {
             match probe.echo(ip, 64, Duration::from_millis(timeout as u64)) {
-                Ok(reply) => Some(reply.status == 0),
+                Ok(reply) => Some(if reply.status == 0 { f64::from(reply.elapsed_ms) } else { -1.0 }),
                 Err(_) => None,
             }
         };
         match outcome {
-            Some(true) => {
-                let elapsed = if tcp.is_some() { attempt.elapsed().as_secs_f64() * 1000.0 }
-                    else { 0.0 };
-                // Native ICMP exposes its own RTT, which excludes setup overhead.
-                let ms = if tcp.is_some() { elapsed }
-                    else { probe_rtt_last_not_cached(ip, probe, timeout).unwrap_or(elapsed) };
+            Some(ms) if ms >= 0.0 => {
                 samples.success(ms);
             }
-            Some(false) => samples.missed(),
+            Some(_) => samples.missed(),
             None => samples.unknown(),
         }
         if index < 24 {
-            let state = match outcome { Some(true) => "OK", Some(false) => "SIN RESPUESTA", None => "ERROR LOCAL" };
+            let state = match outcome { Some(ms) if ms >= 0.0 => "OK", Some(_) => "SIN RESPUESTA", None => "ERROR LOCAL" };
             events.push_str(&format!("  Muestra {:>3}: {state}\n", index + 1));
         }
         let remaining = if stability { clock.elapsed() < Duration::from_secs(seconds as u64) }
@@ -251,12 +246,6 @@ fn loss(args: &[String], probe: &dyn NetworkProbe, stability: bool) -> Result<Co
     }
     out.push_str(&events);
     Ok(CommandOutput::ok(out))
-}
-
-// Use exactly one ICMP Echo request per sample; errors remain distinct.
-fn probe_rtt_last_not_cached(ip: Ipv4Addr, probe: &dyn NetworkProbe, timeout: u32) -> Option<f64> {
-    probe.echo(ip, 64, Duration::from_millis(timeout as u64)).ok()
-        .filter(|reply| reply.status == 0).map(|reply| f64::from(reply.elapsed_ms))
 }
 
 fn speed(args: &[String]) -> Result<CommandOutput> {
