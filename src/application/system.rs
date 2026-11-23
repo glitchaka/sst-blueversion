@@ -139,6 +139,7 @@ impl SystemService {
         let mut system = System::new_all();
         system.refresh_all();
         let mut frame = 0u64;
+        let mut glyph_physics = KeygenPhysics::default();
         loop {
             if frame % 15 == 0 && !music.is_paused() {
                 system.refresh_cpu_all();
@@ -146,7 +147,7 @@ impl SystemService {
             }
             let (cols, rows) = terminal.size()?;
             let facts = keygen_system_facts(&system);
-            let mut screen = keygen_frame(cols, rows, frame, music.is_paused(), &facts);
+            let mut screen = keygen_frame(cols, rows, frame, music.is_paused(), &facts, &mut glyph_physics);
             // Keep the player state visible even when changing tracks.
             let status = format!("  [MP3 {} / 2]  1/2: pista  Espacio: pausa  ESC/Q: salir",
                 music.track_number());
@@ -162,7 +163,10 @@ impl SystemService {
                 Some(TerminalKey::Char('2')) => music.select(1)?,
                 _ => {}
             }
-            if !music.is_paused() { frame = frame.wrapping_add(1); }
+            if !music.is_paused() {
+                frame = frame.wrapping_add(1);
+                glyph_physics.tick(frame);
+            }
             if frame % 5 == 0 { music.tick()?; }
         }
         // Both resources are dropped here; the music handle is closed even on
@@ -1211,7 +1215,94 @@ fn keygen_glyph_color(frame: u64, index: usize, row: usize) -> (u8, u8, u8) {
     (chan(0.0), chan(2.094), chan(4.188))
 }
 
-fn keygen_frame(cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String]) -> String {
+
+#[derive(Clone, Copy)]
+struct KeygenGlyphBody {
+    x: f32,
+    y: f32,
+    z: f32,
+    vx: f32,
+    vy: f32,
+    vz: f32,
+}
+
+impl KeygenGlyphBody {
+    fn new(line: usize, index: usize) -> Self {
+        let seed = (index.wrapping_mul(17) + line.wrapping_mul(29)) % 23;
+        Self {
+            x: 0.0,
+            y: -((seed % 7) as f32 * 0.28),
+            z: (seed % 9) as f32 * 0.13 - 0.52,
+            vx: (seed % 5) as f32 * 0.16 - 0.32,
+            vy: -1.5 - (seed % 8) as f32 * 0.29,
+            vz: 0.5 - (seed % 6) as f32 * 0.17,
+        }
+    }
+}
+
+#[derive(Default)]
+struct KeygenPhysics {
+    bodies: HashMap<(usize, usize), KeygenGlyphBody>,
+}
+
+impl KeygenPhysics {
+    fn tick(&mut self, frame: u64) {
+        // Fixed-step integration: the letters really retain positions and
+        // velocities between frames, rather than sampling a scrolling wave.
+        let dt = 0.085_f32;
+        for (&(line, index), body) in &mut self.bodies {
+            let period = 34 + ((index * 3 + line * 11) % 23) as u64;
+            if frame % period == (index as u64 + line as u64 * 3) % period {
+                body.vy -= 2.4 + (index % 6) as f32 * 0.27;
+                body.vx += if (index + line) % 2 == 0 { 0.9 } else { -0.9 };
+                body.vz += if index % 2 == 0 { 0.75 } else { -0.75 };
+            }
+            // Damped springs on X/Z, gravity and restitution on Y.
+            body.vx += (-3.2 * body.x - 1.0 * body.vx) * dt;
+            body.vy += 6.8 * dt;
+            body.vz += (-2.4 * body.z - 0.8 * body.vz) * dt;
+            body.x += body.vx * dt;
+            body.y += body.vy * dt;
+            body.z += body.vz * dt;
+            if body.y >= 0.0 {
+                body.y = 0.0;
+                body.vy = -body.vy.abs() * 0.58;
+                if body.vy.abs() < 0.08 { body.vy = 0.0; }
+            }
+        }
+        // Resolve neighboring letters colliding along their horizontal axes.
+        // Apply equal-and-opposite impulses, preserving independent motion.
+        let keys = self.bodies.keys().copied().collect::<Vec<_>>();
+        let mut impulses = Vec::<((usize, usize), f32)>::new();
+        for &(line, index) in &keys {
+            let Some(left) = self.bodies.get(&(line, index)) else { continue; };
+            let Some(right) = self.bodies.get(&(line, index + 1)) else { continue; };
+            let separation = 1.0 + right.x - left.x;
+            if separation < 0.68 && (left.y - right.y).abs() < 0.9
+                && (left.z - right.z).abs() < 1.0
+            {
+                let impulse = (0.68 - separation) * 1.2;
+                impulses.push(((line, index), -impulse));
+                impulses.push(((line, index + 1), impulse));
+            }
+        }
+        for (key, impulse) in impulses {
+            if let Some(body) = self.bodies.get_mut(&key) {
+                body.vx += impulse;
+            }
+        }
+    }
+
+    fn body(&mut self, line: usize, index: usize) -> KeygenGlyphBody {
+        *self.bodies.entry((line,index))
+            .or_insert_with(|| KeygenGlyphBody::new(line,index))
+    }
+}
+
+fn keygen_frame(
+    cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String],
+    physics: &mut KeygenPhysics,
+) -> String {
     let width = usize::from(cols);
     let height = usize::from(rows);
     let mut output = String::from("\x1b[0m\x1b[2J\x1b[H");
@@ -1223,87 +1314,60 @@ fn keygen_frame(cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String]
     let subtitle = "S S T  /  K E Y G E N   2 0 0 0";
     let mid = height / 2;
     let title_y = mid.saturating_sub((facts.len() + 8) / 2 + 3).max(2);
-    // A lightweight perspective projection in terminal cells. Every glyph is
-    // positioned in (x,y,z), given gravity, rebound and depth-dependent size
-    // cues. Background shading makes the independent motion visible in 2D.
-    let mut draw = |line: &str, base_y: usize, phase: f32, max_wave: f32| {
+    let mut draw = |line: &str, line_id: usize, base_y: usize, arc: f32| {
         let chars: Vec<char> = line.chars().take(width.saturating_sub(2)).collect();
-        let center = (width as f32 - 1.0) * 0.5;
-        let baseline = base_y as f32;
         let count = chars.len() as f32;
-        for (i, ch) in chars.into_iter().enumerate() {
+        let center = (width as f32 - 1.0) * 0.5;
+        let half = (count * 0.5).max(1.0);
+        for (index, ch) in chars.into_iter().enumerate() {
             if ch.is_control() || ch == ' ' { continue; }
-            let t = frame as f32 * 0.075 + (i as f32 * 0.18 + phase * 0.6);
-            let interval = 2.65 + (i % 7) as f32 * 0.11;
-            let cycle = t.rem_euclid(interval);
-            let gravity = 8.0_f32;
-            let mut velocity = (4.8 + (i % 5) as f32 * 0.26) * max_wave.min(2.0);
-            let mut elapsed = cycle;
-            // Piecewise ballistic collisions with a virtual horizontal floor.
-            for _ in 0..14 {
-                let flight = 2.0 * velocity / gravity;
-                if elapsed <= flight || velocity < 0.02 { break; }
-                elapsed -= flight;
-                velocity *= 0.56;
-            }
-            let height_3d = (velocity * elapsed - 0.5 * gravity * elapsed * elapsed).max(0.0);
-            // Z oscillation brings individual characters closer to the camera.
-            let depth = ((t * 0.67 + i as f32 * 0.23).sin() * 0.95)
-                + height_3d * 0.24;
-            let perspective = 1.0 / (1.0 + (1.5 - depth) * 0.12);
-            let rest_x = i as f32 - (count - 1.0) * 0.5;
-            // Inertia across the horizontal axis, independently damped
-            // following the letter's rebound. This is not a synchronous sine.
-            let impulse_x = (cycle * 3.0 + i as f32 * 0.33).sin()
-                * 1.8 * (-cycle * 0.42).exp();
-            let world_x = rest_x + impulse_x;
-            // Curved 3D title track, like the original keygen arc, not a
-            // straight text row moved up and down as a single object.
-            let half = (count * 0.5).max(1.0);
-            let arc_lift = (1.0 - (rest_x / half).powi(2)).max(0.0) * max_wave * 2.8;
-            let px = (center + world_x * perspective).round() as isize;
-            let py = (baseline - arc_lift - height_3d * 1.35
-                - depth * 0.62).round() as isize;
-            if px < 0 || px >= width as isize || py < 1 || py >= height as isize - 1 {
+            let body = physics.body(line_id,index);
+            let rest_x = index as f32 - (count - 1.0) * 0.5;
+            let arc_lift = (1.0 - (rest_x / half).powi(2)).max(0.0) * arc * 2.7;
+            // Perspective projection from real 3D state onto terminal cells.
+            let distance = (3.0 - body.z).max(1.0);
+            let projection = 2.5 / distance;
+            let px = (center + (rest_x + body.x) * projection).round() as isize;
+            let py = (base_y as f32 + body.y * 1.45 - arc_lift
+                - body.z * 0.7).round() as isize;
+            if px < 0 || px >= width as isize || py < 1 || py >= height as isize-1 {
                 continue;
             }
-            let fg = keygen_glyph_color(frame, i, base_y);
-            let glow = ((perspective * 0.86).clamp(0.43, 1.0) * 255.0) as u8;
-            let (r,g,b) = (
-                ((fg.0 as u16 * glow as u16) / 255) as u8,
-                ((fg.1 as u16 * glow as u16) / 255) as u8,
-                ((fg.2 as u16 * glow as u16) / 255) as u8
-            );
-            // Depth shadow anchored to the ground gives a readable Z cue.
-            if height_3d > 0.4 && base_y < height.saturating_sub(1) {
-                let shadow_col = (px + (depth * 1.2).round() as isize)
-                    .clamp(0, width.saturating_sub(1) as isize);
+            let (r0,g0,b0) = keygen_glyph_color(frame,index,base_y);
+            let light = projection.clamp(0.4,1.3);
+            let tone = |channel:u8| -> u8 {
+                ((channel as f32 * light).clamp(15.0,255.0)) as u8
+            };
+            let (r,g,b) = (tone(r0),tone(g0),tone(b0));
+            if body.y < -0.3 && base_y < height.saturating_sub(1) {
+                let shadow_x = (px + (body.z * 1.2).round() as isize)
+                    .clamp(0,width.saturating_sub(1) as isize);
                 output.push_str(&format!(
                     "\x1b[{};{}H\x1b[38;2;66;61;58m.",
-                    base_y, shadow_col + 1
+                    base_y,shadow_x+1
                 ));
             }
             output.push_str(&format!(
                 "\x1b[{};{}H\x1b[1;38;2;{r};{g};{b}m{ch}",
-                py + 1, px + 1
+                py+1,px+1
             ));
         }
     };
-    draw(title, title_y, 0.0, 2.0);
-    draw(subtitle, title_y + 4, 1.2, 1.0);
-    let available = height.saturating_sub(title_y + 8);
-    let gap = if available >= facts.len() * 2 + 2 { 2 } else { 1 };
-    for (i, fact) in facts.iter().enumerate() {
-        let row = title_y + 7 + i * gap;
-        if row >= height.saturating_sub(2) { break; }
-        // Independent, low-amplitude waves produce a floating list
-        // without piling all status fields over one another.
-        draw(fact, row, i as f32 * 0.7, if gap > 1 { 0.45 } else { 0.0 });
+    draw(title,0,title_y,2.0);
+    draw(subtitle,1,title_y+4,1.0);
+    let available = height.saturating_sub(title_y+8);
+    let gap = if available >= facts.len()*2+2 {2} else {1};
+    for (i,fact) in facts.iter().enumerate() {
+        let row = title_y+7+i*gap;
+        if row >= height.saturating_sub(2) {break;}
+        draw(fact,2+i,row,0.0);
     }
-    let footer = if paused { "PAUSA  [SPACE] continuar  [ESC/Q] salir" }
-        else { "SST KEYGEN  [SPACE] pausa  [ESC/Q] salir" };
-    output.push_str(&format!("\x1b[{};1H\x1b[0m\x1b[38;2;189;174;147m{}",
-        height, footer.chars().take(width.saturating_sub(1)).collect::<String>()));
+    let footer = if paused {"PAUSA  [SPACE] continuar  [ESC/Q] salir"}
+        else {"SST KEYGEN  [SPACE] pausa  [ESC/Q] salir"};
+    output.push_str(&format!(
+        "\x1b[{};1H\x1b[0m\x1b[38;2;189;174;147m{}",
+        height,footer.chars().take(width.saturating_sub(1)).collect::<String>()
+    ));
     output.push_str("\x1b[0m");
     output
 }
