@@ -1,0 +1,40 @@
+name: SST PowerShell PKGX (independent module)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/powershell/**'
+      - 'scripts/pack-pkgx.py'
+      - 'scripts/test-powershell-plugin.ps1'
+      - '.github/workflows/powershell-pkgx.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-pkgx:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Build independent PowerShell SDK plugin
+        shell: pwsh
+        run: |
+          dotnet publish ./plugins/powershell/Sst.PowerShell.Bridge.csproj -c Release -r win-x64 --self-contained true -o ./.build/plugin-powershell
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell PKGX compilation failed' }
+      - name: Assemble standalone PKGX
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ./dist | Out-Null
+          python ./scripts/pack-pkgx.py --id powershell --version 7.5.13 --target win --kind embedded --source ./.build/plugin-powershell --output ./dist/SST-PowerShell-win-x64.pkgx --exclude-dotnet-apphost --require-file Sst.PowerShell.Bridge.dll --require-file hostfxr.dll --require-file Sst.PowerShell.Bridge.runtimeconfig.json
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell PKGX packaging failed' }
+      - name: Upload independently built PowerShell package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SST-PowerShell-win-x64
+          path: ./dist/SST-PowerShell-win-x64.pkgx
+          if-no-files-found: error
