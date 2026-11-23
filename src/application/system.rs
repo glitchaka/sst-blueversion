@@ -1223,33 +1223,61 @@ fn keygen_frame(cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String]
     let subtitle = "S S T  /  K E Y G E N   2 0 0 0";
     let mid = height / 2;
     let title_y = mid.saturating_sub((facts.len() + 8) / 2 + 3).max(2);
+    // A lightweight perspective projection in terminal cells. Every glyph is
+    // positioned in (x,y,z), given gravity, rebound and depth-dependent size
+    // cues. Background shading makes the independent motion visible in 2D.
     let mut draw = |line: &str, base_y: usize, phase: f32, max_wave: f32| {
         let chars: Vec<char> = line.chars().take(width.saturating_sub(2)).collect();
-        let start_x = (width.saturating_sub(chars.len())) / 2;
+        let center = (width as f32 - 1.0) * 0.5;
+        let baseline = base_y as f32;
+        let count = chars.len() as f32;
         for (i, ch) in chars.into_iter().enumerate() {
             if ch.is_control() || ch == ' ' { continue; }
-            // Each glyph behaves like a damped spring-mass with its own impulse.
-            // Unlike the old uniform sine wave, an impulse lifts the letter,
-            // gravity brings it back and successive bounces lose energy.
-            let local_time = ((frame as f32 * 0.085 + i as f32 * 0.117 + phase * 0.53)
-                % 11.0).max(0.0);
-            let launch = 3.1 + (i % 5) as f32 * 0.34;
-            let gravity = 5.8;
-            let mut elapsed = local_time;
-            let mut speed = launch;
-            for _ in 0..12 {
-                let flight = 2.0 * speed / gravity;
-                if elapsed <= flight { break; }
+            let t = frame as f32 * 0.075 + (i as f32 * 0.18 + phase * 0.6);
+            let interval = 2.65 + (i % 7) as f32 * 0.11;
+            let cycle = t.rem_euclid(interval);
+            let gravity = 8.0_f32;
+            let mut velocity = (4.8 + (i % 5) as f32 * 0.26) * max_wave.min(2.0);
+            let mut elapsed = cycle;
+            // Piecewise ballistic collisions with a virtual horizontal floor.
+            for _ in 0..14 {
+                let flight = 2.0 * velocity / gravity;
+                if elapsed <= flight || velocity < 0.02 { break; }
                 elapsed -= flight;
-                speed *= 0.58;
+                velocity *= 0.56;
             }
-            let rise = (speed * elapsed - 0.5 * gravity * elapsed * elapsed)
-                .max(0.0);
-            let wave = (-(rise * max_wave * 0.75)).round() as isize;
-            let fy = (base_y as isize + wave).clamp(1, height.saturating_sub(2) as isize) as usize;
-            let fx = start_x + i + 1;
-            let (r, g, b) = keygen_glyph_color(frame, i, base_y);
-            output.push_str(&format!("\x1b[{fy};{fx}H\x1b[1;38;2;{r};{g};{b}m{ch}"));
+            let height_3d = (velocity * elapsed - 0.5 * gravity * elapsed * elapsed).max(0.0);
+            // Z oscillation brings individual characters closer to the camera.
+            let depth = ((t * 0.67 + i as f32 * 0.23).sin() * 0.95)
+                + height_3d * 0.24;
+            let perspective = 1.0 / (1.0 + (1.5 - depth) * 0.12);
+            let world_x = i as f32 - (count - 1.0) * 0.5;
+            let px = (center + world_x * perspective).round() as isize;
+            let py = (baseline - height_3d * 1.35
+                - depth * 0.62).round() as isize;
+            if px < 0 || px >= width as isize || py < 1 || py >= height as isize - 1 {
+                continue;
+            }
+            let fg = keygen_glyph_color(frame, i, base_y);
+            let glow = ((perspective * 0.86).clamp(0.43, 1.0) * 255.0) as u8;
+            let (r,g,b) = (
+                ((fg.0 as u16 * glow as u16) / 255) as u8,
+                ((fg.1 as u16 * glow as u16) / 255) as u8,
+                ((fg.2 as u16 * glow as u16) / 255) as u8
+            );
+            // Depth shadow anchored to the ground gives a readable Z cue.
+            if height_3d > 0.4 && base_y < height.saturating_sub(1) {
+                let shadow_col = (px + (depth * 1.2).round() as isize)
+                    .clamp(0, width.saturating_sub(1) as isize);
+                output.push_str(&format!(
+                    "\x1b[{};{}H\x1b[38;2;66;61;58m.",
+                    base_y, shadow_col + 1
+                ));
+            }
+            output.push_str(&format!(
+                "\x1b[{};{}H\x1b[1;38;2;{r};{g};{b}m{ch}",
+                py + 1, px + 1
+            ));
         }
     };
     draw(title, title_y, 0.0, 2.0);
