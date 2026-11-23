@@ -36,7 +36,55 @@ try {
     if ($text -notmatch '(?m)^texto,.*,linea,') {
         throw "La salida no estructurada no se exporta como filas CSV: $text"
     }
-    Write-Host 'Global --csv OK: sys info, whoami y help utilizan un único formateador.'
+
+    # Regression: global --csv works before output redirection.
+    $redirectScript = Join-Path $root 'csv-redirect.sh'
+    $redirectOut = Join-Path $root 'redirect-stdout.txt'
+    $redirectErr = Join-Path $root 'redirect-stderr.txt'
+    $shellDir = $root.Replace('\', '/')
+    $redirectCommands = @(
+        ('cd "' + $shellDir + '"'),
+        'notsh show lan interfaces --csv > ethernet.csv',
+        'notsh routes --csv > routes.csv',
+        'sys info --csv > system.csv',
+        'echo hola --csv > echo.csv',
+        'netcheck --help --csv > netcheck.csv',
+        'echo __CSV_REDIRECTS_DONE'
+    )
+    [IO.File]::WriteAllLines($redirectScript, $redirectCommands, [Text.UTF8Encoding]::new($false))
+    $redirectProcess = Start-Process -FilePath $exe -ArgumentList ('"' + $redirectScript + '"') -PassThru -WorkingDirectory $root -RedirectStandardOutput $redirectOut -RedirectStandardError $redirectErr
+    if (-not $redirectProcess.WaitForExit(45000)) {
+        $redirectProcess.Kill()
+        throw 'SST se bloqueó al exportar NOTSH mediante redirección.'
+    }
+    $redirectProcess.Refresh()
+    $redirectText = Get-Content -Raw -LiteralPath $redirectOut
+    $redirectErrors = Get-Content -Raw -LiteralPath $redirectErr
+    if ($redirectProcess.ExitCode -ne 0 -or -not $redirectText.Contains('__CSV_REDIRECTS_DONE')) {
+        throw "SST falló exportando CSV con redirección: $redirectErrors / $redirectText"
+    }
+    if ($redirectErrors.Contains('no está disponible para este subcomando')) {
+        throw "NOTSH sigue rechazando --csv: $redirectErrors"
+    }
+    foreach ($filename in @('ethernet.csv','routes.csv','system.csv','echo.csv','netcheck.csv')) {
+        $file = Join-Path $root $filename
+        if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+            throw "La redirección no creó $filename."
+        }
+        $content = Get-Content -Raw -LiteralPath $file
+        if (-not $content.StartsWith('tipo,seccion,fila,campo,valor' + [char]10)) {
+            throw "$filename no contiene una salida CSV normalizada: $content"
+        }
+        $rows = @(Get-Content -LiteralPath $file | ConvertFrom-Csv)
+        if ($rows.Count -lt 1 -or $null -eq $rows[0].campo) {
+            throw "$filename no contiene filas CSV legibles."
+        }
+    }
+    if ((Get-Content -Raw (Join-Path $root 'echo.csv')) -notmatch 'texto,,1,linea,hola') {
+        throw 'El shell builtin echo no pasó por el modificador CSV global.'
+    }
+    Write-Host 'CSV universal OK: NOTSH, sys, help, whoami, echo, netcheck y redirecciones reales a disco.'
+
 }
 finally {
     if ($process -and -not $process.HasExited) { $process.Kill() }
