@@ -25,7 +25,7 @@ impl NetcheckBuiltin {
 
     fn append_measurements(&self, base: &mut CommandOutput, host: Option<&str>) {
         let mut probes = vec![
-            vec!["speed".into(), "--seconds".into(), "2".into()],
+            vec!["speed".into(), "--seconds".into(), "8".into(), "--max-mib".into(), "32".into()],
             vec!["loss".into(), "--count".into(), "6".into(), "--interval".into(), "300".into()],
             vec!["stability".into(), "--seconds".into(), "3".into(), "--interval".into(), "400".into()],
             vec!["traffic".into(), "--seconds".into(), "2".into(), "--top".into(), "8".into()],
@@ -61,8 +61,9 @@ impl NetcheckBuiltin {
                  netcheck full [HOST]             Diagnóstico completo con velocidad, estabilidad y tráfico\n\
                  netcheck loss [HOST] --count 20 --interval 400\n\
                  netcheck stability [HOST] --seconds 10 [--tcp PUERTO]\n\
-                 netcheck speed --seconds 4        Velocidad física y tráfico medido por NIC\n\
-                 netcheck speed --download https://SERVIDOR/archivo.bin --seconds 10\n\
+                 netcheck speed                    Descarga, subida y latencia HTTPS reales, automáticamente\n\
+                 netcheck speed --passive          Solo velocidad de enlace y tráfico de NIC\n\\
+                 netcheck speed --download https://SERVIDOR/archivo.bin --upload https://SERVIDOR/subir\n\
                  netcheck traffic --seconds 5 [--pid PID] [--top N]\n\
                  netcheck inspect --seconds 5 --pid PID\n\
                  netcheck packets --seconds 5     Metadatos ETW por proceso; NO contenido\n\
@@ -70,7 +71,8 @@ impl NetcheckBuiltin {
                    Cabeceras IPv4 y opcionalmente bytes hexadecimales (Administrador).\n\
                  Predeterminado: HOST=example.com, puerto 443.\n\
                  IPv4 ICMP, DNS, gateway, NAC, pérdida, jitter y TCP según modalidad.\n\
-                 La velocidad de Internet requiere un servidor de descarga explícito.\n\
+                 Por defecto: Cloudflare Speed Test por HTTPS; tráfico de prueba limitado.\n\\
+                 Ajustes: --seconds 8 --max-mib 32 (capacidad de prueba).\n\
                  No modifica DHCP, DNS, firewall, VLAN ni perfiles 802.1X.\n"));
         }
         let mut host = "example.com".to_owned();
