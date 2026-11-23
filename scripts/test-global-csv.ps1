@@ -78,7 +78,7 @@ try {
             throw "La redirección no creó $filename."
         }
         $content = [string](Get-Content -Raw -LiteralPath $file)
-        if ($content -notmatch '\\Atipo,seccion,fila,campo,valor\\r?\\n') {
+        if ($content -notmatch '\Atipo,seccion,fila,campo,valor\r?\n') {
             throw "$filename no contiene una salida CSV normalizada: $content"
         }
         $rows = @(Get-Content -LiteralPath $file | ConvertFrom-Csv)
