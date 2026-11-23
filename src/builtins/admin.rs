@@ -174,7 +174,8 @@ impl NetworkBuiltin {
                     crate::adapters::windows::network::interfaces_csv("all")?)),
                 Some("lan") => Ok(CommandOutput::ok(
                     crate::adapters::windows::network::interfaces_csv("lan")?)),
-                Some("wlan") => crate::adapters::network::wlan_native::interfaces_csv(),
+                Some("wlan") => Ok(CommandOutput::ok(
+                    crate::adapters::windows::network::interfaces_csv("wlan")?)),
                 // Existing network scan/traffic/presence/usage exporters must
                 // continue through NetworkService; they already own their CSV.
                 None if matches!(args.first().map(String::as_str),
