@@ -115,7 +115,7 @@ impl NetcheckBuiltin {
                     addresses.sort(); addresses.dedup();
                     if addresses.is_empty() {
                         output.push_str("\n4. DNS\n  Estado: SIN DIRECCIONES\n");
-                        findings.push(("CRÍTICO", "El resolvedor no devolvió direcciones. Revisar DNS configurado.".to_owned()));
+                        findings.push(("ADVERTENCIA", "La consulta no devolvió direcciones. Verificar nombre solicitado y DNS; no demuestra falla de toda la red.".to_owned()));
                     } else {
                         output.push_str(&format!("\n4. DNS\n  Estado: RESUELTO\n  Direcciones: {}\n",
                             addresses.iter().take(6).map(ToString::to_string).collect::<Vec<_>>().join(", ")));
@@ -124,7 +124,7 @@ impl NetcheckBuiltin {
                 }
                 Err(error) => {
                     output.push_str(&format!("\n4. DNS\n  Estado: ERROR\n  Evidencia: {error}\n"));
-                    findings.push(("CRÍTICO", "Error de resolución DNS: comparar con acceso a dirección IP y verificar políticas DNS.".to_owned()));
+                    findings.push(("ADVERTENCIA", "Error al resolver este destino: revisar nombre y DNS, y comparar con conectividad a una IP conocida.".to_owned()));
                     Vec::new()
                 }
             }
@@ -165,6 +165,7 @@ impl NetcheckBuiltin {
         } else if findings.is_empty() {
             output.push_str("  Estado: INDETERMINADO\n  Evidencia insuficiente para atribuir una causa.\n");
         } else { output.push_str("  Estado: REQUIERE REVISIÓN\n"); }
+        findings.sort_by_key(|(severity, _)| if *severity == "CRÍTICO" { 0 } else { 1 });
         for (severity, finding) in findings {
             output.push_str(&format!("  {severity}: {finding}\n"));
         }
