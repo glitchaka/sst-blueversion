@@ -69,6 +69,30 @@ if (-not (Test-Path -LiteralPath (Join-Path $guide 'guide-index.json') -PathType
     throw 'Falta la guía local del build: target/release/guide/guide-index.json'
 }
 Copy-Item -Recurse -LiteralPath $guide -Destination (Join-Path $stage 'guide')
+# If original keygen soundtrack files are part of the source, preserve them in
+# both the auto-extracting installer and the portable distribution.
+# Never ship a partial audio set: keygen requires exactly both tracks.
+$keygenSource = Join-Path $root 'assets\keygen'
+$keygenOne = Join-Path $keygenSource 'track01.mp3'
+$keygenTwo = Join-Path $keygenSource 'track02.mp3'
+$onePresent = Test-Path -LiteralPath $keygenOne -PathType Leaf
+$twoPresent = Test-Path -LiteralPath $keygenTwo -PathType Leaf
+if ($onePresent -xor $twoPresent) {
+    throw 'SST keygen: solo se encontró uno de los MP3. El instalador exige el conjunto completo.'
+}
+if ($onePresent -and $twoPresent) {
+    foreach ($track in @($keygenOne, $keygenTwo)) {
+        if ((Get-Item -LiteralPath $track).Length -lt 100000) {
+            throw "SST keygen: pista inválida o truncada: $track"
+        }
+    }
+    $stageAssets = Join-Path $stage 'assets'
+    New-Item -ItemType Directory -Force -Path $stageAssets | Out-Null
+    Copy-Item -Recurse -LiteralPath $keygenSource -Destination (Join-Path $stageAssets 'keygen')
+    Write-Host 'SST: ambos MP3 de keygen incluidos en el instalador SFX.'
+} else {
+    Write-Warning 'SST: sin audio keygen en source assets; no se empaquetan pistas falsas. El reproductor puede recuperarlas del instalador de audio local.'
+}
 $bg = Join-Path $release 'bg'
 if (Test-Path -LiteralPath $bg -PathType Container) {
     Copy-Item -Recurse -LiteralPath $bg -Destination (Join-Path $stage 'bg')
@@ -123,6 +147,11 @@ $rawUpdater = Join-Path $dist 'sst-updater.exe'
 Copy-Item -LiteralPath $updater -Destination $rawUpdater
 # La distribución portable conserva exactamente la misma guía sin Internet.
 Copy-Item -Recurse -LiteralPath $guide -Destination (Join-Path $dist 'guide')
+if ($onePresent -and $twoPresent) {
+    $distAssets = Join-Path $dist 'assets'
+    New-Item -ItemType Directory -Force -Path $distAssets | Out-Null
+    Copy-Item -Recurse -LiteralPath $keygenSource -Destination (Join-Path $distAssets 'keygen')
+}
 
 $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $rawExe).Hash.ToLowerInvariant()
 $setupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup).Hash.ToLowerInvariant()
