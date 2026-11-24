@@ -1494,7 +1494,7 @@ fn sst_icon_palette() -> [(u8, u8, u8); 4] {
 
 fn sst_icon_ansi(index: usize) -> String {
     let (r, g, b) = sst_icon_palette()[index.min(3)];
-    format!("\\x1b[38;2;{r};{g};{b}m")
+    format!("\x1b[38;2;{r};{g};{b}m")
 }
 
 /// Characters are density levels of the same embedded source icon.
@@ -2386,9 +2386,9 @@ mod fetch_text_logo_tests {
             assert_eq!(sst_icon_rgb(glyph), Some(palette[index]));
         }
         assert_eq!(sst_icon_rgb(' '), None);
-        let painted = sst_icon_truecolor(vec!["█▓▒░".to_owned()]).join("\\n");
+        let painted = sst_icon_truecolor(vec!["█▓▒░".to_owned()]).join("\n");
         for (r, g, b) in palette {
-            let expected = format!("\\x1b[38;2;{r};{g};{b}m");
+            let expected = format!("\x1b[38;2;{r};{g};{b}m");
             assert!(painted.contains(&expected), "missing original SST icon tone");
         }
     }
