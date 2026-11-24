@@ -1,5 +1,4 @@
 pub mod device;
-pub mod diagnostics;
 pub mod keygen_audio;
 pub mod domain;
 pub mod network;
