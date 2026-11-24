@@ -1676,11 +1676,34 @@ fn sst_icon_rgb(glyph: char) -> Option<(u8, u8, u8)> {
 /// en ANSI TrueColor. libcaca::Color sólo ofrece una paleta aproximada de 16
 /// colores, por lo que no debe sustituir los valores del icono oficial.
 fn sst_icon_truecolor(lines: Vec<String>) -> Vec<String> {
-    lines.into_iter().map(|line| {
-        let mut out = String::with_capacity(line.len() * 2);
+    // libcaca supplies the glyph geometry. Its colors are spatially sampled
+    // from the exact PNG embedded in SST, never chosen by character density.
+    static ICON: std::sync::OnceLock<image::RgbaImage> =
+        std::sync::OnceLock::new();
+    let icon = ICON.get_or_init(|| {
+        image::load_from_memory(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"), "/assets/sst-icon.png"
+        )))
+        .expect("embedded SST PNG icon").to_rgba8()
+    });
+    let height = lines.len().max(1);
+    let width = lines.iter().map(|s| s.chars().count()).max().unwrap_or(1).max(1);
+    lines.into_iter().enumerate().map(|(y, line)| {
+        let mut out = String::with_capacity(line.len() * 4);
         let mut current = None;
-        for glyph in line.chars() {
-            let color = sst_icon_rgb(glyph);
+        for (x, glyph) in line.chars().enumerate() {
+            let color = if sst_icon_rgb(glyph).is_some() {
+                let sx = ((x as u64 * icon.width() as u64) / width as u64)
+                    .min(icon.width().saturating_sub(1) as u64) as u32;
+                let sy = ((y as u64 * icon.height() as u64) / height as u64)
+                    .min(icon.height().saturating_sub(1) as u64) as u32;
+                let pixel = icon.get_pixel(sx, sy);
+                if pixel[3] >= 128 {
+                    Some((pixel[0], pixel[1], pixel[2]))
+                } else {
+                    sst_icon_rgb(glyph)
+                }
+            } else { None };
             if color != current {
                 if let Some((r, g, b)) = color {
                     out.push_str(&format!("\x1b[38;2;{r};{g};{b}m"));
@@ -2550,10 +2573,8 @@ mod fetch_text_logo_tests {
         }
         assert_eq!(sst_icon_rgb(' '), None);
         let painted = sst_icon_truecolor(vec!["█▓▒░".to_owned()]).join("\n");
-        for (r, g, b) in palette {
-            let expected = format!("\x1b[38;2;{r};{g};{b}m");
-            assert!(painted.contains(&expected), "missing original SST icon tone");
-        }
+        assert!(painted.contains("\x1b[38;2;"),
+            "original icon must generate valid ANSI truecolor");
     }
 
     #[test]
@@ -2563,7 +2584,7 @@ mod fetch_text_logo_tests {
         assert_eq!(width, colored_width);
         assert_eq!(plain.len(), 12);
         assert_eq!(colored.len(), plain.len());
-        assert!(colored.join("\n").contains(&super::sst_icon_ansi(0)));
+        assert!(colored.join("\n").contains("\x1b[38;2;"));
     }
 
     #[test]
