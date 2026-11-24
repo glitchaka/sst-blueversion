@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    net::{IpAddr, Ipv4Addr},
+    net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
     sync::{Arc, Mutex, mpsc},
     thread,
     time::{Duration, Instant},
@@ -423,7 +423,7 @@ impl NetworkDiscoveryService {
 
                 match result {
                     Ok(mut rows) => {
-                        scan_status = format!("ok · {} hosts", rows.len());
+                        scan_status = format!("{} de {} IP con respuesta", rows.len(), network.hosts().count());
                         if persistence_available {
                             monitor_warning = None;
                         }
@@ -1085,6 +1085,18 @@ fn handle_chat_command(
     Ok(())
 }
 
+/// IPv4 source chosen by Windows routing for probes to this subnet.
+/// Identifies the scanner itself without assuming the first ARP reply is remote.
+fn scan_route_source(network: Ipv4Net) -> Option<Ipv4Addr> {
+    let target = network.hosts().next()?;
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect(SocketAddr::new(IpAddr::V4(target), 9)).ok()?;
+    match socket.local_addr().ok()?.ip() {
+        IpAddr::V4(source) => Some(source),
+        IpAddr::V6(_) => None,
+    }
+}
+
 fn scan_rows_with(
     diagnostics: Arc<NetworkDiagnosticsService>,
     devices: Arc<dyn DeviceRepository>,
@@ -1092,6 +1104,7 @@ fn scan_rows_with(
 ) -> Result<Vec<ScanRow>> {
     let timeout = Duration::from_millis(300);
     let hosts = network.hosts().collect::<Vec<Ipv4Addr>>();
+    let local_source = scan_route_source(network);
     let results = Arc::new(Mutex::new(Vec::new()));
 
     for chunk in hosts.chunks(48) {
@@ -1152,8 +1165,8 @@ fn scan_rows_with(
                 known: known_macs.contains(&normalized_mac),
                 mac,
                 hostname: hostname.unwrap_or_else(|| "-".to_owned()),
-                latency_ms: evidence.latency_ms,
-                discovery: evidence.method,
+                latency_ms: if Some(ip) == local_source { None } else { evidence.latency_ms },
+                discovery: if Some(ip) == local_source { "local".to_owned() } else { evidence.method },
                 mac_scope: identity.scope,
                 vendor: identity.vendor,
             }
@@ -1244,8 +1257,14 @@ fn render_monitor_screen(
         if only_unknown { "equipos desconocidos" } else { "todos los equipos" },
         tui_style::LABEL, tui_style::RESET, OFFLINE_MISSES,
     );
+    overview.push_str("\nDetección parcial ARP/ICMP/TCP: sin respuesta no significa apagado. VLAN y ACL pueden aislar equipos.");
+    if let Some(source) = scan_route_source(network) {
+        overview.push_str(&format!("\nIP origen de la ruta: {source} (interfaz elegida por Windows)."));
+    } else {
+        overview.push_str("\nRuta de origen no determinada; el CIDR no selecciona una VLAN.");
+    }
     if let Some(message) = publish_message {
-        overview.push_str(&format!(
+        overview.push_str(&format(
             "\n{}Publicando:{} {}",
             tui_style::LABEL, tui_style::RESET,
             tui_style::shorten(message, width.saturating_sub(14)),
@@ -1457,8 +1476,10 @@ fn render_monitor_rows(
     let count = if width >= 78 { max_rows } else { max_rows.saturating_div(2).max(1) };
     for (id, row) in rows.iter().take(count) {
         let misses = misses.get(id).copied().unwrap_or(0);
-        let state = if misses == 0 {
-            "EN LÍNEA".to_owned()
+        let state = if row.discovery == "local" {
+            "LOCAL".to_owned()
+        } else if misses == 0 {
+            "RESPONDE".to_owned()
         } else {
             format!("FALLO {misses}/{OFFLINE_MISSES}")
         };
