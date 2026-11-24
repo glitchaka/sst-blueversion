@@ -104,6 +104,10 @@ jobs:
             }
           }
 
+      - name: Restore and verify both original SST keygen MP3 tracks
+        shell: pwsh
+        run: ./scripts/prepare-keygen-soundtrack.ps1
+
       - name: Build SST, native SFX packager and stub
         id: compile
         shell: pwsh
