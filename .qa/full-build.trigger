@@ -17,3 +17,5 @@ Windows CI build request: net monitor source route and AD Credential UI correcti
 2026-11-24: SDL2 glyph rotation driven directly by keygen rigid-body physics.
 
 2026-11-24: startup neofetch logo uses libcaca raster geometry and SDL2 offscreen icon color resampling; not keygen.
+
+2026-11-24: remove unintended SDL keygen window; SDL2 + libcaca only on neofetch startup logo.
