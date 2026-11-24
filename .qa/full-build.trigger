@@ -5,3 +5,5 @@ Windows CI build request: net monitor source route and AD Credential UI correcti
 2026-11-24: validate user-requested native netdiag/keygen/unban corrections after Windows monitor test fix.
 
 2026-11-24: test actual netdiag active speed failure reporting and AD unlock changes.
+
+2026-11-24: full Windows build after netprobe-only rename, icon palette, keygen rigid-body 3D rotation, AD SSPI administrative bind.
