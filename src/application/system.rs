@@ -1675,6 +1675,44 @@ fn sst_icon_rgb(glyph: char) -> Option<(u8, u8, u8)> {
 /// Conservar la geometría renderizada por libcaca y emitir el RGB original
 /// en ANSI TrueColor. libcaca::Color sólo ofrece una paleta aproximada de 16
 /// colores, por lo que no debe sustituir los valores del icono oficial.
+/// SDL2 performs the pixel-space resampling for the startup libcaca logo.
+/// This is an offscreen software surface: the logo remains inside the SST
+/// terminal instead of opening an unrelated second window.
+#[cfg(windows)]
+fn sst_logo_sdl_pixels(
+    icon: &image::RgbaImage, width: usize, height: usize,
+) -> Option<Vec<(u8, u8, u8, u8)>> {
+    use sdl2::{pixels::PixelFormatEnum, render::BlendMode, surface::Surface};
+    if width == 0 || height == 0 || icon.width() == 0 || icon.height() == 0 {
+        return None;
+    }
+    let mut source = Surface::new(icon.width(), icon.height(), PixelFormatEnum::ABGR8888).ok()?;
+    let src_pitch = source.pitch() as usize;
+    source.with_lock_mut(|buf| {
+        for y in 0..icon.height() as usize {
+            let start = y * src_pitch;
+            let src = &icon.as_raw()[y * icon.width() as usize * 4..
+                (y + 1) * icon.width() as usize * 4];
+            buf[start..start + src.len()].copy_from_slice(src);
+        }
+    });
+    source.set_blend_mode(BlendMode::None).ok()?;
+    let mut scaled = Surface::new(width as u32, height as u32,
+        PixelFormatEnum::ABGR8888).ok()?;
+    source.blit_scaled(None, &mut scaled, None).ok()?;
+    let pitch = scaled.pitch() as usize;
+    let mut pixels = Vec::with_capacity(width * height);
+    scaled.with_lock(|buf| {
+        for y in 0..height {
+            for x in 0..width {
+                let p = y * pitch + x * 4;
+                pixels.push((buf[p], buf[p + 1], buf[p + 2], buf[p + 3]));
+            }
+        }
+    });
+    Some(pixels)
+}
+
 fn sst_icon_truecolor(lines: Vec<String>) -> Vec<String> {
     // libcaca supplies the glyph geometry. Its colors are spatially sampled
     // from the exact PNG embedded in SST, never chosen by character density.
@@ -1688,6 +1726,8 @@ fn sst_icon_truecolor(lines: Vec<String>) -> Vec<String> {
     });
     let height = lines.len().max(1);
     let width = lines.iter().map(|s| s.chars().count()).max().unwrap_or(1).max(1);
+    #[cfg(windows)]
+    let sdl_pixels = sst_logo_sdl_pixels(icon, width, height);
     lines.into_iter().enumerate().map(|(y, line)| {
         let mut out = String::with_capacity(line.len() * 4);
         let mut current = None;
@@ -1697,12 +1737,16 @@ fn sst_icon_truecolor(lines: Vec<String>) -> Vec<String> {
                     .min(icon.width().saturating_sub(1) as u64) as u32;
                 let sy = ((y as u64 * icon.height() as u64) / height as u64)
                     .min(icon.height().saturating_sub(1) as u64) as u32;
-                let pixel = icon.get_pixel(sx, sy);
-                if pixel[3] >= 128 {
-                    Some((pixel[0], pixel[1], pixel[2]))
-                } else {
-                    sst_icon_rgb(glyph)
-                }
+                #[cfg(windows)]
+                let scaled = sdl_pixels.as_ref()
+                    .and_then(|pixels| pixels.get(y * width + x).copied());
+                #[cfg(not(windows))]
+                let scaled: Option<(u8, u8, u8, u8)> = None;
+                let (r, g, b, a) = scaled.unwrap_or_else(|| {
+                    let p = icon.get_pixel(sx, sy);
+                    (p[0], p[1], p[2], p[3])
+                });
+                if a >= 128 { Some((r, g, b)) } else { sst_icon_rgb(glyph) }
             } else { None };
             if color != current {
                 if let Some((r, g, b)) = color {
