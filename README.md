@@ -94,8 +94,8 @@ Entre las capacidades de SST se encuentran:
 | `wol` | Wake-on-LAN | `wol NOTEBOOK-01` |
 | `domain` | Estado de dominio | `domain status PC-01 --verify` |
 | `switch` | MAC → switch → puerto por SNMP | `switch locate NOTEBOOK-01` |
-| `netprobe` | Diagnóstico de conectividad, velocidad, estabilidad, pérdidas y tráfico | `netprobe full` |
-| `unban` | Desbloqueo de cuentas de Active Directory mediante LDAP nativo | `unban USUARIO` |
+| `notsh test` | Diagnóstico de conectividad, velocidad, estabilidad, pérdidas y tráfico | `notsh test full` |
+| `unban` | Desbloqueo de cuentas de Active Directory mediante LDAP nativo | `sudo unban USUARIO` |
 | `keygen` | Easter egg gráfico con dos pistas MP3 | `keygen` |
 | `triage` | Resumen de señales locales | `triage` |
 | `intel` | Fuentes/caché/lookup de inteligencia | `intel lookup INDICADOR` |
@@ -187,11 +187,11 @@ La implementación Windows de la rama `main` utiliza SDL2 y libcaca para la anim
 ### `unban` — Active Directory
 
 ```bash
-unban USUARIO
+sudo unban USUARIO
 unban --help
 ```
 
-Desbloquea una cuenta identificada por su sAMAccountName mediante LDAP nativo en Windows. La implementación actual solicita credenciales de dominio en un diálogo protegido y exige permisos de desbloqueo en AD; no admite contraseñas como argumentos. Actualmente no exige `sudo`, lo que difiere del requisito anterior de elevación.
+Desbloquea una cuenta identificada por su sAMAccountName mediante LDAP nativo en Windows. La implementación actual solicita credenciales de dominio en un diálogo protegido y exige permisos de desbloqueo en AD; no admite contraseñas como argumentos. Exige una sesión elevada de Windows; desde una sesión normal ejecuta `sudo unban USUARIO`.
 
 La terminal activa el foco de teclado al abrirse para permitir escribir sin realizar un clic adicional. El ejecutable utiliza el icono `assets/sst-icon.ico`.
 
@@ -673,23 +673,23 @@ solo.
 
 ## `net` — diagnóstico, descubrimiento y tráfico de red
 
-### Diagnóstico especializado: `netprobe`
+### Diagnóstico especializado: `notsh test`
 
 ```bash
-netprobe
-netprobe full HOST
-netprobe HOST --port 443
-netprobe loss HOST --count 20 --interval 400
-netprobe stability HOST --seconds 10
-netprobe speed
-netprobe speed --passive
-netprobe traffic --seconds 5 --top 10
-netprobe packets --seconds 5
-netprobe capture --seconds 5
-netprobe --help
+notsh test
+notsh test full HOST
+notsh test HOST --port 443
+notsh test loss HOST --count 20 --interval 400
+notsh test stability HOST --seconds 10
+notsh test speed
+notsh test speed --passive
+notsh test traffic --seconds 5 --top 10
+notsh test packets --seconds 5
+notsh test capture --seconds 5
+notsh test --help
 ```
 
-El código de `netprobe` incluye pruebas de conectividad, DNS, gateway, interfaces físicas, configuración 802.1X, pérdida ICMP, jitter, velocidad HTTPS (descarga y subida) y tráfico por proceso. El diagnóstico 802.1X no confirma por sí solo la autorización efectiva del servidor RADIUS. La captura requiere permisos de administrador y debe realizarse únicamente en equipos y redes autorizados. La prueba de velocidad genera tráfico real; el modo `--passive` solo consulta el enlace y los contadores de interfaz.
+El código de `notsh test` incluye pruebas de conectividad, DNS, gateway, interfaces físicas, configuración 802.1X, pérdida ICMP, jitter, velocidad HTTPS (descarga y subida) y tráfico por proceso. El diagnóstico 802.1X no confirma por sí solo la autorización efectiva del servidor RADIUS. La captura requiere permisos de administrador y debe realizarse únicamente en equipos y redes autorizados. La prueba de velocidad genera tráfico real; el modo `--passive` solo consulta el enlace y los contadores de interfaz.
 
 Estas modalidades están presentes en el código fuente; la validación integral en Windows de la revisión actual sigue pendiente.
 
