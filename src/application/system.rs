@@ -1463,19 +1463,50 @@ mod keygen_motion_regressions {
 /// Se conserva íntegro y sólo se reduce su representación durante el arranque.
 pub(crate) const FETCH_LOGO_ASCII: &[&str] = &["   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%=--::::--------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%=---------%%%%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%---#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=---------%%%%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%---#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=------%%%%%%%%%%%%%%%%%%%%%%%%----------%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=--+%%%%%%%%%%%%---------%%%---------=%%%%%%%%%%%%---------%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%---------%%%---------=%%%%%%%%%%%%---------%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%------------------------=%%%%%%%%%----------------------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%------------------------=%%%%%%%%%----------------------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%---------------------=%%%%%%%%%%%%-------------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%----------------------%%%%%%%%%%%%----------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%----------------------%%%%%%%%%%%%----------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%---------%%%%","%%%=---------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=---------------%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=---------------%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%*------------------%%%%%%%%%---*%%*------------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%*------------------%%%%%%%%%---*%%*------------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%%%%#---------------%%%%%%%%%---*%%%%%%---------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%---------%%%%%%%%%%%%=-----=%%%%%%---------%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%---------%%%%%%%%%%%%=-----=%%%%%%---------%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%%%%%%%%%%%%%---------=%%%%%%%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%%%%%%%%%%%%%---------=%%%%%%%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=---------%%%%%%%%%%%%----------------------%%%%%%%%%%%%-------------------%%%%%%%%%---------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    "];
 
-/// Colores muestreados del icono SST original (assets/sst-icon.png):
-/// azul marino #23346A, azul secundario #364C77,
-/// azul acero #6D8FAB y gris plata #BABDC6.
-/// El color se elige por densidad del glifo, no por coordenadas:
-/// los bloques no forman bandas aleatorias de amarillo/rojo/verde.
+/// The icon's *actual embedded PNG bytes* determine the logo colors.
+/// No guessed RGB palette, no per-glyph rainbow, no background flood.
+fn sst_icon_palette() -> [(u8, u8, u8); 4] {
+    static PALETTE: std::sync::OnceLock<[(u8, u8, u8); 4]> =
+        std::sync::OnceLock::new();
+    *PALETTE.get_or_init(|| {
+        let bytes = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/sst-icon.png"));
+        let image = image::load_from_memory(bytes)
+            .expect("assets/sst-icon.png must be a valid original SST icon")
+            .to_rgba8();
+        let mut counts = std::collections::HashMap::<(u8, u8, u8), usize>::new();
+        for pixel in image.pixels() {
+            if pixel[3] < 128 { continue; }
+            *counts.entry((pixel[0], pixel[1], pixel[2])).or_default() += 1;
+        }
+        let mut candidates = counts.into_iter().collect::<Vec<_>>();
+        candidates.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        candidates.truncate(4);
+        assert!(!candidates.is_empty(), "SST icon has no opaque pixels");
+        candidates.sort_by_key(|((r, g, b), _)| {
+            2126_u32 * u32::from(*r) +
+            7152_u32 * u32::from(*g) +
+            722_u32 * u32::from(*b)
+        });
+        let colors = candidates.iter().map(|(rgb, _)| *rgb).collect::<Vec<_>>();
+        std::array::from_fn(|i| colors[i.min(colors.len() - 1)])
+    })
+}
+
+fn sst_icon_ansi(index: usize) -> String {
+    let (r, g, b) = sst_icon_palette()[index.min(3)];
+    format!("\\x1b[38;2;{r};{g};{b}m")
+}
+
+/// Characters are density levels of the same embedded source icon.
 fn sst_icon_rgb(glyph: char) -> Option<(u8, u8, u8)> {
-    match glyph {
-        '█' | '%' | '#' => Some((35, 52, 106)),
-        '▓' | '*' | '+' => Some((54, 76, 119)),
-        '▒' | '=' => Some((109, 143, 171)),
-        '░' | '-' | ':' => Some((186, 189, 198)),
-        _ => None,
-    }
+    let index = match glyph {
+        '█' | '%' | '#' => 0,
+        '▓' | '*' | '+' => 1,
+        '▒' | '=' => 2,
+        '░' | '-' | ':' => 3,
+        _ => return None,
+    };
+    Some(sst_icon_palette()[index])
 }
 
 /// Conservar la geometría renderizada por libcaca y emitir el RGB original
@@ -1616,6 +1647,9 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         .unwrap_or(80)
         .clamp(35, 240);
 
+    let icon_dark = sst_icon_ansi(0);
+    let icon_mid = sst_icon_ansi(2);
+    let icon_light = sst_icon_ansi(3);
     let info = if plain {
         vec![
             format!("{user}@{host}"),
@@ -1633,14 +1667,14 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         ]
     } else {
         let title = format!(
-            "\x1b[1;38;2;186;189;198m{user}\x1b[38;2;109;143;171m@\x1b[38;2;186;189;198m{host}\x1b[0m"
+            "\x1b[1m{icon_light}{user}{icon_mid}@{icon_light}{host}\x1b[0m"
         );
-        let label = "\x1b[1;38;2;109;143;171m";
+        let label = format!("\x1b[1m{icon_mid}");
         let reset = "\x1b[0m";
 
         vec![
             title,
-            "\x1b[38;2;54;76;119m────────────────────────────────────────\x1b[0m".to_owned(),
+            format!("{icon_dark}────────────────────────────────────────\x1b[0m"),
             format!("{label}OS:{reset} {}", truncate_fetch(&os, 58)),
             format!("{label}Host:{reset} {host}"),
             format!("{label}Kernel:{reset} {kernel}"),
@@ -1692,10 +1726,10 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
             let fact = truncate_fetch(fact, fact_width);
             out.push_str("  ");
             if index == 0 {
-                out.push_str(&format!("\x1b[1;38;2;186;189;198m{fact}\x1b[0m"));
+                out.push_str(&format!("\x1b[1m{icon_light}{fact}\x1b[0m"));
             } else if let Some((name, value)) = fact.split_once(':') {
                 out.push_str(&format!(
-                    "\x1b[1;38;2;109;143;171m{name}:\x1b[0m{value}"
+                    "\x1b[1m{icon_mid}{name}:\x1b[0m{value}"
                 ));
             } else {
                 out.push_str(&fact);
@@ -2347,23 +2381,15 @@ mod fetch_text_logo_tests {
 
     #[test]
     fn original_icon_palette_is_used_without_rainbow_colors() {
-        assert_eq!(sst_icon_rgb('█'), Some((35, 52, 106)));
-        assert_eq!(sst_icon_rgb('▓'), Some((54, 76, 119)));
-        assert_eq!(sst_icon_rgb('▒'), Some((109, 143, 171)));
-        assert_eq!(sst_icon_rgb('░'), Some((186, 189, 198)));
-        assert_eq!(sst_icon_rgb(' '), None);
-
-        let painted = sst_icon_truecolor(vec!["█▓▒░".to_owned()]).join("\n");
-        for rgb in [
-            "\x1b[38;2;35;52;106m",
-            "\x1b[38;2;54;76;119m",
-            "\x1b[38;2;109;143;171m",
-            "\x1b[38;2;186;189;198m",
-        ] {
-            assert!(painted.contains(rgb), "missing original SST icon tone");
+        let palette = super::sst_icon_palette();
+        for (glyph, index) in [('█', 0), ('▓', 1), ('▒', 2), ('░', 3)] {
+            assert_eq!(sst_icon_rgb(glyph), Some(palette[index]));
         }
-        for forbidden in ["38;2;255;0;0", "38;2;255;255;0", "38;2;0;255;0"] {
-            assert!(!painted.contains(forbidden));
+        assert_eq!(sst_icon_rgb(' '), None);
+        let painted = sst_icon_truecolor(vec!["█▓▒░".to_owned()]).join("\\n");
+        for (r, g, b) in palette {
+            let expected = format!("\\x1b[38;2;{r};{g};{b}m");
+            assert!(painted.contains(&expected), "missing original SST icon tone");
         }
     }
 
@@ -2374,7 +2400,7 @@ mod fetch_text_logo_tests {
         assert_eq!(width, colored_width);
         assert_eq!(plain.len(), 12);
         assert_eq!(colored.len(), plain.len());
-        assert!(colored.join("\n").contains("\x1b[38;2;35;52;106m"));
+        assert!(colored.join("\n").contains(&super::sst_icon_ansi(0)));
     }
 
     #[test]
