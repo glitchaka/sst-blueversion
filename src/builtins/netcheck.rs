@@ -39,7 +39,7 @@ impl NetcheckBuiltin {
         for cmd in probes {
             let name = cmd[0].to_uppercase();
             base.stdout.push_str(&format!("\n=== {name} ===\n"));
-            match super::netdiag_extended::execute(&cmd, &*self.probe, &*self.traffic_factory) {
+            match super::netcheck_extended::execute(&cmd, &*self.probe, &*self.traffic_factory) {
                 Ok(output) if output.status == 0 => base.stdout.push_str(&output.stdout),
                 Ok(output) => base.stdout.push_str(&format!("NO DISPONIBLE: {}\n", output.stderr.trim())),
                 Err(error) => base.stdout.push_str(&format!("ERROR: {error:#}\n")),
@@ -50,7 +50,7 @@ impl NetcheckBuiltin {
     fn diagnose(&self, args: &[String]) -> Result<CommandOutput> {
         if let Some(mode) = args.first() {
             if matches!(mode.as_str(), "loss" | "stability" | "speed" | "traffic" | "inspect" | "packets" | "capture") {
-                return super::netdiag_extended::execute(args, &*self.probe, &*self.traffic_factory);
+                return super::netcheck_extended::execute(args, &*self.probe, &*self.traffic_factory);
             }
             if mode == "full" { return self.full(&args[1..]); }
         }
