@@ -529,55 +529,55 @@ Temas:
   net help neighbors
   net help arp
 
-19. netcheck — diagnóstico integral, medidas y tráfico
+19. netprobe — diagnóstico integral, medidas y tráfico
 
-  netcheck
+  netprobe
     Ejecuta el diagnóstico general, medición de tráfico real en interfaces,
     pérdida ICMP contra el gateway predeterminado y breve observación ETW.
 
-  netcheck full HOST
+  netprobe full HOST
     Realiza pruebas de enlace, IP/APIPA, gateway, NAC/802.1X, DNS, ICMP, TCP,
     velocidad de NIC, pérdida, jitter y tráfico por proceso sobre ese destino.
 
-  netcheck HOST [--port PUERTO]
+  netprobe HOST [--port PUERTO]
     Inspección rápida de conectividad y servicio TCP. No mide velocidad.
 
-  netcheck loss [HOST] --count 20 --interval 400 --timeout 800
+  netprobe loss [HOST] --count 20 --interval 400 --timeout 800
     Prueba repetida ICMP IPv4 (gateway por defecto cuando se omite HOST).
     Informa enviados, recibidos, pérdidas %, RTT mínimo/medio/máximo,
     variación de RTT y racha máxima de fallos. Errores de API se separan.
 
-  netcheck stability [HOST] --seconds 20 --interval 1000
+  netprobe stability [HOST] --seconds 20 --interval 1000
     Mide disponibilidad y oscilaciones de RTT a lo largo del tiempo.
     Con --tcp PUERTO evalúa disponibilidad TCP (no pérdida de paquetes IP).
 
-  netcheck speed --seconds 4
+  netprobe speed --seconds 4
     Mide con IP Helper los contadores de bytes reales RX/TX de NIC Ethernet
     y Wi-Fi físicas, velocidad de enlace negociado y errores/descartes.
     No equivale a velocidad máxima hacia Internet.
 
-  netcheck speed --download https://SERVIDOR/archivo.bin --seconds 10 --max-mib 64
+  netprobe speed --download https://SERVIDOR/archivo.bin --seconds 10 --max-mib 64
     Prueba activa de DESCARGA HTTPS con WinHTTP, sin curl.exe ni otros
     ejecutables. Usa un endpoint elegido por el operador, hasta el tiempo
     y volumen máximos indicados, sin guardar los datos descargados.
     El resultado no mide velocidad de subida. No hay servidor predefinido.
 
-  netcheck traffic --seconds 5 [--pid PID] [--top N]
+  netprobe traffic --seconds 5 [--pid PID] [--top N]
     Captura eventos de red ETW y presenta bytes por segundo TX/RX por proceso,
     nombre de proceso, PID, conexiones activas TCP/UDP, destinos y servicios
     Windows relacionados con ese PID según Service Control Manager.
     Si el proceso aloja múltiples servicios, NO se atribuyen los bytes a uno
     individual: sólo se indica que comparten el proceso.
 
-  netcheck inspect --seconds 5 --pid PID
+  netprobe inspect --seconds 5 --pid PID
     Misma observación ETW filtrada al PID, con conexiones y servicios.
 
-  netcheck packets --seconds 5 [--pid PID]
+  netprobe packets --seconds 5 [--pid PID]
     Muestra eventos individuales de red ETW con dirección TX/RX, bytes,
     PID y código de evento, con cola acotada a 1024 observaciones.
     NO es un sniffer de tramas NDIS ni inspecciona el contenido del payload.
 
-  netcheck capture --interface IPV4_LOCAL --seconds 5 --limit 100
+  netprobe capture --interface IPV4_LOCAL --seconds 5 --limit 100
     Captura real de paquetes IPv4 mediante Winsock SOCK_RAW + SIO_RCVALL,
     únicamente para la IPv4 indicada en una interfaz local, sin procesos
     externos, y muestra IP origen/destino, puertos TCP/UDP, flags TCP, bytes,
@@ -585,14 +585,14 @@ Temas:
     Requiere permiso de Administrador y adaptador/política compatible.
     Sólo recibe tráfico IPv4 hacia/desde la IP de interfaz elegida.
 
-  netcheck capture --interface IPV4_LOCAL --seconds 5 --payload-bytes 32
+  netprobe capture --interface IPV4_LOCAL --seconds 5 --payload-bytes 32
     Añade el prefijo hexadecimal de hasta 32 bytes de carga útil por paquete
     si el operador lo solicita expresamente. El contenido puede ser sensible.
     El límite es de 64 bytes y nunca se muestra por defecto.
     HTTPS/TLS sigue cifrado. No se reconstruyen sesiones, archivos, imágenes
     ni datos de aplicación; el nombre de servicio inferido no es garantía.
 
-  netcheck --help
+  netprobe --help
     Ayuda de todas las modalidades.
 
 Limitaciones explícitas:
