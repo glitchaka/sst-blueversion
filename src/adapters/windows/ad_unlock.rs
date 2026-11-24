@@ -70,10 +70,6 @@ unsafe extern "system" {
         save: *mut i32, flags: u32,
     ) -> u32;
 }
-#[link(name = "kernel32")]
-unsafe extern "system" {
-    fn SecureZeroMemory(memory: *mut c_void, length: usize) -> *mut c_void;
-}
 
 // CREDUI_FLAGS_DO_NOT_PERSIST | CREDUI_FLAGS_ALWAYS_SHOW_UI |
 // CREDUI_FLAGS_GENERIC_CREDENTIALS. Do not offer credential persistence.
@@ -84,12 +80,13 @@ struct DomainCredentials {
 }
 impl Drop for DomainCredentials {
     fn drop(&mut self) {
-        unsafe {
-            SecureZeroMemory(self.username.as_mut_ptr().cast(),
-                self.username.capacity() * std::mem::size_of::<u16>());
-            SecureZeroMemory(self.password.as_mut_ptr().cast(),
-                self.password.capacity() * std::mem::size_of::<u16>());
+        for value in &mut self.username {
+            unsafe { std::ptr::write_volatile(value, 0); }
         }
+        for value in &mut self.password {
+            unsafe { std::ptr::write_volatile(value, 0); }
+        }
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
     }
 }
 fn domain_credentials(domain_controller: &str) -> Result<DomainCredentials> {
@@ -113,10 +110,7 @@ fn domain_credentials(domain_controller: &str) -> Result<DomainCredentials> {
             &mut save, CREDUI_FLAGS)
     };
     if rc != 0 {
-        unsafe {
-            SecureZeroMemory(username.as_mut_ptr().cast(), username.len() * 2);
-            SecureZeroMemory(password.as_mut_ptr().cast(), password.len() * 2);
-        }
+        drop(DomainCredentials { username, password });
         if rc == 1223 { bail!("autenticación de dominio cancelada por el usuario"); }
         bail!("no se pudo obtener credenciales AD mediante Windows (Win32 {rc})");
     }
