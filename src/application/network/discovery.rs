@@ -1263,11 +1263,11 @@ fn render_monitor_screen(
         if only_unknown { "equipos desconocidos" } else { "todos los equipos" },
         tui_style::LABEL, tui_style::RESET, OFFLINE_MISSES,
     );
-    overview.push_str("\nDetección parcial ARP/ICMP/TCP: sin respuesta no significa apagado. VLAN y ACL pueden aislar equipos.");
+    overview.push_str(&format!("\n{}", tui_style::shorten("Sondeo parcial: silencio no implica desconexión; posibles ACL/VLAN.", width.saturating_sub(2))));
     if let Some(source) = scan_route_source(network) {
-        overview.push_str(&format!("\nIP origen de la ruta: {source} (interfaz elegida por Windows)."));
+        overview.push_str(&format!("\n{}", tui_style::shorten(&format!("Origen de ruta: {source} (Windows)"), width.saturating_sub(2))));
         if !network.contains(&source) {
-            overview.push_str("\nFUERA DE SUBRED: destino en otra red; ARP no identifica equipos detrás del router. Solo se prueban ICMP/TCP.");
+            overview.push_str(&format!("\n{}", tui_style::shorten("Fuera de subred: solo ICMP/TCP (no ARP remoto).", width.saturating_sub(2))));
         }
     } else {
         overview.push_str("\nRuta de origen no determinada; el CIDR no selecciona una VLAN.");
