@@ -2,11 +2,11 @@ use std::{net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs},sync::Ar
 use anyhow::Result;
 use crate::{core::{CommandContext, CommandOutput, ports::{NetworkProbe, TrafficMonitorFactory}},builtins::BuiltinCommand};
 
-pub struct NetcheckBuiltin {
+pub struct NetdiagBuiltin {
     probe: Arc<dyn NetworkProbe>,
     traffic_factory: Arc<dyn TrafficMonitorFactory>,
 }
-impl NetcheckBuiltin {
+impl NetdiagBuiltin {
     pub fn new(probe: Arc<dyn NetworkProbe>, traffic_factory: Arc<dyn TrafficMonitorFactory>) -> Self {
         Self { probe, traffic_factory }
     }
@@ -266,11 +266,11 @@ fn evaluate_interfaces(text: &str) -> (&'static str, &'static str, Option<(&'sta
     }
 }
 
-impl BuiltinCommand for NetcheckBuiltin {
+impl BuiltinCommand for NetdiagBuiltin {
     fn name(&self) -> &'static str { "netdiag" }
-    fn aliases(&self) -> &'static [&'static str] { &["netcheck", "nettest"] }
+    fn aliases(&self) -> &'static [&'static str] { &[] }
     fn help(&self) -> &'static str {
-        "netdiag / netcheck / nettest — diagnóstico integral: velocidad real, estabilidad, pérdida, tráfico, servicios y paquetes IPv4"
+        "netdiag — diagnóstico integral: velocidad real, estabilidad, pérdida, tráfico, servicios y paquetes IPv4"
     }
     fn execute(&self, _invoked_name: &str, args: &[String], _context: CommandContext<'_>) -> Result<CommandOutput> {
         self.diagnose(args)
