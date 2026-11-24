@@ -393,9 +393,20 @@ impl NetworkDiagnosticsService {
 
         for port in [445_u16, 3389, 80, 443, 135, 22] {
             let started = Instant::now();
-            if TcpStream::connect_timeout(&SocketAddr::new(IpAddr::V4(ip), port), timeout).is_ok() {
+            let outcome = TcpStream::connect_timeout(
+                &SocketAddr::new(IpAddr::V4(ip), port), timeout);
+            // A TCP refusal is an explicit remote response (RST). It does
+            // not indicate an open service, but it DOES prove the host is up.
+            let refused = outcome.as_ref().err().is_some_and(|error| {
+                error.kind() == std::io::ErrorKind::ConnectionRefused
+            });
+            if outcome.is_ok() || refused {
                 return Some(HostEvidence {
-                    method: format!("tcp:{port}"),
+                    method: if refused {
+                        format!("tcp:{port}:rst")
+                    } else {
+                        format!("tcp:{port}")
+                    },
                     mac: None,
                     latency_ms: Some(duration_ms(started.elapsed())),
                 });
