@@ -1583,14 +1583,14 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         ]
     } else {
         let title = format!(
-            "\x1b[1;38;2;235;219;178m{user}\x1b[38;2;250;189;47m@\x1b[38;2;189;174;147m{host}\x1b[0m"
+            "\x1b[1;38;2;186;189;198m{user}\x1b[38;2;109;143;171m@\x1b[38;2;186;189;198m{host}\x1b[0m"
         );
-        let label = "\x1b[1;38;2;250;189;47m";
+        let label = "\x1b[1;38;2;109;143;171m";
         let reset = "\x1b[0m";
 
         vec![
             title,
-            "\x1b[38;2;146;131;116m────────────────────────────────────────\x1b[0m".to_owned(),
+            "\x1b[38;2;54;76;119m────────────────────────────────────────\x1b[0m".to_owned(),
             format!("{label}OS:{reset} {}", truncate_fetch(&os, 58)),
             format!("{label}Host:{reset} {host}"),
             format!("{label}Kernel:{reset} {kernel}"),
@@ -1642,10 +1642,10 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
             let fact = truncate_fetch(fact, fact_width);
             out.push_str("  ");
             if index == 0 {
-                out.push_str(&format!("\x1b[1;38;2;235;219;178m{fact}\x1b[0m"));
+                out.push_str(&format!("\x1b[1;38;2;186;189;198m{fact}\x1b[0m"));
             } else if let Some((name, value)) = fact.split_once(':') {
                 out.push_str(&format!(
-                    "\x1b[1;38;2;250;189;47m{name}:\x1b[0m{value}"
+                    "\x1b[1;38;2;109;143;171m{name}:\x1b[0m{value}"
                 ));
             } else {
                 out.push_str(&fact);
