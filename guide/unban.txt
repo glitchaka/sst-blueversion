@@ -1,20 +1,12 @@
 UNBAN — desbloquear usuario de Active Directory (nativo SST)
 
-Uso:
-  sudo
-  unban NOMBRE_DE_USUARIO
+Uso: unban NOMBRE_DE_USUARIO
 
-Requisitos:
-  1. SST debe estar en una sesión sudo con token realmente elevado.
-  2. La identidad de Windows autenticada en esa sesión debe tener permisos delegados
-     para modificar lockoutTime de la cuenta en Active Directory.
-  3. El equipo debe encontrar un controlador de dominio escribible.
+1. No requiere sudo ni privilegios de administrador local.
+2. SST localiza un controlador de dominio escribible mediante DsGetDcNameW.
+3. Windows presenta un diálogo de credenciales enmascarado para una cuenta AD autorizada.
+4. SST abre una conexión LDAPS al puerto 636, autentica esas credenciales ante el DC y busca una única cuenta por sAMAccountName.
+5. Si el DC autoriza la operación, SST modifica solo lockoutTime=0.
+6. No guarda contraseñas ni las pasa por la línea de comandos. El diálogo reaparece para cada invocación.
 
-Implementación:
-  Windows DsGetDcNameW + WinLDAP (SSPI Negotiate, conexión cifrada).
-  Solo modifica lockoutTime=0 de una única cuenta encontrada por sAMAccountName.
-  Nunca solicita ni admite contraseñas en argumentos, ni ejecuta PowerShell.
-  Un fallo de permisos, conexión o búsqueda no se considera un desbloqueo exitoso.
-
-Nota: sudo es una condición obligatoria, pero no concede automáticamente privilegios
-sobre Active Directory. Los permisos efectivos dependen del servidor y de la cuenta.
+Requiere conectividad LDAPS y certificado TLS válido en el controlador. SST rechaza la operación si la autenticación o los permisos fallan; no hace fallback a LDAP sin TLS ni a la identidad local.
