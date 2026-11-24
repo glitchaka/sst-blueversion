@@ -11,7 +11,7 @@ impl BuiltinCommand for UnbanBuiltin {
     fn name(&self) -> &'static str { "unban" }
     fn help(&self) -> &'static str {
         "unban USUARIO — desbloquea una cuenta de Active Directory mediante LDAP nativo. \
-         No requiere sudo; solicita credenciales del dominio y exige permisos de desbloqueo en AD. \
+         Requiere elevación mediante sudo o una sesión ya elevada; solicita credenciales del dominio y exige permisos de desbloqueo en AD. \
          Nunca recibe contraseñas como argumentos."
     }
     fn execute(&self, _invoked_name: &str, args: &[String], _context: CommandContext<'_>)
@@ -27,6 +27,9 @@ impl BuiltinCommand for UnbanBuiltin {
         {
             if args.len() != 1 {
                 return Ok(CommandOutput::error("Uso: unban [nombre de usuario]", 2));
+            }
+            if !super::sudo::is_elevated()? {
+                return Ok(CommandOutput::error("unban: requiere elevación; usa sudo unban USUARIO", 5));
             }
             let user = args[0].trim();
             if let Err(message) = validate_account(user) {
