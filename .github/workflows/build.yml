@@ -57,6 +57,10 @@ jobs:
         continue-on-error: true
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      - name: Restore and verify both original SST keygen MP3 tracks
+        shell: pwsh
+        run: ./scripts/prepare-keygen-soundtrack.ps1
+
       - name: Test
         id: test
         shell: pwsh
