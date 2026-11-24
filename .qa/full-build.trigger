@@ -11,3 +11,5 @@ Windows CI build request: net monitor source route and AD Credential UI correcti
 2026-11-24: validate neofetch colors derived from embedded SST icon PNG and new palette tests.
 
 2026-11-24: rerun verified icon palette ANSI byte fix, previous run failed logo regression tests.
+
+2026-11-24: Windows CI SDL2 statically bundled libcaca keygen rendering integration.
