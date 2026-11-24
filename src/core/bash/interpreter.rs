@@ -2439,8 +2439,18 @@ impl Interpreter {
                 result.stderr = format!("{trace}{}", result.stderr);
             }
         }
-        if csv_output && result.status == 0 {
-            result.stdout = crate::presentation::csv_output::format_output(&result.stdout);
+        if csv_output {
+            if result.status == 0 {
+                result.stdout = crate::presentation::csv_output::format_output(&result.stdout);
+            } else {
+                // A failing Windows API can return no stdout at all. CSV
+                // consumers must still receive the universal header while
+                // the real failure and exit status remain in stderr.
+                if !result.stdout.is_empty() {
+                    result.stderr = format!("{}{}", result.stderr, result.stdout);
+                }
+                result.stdout = crate::presentation::csv_output::format_output("");
+            }
         }
         self.apply_output_redirects(command, &mut result)?;
         self.finalize_process_substitutions(&mut result)?;
