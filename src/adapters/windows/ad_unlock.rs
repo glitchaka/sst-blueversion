@@ -1,5 +1,5 @@
 //! Unlock an AD user via WinLDAP and domain controller discovery.
-//! Explicit domain credentials in native Windows CredUI; LDAPS only; no PowerShell.
+//! Explicit domain credentials through native CredUI and sealed SSPI Negotiate LDAP; no PowerShell.
 #![cfg(windows)]
 use std::{ffi::c_void, ptr};
 use anyhow::{bail, Context, Result};
@@ -34,7 +34,7 @@ unsafe extern "system" {
 
 #[link(name = "wldap32")]
 unsafe extern "system" {
-    fn ldap_sslinitW(host: *const u16, port: u32, secure: i32) -> *mut c_void;
+    fn ldap_initW(host: *const u16, port: u32) -> *mut c_void;
     fn ldap_set_optionW(ld: *mut c_void, option: i32, value: *const c_void) -> u32;
     fn ldap_bind_sW(ld: *mut c_void, dn: *mut u16, cred: *mut u16, method: u32) -> u32;
     fn ldap_search_sW(ld: *mut c_void, base: *mut u16, scope: u32,
@@ -122,8 +122,23 @@ fn domain_credentials(domain_controller: &str) -> Result<DomainCredentials> {
     Ok(DomainCredentials { username, password })
 }
 
+// SSPI expects explicit user/domain/password in this C ABI layout.
+#[repr(C)]
+struct SecWinntAuthIdentityW {
+    user: *mut u16,
+    user_length: u32,
+    domain: *mut u16,
+    domain_length: u32,
+    password: *mut u16,
+    password_length: u32,
+    flags: u32,
+}
+const SEC_WINNT_AUTH_IDENTITY_UNICODE: u32 = 2;
+
 const LDAP_SUCCESS: u32 = 0;
-const LDAP_AUTH_SIMPLE: u32 = 0x80;
+const LDAP_AUTH_NEGOTIATE: u32 = 0x0486;
+const LDAP_OPT_ENCRYPT: i32 = 0x96;
+const LDAP_OPT_SIGN: i32 = 0x95;
 const LDAP_OPT_TIMELIMIT: i32 = 0x03;
 const LDAP_SCOPE_BASE: u32 = 0;
 const LDAP_SCOPE_SUBTREE: u32 = 2;
@@ -155,7 +170,7 @@ impl Drop for Search {
 
 fn ldap_check(code: u32, operation: &str) -> Result<()> {
     if code == LDAP_SUCCESS { return Ok(()); }
-    bail!("{operation}: LDAP {code}; comprueba credenciales actuales, permisos delegados, \
+    bail!("{operation}: LDAP {code}; comprueba credenciales administrativas y permisos delegados, \
           estado de la cuenta y conectividad con el controlador")
 }
 
@@ -222,20 +237,56 @@ fn user_filter(name: &str) -> String {
 /// The DC independently enforces delegated AD rights, irrespective of local UAC.
 pub fn unlock(account: &str) -> Result<String> {
     let dc = controller()?;
-    // Collect separate domain credentials; local SST/UAC identity is never
-    // silently substituted for a privileged Active Directory account.
+    // Explicit administrative identity: local UAC or logged-on Windows
+    // credentials never authorize an AD change. Credential buffers are wiped.
     let mut credentials = domain_credentials(&dc)?;
-    // Port 636 and LDAP over TLS from the first byte; no plaintext fallback.
-    let session = Session(unsafe { ldap_sslinitW(wide(&dc).as_ptr(), 636, 1) });
-    if session.0.is_null() { bail!("no se pudo crear conexión LDAPS con {dc}:636"); }
+    let typed_len = credentials.username.iter().position(|ch| *ch == 0)
+        .unwrap_or(credentials.username.len());
+    let typed = String::from_utf16_lossy(&credentials.username[..typed_len]);
+    let (user, domain) = if let Some((realm, name)) = typed.split_once('\\') {
+        (name.to_owned(), realm.to_owned())
+    } else if typed.contains('@') {
+        (typed.clone(), String::new())
+    } else {
+        // DC discovery returns its FQDN; the suffix is the AD DNS domain.
+        let dns_domain = dc.split_once('.').map(|(_, suffix)| suffix)
+            .context("indica la cuenta administrativa como DOMINIO\\usuario o usuario@dominio")?;
+        (typed.clone(), dns_domain.to_owned())
+    };
+    if user.trim().is_empty() || user.chars().any(|ch| ch.is_control())
+        || domain.chars().any(|ch| ch.is_control())
+    {
+        bail!("identidad administrativa de Active Directory inválida");
+    }
+    let mut user_w = wide(&user);
+    let mut domain_w = wide(&domain);
+    let mut identity = SecWinntAuthIdentityW {
+        user: user_w.as_mut_ptr(),
+        user_length: (user_w.len() - 1) as u32,
+        domain: domain_w.as_mut_ptr(),
+        domain_length: (domain_w.len() - 1) as u32,
+        password: credentials.password.as_mut_ptr(),
+        password_length: credentials.password.iter().position(|ch| *ch == 0)
+            .unwrap_or(credentials.password.len()) as u32,
+        flags: SEC_WINNT_AUTH_IDENTITY_UNICODE,
+    };
+
+    // Kerberos/Negotiate signs and encrypts LDAP packets without requiring
+    // a separately provisioned LDAPS certificate on the domain controller.
+    let session = Session(unsafe { ldap_initW(wide(&dc).as_ptr(), 389) });
+    if session.0.is_null() { bail!("no se pudo conectar con controlador AD {dc}"); }
+    ldap_check(unsafe { ldap_set_optionW(session.0, LDAP_OPT_SIGN,
+        1usize as *const c_void) }, "firma LDAP")?;
+    ldap_check(unsafe { ldap_set_optionW(session.0, LDAP_OPT_ENCRYPT,
+        1usize as *const c_void) }, "cifrado LDAP")?;
     let limit = 12_i32;
     ldap_check(unsafe { ldap_set_optionW(session.0, LDAP_OPT_TIMELIMIT,
         (&limit as *const i32).cast()) }, "límite de consulta LDAP")?;
-    ldap_check(unsafe { ldap_bind_sW(session.0,
-        credentials.username.as_mut_ptr(),
-        credentials.password.as_mut_ptr(), LDAP_AUTH_SIMPLE) },
-        "autenticación explícita de cuenta administradora AD mediante LDAPS")?;
-    // Credentials are not needed after server bind authentication.
+    ldap_check(unsafe { ldap_bind_sW(session.0, ptr::null_mut(),
+        (&mut identity as *mut SecWinntAuthIdentityW).cast(),
+        LDAP_AUTH_NEGOTIATE) },
+        "autenticación de cuenta administrativa de Active Directory")?;
+    drop(identity);
     drop(credentials);
 
     let root = search(session.0, "", LDAP_SCOPE_BASE,
