@@ -358,6 +358,7 @@ fn speed(args: &[String]) -> Result<CommandOutput> {
             "netcheck speed: no hay interfaces Ethernet/Wi-Fi activas", 1));
     }
     let started = Instant::now();
+    let mut measured_download_or_upload = passive;
     let mut report = String::from(
         "TEST DE VELOCIDAD DE INTERNET — WinHTTP NATIVO\n\
          Separación: Internet activo (transferencias) vs. enlace y tráfico de NIC.\n");
@@ -406,14 +407,17 @@ fn speed(args: &[String]) -> Result<CommandOutput> {
         match crate::adapters::windows::https_download::measure(
             &download_url, seconds, max_mib
         ) {
-            Ok(measure) => report.push_str(&format!(
+            Ok(measure) => {
+                measured_download_or_upload |= measure.bytes > 0;
+                report.push_str(&format!(
                 "\nDESCARGA REAL HTTPS\n\
                  Destino: {}\nEstado HTTP: {}\nBytes recibidos: {}\n\
                  Tiempo de transferencia: {:.2} s\n\
                  Velocidad de descarga: {:.2} Mbps\n",
                 measure.url, measure.http_status, measure.bytes,
                 measure.elapsed_seconds, rate_mbps(measure.bytes, measure.elapsed_seconds)
-            )),
+            ));
+            }
             Err(error) => report.push_str(&format!(
                 "\nDESCARGA REAL HTTPS: NO MEDIDA\n  Motivo: {error}\n"
             )),
@@ -422,14 +426,17 @@ fn speed(args: &[String]) -> Result<CommandOutput> {
         match crate::adapters::windows::https_download::upload(
             upload_url, seconds, max_mib.min(16)
         ) {
-            Ok(measure) => report.push_str(&format!(
+            Ok(measure) => {
+                measured_download_or_upload |= measure.bytes > 0;
+                report.push_str(&format!(
                 "\nSUBIDA REAL HTTPS\n\
                  Destino: {}\nEstado HTTP: {}\nBytes enviados: {}\n\
                  Tiempo de transferencia: {:.2} s\n\
                  Velocidad de subida: {:.2} Mbps\n",
                 measure.url, measure.http_status, measure.bytes,
                 measure.elapsed_seconds, rate_mbps(measure.bytes, measure.elapsed_seconds)
-            )),
+            ));
+            }
             Err(error) => report.push_str(&format!(
                 "\nSUBIDA REAL HTTPS: NO MEDIDA\n  Motivo: {error}\n"
             )),
@@ -468,7 +475,11 @@ fn speed(args: &[String]) -> Result<CommandOutput> {
             ));
         }
     }
-    Ok(CommandOutput::ok(report))
+    if measured_download_or_upload {
+        Ok(CommandOutput::ok(report))
+    } else {
+        Ok(CommandOutput::error(report, 1))
+    }
 }
 
 fn rate_mbps(bytes: u64, seconds: f64) -> f64 {
