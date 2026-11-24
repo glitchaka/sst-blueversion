@@ -64,7 +64,8 @@ struct CredUiInfo {
 #[link(name = "credui")]
 unsafe extern "system" {
     fn CredUIPromptForCredentialsW(
-        ui: *const CredUiInfo, target: *const u16, error: u32,
+        ui: *const CredUiInfo, target: *const u16,
+        reserved: *mut c_void, error: u32,
         username: *mut u16, username_count: u32,
         password: *mut u16, password_count: u32,
         save: *mut i32, flags: u32,
@@ -104,7 +105,7 @@ fn domain_credentials(domain_controller: &str) -> Result<DomainCredentials> {
     let mut password = vec![0u16; 513];
     let mut save = 0i32;
     let rc = unsafe {
-        CredUIPromptForCredentialsW(&ui, target.as_ptr(), 0,
+        CredUIPromptForCredentialsW(&ui, target.as_ptr(), ptr::null_mut(), 0,
             username.as_mut_ptr(), username.len() as u32,
             password.as_mut_ptr(), password.len() as u32,
             &mut save, CREDUI_FLAGS)
