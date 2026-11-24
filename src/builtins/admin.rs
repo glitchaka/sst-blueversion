@@ -5,7 +5,6 @@ use anyhow::Result;
 use crate::{
     application::{
         device::DeviceService,
-        diagnostics::DiagnosticsService,
         domain::DomainService,
         network::NetworkService,
         switch::SwitchService,
@@ -18,11 +17,12 @@ use super::BuiltinCommand;
 
 pub struct NetworkBuiltin {
     service: Arc<NetworkService>,
+    diagnostics: super::netprobe::NetworkAssessment,
 }
 
 impl NetworkBuiltin {
-    pub fn new(service: Arc<NetworkService>) -> Self {
-        Self { service }
+    pub fn new(service: Arc<NetworkService>, diagnostics: super::netprobe::NetworkAssessment) -> Self {
+        Self { service, diagnostics }
     }
 
     fn interfaces(&self) -> Result<CommandOutput> {
@@ -145,6 +145,7 @@ impl NetworkBuiltin {
            notsh ports HOST [PUERTOS]      comprobación TCP\n\
          \n\
          DIAGNÓSTICO E INVENTARIO\n\
+           notsh test [HOST]             diagnóstico integral de red\n\
            notsh conflicts [IP]            posibles direcciones duplicadas\n\
            notsh scan [RED]                descubrir equipos\n\
            notsh monitor [RED]             monitor de presencia\n\
@@ -200,6 +201,7 @@ impl NetworkBuiltin {
         let rest = args.get(1..).unwrap_or_default();
 
         match sub {
+            "test" => self.diagnostics.run(rest),
             "wlan" | "wifi" | "wireless" => self.windows_context("wlan", rest, cwd),
             "lan" | "ethernet" => self.windows_context("lan", rest, cwd),
             "interface" => self.windows_context("interface", rest, cwd),
@@ -357,11 +359,4 @@ service_builtin!(
     WakeOnLanService,
     service,
     "wol — envía Magic Packet por MAC o nombre inventariado"
-);
-service_builtin!(
-    DiagnosticsBuiltin,
-    "diag",
-    DiagnosticsService,
-    service,
-    "diag — diagnósticos compuestos de red, hardware, almacenamiento y dominio"
 );
