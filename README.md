@@ -94,7 +94,9 @@ Entre las capacidades de SST se encuentran:
 | `wol` | Wake-on-LAN | `wol NOTEBOOK-01` |
 | `domain` | Estado de dominio | `domain status PC-01 --verify` |
 | `switch` | MAC → switch → puerto por SNMP | `switch locate NOTEBOOK-01` |
-| `diag` | Diagnósticos compuestos | `diag network` |
+| `netprobe` | Diagnóstico de conectividad, velocidad, estabilidad, pérdidas y tráfico | `netprobe full` |
+| `unban` | Desbloqueo de cuentas de Active Directory mediante LDAP nativo | `unban USUARIO` |
+| `keygen` | Easter egg gráfico con dos pistas MP3 | `keygen` |
 | `triage` | Resumen de señales locales | `triage` |
 | `intel` | Fuentes/caché/lookup de inteligencia | `intel lookup INDICADOR` |
 | `sudo` / `runas` | Elevación Administrador → SYSTEM → TrustedInstaller | `sudo --status` |
@@ -167,9 +169,29 @@ kill
 fetch
 neofetch
 fastfetch
+keygen
 ```
 
 Al abrir la terminal gráfica de SST, `fetch` se ejecuta automáticamente antes del preload de seguridad y del primer prompt. El logo mostrado está construido como arte ANSI coloreado a partir de `assets/sst-neofetch.png` y conserva la paleta del branding SST.
+
+### `keygen` — Easter egg
+
+```bash
+keygen
+keygen --track 2
+keygen --help
+```
+
+La implementación Windows de la rama `main` utiliza SDL2 y libcaca para la animación gráfica, con rotación de caracteres, datos del equipo y reproducción de dos pistas MP3 desde `data/.sst/media/keygen/`. Pulsa 1 o 2 para seleccionar pista, Espacio para pausar o reanudar y Esc o Q para salir. La compilación y el resultado visual de esta revisión todavía requieren validación; no implica que el instalador publicado ya incluya estos cambios.
+
+### `unban` — Active Directory
+
+```bash
+unban USUARIO
+unban --help
+```
+
+Desbloquea una cuenta identificada por su sAMAccountName mediante LDAP nativo en Windows. La implementación actual solicita credenciales de dominio en un diálogo protegido y exige permisos de desbloqueo en AD; no admite contraseñas como argumentos. Actualmente no exige `sudo`, lo que difiere del requisito anterior de elevación.
 
 La terminal activa el foco de teclado al abrirse para permitir escribir sin realizar un clic adicional. El ejecutable utiliza el icono `assets/sst-icon.ico`.
 
@@ -651,6 +673,26 @@ solo.
 
 ## `net` — diagnóstico, descubrimiento y tráfico de red
 
+### Diagnóstico especializado: `netprobe`
+
+```bash
+netprobe
+netprobe full HOST
+netprobe HOST --port 443
+netprobe loss HOST --count 20 --interval 400
+netprobe stability HOST --seconds 10
+netprobe speed
+netprobe speed --passive
+netprobe traffic --seconds 5 --top 10
+netprobe packets --seconds 5
+netprobe capture --seconds 5
+netprobe --help
+```
+
+El código de `netprobe` incluye pruebas de conectividad, DNS, gateway, interfaces físicas, configuración 802.1X, pérdida ICMP, jitter, velocidad HTTPS (descarga y subida) y tráfico por proceso. El diagnóstico 802.1X no confirma por sí solo la autorización efectiva del servidor RADIUS. La captura requiere permisos de administrador y debe realizarse únicamente en equipos y redes autorizados. La prueba de velocidad genera tráfico real; el modo `--passive` solo consulta el enlace y los contadores de interfaz.
+
+Estas modalidades están presentes en el código fuente; la validación integral en Windows de la revisión actual sigue pendiente.
+
 ### Interfaces
 
 ```bash
@@ -1114,29 +1156,6 @@ interfaz física
 ```
 
 La salida puede incluir VLAN, PVID, alias, velocidad y estado operativo. La implementación utiliza Bridge-MIB, Q-BRIDGE-MIB e IF-MIB.
-
----
-
-## `diag` — diagnósticos compuestos
-
-```bash
-diag network
-diag dns
-diag dns HOST
-diag hardware
-diag storage
-diag traffic
-diag domain
-```
-
-Agrupa varias herramientas para obtener una vista rápida:
-
-- `diag network`: interfaces, vecinos y conexiones.
-- `diag dns`: prueba resolución DNS; usa `example.com` si no se especifica destino.
-- `diag hardware`: información general, memoria y discos.
-- `diag storage`: estado de discos.
-- `diag traffic`: tráfico de red por proceso.
-- `diag domain`: pertenencia al dominio local.
 
 ---
 
