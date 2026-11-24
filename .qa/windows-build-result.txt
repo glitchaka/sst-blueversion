@@ -1,6 +1,60 @@
-Commit: fce4195b69c7f17657058bdee7dc33d9de573d2a
-Tested UTC: 2026-11-24 18:53:11Z
-Test: success
-Windows release build: success
+Commit: 077c49ef0633c9f5040466714ecbae4b5912a93c
+Tested UTC: 2026-11-24 19:13:52Z
+Test: failure
+Windows release build: skipped
 Log tail:
-No failed compiler/test log.
+test presentation::gui_slint::updater_relaunch_tests::identifies_the_installed_binary_in_an_old_helper_relaunch ... ok
+test presentation::gui_slint_base::viewport_regression_tests::original_sst_icon_rgb_is_preserved_in_the_terminal ... ok
+test presentation::gui_slint_base::viewport_regression_tests::reject_iconic_and_transient_window_sizes ... ok
+test presentation::helix_sst::tests::control_and_navigation_keys_are_encoded_for_pty ... ok
+test presentation::helix_sst::tests::helix_live_edit_paste_help_resize_and_exit ... ignored, starts the bundled Helix process and writes isolated editor fixtures
+test presentation::report::tests::fields_keep_labels_distinct_from_values ... ok
+test presentation::helix_sst::tests::helix_conpty_queries_are_answered_across_output_chunks ... ok
+test presentation::report::tests::all_native_registry_commands_share_consistent_human_report_design ... ok
+test presentation::report::tests::generic_help_has_distinct_syntax_descriptions_and_no_duplicate_title ... ok
+test presentation::report::tests::future_command_help_is_structurally_styled ... ok
+test presentation::report::tests::help_sections_are_semantic_and_command_descriptions_are_not_statuses ... ok
+test presentation::report::tests::long_release_notes_wrap_before_terminal_edge ... ok
+test presentation::report::tests::narrow_viewport_does_not_change_machine_reports ... ok
+test presentation::report::tests::native_title_is_not_a_dash_drawing ... ok
+test presentation::report::tests::neutral_structural_text_never_uses_cyan_without_a_real_state ... ok
+test presentation::report::tests::preserves_fetch_logo_and_script_pipelines_as_is ... ok
+test presentation::report::tests::preserves_precoloured_terminal_data ... ok
+test presentation::report::tests::table_status_color_is_column_scoped ... ok
+test presentation::report::tests::semantic_colors_require_verified_status_fields ... ok
+test presentation::report::tests::scripts_and_machine_output_remain_unmodified ... ok
+test presentation::shell::session::tests::detects_multiline_shell_constructs ... ok
+test presentation::report::tests::unknown_commands_get_the_same_layout_without_command_specific_rules ... ok
+test presentation::tui_style::tests::clipped_display_columns_are_measured_by_characters ... ok
+test presentation::tui_style::tests::sections_report_real_cell_coordinates_without_character_frames ... ok
+test support::domain::password_guard_tests::domain_password_requests_are_not_history_safe ... ok
+test support::domain::password_guard_tests::password_flag_must_finish_the_editable_line ... ok
+test support::domain::password_guard_tests::unsafe_inline_values_are_blocked_before_trace_or_expansion ... ok
+test support::transfer::tests::native_snapshot_protects_unknown_sizes_and_clamps_overflow ... ok
+test support::transfer::tests::uses_real_file_bytes_without_fake_percentage_or_eta ... ok
+test support::windows::tests::system_executable_rejects_absolute_paths ... ok
+test support::windows::tests::system_executable_rejects_path_traversal ... ok
+test support::domain::password_guard_tests::previous_history_passwords_are_removed_without_a_secret_backup ... ok
+test presentation::helix_sst::tests::helix_help_is_available_from_native_shell ... ok
+
+failures:
+
+---- application::system::fetch_text_logo_tests::compact_fetch_keeps_geometry_and_uses_icon_colors stdout ----
+
+thread 'application::system::fetch_text_logo_tests::compact_fetch_keeps_geometry_and_uses_icon_colors' (7588) panicked at src\application\system.rs:2403:9:
+assertion failed: colored.join("\n").contains(&super::sst_icon_ansi(0))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- application::system::fetch_text_logo_tests::original_icon_palette_is_used_without_rainbow_colors stdout ----
+
+thread 'application::system::fetch_text_logo_tests::original_icon_palette_is_used_without_rainbow_colors' (6444) panicked at src\application\system.rs:2392:13:
+missing original SST icon tone
+
+
+failures:
+    application::system::fetch_text_logo_tests::compact_fetch_keeps_geometry_and_uses_icon_colors
+    application::system::fetch_text_logo_tests::original_icon_palette_is_used_without_rainbow_colors
+
+test result: FAILED. 169 passed; 2 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+error: test failed, to rerun pass `--bin sst`
