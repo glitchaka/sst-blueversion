@@ -9,3 +9,5 @@ Windows CI build request: net monitor source route and AD Credential UI correcti
 2026-11-24: full Windows build after netprobe-only rename, icon palette, keygen rigid-body 3D rotation, AD SSPI administrative bind.
 
 2026-11-24: validate neofetch colors derived from embedded SST icon PNG and new palette tests.
+
+2026-11-24: rerun verified icon palette ANSI byte fix, previous run failed logo regression tests.
