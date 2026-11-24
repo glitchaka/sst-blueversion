@@ -1105,6 +1105,7 @@ fn scan_rows_with(
     let timeout = Duration::from_millis(300);
     let hosts = network.hosts().collect::<Vec<Ipv4Addr>>();
     let local_source = scan_route_source(network);
+    let is_routed_scan = local_source.is_some_and(|source| !network.contains(&source));
     let results = Arc::new(Mutex::new(Vec::new()));
 
     for chunk in hosts.chunks(48) {
@@ -1116,7 +1117,12 @@ fn scan_rows_with(
             let diagnostics = Arc::clone(&diagnostics);
 
             workers.push(thread::spawn(move || {
-                let Some(evidence) = diagnostics.probe_host(ip, timeout) else {
+                let evidence = if is_routed_scan {
+                    diagnostics.probe_routed_host(ip, timeout)
+                } else {
+                    diagnostics.probe_host(ip, timeout)
+                };
+                let Some(evidence) = evidence else {
                     return;
                 };
 
@@ -1260,6 +1266,9 @@ fn render_monitor_screen(
     overview.push_str("\nDetección parcial ARP/ICMP/TCP: sin respuesta no significa apagado. VLAN y ACL pueden aislar equipos.");
     if let Some(source) = scan_route_source(network) {
         overview.push_str(&format!("\nIP origen de la ruta: {source} (interfaz elegida por Windows)."));
+        if !network.contains(&source) {
+            overview.push_str("\nFUERA DE SUBRED: destino en otra red; ARP no identifica equipos detrás del router. Solo se prueban ICMP/TCP.");
+        }
     } else {
         overview.push_str("\nRuta de origen no determinada; el CIDR no selecciona una VLAN.");
     }
