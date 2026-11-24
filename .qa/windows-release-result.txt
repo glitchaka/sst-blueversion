@@ -1,16 +1,16 @@
 SST Windows release CI report
-Source commit: 3452096cdf0f2544005427123fac86d8167ed3e5
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45469676866
-Recorded UTC: 2026-11-24 19:34:17Z
+Source commit: e39af2f29c17d874273c19f6172826b9f1c8dea0
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45471732407
+Recorded UTC: 2026-11-24 19:50:02Z
 Compile: success
 Rust tests: success
-Software GUI startup: skipped
-Packaging: skipped
+Software GUI startup: success
+Packaging: failure
 Compiler log tail:
-   Compiling zopfli v0.8.4
-   Compiling document-features v0.2.12
-   Compiling regex-automata v0.4.19
    Compiling hashbrown v0.15.5
+   Compiling password-hash v0.5.0
+   Compiling regex-automata v0.4.19
+   Compiling zopfli v0.8.4
    Compiling ttf-parser v0.25.1
    Compiling num v0.4.3
    Compiling asn1-rs v0.6.2
@@ -19,39 +19,39 @@ Compiler log tail:
    Compiling parking_lot v0.12.5
    Compiling rand v0.8.8
    Compiling windows v0.61.3
-   Compiling rand v0.9.5
    Compiling sst v0.1.12-blue.1 (D:\a\sst-blueversion\sst-blueversion)
+   Compiling rand v0.9.5
    Compiling windows v0.57.0
    Compiling filetime v0.2.30
    Compiling fd-lock v4.0.4
    Compiling filedescriptor v0.8.3
    Compiling crossterm_winapi v0.9.1
-   Compiling des v0.8.1
-   Compiling cfb-mode v0.8.2
-   Compiling aes v0.8.4
    Compiling cbc v0.1.2
    Compiling chacha20 v0.9.1
-   Compiling md-5 v0.10.6
+   Compiling aes v0.8.4
+   Compiling des v0.8.1
+   Compiling cfb-mode v0.8.2
    Compiling blake2 v0.10.6
    Compiling hmac v0.12.1
-   Compiling sha2 v0.10.9
+   Compiling md-5 v0.10.6
    Compiling sha1 v0.10.7
+   Compiling sha2 v0.10.9
    Compiling serial2 v0.2.39
    Compiling home v0.5.12
    Compiling hashlink v0.12.2
    Compiling num-derive v0.4.2
    Compiling aead v0.5.2
    Compiling vte v0.15.0
-   Compiling downcast-rs v1.2.1
-   Compiling typed-path v0.13.0
-   Compiling widestring v1.2.1
-   Compiling fallible-streaming-iterator v0.1.9
-   Compiling shell-words v1.1.1
    Compiling fallible-iterator v0.3.0
-   Compiling rusqlite v0.41.1
+   Compiling typed-path v0.13.0
+   Compiling shell-words v1.1.1
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling widestring v1.2.1
+   Compiling downcast-rs v1.2.1
+   Compiling portable-pty v0.9.0
    Compiling ferrisetw v1.2.0
    Compiling zip v9.8.2
-   Compiling portable-pty v0.9.0
+   Compiling rusqlite v0.41.1
    Compiling vt100 v0.16.2
    Compiling chacha20poly1305 v0.10.1
    Compiling rustyline v17.0.2
@@ -66,9 +66,9 @@ Compiler log tail:
    Compiling dns-lookup v2.1.1
    Compiling libcaca-rs v0.1.0
    Compiling spellbook v0.4.2
+   Compiling ipnet v2.12.2
    Compiling base64 v0.22.1
    Compiling similar v2.7.0
    Compiling glob v0.3.4
-   Compiling ipnet v2.12.2
    Compiling sysinfo v0.37.2
-    Finished `release` profile [optimized] target(s) in 6m 35s
+    Finished `release` profile [optimized] target(s) in 9m 10s
