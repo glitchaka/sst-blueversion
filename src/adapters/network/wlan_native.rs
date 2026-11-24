@@ -13,6 +13,7 @@ pub fn execute(args: &[String]) -> Result<CommandOutput> {
              notsh wlan show networks      redes visibles sujetas a permisos Windows\n"
         )),
         ["show", "interfaces"] => platform::interfaces(),
+        ["show", "interfaces", "--csv"] => interfaces_csv(),
         ["show", "profiles"] => platform::profiles(),
         ["show", "networks"] => platform::networks(),
         _ => Ok(CommandOutput::error(
