@@ -40,6 +40,8 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 raw-window-handle = "0.6.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif", "ico", "tiff"] }
 socket2 = "0.6"
+# Bundled, statically linked SDL2: no external SDL2.dll or installer prerequisite.
+sdl2 = { version = "0.38", default-features = false, features = ["bundled", "static-link"] }
 
 [profile.release]
 lto = "thin"
