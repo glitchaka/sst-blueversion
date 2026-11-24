@@ -23,7 +23,6 @@ use crate::{
     },
     application::{
         device::DeviceService,
-        diagnostics::DiagnosticsService,
         domain::DomainService,
         network::{
             NetworkDiagnosticsService,
@@ -43,7 +42,6 @@ use crate::{
         CommandRegistry,
         ConfigBuiltin,
         DeviceBuiltin,
-        DiagnosticsBuiltin,
         DomainBuiltin,
         UnbanBuiltin,
         EditorBuiltin,
@@ -168,11 +166,6 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
         Arc::clone(&devices),
         wol_sender,
     ));
-    let diagnostics_service = Arc::new(DiagnosticsService::new(
-        Arc::clone(&network_service),
-        Arc::clone(&system_service),
-        Arc::clone(&domain_service),
-    ));
 
     let mut registry = CommandRegistry::new();
     registry.register(Arc::new(NetworkBuiltin::new(Arc::clone(&network_service))))?;
@@ -182,7 +175,6 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(UnbanBuiltin))?;
     registry.register(Arc::new(SwitchBuiltin::new(switch_service)))?;
     registry.register(Arc::new(WakeOnLanBuiltin::new(wol_service)))?;
-    registry.register(Arc::new(DiagnosticsBuiltin::new(diagnostics_service)))?;
     // A module is discovered by its installed execution contract, not just
     // its catalog presence. Incomplete modules never prevent SST from starting.
     match package_service.module_directory("powershell") {
