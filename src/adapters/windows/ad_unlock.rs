@@ -1,5 +1,5 @@
 //! Unlock an AD user via WinLDAP and domain controller discovery.
-//! Current SST token only; no plaintext bind, PowerShell, subprocesses or cached secrets.
+//! Explicit domain credentials in native Windows CredUI; LDAPS only; no PowerShell.
 #![cfg(windows)]
 use std::{ffi::c_void, ptr};
 use anyhow::{bail, Context, Result};
@@ -34,7 +34,7 @@ unsafe extern "system" {
 
 #[link(name = "wldap32")]
 unsafe extern "system" {
-    fn ldap_initW(host: *const u16, port: u32) -> *mut c_void;
+    fn ldap_sslinitW(host: *const u16, port: u32, secure: i32) -> *mut c_void;
     fn ldap_set_optionW(ld: *mut c_void, option: i32, value: *const c_void) -> u32;
     fn ldap_bind_sW(ld: *mut c_void, dn: *mut u16, cred: *mut u16, method: u32) -> u32;
     fn ldap_search_sW(ld: *mut c_void, base: *mut u16, scope: u32,
@@ -53,9 +53,82 @@ unsafe extern "system" {
     fn ldap_unbind(ld: *mut c_void) -> u32;
 }
 
+#[repr(C)]
+struct CredUiInfo {
+    size: u32,
+    parent: *mut c_void,
+    message: *const u16,
+    caption: *const u16,
+    banner: *mut c_void,
+}
+#[link(name = "credui")]
+unsafe extern "system" {
+    fn CredUIPromptForCredentialsW(
+        ui: *const CredUiInfo, target: *const u16, error: u32,
+        username: *mut u16, username_count: u32,
+        password: *mut u16, password_count: u32,
+        save: *mut i32, flags: u32,
+    ) -> u32;
+}
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn SecureZeroMemory(memory: *mut c_void, length: usize) -> *mut c_void;
+}
+
+// CREDUI_FLAGS_DO_NOT_PERSIST | CREDUI_FLAGS_ALWAYS_SHOW_UI |
+// CREDUI_FLAGS_GENERIC_CREDENTIALS. Do not offer credential persistence.
+const CREDUI_FLAGS: u32 = 0x2 | 0x80 | 0x40000;
+struct DomainCredentials {
+    username: Vec<u16>,
+    password: Vec<u16>,
+}
+impl Drop for DomainCredentials {
+    fn drop(&mut self) {
+        unsafe {
+            SecureZeroMemory(self.username.as_mut_ptr().cast(),
+                self.username.capacity() * std::mem::size_of::<u16>());
+            SecureZeroMemory(self.password.as_mut_ptr().cast(),
+                self.password.capacity() * std::mem::size_of::<u16>());
+        }
+    }
+}
+fn domain_credentials(domain_controller: &str) -> Result<DomainCredentials> {
+    let target = wide(&format!("SST Active Directory - {domain_controller}"));
+    let message = wide("Introduce una cuenta del dominio autorizada para desbloquear usuarios. No se guardarán las credenciales.");
+    let caption = wide("SST - Autenticación Active Directory");
+    let ui = CredUiInfo {
+        size: std::mem::size_of::<CredUiInfo>() as u32,
+        parent: ptr::null_mut(),
+        message: message.as_ptr(),
+        caption: caption.as_ptr(),
+        banner: ptr::null_mut(),
+    };
+    let mut username = vec![0u16; 513];
+    let mut password = vec![0u16; 513];
+    let mut save = 0i32;
+    let rc = unsafe {
+        CredUIPromptForCredentialsW(&ui, target.as_ptr(), 0,
+            username.as_mut_ptr(), username.len() as u32,
+            password.as_mut_ptr(), password.len() as u32,
+            &mut save, CREDUI_FLAGS)
+    };
+    if rc != 0 {
+        unsafe {
+            SecureZeroMemory(username.as_mut_ptr().cast(), username.len() * 2);
+            SecureZeroMemory(password.as_mut_ptr().cast(), password.len() * 2);
+        }
+        if rc == 1223 { bail!("autenticación de dominio cancelada por el usuario"); }
+        bail!("no se pudo obtener credenciales AD mediante Windows (Win32 {rc})");
+    }
+    if username.first() == Some(&0) || password.first() == Some(&0) {
+        let _cleared = DomainCredentials { username, password };
+        bail!("usuario y contraseña de AD son obligatorios");
+    }
+    Ok(DomainCredentials { username, password })
+}
+
 const LDAP_SUCCESS: u32 = 0;
-const LDAP_AUTH_NEGOTIATE: u32 = 0x0486;
-const LDAP_OPT_ENCRYPT: i32 = 0x96;
+const LDAP_AUTH_SIMPLE: u32 = 0x80;
 const LDAP_OPT_TIMELIMIT: i32 = 0x03;
 const LDAP_SCOPE_BASE: u32 = 0;
 const LDAP_SCOPE_SUBTREE: u32 = 2;
@@ -154,18 +227,21 @@ fn user_filter(name: &str) -> String {
 /// The DC independently enforces delegated AD rights, irrespective of local UAC.
 pub fn unlock(account: &str) -> Result<String> {
     let dc = controller()?;
-    let session = Session(unsafe { ldap_initW(wide(&dc).as_ptr(), 389) });
-    if session.0.is_null() { bail!("no se pudo crear una sesión LDAP con {dc}"); }
-    // SSPI Negotiate with sign + seal; fail closed if privacy can't be enabled.
-    let encryption = 1_u32;
-    ldap_check(unsafe { ldap_set_optionW(session.0, LDAP_OPT_ENCRYPT,
-        (&encryption as *const u32).cast()) }, "cifrado de sesión LDAP")?;
+    // Collect separate domain credentials; local SST/UAC identity is never
+    // silently substituted for a privileged Active Directory account.
+    let mut credentials = domain_credentials(&dc)?;
+    // Port 636 and LDAP over TLS from the first byte; no plaintext fallback.
+    let session = Session(unsafe { ldap_sslinitW(wide(&dc).as_ptr(), 636, 1) });
+    if session.0.is_null() { bail!("no se pudo crear conexión LDAPS con {dc}:636"); }
     let limit = 12_i32;
     ldap_check(unsafe { ldap_set_optionW(session.0, LDAP_OPT_TIMELIMIT,
         (&limit as *const i32).cast()) }, "límite de consulta LDAP")?;
-    ldap_check(unsafe { ldap_bind_sW(session.0, ptr::null_mut(),
-        ptr::null_mut(), LDAP_AUTH_NEGOTIATE) },
-        "autenticación SSPI del usuario actual")?;
+    ldap_check(unsafe { ldap_bind_sW(session.0,
+        credentials.username.as_mut_ptr(),
+        credentials.password.as_mut_ptr(), LDAP_AUTH_SIMPLE) },
+        "autenticación explícita de cuenta administradora AD mediante LDAPS")?;
+    // Credentials are not needed after server bind authentication.
+    drop(credentials);
 
     let root = search(session.0, "", LDAP_SCOPE_BASE,
         "(objectClass=*)", &["defaultNamingContext"])?;
