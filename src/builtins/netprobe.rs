@@ -1,19 +1,19 @@
 use std::{net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs},sync::Arc,time::Duration};
 use anyhow::Result;
-use crate::{core::{CommandContext, CommandOutput, ports::{NetworkProbe, TrafficMonitorFactory}},builtins::BuiltinCommand};
+use crate::{core::{CommandOutput, ports::{NetworkProbe, TrafficMonitorFactory}}};
 
-pub struct NetprobeBuiltin {
+pub struct NetworkAssessment {
     probe: Arc<dyn NetworkProbe>,
     traffic_factory: Arc<dyn TrafficMonitorFactory>,
 }
-impl NetprobeBuiltin {
+impl NetworkAssessment {
     pub fn new(probe: Arc<dyn NetworkProbe>, traffic_factory: Arc<dyn TrafficMonitorFactory>) -> Self {
         Self { probe, traffic_factory }
     }
     fn full(&self, args: &[String]) -> Result<CommandOutput> {
         let Some(base_args) = args.first().map(|x| vec![x.clone()]) else {
             let mut base = self.diagnose(&["--port".into(), "443".into()])?;
-            base.stdout.push_str("\nNota: para un destino interno usa netprobe full HOST.\n");
+            base.stdout.push_str("\nNota: para un destino interno usa notsh test full HOST.\n");
             self.append_measurements(&mut base, None);
             return Ok(base);
         };
@@ -57,18 +57,18 @@ impl NetprobeBuiltin {
         if args.is_empty() { return self.full(&[]); }
         if args.iter().any(|s| matches!(s.as_str(), "-h" | "--help" | "help")) {
             return Ok(CommandOutput::ok(
-                "netprobe — diagnóstico ordenado de conectividad (solo lectura)\n\
-                 netprobe [HOST] [--port PUERTO]    Diagnóstico de conectividad y causa probable\n\
-                 netprobe full [HOST]             Diagnóstico completo con velocidad, estabilidad y tráfico\n\
-                 netprobe loss [HOST] --count 20 --interval 400\n\
-                 netprobe stability [HOST] --seconds 10 [--tcp PUERTO]\n\
-                 netprobe speed                    Descarga, subida y latencia HTTPS reales, automáticamente\n\
-                 netprobe speed --passive          Solo velocidad de enlace y tráfico de NIC\n\
-                 netprobe speed --download https://SERVIDOR/archivo.bin --upload https://SERVIDOR/subir\n\
-                 netprobe traffic --seconds 5 [--pid PID] [--top N]\n\
-                 netprobe inspect --seconds 5 --pid PID\n\
-                 netprobe packets --seconds 5     Metadatos ETW por proceso; NO contenido\n\
-                 netprobe capture --seconds 5 [--interface IPV4_LOCAL] [--payload-bytes N]\n\
+                "notsh test — diagnóstico ordenado de conectividad (solo lectura)\n\
+                 notsh test [HOST] [--port PUERTO]    Diagnóstico de conectividad y causa probable\n\
+                 notsh test full [HOST]             Diagnóstico completo con velocidad, estabilidad y tráfico\n\
+                 notsh test loss [HOST] --count 20 --interval 400\n\
+                 notsh test stability [HOST] --seconds 10 [--tcp PUERTO]\n\
+                 notsh test speed                    Descarga, subida y latencia HTTPS reales, automáticamente\n\
+                 notsh test speed --passive          Solo velocidad de enlace y tráfico de NIC\n\
+                 notsh test speed --download https://SERVIDOR/archivo.bin --upload https://SERVIDOR/subir\n\
+                 notsh test traffic --seconds 5 [--pid PID] [--top N]\n\
+                 notsh test inspect --seconds 5 --pid PID\n\
+                 notsh test packets --seconds 5     Metadatos ETW por proceso; NO contenido\n\
+                 notsh test capture --seconds 5 [--interface IPV4_LOCAL] [--payload-bytes N]\n\
                    Detección automática de interfaz; cabeceras y bytes hexadecimales (Administrador).\n\
                  Predeterminado: HOST=example.com, puerto 443.\n\
                  IPv4 ICMP, DNS, gateway, NAC, pérdida, jitter y TCP según modalidad.\n\
@@ -84,21 +84,21 @@ impl NetprobeBuiltin {
             match args[i].as_str() {
                 "--port" => {
                     let Some(value) = args.get(i + 1) else {
-                        return Ok(CommandOutput::error("netprobe: --port requiere número 1..65535", 2));
+                        return Ok(CommandOutput::error("notsh test: --port requiere número 1..65535", 2));
                     };
                     let Ok(value) = value.parse::<u16>() else {
-                        return Ok(CommandOutput::error("netprobe: puerto inválido", 2));
+                        return Ok(CommandOutput::error("notsh test: puerto inválido", 2));
                     };
-                    if value == 0 { return Ok(CommandOutput::error("netprobe: puerto cero inválido", 2)); }
+                    if value == 0 { return Ok(CommandOutput::error("notsh test: puerto cero inválido", 2)); }
                     port = value; i += 2;
                 }
                 name if !name.starts_with('-') && !explicit_host => {
                     if name.len() > 253 || name.chars().any(|c| c.is_control() || c.is_whitespace()) {
-                        return Ok(CommandOutput::error("netprobe: destino inválido", 2));
+                        return Ok(CommandOutput::error("notsh test: destino inválido", 2));
                     }
                     host = name.to_owned(); explicit_host = true; i += 1;
                 }
-                _ => return Ok(CommandOutput::error("Uso: netprobe [HOST] [--port PUERTO]", 2)),
+                _ => return Ok(CommandOutput::error("Uso: notsh test [HOST] [--port PUERTO]", 2)),
             }
         }
         let mut output = format!("DIAGNÓSTICO DE RED\nDestino: {host}:{port}\nModo: solo lectura\n");
@@ -266,15 +266,8 @@ fn evaluate_interfaces(text: &str) -> (&'static str, &'static str, Option<(&'sta
     }
 }
 
-impl BuiltinCommand for NetprobeBuiltin {
-    fn name(&self) -> &'static str { "netprobe" }
-    fn aliases(&self) -> &'static [&'static str] { &[] }
-    fn help(&self) -> &'static str {
-        "netprobe — diagnóstico integral: velocidad real, estabilidad, pérdida, tráfico, servicios y paquetes IPv4"
-    }
-    fn execute(&self, _invoked_name: &str, args: &[String], _context: CommandContext<'_>) -> Result<CommandOutput> {
-        self.diagnose(args)
-    }
+impl NetworkAssessment {
+    pub fn run(&self, args: &[String]) -> Result<CommandOutput> { self.diagnose(args) }
 }
 
 #[cfg(test)]
