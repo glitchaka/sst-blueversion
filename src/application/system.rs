@@ -1437,11 +1437,14 @@ mod keygen_motion_regressions {
                 assert!(body.x.is_finite() && body.y.is_finite() && body.z.is_finite());
                 assert!(body.vx.is_finite() && body.vy.is_finite() && body.vz.is_finite());
                 assert!(body.y <= 0.001, "glyph moved through the virtual floor");
+                assert!(body.rx.is_finite() && body.ry.is_finite() && body.rz.is_finite());
+                assert!(body.wx.is_finite() && body.wy.is_finite() && body.wz.is_finite());
             }
         }
         let one = physics.bodies.get(&(0,0)).expect("first glyph");
         let two = physics.bodies.get(&(0,1)).expect("second glyph");
         assert!((one.x - two.x).abs() > 0.0001 || (one.z - two.z).abs() > 0.0001);
+        assert!((one.ry - two.ry).abs() > 0.0001 || (one.rz - two.rz).abs() > 0.0001);
     }
 
     #[test]
