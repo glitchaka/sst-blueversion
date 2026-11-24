@@ -1,60 +1,60 @@
-Commit: 1c291a7fe1161e42ccab433da7046ac3e91937be
-Tested UTC: 2026-11-24 17:04:53Z
+Commit: 14f33739386fc0ccceb8546d896395fa772ada30
+Tested UTC: 2026-11-24 17:11:21Z
 Test: failure
 Windows release build: skipped
 Log tail:
-   Compiling sha1 v0.10.7
-   Compiling md-5 v0.10.6
-   Compiling serial2 v0.2.39
-   Compiling home v0.5.12
-   Compiling hashlink v0.12.2
-   Compiling aead v0.5.2
-   Compiling vte v0.15.0
-   Compiling shell-words v1.1.1
-   Compiling downcast-rs v1.2.1
-   Compiling fallible-iterator v0.3.0
-   Compiling fallible-streaming-iterator v0.1.9
-   Compiling widestring v1.2.1
-   Compiling typed-path v0.13.0
-   Compiling zip v9.8.2
-   Compiling ferrisetw v1.2.0
-   Compiling slint-macros v1.18.1
-   Compiling slint v1.18.1
-   Compiling rusqlite v0.41.1
-   Compiling portable-pty v0.9.0
-   Compiling vt100 v0.16.2
-   Compiling chacha20poly1305 v0.10.1
-   Compiling rustyline v17.0.2
-   Compiling snmp2 v0.5.3
-   Compiling argon2 v0.5.3
-   Compiling crossterm v0.29.0
-   Compiling tar v0.4.46
-   Compiling fontdue v0.9.5
-   Compiling x25519-dalek v2.0.1
-   Compiling regex v1.13.2
-   Compiling dns-lookup v2.1.1
-   Compiling libcaca-rs v0.1.0
-   Compiling spellbook v0.4.2
-   Compiling similar v2.7.0
-   Compiling ipnet v2.12.2
-   Compiling base64 v0.22.1
-   Compiling glob v0.3.4
-   Compiling sysinfo v0.37.2
-error[E0423]: cannot find function `format` in this scope
-    --> src\application\network\discovery.rs:1267:28
-     |
-1267 |         overview.push_str(&format(
-     |                            ^^^^^^ not found in this scope
-     |
-     = note: a macro named `format` exists in another namespace
-help: use `!` to invoke the macro
-     |
-1267 |         overview.push_str(&format!(
-     |                                  +
-help: consider importing this function instead
-     |
-   1 + use std::fmt::format;
-     |
+test presentation::csv_output::tests::global_switch_applies_to_any_simple_command ... ok
+test presentation::csv_output::tests::values_quote_commas_quotes_and_line_breaks ... ok
+test presentation::csv_output::tests::aligned_rows_are_normalized_without_command_specific_code ... ok
+test presentation::gui_slint_base::viewport_regression_tests::do_not_restore_pty_until_client_size_is_stable ... ok
+test presentation::gui_slint_base::viewport_regression_tests::legacy_cyan_and_blue_accents_are_neutralized_globally ... ok
+test presentation::gui_slint::updater_relaunch_tests::relaunched_app_does_not_inherit_update_helper_mode ... ok
+test presentation::gui_slint_base::viewport_regression_tests::original_sst_icon_rgb_is_preserved_in_the_terminal ... ok
+test presentation::gui_slint_base::viewport_regression_tests::reject_iconic_and_transient_window_sizes ... ok
+test presentation::gui_slint::updater_relaunch_tests::identifies_the_installed_binary_in_an_old_helper_relaunch ... ok
+test presentation::helix_sst::tests::control_and_navigation_keys_are_encoded_for_pty ... ok
+test presentation::helix_sst::tests::helix_live_edit_paste_help_resize_and_exit ... ignored, starts the bundled Helix process and writes isolated editor fixtures
+test presentation::helix_sst::tests::helix_conpty_queries_are_answered_across_output_chunks ... ok
+test presentation::report::tests::fields_keep_labels_distinct_from_values ... ok
+test presentation::report::tests::all_native_registry_commands_share_consistent_human_report_design ... ok
+test presentation::report::tests::generic_help_has_distinct_syntax_descriptions_and_no_duplicate_title ... ok
+test presentation::report::tests::future_command_help_is_structurally_styled ... ok
+test presentation::report::tests::help_sections_are_semantic_and_command_descriptions_are_not_statuses ... ok
+test presentation::report::tests::long_release_notes_wrap_before_terminal_edge ... ok
+test presentation::report::tests::narrow_viewport_does_not_change_machine_reports ... ok
+test presentation::report::tests::native_title_is_not_a_dash_drawing ... ok
+test presentation::report::tests::neutral_structural_text_never_uses_cyan_without_a_real_state ... ok
+test presentation::report::tests::preserves_fetch_logo_and_script_pipelines_as_is ... ok
+test presentation::report::tests::preserves_precoloured_terminal_data ... ok
+test presentation::report::tests::scripts_and_machine_output_remain_unmodified ... ok
+test presentation::report::tests::semantic_colors_require_verified_status_fields ... ok
+test presentation::report::tests::table_status_color_is_column_scoped ... ok
+test presentation::shell::session::tests::detects_multiline_shell_constructs ... ok
+test presentation::report::tests::unknown_commands_get_the_same_layout_without_command_specific_rules ... ok
+test presentation::tui_style::tests::clipped_display_columns_are_measured_by_characters ... ok
+test presentation::tui_style::tests::sections_report_real_cell_coordinates_without_character_frames ... ok
+test support::domain::password_guard_tests::password_flag_must_finish_the_editable_line ... ok
+test support::domain::password_guard_tests::domain_password_requests_are_not_history_safe ... ok
+test support::transfer::tests::native_snapshot_protects_unknown_sizes_and_clamps_overflow ... ok
+test support::domain::password_guard_tests::unsafe_inline_values_are_blocked_before_trace_or_expansion ... ok
+test support::transfer::tests::uses_real_file_bytes_without_fake_percentage_or_eta ... ok
+test support::windows::tests::system_executable_rejects_absolute_paths ... ok
+test support::windows::tests::system_executable_rejects_path_traversal ... ok
+test support::domain::password_guard_tests::previous_history_passwords_are_removed_without_a_secret_backup ... ok
+test presentation::helix_sst::tests::helix_help_is_available_from_native_shell ... ok
 
-For more information about this error, try `rustc --explain E0423`.
-error: could not compile `sst` (bin "sst" test) due to 1 previous error
+failures:
+
+---- application::network::discovery::native_monitor_presentation_tests::device_columns_do_not_wrap_at_narrow_window_widths stdout ----
+
+thread 'application::network::discovery::native_monitor_presentation_tests::device_columns_do_not_wrap_at_narrow_window_widths' (1900) panicked at src\application\network\discovery.rs:1638:17:
+cols=65 line=3:   Detección parcial ARP/ICMP/TCP: sin respuesta no significa apagado. VLAN y ACL pueden aislar equipos.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    application::network::discovery::native_monitor_presentation_tests::device_columns_do_not_wrap_at_narrow_window_widths
+
+test result: FAILED. 170 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.68s
+
+error: test failed, to rerun pass `--bin sst`
