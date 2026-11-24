@@ -1224,6 +1224,13 @@ struct KeygenGlyphBody {
     vx: f32,
     vy: f32,
     vz: f32,
+    // Orientation and angular velocity of each independent 3D rigid glyph.
+    rx: f32,
+    ry: f32,
+    rz: f32,
+    wx: f32,
+    wy: f32,
+    wz: f32,
 }
 
 impl KeygenGlyphBody {
@@ -1236,6 +1243,12 @@ impl KeygenGlyphBody {
             vx: (seed % 5) as f32 * 0.16 - 0.32,
             vy: -1.5 - (seed % 8) as f32 * 0.29,
             vz: 0.5 - (seed % 6) as f32 * 0.17,
+            rx: seed as f32 * 0.045,
+            ry: (seed % 8) as f32 * 0.13,
+            rz: -(seed as f32) * 0.025,
+            wx: 0.13 - (seed % 4) as f32 * 0.07,
+            wy: (seed % 5) as f32 * 0.14 - 0.28,
+            wz: (seed % 7) as f32 * 0.09 - 0.27,
         }
     }
 }
@@ -1256,6 +1269,8 @@ impl KeygenPhysics {
                 body.vy -= 2.4 + (index % 6) as f32 * 0.27;
                 body.vx += if (index + line) % 2 == 0 { 0.9 } else { -0.9 };
                 body.vz += if index % 2 == 0 { 0.75 } else { -0.75 };
+                body.wy += if index % 2 == 0 { 0.55 } else { -0.55 };
+                body.wz += if line % 2 == 0 { 0.2 } else { -0.2 };
             }
             // Damped springs on X/Z, gravity and restitution on Y.
             body.vx += (-3.2 * body.x - 1.0 * body.vx) * dt;
@@ -1264,9 +1279,21 @@ impl KeygenPhysics {
             body.x += body.vx * dt;
             body.y += body.vy * dt;
             body.z += body.vz * dt;
+            // Rotations are stateful, with angular inertia and air drag.
+            body.rx += body.wx * dt;
+            body.ry += body.wy * dt;
+            body.rz += body.wz * dt;
+            body.wx *= 0.997;
+            body.wy *= 0.997;
+            body.wz *= 0.997;
             if body.y >= 0.0 {
                 body.y = 0.0;
-                body.vy = -body.vy.abs() * 0.58;
+                let impact = body.vy.abs();
+                body.vy = -impact * 0.58;
+                if impact > 0.15 {
+                    body.wx += body.vz * 0.07;
+                    body.wz -= body.vx * 0.09;
+                }
                 if body.vy.abs() < 0.08 { body.vy = 0.0; }
             }
         }
@@ -1289,6 +1316,8 @@ impl KeygenPhysics {
         for (key, impulse) in impulses {
             if let Some(body) = self.bodies.get_mut(&key) {
                 body.vx += impulse;
+                body.wy += impulse * 0.18;
+                body.wz += impulse * 0.11;
             }
         }
     }
@@ -1328,9 +1357,12 @@ fn keygen_frame(
             // Perspective projection from real 3D state onto terminal cells.
             let distance = (3.0 - body.z).max(1.0);
             let projection = 2.5 / distance;
-            let px = (center + (rest_x + body.x) * projection).round() as isize;
+            let rx = body.rx.sin() * 0.45;
+            let ry = body.ry.sin() * 0.7;
+            let rz = body.rz.sin() * 0.35;
+            let px = (center + (rest_x + body.x + ry) * projection).round() as isize;
             let py = (base_y as f32 + body.y * 1.45 - arc_lift
-                - body.z * 0.7).round() as isize;
+                - body.z * 0.7 + rx + rz).round() as isize;
             if px < 0 || px >= width as isize || py < 1 || py >= height as isize-1 {
                 continue;
             }
@@ -1346,6 +1378,21 @@ fn keygen_frame(
                 output.push_str(&format!(
                     "\x1b[{};{}H\x1b[38;2;66;61;58m.",
                     base_y,shadow_x+1
+                ));
+            }
+            // A depth layer moves with the yaw and Z coordinate so letters
+            // have visible volume, not just a sinusoidal 2D position offset.
+            let depth_x = if body.ry.cos() >= 0.0 { 1 } else { -1 };
+            let back_x = px + depth_x;
+            let back_y = py + 1 + if body.rx.sin() < -0.7 { -1 } else { 0 };
+            if back_x >= 0 && back_x < width as isize
+                && back_y >= 1 && back_y < height as isize - 1
+            {
+                let dim = |value: u8| -> u8 { (value as f32 * 0.38).round() as u8 };
+                let (sr, sg, sb) = (dim(r), dim(g), dim(b));
+                output.push_str(&format!(
+                    "\x1b[{};{}H\x1b[38;2;{sr};{sg};{sb}m▓",
+                    back_y + 1, back_x + 1
                 ));
             }
             output.push_str(&format!(
