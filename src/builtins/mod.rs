@@ -23,7 +23,7 @@ mod tools;
 
 pub use unban::UnbanBuiltin;
 pub use admin::{
-    DeviceBuiltin, DiagnosticsBuiltin, DomainBuiltin, NetworkBuiltin, SwitchBuiltin,
+    DeviceBuiltin, DomainBuiltin, NetworkBuiltin, SwitchBuiltin,
     WakeOnLanBuiltin,
 };
 pub use command::BuiltinCommand;
@@ -33,7 +33,7 @@ pub use instp::InstpBuiltin;
 pub use powershell_native::NativePowerShellBuiltin;
 pub use sigsour::SigSourBuiltin;
 pub use registry::CommandRegistry;
-pub use netprobe::NetprobeBuiltin;
+pub use netprobe::NetworkAssessment;
 pub use nwash::{AclBuiltin, EventLogBuiltin, FirewallBuiltin, PnpBuiltin, PowerBuiltin, ProcessBuiltin, RegistryBuiltin, ServiceBuiltin, SessionBuiltin, ShareBuiltin, TaskBuiltin};
 pub use security::{IntelBuiltin, TriageBuiltin};
 pub use system::SystemBuiltin;
