@@ -1,6 +1,6 @@
 //! Native Active Directory account unlock over Windows LDAP (Wldap32).
 //! No PowerShell module, shell commands, passwords in argv, or unauthenticated binds.
-//! Uses the current elevated SST token via SSPI Negotiate with LDAP sealing.
+//! Solicits separate Active Directory credentials in a masked Windows dialog.
 use anyhow::Result;
 use crate::core::{CommandContext, CommandOutput};
 use super::BuiltinCommand;
@@ -11,7 +11,7 @@ impl BuiltinCommand for UnbanBuiltin {
     fn name(&self) -> &'static str { "unban" }
     fn help(&self) -> &'static str {
         "unban USUARIO — desbloquea una cuenta de Active Directory mediante LDAP nativo. \
-         Requiere SST elevado con sudo y permisos delegados de desbloqueo en AD. \
+         No requiere sudo; solicita credenciales del dominio y exige permisos de desbloqueo en AD. \
          Nunca recibe contraseñas como argumentos."
     }
     fn execute(&self, _invoked_name: &str, args: &[String], _context: CommandContext<'_>)
@@ -20,15 +20,8 @@ impl BuiltinCommand for UnbanBuiltin {
         if args.len() == 1 && matches!(args[0].as_str(), "--help" | "-h" | "help") {
             return Ok(CommandOutput::ok(self.help()));
         }
-        // Check the token *before* any domain access; never trust a --sudo flag.
-        #[cfg(windows)]
-        if !super::sudo::is_sudo_active()? {
-            return Ok(CommandOutput::error(
-                "unban: SST no está en modo sudo (token elevado). \
-                 Ejecuta sudo para abrir SST con privilegios administrativos.", 5));
-        }
         #[cfg(not(windows))]
-        return Ok(CommandOutput::error("unban: requiere SST en Windows unido a AD", 1));
+        return Ok(CommandOutput::error("unban: requiere Windows y acceso al dominio AD", 1));
 
         #[cfg(windows)]
         {
@@ -40,10 +33,10 @@ impl BuiltinCommand for UnbanBuiltin {
                 return Ok(CommandOutput::error(format!("unban: {message}"), 2));
             }
             let result = crate::adapters::windows::ad_unlock::unlock(user);
-            // Log outcome without password, DN or command arguments.
+            // Log only the outcome, never the supplied AD username or password.
             let stage = if result.is_ok() { "success" } else { "failure" };
             let audit = super::sudo_audit::AuditEvent::new(
-                "unban", &[], std::env::var("USERNAME").unwrap_or_default(), "ADMIN");
+                "unban", &[], std::env::var("USERNAME").unwrap_or_default(), "USER");
             audit.record(stage, Some(if result.is_ok() {0} else {1}))?;
             match result {
                 Ok(dc) => Ok(CommandOutput::ok(format!(
