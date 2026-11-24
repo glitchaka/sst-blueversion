@@ -107,6 +107,14 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
 
+      - name: Verify netprobe real native diagnostics and CSV layout
+        shell: pwsh
+        run: ./scripts/test-netprobe.ps1 -SstPath ./target/release/sst.exe
+
+      - name: Verify SST original logo text and colors
+        shell: pwsh
+        run: ./scripts/test-fetch-text-logo.ps1 -SstPath ./target/release/sst.exe
+
       - name: Verify GUI software renderer launch
         shell: pwsh
         run: ./scripts/test-software-renderer.ps1 -Exe ./target/release/sst.exe
