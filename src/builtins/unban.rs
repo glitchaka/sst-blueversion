@@ -34,7 +34,9 @@ impl BuiltinCommand for UnbanBuiltin {
             }
             let result = crate::adapters::windows::ad_unlock::unlock(user);
             // Independent AD operation audit, never mixed with sudo/UAC logs.
-            audit_unban(user, result.is_ok())?;
+            if let Err(error) = audit_unban(user, result.is_ok()) {
+                eprintln!("unban: no se pudo registrar la auditoría: {error:#}");
+            }
             match result {
                 Ok(dc) => Ok(CommandOutput::ok(format!(
                     "AD: usuario '{user}' desbloqueado correctamente.\n\
