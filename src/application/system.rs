@@ -136,6 +136,11 @@ impl SystemService {
         // useful error at the normal prompt, not a mute keygen animation.
         let mut music = crate::application::keygen_audio::KeygenMusic::new(first)?;
 
+        #[cfg(windows)]
+        if env::var_os("SST_KEYGEN_TERMINAL").is_none() {
+            return keygen_sdl(music);
+        }
+
         let mut terminal = self.terminal.alternate_screen()?;
         let mut system = System::new_all();
         system.refresh_all();
@@ -1257,6 +1262,7 @@ impl KeygenGlyphBody {
 #[derive(Default)]
 struct KeygenPhysics {
     bodies: HashMap<(usize, usize), KeygenGlyphBody>,
+    rendered_angles: HashMap<(usize, usize), f64>,
 }
 
 impl KeygenPhysics {
@@ -1330,12 +1336,166 @@ impl KeygenPhysics {
 }
 
 
+#[cfg(windows)]
+fn keygen_sdl(
+    mut music: crate::application::keygen_audio::KeygenMusic,
+) -> anyhow::Result<CommandOutput> {
+    use sdl2::{
+        event::Event, keyboard::Keycode,
+        pixels::{Color, PixelFormatEnum},
+        rect::Rect, render::BlendMode,
+    };
+    use std::time::Instant;
+
+    // The original SST animation/physics runs unchanged. SDL2 owns the native
+    // window and renders actual pixel glyphs; libcaca owns the character
+    // composition layer. No subprocess, SDL2.dll or external player.
+    let sdl = sdl2::init().map_err(anyhow::Error::msg)?;
+    let video = sdl.video().map_err(anyhow::Error::msg)?;
+    let window = video.window("SST KEYGEN — libcaca / SDL2", 1152, 672)
+        .position_centered().resizable().build()
+        .map_err(|e| anyhow::anyhow!("keygen: SDL2 window: {e}"))?;
+    let mut renderer = window.into_canvas().software().build()
+        .map_err(|e| anyhow::anyhow!("keygen: SDL2 software renderer: {e}"))?;
+    renderer.set_blend_mode(BlendMode::Blend);
+    let creator = renderer.texture_creator();
+    let font_bytes = [
+        r"C:\Windows\Fonts\consola.ttf",
+        r"C:\Windows\Fonts\lucon.ttf",
+        r"C:\Windows\Fonts\cour.ttf",
+    ].into_iter().find_map(|p| std::fs::read(p).ok())
+        .ok_or_else(|| anyhow::anyhow!("keygen: falta una fuente monoespaciada Windows"))?;
+    let font = fontdue::Font::from_bytes(font_bytes, fontdue::FontSettings::default())
+        .map_err(|e| anyhow::anyhow!("keygen: fuente Windows inválida: {e}"))?;
+    // Cache the actual glyph bitmaps. Per-frame only texture color and
+    // position change, so animations do not rasterize fonts repeatedly.
+    let mut glyph_cache = HashMap::new();
+    let mut events = sdl.event_pump().map_err(anyhow::Error::msg)?;
+    let mut system = System::new_all();
+    system.refresh_all();
+    let mut physics = KeygenPhysics::default();
+    let mut frame = 0u64;
+    let mut last_redraw = Instant::now();
+    'running: loop {
+        for event in events.poll_iter() {
+            match event {
+                Event::Quit { .. }
+                | Event::KeyDown { keycode: Some(Keycode::Escape | Keycode::Q), .. } => {
+                    break 'running;
+                }
+                Event::KeyDown { keycode: Some(Keycode::Space), repeat: false, .. } => {
+                    music.pause_resume()?;
+                }
+                Event::KeyDown { keycode: Some(Keycode::Num1 | Keycode::Kp1), repeat: false, .. } => {
+                    music.select(0)?;
+                }
+                Event::KeyDown { keycode: Some(Keycode::Num2 | Keycode::Kp2), repeat: false, .. } => {
+                    music.select(1)?;
+                }
+                _ => {}
+            }
+        }
+        if last_redraw.elapsed() < Duration::from_millis(33) {
+            std::thread::sleep(Duration::from_millis(2));
+            continue;
+        }
+        last_redraw = Instant::now();
+        if frame % 15 == 0 && !music.is_paused() {
+            system.refresh_cpu_all();
+            system.refresh_memory();
+        }
+        let (w, h) = renderer.output_size().map_err(anyhow::Error::msg)?;
+        let cols = (w / 14).clamp(48, 150) as u16;
+        let rows = (h / 26).clamp(18, 60) as u16;
+        let cell_w = (w / u32::from(cols)).max(1);
+        let cell_h = (h / u32::from(rows)).max(1);
+
+        let facts = keygen_system_facts(&system);
+        let frame_ansi = keygen_frame(
+            cols, rows, frame, music.is_paused(), &facts, &mut physics,
+        );
+        // Decode the exact 24-bit color and geometry of the SST frame.
+        let mut parser = vt100::Parser::new(rows, cols, 0);
+        parser.process(frame_ansi.as_bytes());
+        let screen = parser.screen();
+        let mut ascii = libcaca::Canvas::new(i32::from(cols), i32::from(rows))
+            .map_err(|e| anyhow::anyhow!("keygen: libcaca canvas: {e}"))?;
+        let mut colors = HashMap::new();
+        for row in 0..rows {
+            for col in 0..cols {
+                if let Some(cell) = screen.cell(row, col)
+                    && let Some(ch) = cell.contents().chars().next()
+                    && !ch.is_control() && ch != ' '
+                {
+                    ascii.put_char(i32::from(col), i32::from(row), ch as u32);
+                    let rgb = match cell.fgcolor() {
+                        vt100::Color::Rgb(r, g, b) => (r, g, b),
+                        _ => (189, 174, 147),
+                    };
+                    colors.insert((row, col), rgb);
+                }
+            }
+        }
+        renderer.set_draw_color(Color::RGB(12, 12, 12));
+        renderer.clear();
+        for row in 0..rows {
+            for col in 0..cols {
+                let code = ascii.get_char(i32::from(col), i32::from(row));
+                let Some(ch) = char::from_u32(code) else { continue };
+                if ch == ' ' || ch.is_control() { continue; }
+                if !glyph_cache.contains_key(&ch) {
+                    let (metrics, bitmap) = font.rasterize(ch, 25.0);
+                    let tw = metrics.width.max(1) as u32;
+                    let th = metrics.height.max(1) as u32;
+                    let mut texture = creator.create_texture_streaming(
+                        PixelFormatEnum::RGBA8888, tw, th,
+                    ).map_err(|e| anyhow::anyhow!("keygen: textura SDL2: {e}"))?;
+                    texture.set_blend_mode(BlendMode::Blend);
+                    texture.with_lock(None, |buffer, pitch| {
+                        for y in 0..metrics.height {
+                            for x in 0..metrics.width {
+                                let alpha = bitmap[y * metrics.width + x];
+                                let off = y * pitch + x * 4;
+                                // SDL RGBA8888 is ABGR bytes in little-endian.
+                                buffer[off..off + 4].copy_from_slice(&[alpha, 255, 255, 255]);
+                            }
+                        }
+                    }).map_err(anyhow::Error::msg)?;
+                    glyph_cache.insert(ch, (texture, tw, th));
+                }
+                let Some((texture, tw, th)) = glyph_cache.get_mut(&ch) else { continue };
+                let (r, g, b) = colors.get(&(row, col)).copied()
+                    .unwrap_or((189, 174, 147));
+                texture.set_color_mod(r, g, b);
+                let x = i32::from(col) * cell_w as i32
+                    + (cell_w as i32 - *tw as i32) / 2;
+                let y = i32::from(row) * cell_h as i32
+                    + (cell_h as i32 - *th as i32) / 2;
+                let angle = physics.rendered_angles
+                    .get(&(row as usize, col as usize)).copied().unwrap_or(0.0);
+                renderer.copy_ex(texture, None, Rect::new(x, y, *tw, *th),
+                    angle, None, false, false).map_err(anyhow::Error::msg)?;
+            }
+        }
+        renderer.present();
+        if !music.is_paused() {
+            frame = frame.wrapping_add(1);
+            physics.tick(frame);
+        }
+        if frame % 5 == 0 { music.tick()?; }
+    }
+    // SDL renderer and MCI audio both have scoped ownership, so closing the
+    // window stops playback and returns to SST without an orphan process.
+    Ok(CommandOutput::ok(""))
+}
+
 fn keygen_frame(
     cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String],
     physics: &mut KeygenPhysics,
 ) -> String {
     let width = usize::from(cols);
     let height = usize::from(rows);
+    physics.rendered_angles.clear();
     let mut output = String::from("\x1b[0m\x1b[2J\x1b[H");
     if width < 22 || height < 7 {
         output.push_str("KEYGEN SST - amplia la ventana");
@@ -1368,6 +1528,7 @@ fn keygen_frame(
             if px < 0 || px >= width as isize || py < 1 || py >= height as isize-1 {
                 continue;
             }
+            physics.rendered_angles.insert((py as usize, px as usize), f64::from(body.rz.to_degrees()));
             let (r0,g0,b0) = keygen_glyph_color(frame,index,base_y);
             let light = projection.clamp(0.4,1.3);
             let tone = |channel:u8| -> u8 {
