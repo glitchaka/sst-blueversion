@@ -1,20 +1,20 @@
 SST Windows release CI report
-Source commit: e39af2f29c17d874273c19f6172826b9f1c8dea0
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45471732407
-Recorded UTC: 2026-11-24 19:50:02Z
+Source commit: 9b28a5fbf7f784ad5224409b72b42fa97dfcc023
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45474499136
+Recorded UTC: 2026-11-24 20:05:55Z
 Compile: success
 Rust tests: success
 Software GUI startup: success
-Packaging: failure
+Packaging: success
 Compiler log tail:
-   Compiling hashbrown v0.15.5
-   Compiling password-hash v0.5.0
+   Compiling poly1305 v0.8.0
    Compiling regex-automata v0.4.19
-   Compiling zopfli v0.8.4
+   Compiling zerocopy v0.7.35
+   Compiling hashbrown v0.15.5
    Compiling ttf-parser v0.25.1
    Compiling num v0.4.3
-   Compiling asn1-rs v0.6.2
    Compiling slint-macros v1.18.1
+   Compiling asn1-rs v0.6.2
    Compiling tokio v1.54.1
    Compiling parking_lot v0.12.5
    Compiling rand v0.8.8
@@ -27,27 +27,27 @@ Compiler log tail:
    Compiling filedescriptor v0.8.3
    Compiling crossterm_winapi v0.9.1
    Compiling cbc v0.1.2
-   Compiling chacha20 v0.9.1
+   Compiling cfb-mode v0.8.2
    Compiling aes v0.8.4
    Compiling des v0.8.1
-   Compiling cfb-mode v0.8.2
-   Compiling blake2 v0.10.6
+   Compiling chacha20 v0.9.1
    Compiling hmac v0.12.1
+   Compiling blake2 v0.10.6
+   Compiling sha2 v0.10.9
    Compiling md-5 v0.10.6
    Compiling sha1 v0.10.7
-   Compiling sha2 v0.10.9
-   Compiling serial2 v0.2.39
-   Compiling home v0.5.12
    Compiling hashlink v0.12.2
+   Compiling home v0.5.12
+   Compiling serial2 v0.2.39
    Compiling num-derive v0.4.2
    Compiling aead v0.5.2
    Compiling vte v0.15.0
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling downcast-rs v1.2.1
    Compiling fallible-iterator v0.3.0
    Compiling typed-path v0.13.0
-   Compiling shell-words v1.1.1
-   Compiling fallible-streaming-iterator v0.1.9
    Compiling widestring v1.2.1
-   Compiling downcast-rs v1.2.1
+   Compiling shell-words v1.1.1
    Compiling portable-pty v0.9.0
    Compiling ferrisetw v1.2.0
    Compiling zip v9.8.2
@@ -71,4 +71,4 @@ Compiler log tail:
    Compiling similar v2.7.0
    Compiling glob v0.3.4
    Compiling sysinfo v0.37.2
-    Finished `release` profile [optimized] target(s) in 9m 10s
+    Finished `release` profile [optimized] target(s) in 8m 39s
