@@ -20,7 +20,7 @@ pub fn execute(
     traffic: &dyn TrafficMonitorFactory,
 ) -> Result<CommandOutput> {
     let Some((command, rest)) = args.split_first() else {
-        return Ok(CommandOutput::error("netcheck: falta subcomando", 2));
+        return Ok(CommandOutput::error("netdiag: falta subcomando", 2));
     };
     match command.as_str() {
         "loss" => loss(rest, probe, false),
@@ -28,7 +28,7 @@ pub fn execute(
         "speed" => speed(rest),
         "capture" => capture(rest, probe),
         "traffic" | "inspect" | "packets" => traffic_report(rest, probe, traffic, command),
-        _ => Ok(CommandOutput::error("netcheck: subcomando desconocido", 2)),
+        _ => Ok(CommandOutput::error("netdiag: subcomando desconocido", 2)),
     }
 }
 
@@ -144,7 +144,7 @@ impl Samples {
 fn loss(args: &[String], probe: &dyn NetworkProbe, stability: bool) -> Result<CommandOutput> {
     let options = ["--count","--interval","--timeout","--seconds","--tcp"];
     if let Some(problem) = unknown_arguments(args, &options, 1) {
-        return Ok(CommandOutput::error(format!("netcheck: {problem}"), 2));
+        return Ok(CommandOutput::error(format!("netdiag: {problem}"), 2));
     }
     let parse = |flag, default, min, max| option_u32(args, flag, default, min, max);
     let count = match parse("--count", if stability { 0 } else { 20 }, 0, 120) {
@@ -170,7 +170,7 @@ fn loss(args: &[String], probe: &dyn NetworkProbe, stability: bool) -> Result<Co
         }
     } else { None };
     if !stability && count == 0 {
-        return Ok(CommandOutput::error("netcheck loss: --count debe ser 1..120", 2));
+        return Ok(CommandOutput::error("netdiag loss: --count debe ser 1..120", 2));
     }
 
     let host = args.iter().enumerate()
@@ -190,11 +190,11 @@ fn loss(args: &[String], probe: &dyn NetworkProbe, stability: bool) -> Result<Co
         });
     if host.is_empty() {
         return Ok(CommandOutput::error(
-            "netcheck: especifica HOST; no existe gateway IPv4 predeterminado", 2));
+            "netdiag: especifica HOST; no existe gateway IPv4 predeterminado", 2));
     }
     let ip = match resolve_ipv4(&host) {
         Ok(ip) => ip,
-        Err(error) => return Ok(CommandOutput::error(format!("netcheck: {error}"), 1)),
+        Err(error) => return Ok(CommandOutput::error(format!("netdiag: {error}"), 1)),
     };
     let planned = if stability {
         ((seconds * 1000) / interval).max(1).min(120)
@@ -252,13 +252,13 @@ fn loss(args: &[String], probe: &dyn NetworkProbe, stability: bool) -> Result<Co
 fn capture(args: &[String], probe: &dyn NetworkProbe) -> Result<CommandOutput> {
     let options = ["--interface","--seconds","--limit","--payload-bytes"];
     if let Some(problem) = unknown_arguments(args, &options, 0) {
-        return Ok(CommandOutput::error(format!("netcheck capture: {problem}"), 2));
+        return Ok(CommandOutput::error(format!("netdiag capture: {problem}"), 2));
     }
     let local = if let Some(address) = option_string(args, "--interface") {
         match address.parse::<Ipv4Addr>() {
             Ok(ip) if !ip.is_unspecified() && !ip.is_loopback() => ip,
             _ => return Ok(CommandOutput::error(
-                "netcheck capture: --interface debe ser una IPv4 local activa", 2)),
+                "netdiag capture: --interface debe ser una IPv4 local activa", 2)),
         }
     } else {
         // A connected UDP socket selects the outbound route without sending
@@ -276,7 +276,7 @@ fn capture(args: &[String], probe: &dyn NetworkProbe) -> Result<CommandOutput> {
         match detected {
             Some(ip) => ip,
             None => return Ok(CommandOutput::error(
-                "netcheck capture: no se pudo determinar IPv4 local; \
+                "netdiag capture: no se pudo determinar IPv4 local; \
                  utiliza --interface IPv4_LOCAL.", 1)),
         }
     };
@@ -324,25 +324,25 @@ fn capture(args: &[String], probe: &dyn NetworkProbe) -> Result<CommandOutput> {
     match crate::adapters::windows::raw_capture::capture(local, seconds, limit, payload as usize, &owners) {
         Ok(report) => Ok(CommandOutput::ok(report)),
         Err(error) => Ok(CommandOutput::error(format!(
-            "netcheck capture: {error:#}\n\
+            "netdiag capture: {error:#}\n\
              No se ha simulado captura alguna. Verifica IPv4 local, permisos y política del adaptador."), 1)),
     }
 }
 
 fn speed(args: &[String]) -> Result<CommandOutput> {
-    // netcheck speed is an active end-to-end Internet test by default.
+    // netdiag speed is an active end-to-end Internet test by default.
     // --passive retains the no-external-traffic NIC diagnostics.
     let passive = args.iter().any(|arg| arg == "--passive");
     let values = args.iter().filter(|arg| arg.as_str() != "--passive")
         .cloned().collect::<Vec<_>>();
     let flags = ["--seconds", "--download", "--upload", "--max-mib"];
     if let Some(error) = unknown_arguments(&values, &flags, 0) {
-        return Ok(CommandOutput::error(format!("netcheck speed: {error}"), 2));
+        return Ok(CommandOutput::error(format!("netdiag speed: {error}"), 2));
     }
     if passive && (option_string(&values, "--download").is_some()
         || option_string(&values, "--upload").is_some()) {
         return Ok(CommandOutput::error(
-            "netcheck speed: --passive no puede combinarse con URLs activas", 2));
+            "netdiag speed: --passive no puede combinarse con URLs activas", 2));
     }
     let seconds = match option_u32(&values, "--seconds", 8, 1, 30) {
         Ok(value) => value,
@@ -355,7 +355,7 @@ fn speed(args: &[String]) -> Result<CommandOutput> {
     let before = interface_counters()?;
     if before.is_empty() {
         return Ok(CommandOutput::error(
-            "netcheck speed: no hay interfaces Ethernet/Wi-Fi activas", 1));
+            "netdiag speed: no hay interfaces Ethernet/Wi-Fi activas", 1));
     }
     let started = Instant::now();
     let mut measured_download_or_upload = passive;
@@ -492,7 +492,7 @@ fn traffic_report(
 ) -> Result<CommandOutput> {
     let flags = ["--seconds","--pid","--top"];
     if let Some(error) = unknown_arguments(args, &flags, 0) {
-        return Ok(CommandOutput::error(format!("netcheck traffic: {error}"), 2));
+        return Ok(CommandOutput::error(format!("netdiag traffic: {error}"), 2));
     }
     let seconds = match option_u32(args, "--seconds", 3, 1, 30) {
         Ok(n) => n,
@@ -511,7 +511,7 @@ fn traffic_report(
     let monitor = match factory.start() {
         Ok(monitor) => monitor,
         Err(error) => return Ok(CommandOutput::error(format!(
-            "netcheck {mode}: ETW no disponible: {error}\n\
+            "netdiag {mode}: ETW no disponible: {error}\n\
              Verifica permisos de administración/servicios de seguimiento de Windows; no se sustituyen cifras por estimaciones."), 1))
     };
     let before = monitor.snapshot();
