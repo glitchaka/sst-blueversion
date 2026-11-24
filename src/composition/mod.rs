@@ -49,7 +49,7 @@ use crate::{
         NativePowerShellBuiltin,
         SigSourBuiltin,
         NetworkBuiltin,
-        NetprobeBuiltin,
+        NetworkAssessment,
         PathBuiltin,
         SwitchBuiltin,
         SudoBuiltin,
@@ -168,8 +168,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     ));
 
     let mut registry = CommandRegistry::new();
-    registry.register(Arc::new(NetworkBuiltin::new(Arc::clone(&network_service))))?;
-    registry.register(Arc::new(NetprobeBuiltin::new(Arc::clone(&network_probe), Arc::clone(&traffic_factory))))?;
+    registry.register(Arc::new(NetworkBuiltin::new(Arc::clone(&network_service), NetworkAssessment::new(Arc::clone(&network_probe), Arc::clone(&traffic_factory)))))?;
     registry.register(Arc::new(DeviceBuiltin::new(device_service)))?;
     registry.register(Arc::new(DomainBuiltin::new(domain_service)))?;
     registry.register(Arc::new(UnbanBuiltin))?;
