@@ -13,7 +13,7 @@ impl NetcheckBuiltin {
     fn full(&self, args: &[String]) -> Result<CommandOutput> {
         let Some(base_args) = args.first().map(|x| vec![x.clone()]) else {
             let mut base = self.diagnose(&["--port".into(), "443".into()])?;
-            base.stdout.push_str("\nNota: para un destino interno usa netcheck full HOST.\n");
+            base.stdout.push_str("\nNota: para un destino interno usa netdiag full HOST.\n");
             self.append_measurements(&mut base, None);
             return Ok(base);
         };
@@ -39,7 +39,7 @@ impl NetcheckBuiltin {
         for cmd in probes {
             let name = cmd[0].to_uppercase();
             base.stdout.push_str(&format!("\n=== {name} ===\n"));
-            match super::netcheck_extended::execute(&cmd, &*self.probe, &*self.traffic_factory) {
+            match super::netdiag_extended::execute(&cmd, &*self.probe, &*self.traffic_factory) {
                 Ok(output) if output.status == 0 => base.stdout.push_str(&output.stdout),
                 Ok(output) => base.stdout.push_str(&format!("NO DISPONIBLE: {}\n", output.stderr.trim())),
                 Err(error) => base.stdout.push_str(&format!("ERROR: {error:#}\n")),
@@ -50,25 +50,25 @@ impl NetcheckBuiltin {
     fn diagnose(&self, args: &[String]) -> Result<CommandOutput> {
         if let Some(mode) = args.first() {
             if matches!(mode.as_str(), "loss" | "stability" | "speed" | "traffic" | "inspect" | "packets" | "capture") {
-                return super::netcheck_extended::execute(args, &*self.probe, &*self.traffic_factory);
+                return super::netdiag_extended::execute(args, &*self.probe, &*self.traffic_factory);
             }
             if mode == "full" { return self.full(&args[1..]); }
         }
         if args.is_empty() { return self.full(&[]); }
         if args.iter().any(|s| matches!(s.as_str(), "-h" | "--help" | "help")) {
             return Ok(CommandOutput::ok(
-                "netcheck — diagnóstico ordenado de conectividad (solo lectura)\n\
-                 netcheck [HOST] [--port PUERTO]    Diagnóstico de conectividad y causa probable\n\
-                 netcheck full [HOST]             Diagnóstico completo con velocidad, estabilidad y tráfico\n\
-                 netcheck loss [HOST] --count 20 --interval 400\n\
-                 netcheck stability [HOST] --seconds 10 [--tcp PUERTO]\n\
-                 netcheck speed                    Descarga, subida y latencia HTTPS reales, automáticamente\n\
-                 netcheck speed --passive          Solo velocidad de enlace y tráfico de NIC\n\
-                 netcheck speed --download https://SERVIDOR/archivo.bin --upload https://SERVIDOR/subir\n\
-                 netcheck traffic --seconds 5 [--pid PID] [--top N]\n\
-                 netcheck inspect --seconds 5 --pid PID\n\
-                 netcheck packets --seconds 5     Metadatos ETW por proceso; NO contenido\n\
-                 netcheck capture --seconds 5 [--interface IPV4_LOCAL] [--payload-bytes N]\n\
+                "netdiag — diagnóstico ordenado de conectividad (solo lectura)\n\
+                 netdiag [HOST] [--port PUERTO]    Diagnóstico de conectividad y causa probable\n\
+                 netdiag full [HOST]             Diagnóstico completo con velocidad, estabilidad y tráfico\n\
+                 netdiag loss [HOST] --count 20 --interval 400\n\
+                 netdiag stability [HOST] --seconds 10 [--tcp PUERTO]\n\
+                 netdiag speed                    Descarga, subida y latencia HTTPS reales, automáticamente\n\
+                 netdiag speed --passive          Solo velocidad de enlace y tráfico de NIC\n\
+                 netdiag speed --download https://SERVIDOR/archivo.bin --upload https://SERVIDOR/subir\n\
+                 netdiag traffic --seconds 5 [--pid PID] [--top N]\n\
+                 netdiag inspect --seconds 5 --pid PID\n\
+                 netdiag packets --seconds 5     Metadatos ETW por proceso; NO contenido\n\
+                 netdiag capture --seconds 5 [--interface IPV4_LOCAL] [--payload-bytes N]\n\
                    Detección automática de interfaz; cabeceras y bytes hexadecimales (Administrador).\n\
                  Predeterminado: HOST=example.com, puerto 443.\n\
                  IPv4 ICMP, DNS, gateway, NAC, pérdida, jitter y TCP según modalidad.\n\
@@ -84,21 +84,21 @@ impl NetcheckBuiltin {
             match args[i].as_str() {
                 "--port" => {
                     let Some(value) = args.get(i + 1) else {
-                        return Ok(CommandOutput::error("netcheck: --port requiere número 1..65535", 2));
+                        return Ok(CommandOutput::error("netdiag: --port requiere número 1..65535", 2));
                     };
                     let Ok(value) = value.parse::<u16>() else {
-                        return Ok(CommandOutput::error("netcheck: puerto inválido", 2));
+                        return Ok(CommandOutput::error("netdiag: puerto inválido", 2));
                     };
-                    if value == 0 { return Ok(CommandOutput::error("netcheck: puerto cero inválido", 2)); }
+                    if value == 0 { return Ok(CommandOutput::error("netdiag: puerto cero inválido", 2)); }
                     port = value; i += 2;
                 }
                 name if !name.starts_with('-') && !explicit_host => {
                     if name.len() > 253 || name.chars().any(|c| c.is_control() || c.is_whitespace()) {
-                        return Ok(CommandOutput::error("netcheck: destino inválido", 2));
+                        return Ok(CommandOutput::error("netdiag: destino inválido", 2));
                     }
                     host = name.to_owned(); explicit_host = true; i += 1;
                 }
-                _ => return Ok(CommandOutput::error("Uso: netcheck [HOST] [--port PUERTO]", 2)),
+                _ => return Ok(CommandOutput::error("Uso: netdiag [HOST] [--port PUERTO]", 2)),
             }
         }
         let mut output = format!("DIAGNÓSTICO DE RED\nDestino: {host}:{port}\nModo: solo lectura\n");
@@ -270,7 +270,7 @@ impl BuiltinCommand for NetcheckBuiltin {
     fn name(&self) -> &'static str { "netdiag" }
     fn aliases(&self) -> &'static [&'static str] { &["netcheck", "nettest"] }
     fn help(&self) -> &'static str {
-        "netcheck / netdiag / nettest — diagnóstico integral: velocidad real, estabilidad, pérdida, tráfico, servicios y paquetes IPv4"
+        "netdiag / netcheck / nettest — diagnóstico integral: velocidad real, estabilidad, pérdida, tráfico, servicios y paquetes IPv4"
     }
     fn execute(&self, _invoked_name: &str, args: &[String], _context: CommandContext<'_>) -> Result<CommandOutput> {
         self.diagnose(args)
