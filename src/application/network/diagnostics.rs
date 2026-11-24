@@ -372,13 +372,27 @@ impl NetworkDiagnosticsService {
     }
 
     pub fn probe_host(&self, ip: Ipv4Addr, timeout: Duration) -> Option<HostEvidence> {
-        let arp_started = Instant::now();
-        if let Some(mac) = self.resolve_neighbor(ip) {
-            return Some(HostEvidence {
-                method: "arp".to_owned(),
-                mac: Some(mac),
-                latency_ms: Some(duration_ms(arp_started.elapsed())),
-            });
+        self.probe_host_with_arp(ip, timeout, true)
+    }
+
+    /// On a routed/off-link subnet, an ARP reply could describe the gateway
+    /// rather than the target. Only IP probes are credible off-link.
+    pub fn probe_routed_host(&self, ip: Ipv4Addr, timeout: Duration) -> Option<HostEvidence> {
+        self.probe_host_with_arp(ip, timeout, false)
+    }
+
+    fn probe_host_with_arp(
+        &self, ip: Ipv4Addr, timeout: Duration, allow_arp: bool
+    ) -> Option<HostEvidence> {
+        if allow_arp {
+            let arp_started = Instant::now();
+            if let Some(mac) = self.resolve_neighbor(ip) {
+                return Some(HostEvidence {
+                    method: "arp".to_owned(),
+                    mac: Some(mac),
+                    latency_ms: Some(duration_ms(arp_started.elapsed())),
+                });
+            }
         }
 
         if let Ok(reply) = self.probe.echo(ip, 128, timeout)
