@@ -865,11 +865,6 @@ mod privilege_indicator_tests {
     }
 }
 
-pub(crate) fn is_sudo_active() -> Result<bool> {
-    Ok(matches!(current_sudo_level()?, SudoLevel::Administrator
-        | SudoLevel::System | SudoLevel::TrustedInstaller))
-}
-
 fn current_sudo_level() -> Result<SudoLevel> {
     let status = current_token_status()?;
     if token_has_trustedinstaller_sid() {
