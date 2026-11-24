@@ -33,11 +33,8 @@ impl BuiltinCommand for UnbanBuiltin {
                 return Ok(CommandOutput::error(format!("unban: {message}"), 2));
             }
             let result = crate::adapters::windows::ad_unlock::unlock(user);
-            // Log only the outcome, never the supplied AD username or password.
-            let stage = if result.is_ok() { "success" } else { "failure" };
-            let audit = super::sudo_audit::AuditEvent::new(
-                "unban", &[], std::env::var("USERNAME").unwrap_or_default(), "USER");
-            audit.record(stage, Some(if result.is_ok() {0} else {1}))?;
+            // Independent AD operation audit, never mixed with sudo/UAC logs.
+            audit_unban(user, result.is_ok())?;
             match result {
                 Ok(dc) => Ok(CommandOutput::ok(format!(
                     "AD: usuario '{user}' desbloqueado correctamente.\n\
@@ -48,6 +45,26 @@ impl BuiltinCommand for UnbanBuiltin {
             }
         }
     }
+}
+
+#[cfg(windows)]
+fn audit_unban(account: &str, success: bool) -> Result<()> {
+    use std::{fs::{self, OpenOptions}, io::Write};
+    let path = crate::adapters::persistence::AppPaths::detect()
+        .data_dir().join("ad-unban-audit.jsonl");
+    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
+    let event = serde_json::json!({
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "event": "ad_unban",
+        "operator": std::env::var("USERNAME").unwrap_or_default(),
+        "target_account": account,
+        "result": if success { "success" } else { "failure" },
+        "sst_version": env!("CARGO_PKG_VERSION"),
+    });
+    let mut handle = OpenOptions::new().create(true).append(true).open(path)?;
+    writeln!(handle, "{}", event)?;
+    handle.sync_data()?;
+    Ok(())
 }
 
 #[cfg(windows)]
