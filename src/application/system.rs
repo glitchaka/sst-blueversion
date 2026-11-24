@@ -1261,6 +1261,8 @@ impl KeygenGlyphBody {
 #[derive(Default)]
 struct KeygenPhysics {
     bodies: HashMap<(usize, usize), KeygenGlyphBody>,
+    // Screen coordinates of the glyphs produced by the same physics frame.
+    rendered_angles: HashMap<(usize, usize), f64>,
 }
 
 impl KeygenPhysics {
@@ -1469,8 +1471,10 @@ fn keygen_sdl(
                     + (cell_w as i32 - *tw as i32) / 2;
                 let y = i32::from(row) * cell_h as i32
                     + (cell_h as i32 - *th as i32) / 2;
-                renderer.copy(texture, None, Rect::new(x, y, *tw, *th))
-                    .map_err(anyhow::Error::msg)?;
+                let angle = physics.rendered_angles
+                    .get(&(row as usize, col as usize)).copied().unwrap_or(0.0);
+                renderer.copy_ex(texture, None, Rect::new(x, y, *tw, *th),
+                    angle, None, false, false).map_err(anyhow::Error::msg)?;
             }
         }
         renderer.present();
@@ -1491,6 +1495,7 @@ fn keygen_frame(
 ) -> String {
     let width = usize::from(cols);
     let height = usize::from(rows);
+    physics.rendered_angles.clear();
     let mut output = String::from("\x1b[0m\x1b[2J\x1b[H");
     if width < 22 || height < 7 {
         output.push_str("KEYGEN SST - amplia la ventana");
@@ -1523,6 +1528,7 @@ fn keygen_frame(
             if px < 0 || px >= width as isize || py < 1 || py >= height as isize-1 {
                 continue;
             }
+            physics.rendered_angles.insert((py as usize, px as usize), f64::from(body.rz.to_degrees()));
             let (r0,g0,b0) = keygen_glyph_color(frame,index,base_y);
             let light = projection.clamp(0.4,1.3);
             let tone = |channel:u8| -> u8 {
