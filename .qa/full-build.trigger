@@ -15,3 +15,5 @@ Windows CI build request: net monitor source route and AD Credential UI correcti
 2026-11-24: Windows CI SDL2 statically bundled libcaca keygen rendering integration.
 
 2026-11-24: SDL2 glyph rotation driven directly by keygen rigid-body physics.
+
+2026-11-24: startup neofetch logo uses libcaca raster geometry and SDL2 offscreen icon color resampling; not keygen.
