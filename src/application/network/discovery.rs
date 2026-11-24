@@ -1264,7 +1264,7 @@ fn render_monitor_screen(
         overview.push_str("\nRuta de origen no determinada; el CIDR no selecciona una VLAN.");
     }
     if let Some(message) = publish_message {
-        overview.push_str(&format(
+        overview.push_str(&format!(
             "\n{}Publicando:{} {}",
             tui_style::LABEL, tui_style::RESET,
             tui_style::shorten(message, width.saturating_sub(14)),
