@@ -3,12 +3,12 @@ UNBAN — desbloquear una cuenta de Active Directory (SST nativo)
 Uso: sudo unban NOMBRE_DE_USUARIO
 También puede ejecutarse «unban NOMBRE_DE_USUARIO» si SST ya está elevado.
 
-1. SST exige elevación local antes de iniciar la operación. La elevación de Windows no equivale a autorización en Active Directory.
+1. sudo unban autoriza exclusivamente una operación AD en la sesión actual; no eleva el token local ni solicita UAC. El comando directo unban sigue reservado a sesiones elevadas.
 2. Localiza un controlador AD escribible y obtiene el nombre DNS del dominio real mediante DsGetDcNameW (sin deducirlo a partir del FQDN del controlador).
-3. Solicita dentro de la terminal integrada de SST las credenciales de una cuenta AD con derechos de desbloqueo. Acepta DOMINIO\usuario, usuario@dominio y nombres sin dominio (en este último caso usa el dominio descubierto).
+3. Solicita una sola vez dentro de la terminal integrada de SST las credenciales de una cuenta AD con derechos de desbloqueo. Acepta DOMINIO\usuario, usuario@dominio y nombres sin dominio (en este último caso usa el dominio descubierto).
 4. Abre LDAP al puerto 389 y autentica mediante SSPI Negotiate con firma y cifrado LDAP habilitados. No hace un bind LDAP simple sin protección.
 5. Tras autenticar, consulta RootDSE, localiza por sAMAccountName exactamente una cuenta y solicita únicamente la modificación lockoutTime=0.
-6. Si falla el bind, no se desbloquea ninguna cuenta; LDAP 49 es un rechazo de autenticación, no una prueba de falta de permisos de desbloqueo. Cuando el DC aporta el subcódigo diagnóstico, SST muestra la causa interpretada sin imprimir la contraseña.
+6. Verifica lockoutTime=0 leyendo la cuenta en el mismo controlador antes de anunciar éxito. Si falla el bind, no se desbloquea ninguna cuenta; LDAP 49 es un rechazo de autenticación, no una prueba de falta de permisos de desbloqueo. Cuando el DC aporta el subcódigo diagnóstico, SST muestra la causa interpretada sin imprimir la contraseña.
 7. No admite contraseñas por argumentos. Los búferes de credenciales se limpian al finalizar el intento.
 
 Requisitos: equipo Windows con acceso al DC, credenciales AD válidas, derecho delegado para modificar lockoutTime en la cuenta solicitada y soporte del controlador para autenticación Negotiate firmada y cifrada.

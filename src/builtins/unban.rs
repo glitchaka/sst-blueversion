@@ -14,7 +14,7 @@ impl BuiltinCommand for UnbanBuiltin {
     fn name(&self) -> &'static str { "unban" }
     fn help(&self) -> &'static str {
         "unban USUARIO — desbloquea una cuenta de Active Directory mediante LDAP nativo. \
-         Requiere elevación mediante sudo o una sesión ya elevada; solicita credenciales del dominio y exige permisos de desbloqueo en AD. \
+         Usa sudo unban USUARIO o una sesión ya elevada. Solicita una sola credencial de AD; el controlador exige permisos de desbloqueo. \
          Nunca recibe contraseñas como argumentos."
     }
     fn execute(&self, _invoked_name: &str, args: &[String], _context: CommandContext<'_>)
@@ -28,29 +28,37 @@ impl BuiltinCommand for UnbanBuiltin {
 
         #[cfg(windows)]
         {
-            if args.len() != 1 {
-                return Ok(CommandOutput::error("Uso: unban [nombre de usuario]", 2));
-            }
             if !super::sudo::is_elevated()? {
-                return Ok(CommandOutput::error("unban: requiere elevación; usa sudo unban USUARIO", 5));
+                return Ok(CommandOutput::error("unban: usa sudo unban USUARIO", 5));
             }
-            let user = args[0].trim();
-            if let Err(message) = validate_account(user) {
-                return Ok(CommandOutput::error(format!("unban: {message}"), 2));
-            }
-            let result = crate::adapters::windows::ad_unlock::unlock(user, &*self.terminal);
-            // Independent AD operation audit, never mixed with sudo/UAC logs.
-            if let Err(error) = audit_unban(user, result.is_ok()) {
-                eprintln!("unban: no se pudo registrar la auditoría: {error:#}");
-            }
-            match result {
-                Ok(dc) => Ok(CommandOutput::ok(format!(
-                    "AD: usuario '{user}' desbloqueado correctamente.\n\
-                     Controlador de dominio: {dc}\n"
-                ))),
-                Err(error) => Ok(CommandOutput::error(
-                    format!("unban: no se pudo desbloquear '{user}': {error:#}"), 1)),
-            }
+            self.execute_domain_authorized(args)
+        }
+    }
+}
+
+#[cfg(windows)]
+impl UnbanBuiltin {
+    // Only sudo's exact AD operation uses this route. No elevation or
+    // delegation of the local Windows token occurs; AD enforces its own ACL.
+    pub(super) fn execute_domain_authorized(&self,args:&[String])->Result<CommandOutput>{
+        if args.len()!=1{
+            return Ok(CommandOutput::error("Uso: sudo unban USUARIO",2));
+        }
+        let user=args[0].trim();
+        if let Err(message)=validate_account(user){
+            return Ok(CommandOutput::error(format!("unban: {message}"),2));
+        }
+        let result=crate::adapters::windows::ad_unlock::unlock(user,&*self.terminal);
+        if let Err(error)=audit_unban(user,result.is_ok()){
+            eprintln!("unban: no se pudo registrar la auditoría: {error:#}");
+        }
+        match result{
+            Ok((dc,changed))=>Ok(CommandOutput::ok(format!(
+                "\x1b[32m[AD] {}\x1b[0m\nUsuario: {user}\nControlador: {dc}\nEstado: lockoutTime=0 (verificado en el controlador)\n",
+                if changed{"Cuenta desbloqueada"}else{"Cuenta sin bloqueo pendiente"}
+            ))),
+            Err(error)=>Ok(CommandOutput::error(format!(
+                "\x1b[31m[AD] No se pudo confirmar el desbloqueo\x1b[0m\nUsuario: {user}\n{error:#}\n"),1)),
         }
     }
 }

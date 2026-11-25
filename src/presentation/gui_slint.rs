@@ -41,7 +41,8 @@ use windows_sys::Win32::{
             WS_CAPTION, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE,
             SWP_NOZORDER, SWP_NOACTIVATE,
             SetForegroundWindow, SetWindowTextW, ShowWindow, SW_RESTORE,
-            LoadIconW, SendMessageW, WM_SETICON, ICON_BIG, ICON_SMALL,
+            LoadIconW, SendMessageW, WM_SETICON, WM_GETICON, ICON_BIG, ICON_SMALL,
+            SetClassLongPtrW, GCLP_HICON, GCLP_HICONSM,
         },
     },
 };
@@ -1975,6 +1976,10 @@ fn apply_embedded_sst_icon(hwnd: HWND) {
         if !icon.is_null() {
             SendMessageW(hwnd, WM_SETICON, ICON_BIG as usize, icon as isize);
             SendMessageW(hwnd, WM_SETICON, ICON_SMALL as usize, icon as isize);
+            // Keep the class fallback in sync for Explorer/Alt+Tab and
+            // for frameless windows whose explicit icon is reset by winit.
+            SetClassLongPtrW(hwnd,GCLP_HICON,icon as isize);
+            SetClassLongPtrW(hwnd,GCLP_HICONSM,icon as isize);
         }
     }
 }
@@ -2258,6 +2263,10 @@ pub fn run() -> Result<()> {
             }
 
             if let Some(hwnd) = slint_hwnd(&ui) {
+                if drawable && unsafe{SendMessageW(hwnd,WM_GETICON,ICON_BIG as usize,0)==0
+                    || SendMessageW(hwnd,WM_GETICON,ICON_SMALL as usize,0)==0}{
+                    apply_embedded_sst_icon(hwnd);
+                }
                 if !drawable {
                     last_minimized.set(true);
                 } else if last_minimized.replace(false) {

@@ -118,69 +118,6 @@ fn domain_credentials(terminal: &mut dyn crate::core::ports::TerminalSession, dc
     Ok(credentials)
 }
 
-// sudo captures the elevated SST child's output. That child has no console
-// input handle. Present the credentials in SST's native UI in that case.
-slint::slint! {
-    import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
-    export component UnlockPrompt inherits Window {
-        title: "SST · Active Directory";
-        width: 440px;
-        height: 250px;
-        in property <string> controller;
-        in-out property <string> username;
-        in-out property <string> secret;
-        callback confirm();
-        callback cancel();
-        VerticalBox {
-            Text { text: root.controller; }
-            Text { text: "Usuario administrador"; }
-            name := LineEdit { text <=> root.username; accepted => { password.focus(); } }
-            Text { text: "Contraseña"; }
-            password := LineEdit {
-                input-type: InputType.password;
-                text <=> root.secret;
-                accepted => { if root.username != "" && root.secret != "" { root.confirm(); } }
-            }
-            HorizontalBox {
-                Button { text: "Cancelar"; clicked => { root.cancel(); } }
-                Button {
-                    text: "Continuar";
-                    enabled: root.username != "" && root.secret != "";
-                    clicked => { root.confirm(); }
-                }
-            }
-        }
-    }
-}
-
-fn window_credentials(dc: &str, domain: &str) -> Result<DomainCredentials> {
-    use slint::ComponentHandle;
-    use std::{cell::Cell, rc::Rc};
-    let dialog = UnlockPrompt::new().map_err(|e| anyhow::anyhow!("ventana de SST: {e}"))?;
-    dialog.set_controller(format!("{domain} · {dc}").into());
-    let confirmed = Rc::new(Cell::new(false));
-    let accepted = Rc::clone(&confirmed);
-    let weak = dialog.as_weak();
-    dialog.on_confirm(move || {
-        if let Some(window) = weak.upgrade() {
-            accepted.set(true);
-            let _ = window.hide();
-        }
-    });
-    let weak = dialog.as_weak();
-    dialog.on_cancel(move || {
-        if let Some(window) = weak.upgrade() { let _ = window.hide(); }
-    });
-    dialog.run().map_err(|e| anyhow::anyhow!("ventana de SST: {e}"))?;
-    if !confirmed.get() { bail!("autenticación cancelada"); }
-    let credentials = DomainCredentials {
-        username: wide(dialog.get_username().as_str()),
-        password: wide(dialog.get_secret().as_str()),
-    };
-    dialog.set_secret(slint::SharedString::default());
-    Ok(credentials)
-}
-
 // SSPI expects explicit user/domain/password in this C ABI layout.
 #[repr(C)]
 struct SecWinntAuthIdentityW {
@@ -199,6 +136,7 @@ const LDAP_AUTH_NEGOTIATE: u32 = 0x0486;
 const LDAP_OPT_ENCRYPT: i32 = 0x96;
 const LDAP_OPT_SIGN: i32 = 0x95;
 const LDAP_OPT_TIMELIMIT: i32 = 0x03;
+const LDAP_OPT_PROTOCOL_VERSION: i32 = 0x11;
 const LDAP_SCOPE_BASE: u32 = 0;
 const LDAP_SCOPE_SUBTREE: u32 = 2;
 const LDAP_MOD_REPLACE: u32 = 2;
@@ -353,17 +291,18 @@ fn user_filter(name: &str) -> String {
 
 /// Unlock exactly one unambiguously identified AD user. Only lockoutTime changes.
 /// The DC independently enforces delegated AD rights, irrespective of local UAC.
-pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::TerminalFactory) -> Result<String> {
+pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::TerminalFactory) -> Result<(String,bool)> {
     use std::io::IsTerminal;
     let (dc, dns_domain) = controller()?;
     let embedded = crate::adapters::terminal::io::output_sender().is_some();
     let interactive_console = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-    let mut credentials = if embedded || interactive_console {
-        let mut terminal = terminal_factory.alternate_screen()
+    if !embedded && !interactive_console {
+        bail!("unban necesita una terminal interactiva SST; no admite credenciales redirigidas");
+    }
+    let mut credentials = {
+        let mut terminal=terminal_factory.alternate_screen()
             .context("no se pudo abrir el formulario de SST")?;
-        domain_credentials(&mut *terminal, &dc, &dns_domain)?
-    } else {
-        window_credentials(&dc, &dns_domain)?
+        domain_credentials(&mut *terminal,&dc,&dns_domain)?
     };
     let typed_len = credentials.username.iter().position(|ch| *ch == 0)
         .unwrap_or(credentials.username.len());
@@ -391,6 +330,8 @@ pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::Terminal
     // a separately provisioned LDAPS certificate on the domain controller.
     let session = Session(unsafe { ldap_initW(wide(&dc).as_ptr(), 389) });
     if session.0.is_null() { bail!("no se pudo conectar con controlador AD {dc}"); }
+    let version=3_u32;
+    ldap_check(unsafe{ldap_set_optionW(session.0,LDAP_OPT_PROTOCOL_VERSION,(&version as *const u32).cast())},"LDAP v3")?;
     ldap_check(unsafe { ldap_set_optionW(session.0, LDAP_OPT_SIGN,
         1usize as *const c_void) }, "firma LDAP")?;
     ldap_check(unsafe { ldap_set_optionW(session.0, LDAP_OPT_ENCRYPT,
@@ -401,6 +342,10 @@ pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::Terminal
     let bind_status = unsafe { ldap_bind_sW(session.0, ptr::null_mut(),
         (&mut identity as *mut SecWinntAuthIdentityW).cast(), LDAP_AUTH_NEGOTIATE) };
     drop(credentials);
+    // Wipe the temporary SSPI identity buffers before further operations.
+    for ch in user_w.iter_mut().chain(domain_w.iter_mut()) {
+        unsafe{std::ptr::write_volatile(ch,0);}
+    }
     if bind_status != LDAP_SUCCESS {
         return Err(bind_error(session.0, bind_status));
     }
@@ -413,7 +358,7 @@ pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::Terminal
     drop(root);
 
     let records = search(session.0, &base, LDAP_SCOPE_SUBTREE,
-        &user_filter(account), &["distinguishedName"])?;
+        &user_filter(account), &["distinguishedName","lockoutTime"])?;
     let count = unsafe { ldap_count_entries(session.0, records.0) };
     if count != 1 {
         bail!(if count == 0 {"el usuario no existe en el dominio"}
@@ -421,10 +366,13 @@ pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::Terminal
     }
     let entry = unsafe { ldap_first_entry(session.0, records.0) };
     if entry.is_null() { bail!("respuesta LDAP sin cuenta de usuario"); }
+    let before=property(session.0,entry,"lockoutTime").unwrap_or_default();
+    if before=="0"{return Ok((dc,false));}
     let dn_ptr = unsafe { ldap_get_dnW(session.0, entry) };
     let dn = unsafe { from_wide(dn_ptr, 8192) };
     if !dn_ptr.is_null() { unsafe { ldap_memfreeW(dn_ptr.cast()); } }
-    let mut dn = wide(&dn?);
+    let dn=dn?;
+    let mut dn_w = wide(&dn);
     drop(records);
 
     let mut attr = wide("lockoutTime");
@@ -436,9 +384,17 @@ pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::Terminal
         values: values.as_mut_ptr(),
     };
     let mut changes = [&mut change as *mut LdapMod, ptr::null_mut()];
-    ldap_check(unsafe { ldap_modify_sW(session.0, dn.as_mut_ptr(),
+    ldap_check(unsafe { ldap_modify_sW(session.0, dn_w.as_mut_ptr(),
         changes.as_mut_ptr()) }, "desbloqueo de cuenta")?;
-    Ok(dc)
+    // Confirm the write against the same writable DC before reporting success.
+    let verification=search(session.0,&dn,LDAP_SCOPE_BASE,"(objectClass=*)",&["lockoutTime"])
+        .context("AD aceptó la modificación, pero no se pudo verificar su resultado")?;
+    let entry=unsafe{ldap_first_entry(session.0,verification.0)};
+    if entry.is_null(){bail!("AD aceptó la modificación, pero no devolvió la cuenta para verificarla");}
+    let lockout=property(session.0,entry,"lockoutTime")
+        .context("AD aceptó la modificación, pero no se pudo leer lockoutTime")?;
+    if lockout!="0"{bail!("el controlador no confirmó lockoutTime=0; resultado no verificado");}
+    Ok((dc,true))
 }
 
 #[cfg(test)]

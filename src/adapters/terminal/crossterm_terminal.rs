@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode};
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use super::io;
 
 use crate::core::ports::{TerminalFactory, TerminalKey, TerminalPanel, TerminalSession};
@@ -49,7 +49,7 @@ impl TerminalSession for CrosstermTerminalSession {
         }
 
         match io::read()? {
-            Event::Key(key) => Ok(Some(map_key(key.code))),
+            Event::Key(key) if key.kind != KeyEventKind::Release => Ok(Some(map_key(key.code))),
             _ => Ok(None),
         }
     }
