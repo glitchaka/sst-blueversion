@@ -36,7 +36,7 @@ SST_CONTENT_TOP_GAP=12
 
 # Densidad y texto de la terminal.
 SST_FONT_SIZE=13
-SST_FONT_COLOR='#EBDBB2'
+SST_FONT_COLOR='#DFE3E8'
 SST_CELL_WIDTH=8
 SST_CELL_HEIGHT=17
 SST_TERMINAL_PADDING_X=8
@@ -162,7 +162,7 @@ impl Default for AppearanceConfig {
             corner_radius: 16,
             content_top_gap: 12,
             font_size: 13,
-            font_color: "#EBDBB2".to_owned(),
+            font_color: "#DFE3E8".to_owned(),
             cell_width: 8,
             cell_height: 17,
             terminal_padding_x: 8,
@@ -272,7 +272,7 @@ impl AppPaths {
 
             for (key, value, comment) in [
                 ("SST_FONT_SIZE", "13", "# Tamaño de fuente de la terminal."),
-                ("SST_FONT_COLOR", "'#EBDBB2'", "# Color base del texto de la terminal (#RRGGBB)."),
+                ("SST_FONT_COLOR", "'#DFE3E8'", "# Color base del texto de la terminal (#RRGGBB)."),
                 ("SST_CELL_WIDTH", "8", "# Ancho de celda de la terminal."),
                 ("SST_CELL_HEIGHT", "17", "# Alto de celda de la terminal."),
                 ("SST_TERMINAL_PADDING_X", "8", "# Padding horizontal de la terminal."),
@@ -293,8 +293,8 @@ impl AppPaths {
         if assignment_value(&text, "SST_BACKGROUND_COLOR").as_deref() == Some("#111629") {
             set_assignment(&mut text, "SST_BACKGROUND_COLOR", "#282828");
         }
-        if assignment_value(&text, "SST_FONT_COLOR").as_deref() == Some("#DFE8EF") {
-            set_assignment(&mut text, "SST_FONT_COLOR", "#EBDBB2");
+        if assignment_value(&text, "SST_FONT_COLOR").is_some_and(|v|v.eq_ignore_ascii_case("#EBDBB2") || v.eq_ignore_ascii_case("#DFE8EF")) {
+            set_assignment(&mut text, "SST_FONT_COLOR", "#DFE3E8");
         }
         fs::write(path, text)?;
         Ok(())
@@ -416,7 +416,7 @@ impl AppPaths {
             config.font_size = value.clamp(8, 32);
         }
         if let Some(value) = assignment_value(&text, "SST_FONT_COLOR") {
-            config.font_color = value;
+            config.font_color = if value.eq_ignore_ascii_case("#EBDBB2") || value.eq_ignore_ascii_case("#DFE8EF") { "#DFE3E8".to_owned() } else { value };
         }
         if let Some(value) = assignment_value(&text, "SST_CELL_WIDTH")
             .and_then(|value| value.parse::<u16>().ok())

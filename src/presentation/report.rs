@@ -1,23 +1,18 @@
 //! Adaptive, accessible rendering for human-facing interactive SST reports.
 //! No changes are made to data streams, pipes, redirections, plain/CSV/JSON
 //! output, scripts, or terminal applications that already supply ANSI styling.
-use libcaca::{Canvas, Color};
 
 const RESET: &str = "\x1b[0m";
-// Structural headings are neutral, not cyan. The GUI recognizes this exact
-// color as a semantic marker and draws restrained vector outlines at the
-// corresponding terminal row, without changing the rest of the text.
-const HEADING: &str = "\x1b[1;38;2;213;196;161m";
-const COMMAND: &str = "\x1b[1;38;2;254;128;25m";
-const DETAILS: &str = "\x1b[38;2;235;219;178m";
-const LABEL: &str = "\x1b[1;38;2;189;174;147m";
-// Color encodes proven state ONLY: red critical, amber warning,
-// green functioning, blue genuinely excellent/optimal.
-const GOOD: &str = "\x1b[1;38;2;184;187;38m";
+// Neutral hierarchy. Color is reserved for observed states, not decoration.
+const HEADING: &str = "\x1b[1;38;2;240;242;244m";
+const COMMAND: &str = "\x1b[1;38;2;218;223;228m";
+const DETAILS: &str = "\x1b[38;2;185;191;199m";
+const LABEL: &str = "\x1b[38;2;163;172;182m";
+const GOOD: &str = "\x1b[1;38;2;142;192;124m";
 const CAUTION: &str = "\x1b[1;38;2;250;189;47m";
 const BAD: &str = "\x1b[1;38;2;251;73;52m";
-const PERFECT: &str = "\x1b[1;38;2;131;165;152m";
-const BULLET: &str = "\x1b[38;2;189;174;147m";
+const PERFECT: &str = "\x1b[1;38;2;131;165;205m";
+const BULLET: &str = "\x1b[38;2;163;172;182m";
 
 
 fn is_machine_or_shell_command(command: &str) -> bool {
@@ -116,18 +111,6 @@ fn looks_like_tabular_header(line: &str) -> bool {
         && !text.contains("://")
 }
 
-/// Compose a compact, readable heading with libcaca's text canvas.
-/// No ASCII boxes, fake ellipses, hidden RGB markers, or compositor changes.
-fn canvas_title(command: &str, width: usize) -> Option<String> {
-    if width < 20 { return None; }
-    let name = command.chars().take(width.saturating_sub(5)).collect::<String>();
-    let mut canvas = Canvas::new((name.chars().count() + 3) as i32, 1).ok()?;
-    canvas.set_color_ansi(Color::LightGray, Color::Default).ok()?;
-    canvas.put_str(1, 0, &name);
-    let utf8 = String::from_utf8(canvas.export_to_memory("utf8").ok()?).ok()?;
-    Some(format!("{HEADING}{}{RESET}", utf8.trim_end_matches(['\r', '\n'])))
-}
-
 fn status_color(value: &str) -> Option<&'static str> {
     // Never infer a status from incidental words in help descriptions,
     // hostnames, commands, process names or arbitrary prose.
@@ -139,14 +122,15 @@ fn status_color(value: &str) -> Option<&'static str> {
     let status = normalized.as_str();
     if ["CRÍTICO", "CRITICO", "ERROR", "FALLO", "FAILED",
         "DENEGADO", "DESCONECTADO", "SIN ENLACE",
-        "NO DISPONIBLE", "DETENIDO", "DESHABILITADO",
+        "NO DISPONIBLE", "DETENIDO", "DESHABILITADO", "SIN CONEXIÓN",
         "INACTIVO", "BLOQUEADO", "DOWN", "OFFLINE"]
         .iter().any(|term| status == *term || status.starts_with(&format!("{term} ")))
     {
         Some(BAD)
     } else if ["ADVERTENCIA", "ATENCIÓN", "ATENCION",
         "PENDIENTE", "DEGRADADO", "INDETERMINADO",
-        "SIN IP", "DESCONOCIDO", "WARNING"]
+        "SIN IP", "DESCONOCIDO", "WARNING", "REQUIERE REVISIÓN", "NO VERIFICADA",
+        "SIN PERFIL DOT3 CONFIRMADO", "SIN GATEWAY POR DEFECTO", "SIN DIRECCIONES", "ICMP NO RESPONDE", "NO RESPONDE"]
         .iter().any(|term| status == *term || status.starts_with(&format!("{term} ")))
     {
         Some(CAUTION)
@@ -157,7 +141,8 @@ fn status_color(value: &str) -> Option<&'static str> {
         Some(PERFECT)
     } else if ["CONECTADO", "CONECTADA", "CORRECTO",
         "CORRECTA", "ACTIVO", "ACTIVA", "OPERATIVO",
-        "OPERATIVA", "DISPONIBLE", "OK", "UP"]
+        "OPERATIVA", "DISPONIBLE", "OK", "UP", "ENLACE DETECTADO", "PRESENTE",
+        "ICMP RESPONDE", "RESPONDE", "RESUELTO", "CONECTIVIDAD TCP CONFIRMADA"]
         .contains(&status)
     {
         Some(GOOD)
@@ -181,7 +166,13 @@ fn is_section_heading(line: &str) -> bool {
             && text.chars().filter(|ch| *ch == ':').count() == 1;
     }
     if text.starts_with("== ") { return true; }
-    looks_like_tabular_header(text)
+    if let Some((number, title)) = text.split_once(". ") {
+        if number.chars().next().is_some_and(|c|c.is_ascii_digit())
+            && number.chars().all(|c|c.is_ascii_alphanumeric())
+            && title.chars().any(char::is_alphabetic) { return true; }
+    }
+    !text.contains(':') && text.chars().any(char::is_alphabetic)
+        && !text.chars().any(char::is_lowercase)
 }
 
 // Help syntax is identified structurally, not by a hard-coded list of commands.
@@ -229,9 +220,7 @@ fn style_line(line: &str) -> String {
     if line.trim().is_empty() { return line.to_owned(); }
     let stripped = line.trim_start();
     if is_section_heading(stripped) {
-        // This RGB marker is rendered as a native Slint vector heading band.
-        // The indentation gives the rounded border room without covering text.
-        return format!("{HEADING}   {stripped}{RESET}");
+        return format!("{HEADING}{stripped}{RESET}");
     }
     if let Some((field, value)) = stripped.split_once(": ") {
         // Semantic labels and values. Do not treat a command description as a
@@ -248,9 +237,8 @@ fn style_line(line: &str) -> String {
             let warning = matches!(key.as_str(),
                 "advertencia" | "aviso" | "warning" | "atención" | "atencion");
             let label_color = if alarm { BAD } else if warning { CAUTION } else { LABEL };
-            let value_color = if alarm { BAD }
-                else if warning { CAUTION }
-                else if is_status_field(stripped) { status_color(value).unwrap_or(RESET) }
+            let value_color = if alarm || warning { RESET }
+                else if is_status_field(stripped) || key == "autorización efectiva" { status_color(value).unwrap_or(RESET) }
                 else { RESET };
             return format!("{indent}{label_color}{field}:{RESET} {value_color}{value}{RESET}");
         }
@@ -349,6 +337,49 @@ fn wrap_line(line: &str, width: usize) -> Vec<String> {
     lines
 }
 
+/// Reorder the network assessment only for the interactive display. Raw output,
+/// CSV, scripts and redirects retain the original evidence and layout.
+fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
+    let mut blocks:Vec<(String,Vec<String>)>=Vec::new();
+    let mut meta=Vec::new();
+    let mut evidence=None;
+    for line in stdout.lines().map(str::trim).filter(|l|!l.is_empty()){
+        if line=="DIAGNÓSTICO DE RED"{continue;}
+        if line.starts_with("Evidencia detallada: "){evidence=Some(line.to_owned());continue;}
+        if line=="CONCLUSIÓN" || line.split_once(". ").is_some_and(|(n,_)|
+            n.chars().next().is_some_and(|c|c.is_ascii_digit())&&n.chars().all(|c|c.is_ascii_alphanumeric())){
+            blocks.push((line.to_owned(),Vec::new()));
+        }else if let Some((_,rows))=blocks.last_mut(){rows.push(line.to_owned());}
+        else{meta.push(line.to_owned());}
+    }
+    let conclusion=blocks.iter().position(|(name,_)|name=="CONCLUSIÓN")?;
+    let (_,summary)=blocks.remove(conclusion);
+    let mut out=format!("{HEADING}Diagnóstico de red{RESET}\n");
+    let emit=|out:&mut String,line:&str|{for part in wrap_line(line,width){out.push_str(&style_line(&part));out.push('\n');}};
+    for line in meta{emit(&mut out,&line);}
+    out.push('\n');
+    for line in summary{emit(&mut out,&line);}
+    out.push_str(&format!("\n{HEADING}Comprobaciones{RESET}\n"));
+    for (name,rows) in blocks{
+        let name=name.split_once(". ").map_or(name.as_str(),|(_,title)|title);
+        let status=rows.iter().find_map(|s|s.strip_prefix("Estado: "));
+        if let Some(status)=status{
+            let color=status_color(status).unwrap_or(RESET);
+            if display_width(name)+2+display_width(status)<=width{
+                out.push_str(&format!("{LABEL}{name}:{RESET} {color}{status}{RESET}\n"));
+            }else{
+                emit(&mut out,&format!("{name}:"));
+                emit(&mut out,&format!("  Estado: {status}"));
+            }
+        }else{emit(&mut out,name);}
+        for row in rows.iter().filter(|s|!s.starts_with("Estado: ")){
+            emit(&mut out,&format!("  {row}"));
+        }
+    }
+    if let Some(evidence)=evidence{out.push('\n');emit(&mut out,&evidence);}
+    Some(out)
+}
+
 /// Called only for a direct, interactive GUI command. Uses the actual terminal
 /// width, including resized windows. Raw Bash redirections and pipes stay
 /// completely byte-for-byte intact.
@@ -375,6 +406,9 @@ fn decorate_with_native_commands(
     if !suitable(command, stdout, registered_native) { return stdout.to_owned(); }
     // Leave a small right margin so the cursor never autowraps a full row.
     let width = (cols as usize).saturating_sub(3).clamp(18, 160);
+    if command.split_whitespace().take(2).eq(["notsh","test"]) {
+        if let Some(compact)=compact_network_assessment(stdout,width){return compact;}
+    }
     let mut result = String::new();
     let command_root = command.split_whitespace().next().unwrap_or("");
     let help_document = command.split_whitespace().any(|part|
@@ -389,30 +423,22 @@ fn decorate_with_native_commands(
                 .is_some_and(|rest| rest.starts_with(' ')
                     && style_command_row(trimmed).is_some())
         });
-    result.push('\n');
-    if let Some(title) = canvas_title(command, width) {
-        result.push_str(&title);
-        if !result.ends_with('\n') { result.push('\n'); }
-    } else {
-        result.push_str(&format!("{HEADING}   {command}{RESET}\n"));
-    }
+    // The prompt already shows the command. Do not echo it in every report.
     let mut status_column: Option<usize> = None;
-    let mut first_nonempty = true;
+    let mut previous_blank = true;
     for original in stdout.split_inclusive('\n') {
         let line = original.strip_suffix('\n').unwrap_or(original).trim_end_matches('\r');
-        if !line.trim().is_empty() && first_nonempty {
-            first_nonempty = false;
-            if line.trim().eq_ignore_ascii_case(command.trim()) { continue; }
-        }
         if is_table_header(line) {
             status_column = status_column_index(line);
         } else if line.trim().is_empty() || is_section_heading(line) {
             status_column = None;
         }
         if line.trim().is_empty() {
-            result.push('\n');
+            if !previous_blank { result.push('\n'); }
+            previous_blank = true;
             continue;
         }
+        previous_blank = false;
         let is_bullet = line.trim_start().starts_with("+ ");
         let fragments = if is_bullet || display_width(line) > width {
             wrap_line(line, width)
@@ -429,12 +455,13 @@ fn decorate_with_native_commands(
             } else if is_table_header(&fragment) {
                 format!("{HEADING}{fragment}{RESET}")
             } else {
-                style_table_row(&style_line(&fragment), status_column)
+                if status_column.is_some() { style_table_row(&fragment, status_column) } else { style_line(&fragment) }
             };
             result.push_str(&styled);
             result.push('\n');
         }
     }
+    result.truncate(result.trim_end_matches('\n').len());
     result.push('\n');
     result
 }
@@ -567,12 +594,16 @@ mod tests {
         assert!(lines.concat().contains("informes") && lines.concat().contains("pantalla"));
     }
     #[test]
-    fn native_title_is_not_a_dash_drawing() {
-        let title = canvas_title("notsh lan show interfaces", 80).unwrap();
-        assert!(title.contains("notsh lan show interfaces"));
-        assert!(!title.contains("\x1b[48;2;9;47;64m"));
-        assert!(!title.contains("---"));
+    fn diagnosis_prioritizes_findings_and_preserves_evidence(){
+        let input="DIAGNÓSTICO DE RED\nDestino: 10.6.11.7:443\nModo: solo lectura\n\n1. INTERFACES FÍSICAS\n  Estado: ENLACE DETECTADO\n  Evidencia: enlace físico\n\n1b. NAC / 802.1X CABLEADO\n  Estado: SIN PERFIL DOT3 CONFIRMADO\n  Autorización efectiva: NO VERIFICADA\n\n6. TCP\n  Estado: SIN CONEXIÓN\n  Error: connection timed out\n\nCONCLUSIÓN\n  Estado: REQUIERE REVISIÓN\n  ADVERTENCIA: No conecta TCP 443.\n\nEvidencia detallada: net routes\n";
+        let out=decorate_at_width("notsh test 10.6.11.7",input,100);
+        assert!(out.find("REQUIERE REVISIÓN").unwrap()<out.find("INTERFACES FÍSICAS").unwrap());
+        assert!(out.contains(GOOD)&&out.contains(CAUTION)&&out.contains(BAD));
+        assert!(out.contains("connection timed out")&&out.contains("NO VERIFICADA"));
+        assert!(!out.contains("notsh test 10.6.11.7"));
+        assert_eq!(decorate_at_width("notsh test 10.6.11.7 --csv",input,100),input);
     }
+
     #[test]
     fn help_sections_are_semantic_and_command_descriptions_are_not_statuses() {
         let out = decorate_at_width(

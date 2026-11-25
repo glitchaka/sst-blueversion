@@ -111,11 +111,11 @@ mod viewport_regression_tests {
     #[test]
     fn legacy_cyan_and_blue_accents_are_neutralized_globally() {
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(69, 209, 241)),
-            super::Rgb(0xEB, 0xDB, 0xB2));
+            super::Rgb(0xDF, 0xE3, 0xE8));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(80, 150, 255)),
-            super::Rgb(0xD5, 0xC4, 0xA1));
+            super::Rgb(0xB9, 0xBF, 0xC7));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(69, 133, 136)),
-            super::Rgb(0xEB, 0xDB, 0xB2));
+            super::Rgb(0xDF, 0xE3, 0xE8));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(184, 187, 38)),
             super::Rgb(184, 187, 38));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(251, 73, 52)),
@@ -161,7 +161,7 @@ mod viewport_regression_tests {
     }
 }
 
-const FG: Rgb = Rgb(0xEB, 0xDB, 0xB2);
+const FG: Rgb = Rgb(0xDF, 0xE3, 0xE8);
 const BG: Rgb = Rgb(0x28, 0x28, 0x28);
 const CURSOR: Rgb = Rgb(0xFE, 0x80, 0x19);
 const SELECTION: Rgb = Rgb(0x50, 0x49, 0x45);
@@ -1445,17 +1445,26 @@ fn gruvbox_terminal_color(color: Rgb) -> Rgb {
     ) {
         return color;
     }
+    // Old structural colors are not semantic states; normalize them while
+    // retaining the original logo and explicitly meaningful status colors.
+    match color {
+        Rgb(235,219,178) => return Rgb(223,227,232),
+        Rgb(213,196,161) => return Rgb(185,191,199),
+        Rgb(189,174,147) | Rgb(168,153,132) => return Rgb(163,172,182),
+        Rgb(131,165,205) => return color,
+        _ => {}
+    }
     let Rgb(r, g, b) = color;
     if b >= 120 && b.saturating_add(5) >= g
         && b <= g.saturating_add(48) && g > r.saturating_add(18)
     {
         // Neutralize cyan only when blue and green are relatively close.
         // Pure blue (e.g. 80,150,255) must retain the blue-specific rule.
-        return Rgb(0xEB, 0xDB, 0xB2);
+        return Rgb(0xDF, 0xE3, 0xE8);
     }
     if b > 135 && b > r.saturating_add(28) && b > g.saturating_add(12) {
         // Loud blue structural accents become readable Gruvbox warm text.
-        return Rgb(0xD5, 0xC4, 0xA1);
+        return Rgb(0xB9, 0xBF, 0xC7);
     }
     color
 }
@@ -2349,69 +2358,9 @@ pub fn run() -> Result<()> {
                 model.tick();
 
                 let panels = model.session.panels_snapshot();
-                // Only ordinary SST reports use semantic inline heading bands;
-                // alternate-screen monitors have their own section geometry.
-                let mut headings = Vec::<(f32, f32)>::new();
-                if panels.is_empty() {
-                    let screen = model.parser.screen();
-                    let (rows, cols) = screen.size();
-                    for row in 0..rows {
-                        let mut last_col: Option<u16> = None;
-                        for col in 0..cols {
-                            if screen.cell(row, col).is_some_and(|cell| {
-                                matches!(cell.fgcolor(), vt100::Color::Rgb(213, 196, 161))
-                                    && !cell.contents().is_empty()
-                            }) {
-                                last_col = Some(col);
-                            }
-                        }
-                        // A real heading must start near the left margin and
-                        // contain visible text. This avoids drawing borders
-                        // around unrelated cyan status values.
-                        let is_heading = (0..cols.min(12)).any(|col| {
-                            screen.cell(row, col).is_some_and(|cell| {
-                                matches!(cell.fgcolor(), vt100::Color::Rgb(213, 196, 161))
-                                    && cell.contents().chars().any(char::is_alphabetic)
-                            })
-                        });
-                        if is_heading {
-                            let title_columns = last_col.unwrap_or(0).saturating_add(3).min(cols);
-                            headings.push((f32::from(row), f32::from(title_columns)));
-                            if headings.len() == 6 { break; }
-                        }
-                    }
-                }
-                ui.set_report_heading_count(headings.len() as i32);
-                if !headings.is_empty() {
-                    let (left, top, cell_width, cell_height) = model.geometry();
-                    let factor = model.scale.max(0.5);
-                    let (_, cols) = model.parser.screen().size();
-                    ui.set_report_grid_left(left / factor);
-                    ui.set_report_grid_top(top / factor);
-                    ui.set_report_grid_width(
-                        (cols.saturating_sub(1) as f32 * cell_width) / factor
-                    );
-                    ui.set_report_line_height(cell_height / factor);
-                    let mut items = headings.into_iter();
-                    let (row, cols) = items.next().unwrap_or_default();
-                    ui.set_report_a_row(row);
-                    ui.set_report_a_width((cols * cell_width / factor).max(0.0));
-                    let (row, cols) = items.next().unwrap_or_default();
-                    ui.set_report_b_row(row);
-                    ui.set_report_b_width((cols * cell_width / factor).max(0.0));
-                    let (row, cols) = items.next().unwrap_or_default();
-                    ui.set_report_c_row(row);
-                    ui.set_report_c_width((cols * cell_width / factor).max(0.0));
-                    let (row, cols) = items.next().unwrap_or_default();
-                    ui.set_report_d_row(row);
-                    ui.set_report_d_width((cols * cell_width / factor).max(0.0));
-                    let (row, cols) = items.next().unwrap_or_default();
-                    ui.set_report_e_row(row);
-                    ui.set_report_e_width((cols * cell_width / factor).max(0.0));
-                    let (row, cols) = items.next().unwrap_or_default();
-                    ui.set_report_f_row(row);
-                    ui.set_report_f_width((cols * cell_width / factor).max(0.0));
-                }
+                // Reports use typography, not arbitrary per-line vector boxes.
+                // Dedicated live monitors retain their explicit section frames.
+                ui.set_report_heading_count(0);
                 ui.set_monitor_panel_count(panels.len().min(4) as i32);
                 if !panels.is_empty() {
                     let (left, top, cell_width, cell_height) = model.geometry();
