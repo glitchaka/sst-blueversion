@@ -171,7 +171,7 @@ pub fn build_engine() -> Result<(Box<dyn crate::core::ports::ShellEngine>, Vec<S
     registry.register(Arc::new(NetworkBuiltin::new(Arc::clone(&network_service), NetworkAssessment::new(Arc::clone(&network_probe), Arc::clone(&traffic_factory)))))?;
     registry.register(Arc::new(DeviceBuiltin::new(device_service)))?;
     registry.register(Arc::new(DomainBuiltin::new(domain_service)))?;
-    registry.register(Arc::new(UnbanBuiltin))?;
+    registry.register(Arc::new(UnbanBuiltin::new(Arc::clone(&terminal))))?;
     registry.register(Arc::new(SwitchBuiltin::new(switch_service)))?;
     registry.register(Arc::new(WakeOnLanBuiltin::new(wol_service)))?;
     // A module is discovered by its installed execution contract, not just
