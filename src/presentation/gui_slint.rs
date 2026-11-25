@@ -290,6 +290,8 @@ slint::slint! {
         background: transparent;
 
         in property <image> terminal-image;
+        in property <image> keygen-image;
+        in property <bool> keygen-visible;
         in property <int> report-heading-count: 0;
         in property <float> report-grid-left: 0.0;
         in property <float> report-grid-top: 0.0;
@@ -380,6 +382,17 @@ slint::slint! {
                 image-fit: fill;
             }
 
+            if root.keygen-visible : Rectangle {
+                width: 100%;
+                height: 100%;
+                background: #0c0c0c;
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.keygen-image;
+                    image-fit: contain;
+                }
+            }
             // Ordinary SST help and reports receive the same genuine native
             // section accents. No box characters enter the command stream.
             ReportHeadingBand {
@@ -1429,6 +1442,7 @@ fn gruvbox_terminal_color(color: Rgb) -> Rgb {
         color,
         Rgb(35, 52, 106) | Rgb(54, 76, 119)
             | Rgb(109, 143, 171) | Rgb(186, 189, 198)
+            | Rgb(6, 48, 185) | Rgb(17, 30, 70) | Rgb(251, 242, 54)
     ) {
         return color;
     }
@@ -2197,6 +2211,21 @@ pub fn run() -> Result<()> {
                 scale,
                 minimized,
             );
+
+            use crate::application::system::{KEYGEN_FRAME, KeygenFrame};
+            let frame = KEYGEN_FRAME.lock().unwrap_or_else(|e| e.into_inner()).take();
+            match frame {
+                Some(KeygenFrame::Draw(pixels)) if drawable => {
+                    let buffer = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&pixels, 1152, 672);
+                    ui.set_keygen_image(Image::from_rgba8(buffer));
+                    ui.set_keygen_visible(true);
+                }
+                Some(KeygenFrame::Closed) => {
+                    ui.set_keygen_visible(false);
+                    ui.set_keygen_image(Image::default());
+                }
+                _ => {}
+            }
 
             let reload_requested = {
                 let model = model.borrow();

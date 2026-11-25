@@ -1207,9 +1207,9 @@ impl KeygenGlyphBody {
             vx: (seed % 5) as f32 * 0.16 - 0.32,
             vy: -1.5 - (seed % 8) as f32 * 0.29,
             vz: 0.5 - (seed % 6) as f32 * 0.17,
-            rx: seed as f32 * 0.045,
-            ry: (seed % 8) as f32 * 0.13,
-            rz: -(seed as f32) * 0.025,
+            rx: seed as f32 * 0.008,
+            ry: (seed % 8) as f32 * 0.035,
+            rz: -(seed as f32) * 0.006,
             wx: 0.13 - (seed % 4) as f32 * 0.07,
             wy: (seed % 5) as f32 * 0.14 - 0.28,
             wz: (seed % 7) as f32 * 0.09 - 0.27,
@@ -1244,6 +1244,10 @@ impl KeygenPhysics {
             body.y += body.vy * dt;
             body.z += body.vz * dt;
             // Rotations are stateful, with angular inertia and air drag.
+            // Angular restoring torque keeps the face visible after each impact.
+            body.wx += (-5.0 * body.rx - 1.8 * body.wx) * dt;
+            body.wy += (-5.0 * body.ry - 1.8 * body.wy) * dt;
+            body.wz += (-5.0 * body.rz - 1.8 * body.wz) * dt;
             body.rx += body.wx * dt;
             body.ry += body.wy * dt;
             body.rz += body.wz * dt;
@@ -1322,10 +1326,11 @@ fn keygen_scene(physics: &mut KeygenPhysics, frame: u64, facts: &[String],
             if glyph == ' ' { continue; }
             let body = physics.body(line, index);
             let x = (index as f32 - (count - 1.0) * 0.5) * spacing;
+            let wave = frame as f32 / 32.0 - index as f32 * 0.31;
             sprites.push(KeygenSprite {
-                glyph, x: 576.0 + x + body.x * 38.0,
-                y: y + body.y * 38.0, z: body.z * 55.0,
-                rx: body.rx, ry: body.ry, rz: body.rz,
+                glyph, x: 576.0 + x + body.x.tanh() * spacing * 0.20,
+                y: y + wave.sin() * 14.0 + body.y.tanh() * 10.0, z: body.z * 32.0,
+                rx: body.rx.tanh() * 0.45, ry: body.ry.tanh() * 0.55 + wave.cos() * 0.18, rz: body.rz.tanh() * 0.20,
                 size, color: keygen_glyph_color(frame / 3, index, line), depth: 5,
             });
         }
@@ -1389,21 +1394,29 @@ fn keygen_draw_glyph<T: sdl2::render::RenderTarget>(
     Ok(())
 }
 
+pub(crate) enum KeygenFrame { Draw(Vec<u8>), Closed }
+pub(crate) static KEYGEN_FRAME: std::sync::Mutex<Option<KeygenFrame>> = std::sync::Mutex::new(None);
+struct KeygenView;
+impl Drop for KeygenView {
+    fn drop(&mut self) {
+        crate::adapters::terminal::io::leave_raw();
+        *KEYGEN_FRAME.lock().unwrap_or_else(|e| e.into_inner()) = Some(KeygenFrame::Closed);
+    }
+}
+
 fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
     -> anyhow::Result<CommandOutput> {
-    use sdl2::{event::Event, keyboard::Keycode, pixels::{Color, PixelFormatEnum},
-        render::BlendMode};
+    use crate::adapters::terminal::io;
+    use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+    use sdl2::{pixels::{Color, PixelFormatEnum}, render::BlendMode, surface::Surface};
     use std::time::Instant;
-    let sdl = sdl2::init().map_err(anyhow::Error::msg)?;
-    let video = sdl.video().map_err(anyhow::Error::msg)?;
-    let window = video.window("SST KEYGEN — SDL2", 1152, 672)
-        .position_centered().resizable().build()
-        .map_err(|e| anyhow::anyhow!("keygen: SDL2 window: {e}"))?;
-    // SDL chooses a hardware renderer when available, otherwise software SDL.
-    // Both paths draw the exact same projected scene.
-    let mut renderer = window.into_canvas().build()
-        .map_err(|e| anyhow::anyhow!("keygen: SDL2 renderer: {e}"))?;
-    renderer.set_logical_size(1152, 672).map_err(|e| anyhow::anyhow!("{e}"))?;
+    if io::output_sender().is_none() {
+        anyhow::bail!("keygen: abre el comando en la terminal gráfica de SST");
+    }
+    io::enter_raw()?;
+    let _view = KeygenView;
+    let surface = Surface::new(1152, 672, PixelFormatEnum::RGBA32).map_err(anyhow::Error::msg)?;
+    let mut renderer = surface.into_canvas().map_err(anyhow::Error::msg)?;
     renderer.set_blend_mode(BlendMode::Blend);
     let creator = renderer.texture_creator();
     let font_dir = std::path::PathBuf::from(env::var_os("WINDIR")
@@ -1414,7 +1427,8 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
     let font = fontdue::Font::from_bytes(font_bytes, fontdue::FontSettings::default())
         .map_err(|e| anyhow::anyhow!("keygen: fuente Windows inválida: {e}"))?;
     let mut glyph_cache = HashMap::new();
-    let mut events = sdl.event_pump().map_err(anyhow::Error::msg)?;
+    let interrupt = io::interrupt_flag();
+    let abort = io::force_abort_flag();
     let mut system = System::new_all();
     system.refresh_all();
     let mut facts = keygen_system_facts(&system);
@@ -1426,13 +1440,17 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
     let mut accumulator = 0.0_f32;
     const STEP: f32 = 1.0/60.0;
     'running: loop {
-        for event in events.poll_iter() {
-            match event {
-                Event::Quit { .. } |
-                Event::KeyDown { keycode: Some(Keycode::Escape | Keycode::Q), .. } => break 'running,
-                Event::KeyDown { keycode: Some(Keycode::Space), repeat: false, .. } => music.pause_resume()?,
-                Event::KeyDown { keycode: Some(Keycode::Num1 | Keycode::Kp1), repeat: false, .. } => music.select(0)?,
-                Event::KeyDown { keycode: Some(Keycode::Num2 | Keycode::Kp2), repeat: false, .. } => music.select(1)?,
+        if interrupt.load(std::sync::atomic::Ordering::Relaxed) ||
+            abort.load(std::sync::atomic::Ordering::Relaxed) { break; }
+        while io::poll(Duration::ZERO)? {
+            let Event::Key(key) = io::read()? else { continue };
+            if key.kind != KeyEventKind::Press { continue; }
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('q' | 'Q') => break 'running,
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break 'running,
+                KeyCode::Char(' ') => music.pause_resume()?,
+                KeyCode::Char('1') => music.select(0)?,
+                KeyCode::Char('2') => music.select(1)?,
                 _ => {}
             }
         }
@@ -1491,6 +1509,8 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
             keygen_draw_glyph(&mut renderer,texture,&sprite,width,height)?;
         }
         renderer.present();
+        let pixels = renderer.read_pixels(None, PixelFormatEnum::RGBA32).map_err(anyhow::Error::msg)?;
+        *KEYGEN_FRAME.lock().unwrap_or_else(|e| e.into_inner()) = Some(KeygenFrame::Draw(pixels));
     }
     Ok(CommandOutput::ok(""))
 }
@@ -1531,6 +1551,26 @@ mod keygen_motion_regressions {
     }
 
     #[test]
+    fn both_titles_remain_ordered_and_face_the_viewer_during_motion() {
+        let mut physics = KeygenPhysics::default();
+        for frame in 0..3600 {
+            physics.tick(frame);
+            let sprites = keygen_scene(&mut physics, frame, &[], false, 1);
+            for (title, center) in [("SHELLSHOCKTOOL", 180.0), ("SST/KEYGEN2000", 287.0)] {
+                let line: Vec<_> = sprites.iter()
+                    .filter(|s| s.depth > 1 && (s.y - center).abs() < 30.0).collect();
+                assert_eq!(line.iter().map(|s| s.glyph).collect::<String>(), title);
+                assert!(line.windows(2).all(|pair| pair[0].x < pair[1].x));
+                for sprite in line {
+                    let corners = keygen_project(sprite, 28.0, 36.0, 0.0);
+                    assert!(corners[1].0 - corners[0].0 > 12.0);
+                    assert!(corners[3].1 - corners[0].1 > 16.0);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn sdl_software_canvas_draws_projected_textured_triangles() {
         use sdl2::{pixels::{Color,PixelFormatEnum},surface::Surface,render::BlendMode};
         let surface = Surface::new(128,128,PixelFormatEnum::RGBA32).unwrap();
@@ -1565,19 +1605,6 @@ const SST_LOGO_COLORS: [(u8, u8, u8); 4] = [
 fn sst_icon_ansi(index: usize) -> String {
     let (r, g, b) = SST_LOGO_COLORS[index.min(3)];
     format!("\x1b[38;2;{r};{g};{b}m")
-}
-
-/// Dense percent marks are the lettering/frame; the hyphen field is blue.
-/// Shade marks retain intermediate colors without altering the source.
-fn sst_icon_rgb(glyph: char) -> Option<(u8, u8, u8)> {
-    let index = match glyph {
-        '-' | ':' => 0,
-        '=' | '+' => 1,
-        '*' | '#' => 2,
-        '%' => 3,
-        _ => return None,
-    };
-    Some(SST_LOGO_COLORS[index])
 }
 
 /// Conservar la geometría renderizada por libcaca y emitir el RGB original
@@ -1621,52 +1648,48 @@ fn sst_logo_sdl_pixels(
     Some(pixels)
 }
 
-fn paint_logo_row(cells: impl IntoIterator<Item = (char, Option<(u8, u8, u8)>)>) -> String {
-    let mut out = String::new();
-    let mut current = None;
-    for (glyph, color) in cells {
-        if color != current {
-            if let Some((r, g, b)) = color {
-                out.push_str(&format!("\x1b[38;2;{r};{g};{b}m"));
-            } else if current.is_some() {
-                out.push_str("\x1b[0m");
-            }
-            current = color;
-        }
-        out.push(glyph);
-    }
-    if current.is_some() { out.push_str("\x1b[0m"); }
-    out
-}
-
 fn sst_icon_truecolor(lines: Vec<String>) -> Vec<String> {
-    lines.into_iter().map(|line| {
-        paint_logo_row(line.chars().map(|glyph| (glyph, sst_icon_rgb(glyph))))
-    }).collect()
-}
-
-/// The compact renderer scales an ASCII-cell grid, not a PNG or ICO.
-/// Each ASCII character has a unique cell ID so SDL2 cannot invert the
-/// letters and background or mix their colors during the resize.
-const SST_ASCII_GLYPHS: [char; 8] = [' ', '-', ':', '=', '+', '*', '#', '%'];
-
-fn compact_ascii_cells(width: usize, height: usize) -> Vec<char> {
-    let source_width = FETCH_LOGO_ASCII[0].len();
-    let source_height = FETCH_LOGO_ASCII.len();
-    let grid = image::RgbaImage::from_fn(source_width as u32, source_height as u32, |x, y| {
-        let glyph = char::from(FETCH_LOGO_ASCII[y as usize].as_bytes()[x as usize]);
-        let index = SST_ASCII_GLYPHS.iter().position(|&ch| ch == glyph)
-            .expect("unexpected character in original SST ASCII");
-        image::Rgba([index as u8, 0, 0, 255])
-    });
+    let height = lines.len();
+    let width = lines.iter().map(|s| s.chars().count()).max().unwrap_or(0);
+    if width == 0 { return lines; }
+    // The actual plate occupies rows 5..27 of the transparent 32px icon.
+    // Crop its padding before mapping highlights onto the ASCII lettering.
+    let icon = image::load_from_memory(include_bytes!("../../assets/sst-icon.png"))
+        .expect("embedded SST icon").crop_imm(0, 5, 32, 22).to_rgba8();
     #[cfg(windows)]
-    if let Some(pixels) = sst_logo_sdl_pixels(&grid, width, height) {
-        return pixels.into_iter().map(|(id, _, _, _)|
-            SST_ASCII_GLYPHS[usize::from(id).min(SST_ASCII_GLYPHS.len() - 1)]).collect();
-    }
-    image::imageops::resize(&grid, width as u32, height as u32,
-        image::imageops::FilterType::Nearest).pixels()
-        .map(|p| SST_ASCII_GLYPHS[usize::from(p[0])]).collect()
+    let pixels = sst_logo_sdl_pixels(&icon, width, height);
+    #[cfg(not(windows))]
+    let pixels: Option<Vec<(u8,u8,u8,u8)>> = None;
+    let silver = (186, 189, 198);
+    let navy = (35, 52, 106);
+    let yellow = (251, 242, 54);
+    lines.into_iter().enumerate().map(|(y, row)| {
+        let mut out = String::new();
+        let mut current = None;
+        for (x, glyph) in row.chars().enumerate() {
+            let (r,g,b,a) = pixels.as_ref().map(|p| p[y * width + x]).unwrap_or_else(|| {
+                let sx = (2*x+1) * 32 / (2*width);
+                let sy = (2*y+1) * 22 / (2*height);
+                let [r,g,b,a] = icon.get_pixel(sx as u32, sy as u32).0;
+                (r,g,b,a)
+            });
+            let sample = (r,g,b);
+            let ink = matches!(glyph, '█'|'▓'|'▒'|'░'|'%'|'#'|'*'|'+'|'=');
+            let style = if a == 0 && glyph == ' ' { None } else {
+                let fg = if !ink { silver } else if a == 0 || sample == silver { navy } else { sample };
+                Some((fg, if sample == yellow { yellow } else { silver }))
+            };
+            if style != current {
+                if let Some(((r,g,b),(br,bg,bb))) = style {
+                    out.push_str(&format!("\x1b[38;2;{r};{g};{b}m\x1b[48;2;{br};{bg};{bb}m"));
+                } else { out.push_str("\x1b[0m"); }
+                current = style;
+            }
+            out.push(glyph);
+        }
+        if current.is_some() { out.push_str("\x1b[0m"); }
+        out
+    }).collect()
 }
 
 fn caca_ansi(canvas: &libcaca::Canvas) -> anyhow::Result<String> {
@@ -1677,19 +1700,38 @@ fn caca_ansi(canvas: &libcaca::Canvas) -> anyhow::Result<String> {
 fn fetch_compact_logo(plain: bool, columns: usize) -> anyhow::Result<(Vec<String>, usize)> {
     let width = if columns < 70 { 30usize } else { 36usize };
     let height = 12usize;
-    let cells = compact_ascii_cells(width, height);
+    let source_height = FETCH_LOGO_ASCII.len();
+    let source_width = FETCH_LOGO_ASCII.iter().map(|s| s.len()).max().unwrap_or(100);
     let mut cv = libcaca::Canvas::new(width as i32, height as i32)?;
-    cv.set_color_ansi(libcaca::Color::Default, libcaca::Color::Default)?;
-    for (i, &glyph) in cells.iter().enumerate() {
-        cv.put_char((i % width) as i32, (i / width) as i32, glyph as u32);
+    let mut plain_rows = vec![String::new(); height];
+    for y in 0..height {
+        for x in 0..width {
+            let x0 = x * source_width / width;
+            let x1 = ((x + 1) * source_width / width).max(x0 + 1);
+            let y0 = y * source_height / height;
+            let y1 = ((y + 1) * source_height / height).max(y0 + 1);
+            let mut ink = 0usize;
+            let mut total = 0usize;
+            for sy in y0..y1.min(source_height) {
+                for ch in FETCH_LOGO_ASCII[sy].as_bytes().iter().skip(x0).take(x1 - x0) {
+                    total += 1;
+                    if matches!(*ch, b'%' | b'#' | b'*' | b'+') { ink += 1; }
+                }
+            }
+            let coverage = ink as f32 / total.max(1) as f32;
+            let glyph = if coverage > 0.72 { '█' }
+                else if coverage > 0.48 { '▓' }
+                else if coverage > 0.25 { '▒' }
+                else if coverage > 0.09 { '░' }
+                else { ' ' };
+            plain_rows[y].push(glyph);
+            cv.set_color_ansi(libcaca::Color::Default, libcaca::Color::Default)?;
+            cv.put_char(x as i32, y as i32, glyph as u32);
+        }
     }
+    if plain { return Ok((plain_rows, width)); }
     let rendered = caca_ansi(&cv)?;
-    let mut rendered_rows = rendered.lines();
-    let rows = (0..height).map(|_| {
-        rendered_rows.next().unwrap_or("").chars()
-            .chain(std::iter::repeat(' ')).take(width).collect::<String>()
-    }).collect::<Vec<_>>();
-    Ok((if plain { rows } else { sst_icon_truecolor(rows) }, width))
+    Ok((sst_icon_truecolor(rendered.lines().map(str::to_owned).collect()), width))
 }
 
 fn fetch_logo(plain: bool) -> anyhow::Result<(Vec<String>, usize)> {
@@ -2470,7 +2512,7 @@ fn terminate_pid_native(pid: u32) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod fetch_text_logo_tests {
-    use super::{fetch_compact_logo, fetch_logo, sst_icon_rgb, sst_icon_truecolor};
+    use super::{fetch_compact_logo, fetch_logo, sst_icon_truecolor};
 
     #[test]
     fn compact_logo_fits_both_viewports() {
@@ -2503,22 +2545,25 @@ mod fetch_text_logo_tests {
 
     #[test]
     fn original_blue_silver_palette_is_applied_to_ascii_marks() {
-        assert_eq!(sst_icon_rgb('%'), Some((186, 189, 198)));
-        assert_eq!(sst_icon_rgb('-'), Some((35, 52, 106)));
-        assert_eq!(sst_icon_rgb(' '), None);
-        let painted = sst_icon_truecolor(vec!["%-%".to_owned()]).join("\n");
-        assert!(painted.contains("\x1b[38;2;186;189;198m%"));
-        assert!(painted.contains("\x1b[38;2;35;52;106m-"));
-    }
-
-    #[test]
-    fn compact_logo_geometry_comes_only_from_original_ascii() {
-        let (rows, width) = fetch_compact_logo(true, 80).unwrap();
-        let cells = super::compact_ascii_cells(width, rows.len());
-        assert_eq!(rows.iter().flat_map(|row| row.chars()).collect::<Vec<_>>(), cells);
-        assert!(cells.iter().all(|ch| super::SST_ASCII_GLYPHS.contains(ch)));
-        assert!(cells.contains(&'%'));
-        assert!(cells.contains(&'-'));
+        for columns in [58, 80] {
+            let (plain, width) = fetch_compact_logo(true, columns).unwrap();
+            let rows = sst_icon_truecolor(plain.clone());
+            let mut term = vt100::Parser::new(13, 48, 0);
+            term.process(rows.join("\r\n").as_bytes());
+            assert!(plain.iter().any(|row| row.contains('█')));
+            for (y, row) in plain.iter().enumerate() {
+                for (x, glyph) in row.chars().enumerate() {
+                    assert_eq!(term.screen().cell(y as u16, x as u16).unwrap().contents(),
+                               glyph.to_string());
+                }
+            }
+            assert_eq!(term.screen().cell(2, width as u16).unwrap().bgcolor(), vt100::Color::Default);
+            let ansi = rows.join("");
+            for color in ["38;2;35;52;106", "48;2;186;189;198", "48;2;251;242;54",
+                          "38;2;6;48;185", "38;2;17;30;70"] {
+                assert!(ansi.contains(color), "{columns} columns missing {color}");
+            }
+        }
     }
 
     #[test]

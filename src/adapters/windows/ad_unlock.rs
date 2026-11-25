@@ -118,6 +118,69 @@ fn domain_credentials(terminal: &mut dyn crate::core::ports::TerminalSession, dc
     Ok(credentials)
 }
 
+// sudo captures the elevated SST child's output. That child has no console
+// input handle. Present the credentials in SST's native UI in that case.
+slint::slint! {
+    import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+    export component UnlockPrompt inherits Window {
+        title: "SST · Active Directory";
+        width: 440px;
+        height: 250px;
+        in property <string> controller;
+        in-out property <string> username;
+        in-out property <string> secret;
+        callback confirm();
+        callback cancel();
+        VerticalBox {
+            Text { text: root.controller; }
+            Text { text: "Usuario administrador"; }
+            name := LineEdit { text <=> root.username; accepted => { password.focus(); } }
+            Text { text: "Contraseña"; }
+            password := LineEdit {
+                input-type: password;
+                text <=> root.secret;
+                accepted => { if root.username != "" && root.secret != "" { root.confirm(); } }
+            }
+            HorizontalBox {
+                Button { text: "Cancelar"; clicked => { root.cancel(); } }
+                Button {
+                    text: "Continuar";
+                    enabled: root.username != "" && root.secret != "";
+                    clicked => { root.confirm(); }
+                }
+            }
+        }
+    }
+}
+
+fn window_credentials(dc: &str, domain: &str) -> Result<DomainCredentials> {
+    use slint::ComponentHandle;
+    use std::{cell::Cell, rc::Rc};
+    let dialog = UnlockPrompt::new().map_err(|e| anyhow::anyhow!("ventana de SST: {e}"))?;
+    dialog.set_controller(format!("{domain} · {dc}").into());
+    let confirmed = Rc::new(Cell::new(false));
+    let accepted = Rc::clone(&confirmed);
+    let weak = dialog.as_weak();
+    dialog.on_confirm(move || {
+        if let Some(window) = weak.upgrade() {
+            accepted.set(true);
+            let _ = window.hide();
+        }
+    });
+    let weak = dialog.as_weak();
+    dialog.on_cancel(move || {
+        if let Some(window) = weak.upgrade() { let _ = window.hide(); }
+    });
+    dialog.run().map_err(|e| anyhow::anyhow!("ventana de SST: {e}"))?;
+    if !confirmed.get() { bail!("autenticación cancelada"); }
+    let credentials = DomainCredentials {
+        username: wide(dialog.get_username().as_str()),
+        password: wide(dialog.get_secret().as_str()),
+    };
+    dialog.set_secret(slint::SharedString::default());
+    Ok(credentials)
+}
+
 // SSPI expects explicit user/domain/password in this C ABI layout.
 #[repr(C)]
 struct SecWinntAuthIdentityW {
@@ -291,14 +354,17 @@ fn user_filter(name: &str) -> String {
 /// Unlock exactly one unambiguously identified AD user. Only lockoutTime changes.
 /// The DC independently enforces delegated AD rights, irrespective of local UAC.
 pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::TerminalFactory) -> Result<String> {
-    let mut terminal = terminal_factory.alternate_screen()?;
-    terminal.clear()?;
-    terminal.write("AUTENTICACIÓN ACTIVE DIRECTORY\r\n[1/3] Localizando controlador de dominio escribible...\r\n")?;
-    terminal.flush()?;
+    use std::io::IsTerminal;
     let (dc, dns_domain) = controller()?;
-    // Explicit administrative identity: local UAC or logged-on Windows
-    // credentials never authorize an AD change. Credential buffers are wiped.
-    let mut credentials = domain_credentials(&mut *terminal, &dc, &dns_domain)?;
+    let embedded = crate::adapters::terminal::io::output_sender().is_some();
+    let interactive_console = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let mut credentials = if embedded || interactive_console {
+        let mut terminal = terminal_factory.alternate_screen()
+            .context("no se pudo abrir el formulario de SST")?;
+        domain_credentials(&mut *terminal, &dc, &dns_domain)?
+    } else {
+        window_credentials(&dc, &dns_domain)?
+    };
     let typed_len = credentials.username.iter().position(|ch| *ch == 0)
         .unwrap_or(credentials.username.len());
     let typed = String::from_utf16_lossy(&credentials.username[..typed_len]);
@@ -339,8 +405,6 @@ pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::Terminal
         return Err(bind_error(session.0, bind_status));
     }
 
-    terminal.write("[3/3] Localizando y desbloqueando la cuenta...\r\n")?;
-    terminal.flush()?;
     let root = search(session.0, "", LDAP_SCOPE_BASE,
         "(objectClass=*)", &["defaultNamingContext"])?;
     let entry = unsafe { ldap_first_entry(session.0, root.0) };
