@@ -1,48 +1,12 @@
 SST Windows release CI report
-Source commit: 005ff344da50a32315454bcea26f2df18c25b04c
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45663326914
-Recorded UTC: 2026-11-25 17:26:56Z
+Source commit: ca2755efb79a2fd0a9f4191e525d77211c7d1b2b
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45665571192
+Recorded UTC: 2026-11-25 17:38:56Z
 Compile: success
 Rust tests: success
 Software GUI startup: success
 Packaging: success
 Compiler log tail:
     Updating crates.io index
- Downloading crates ...
-  Downloaded core_detect v1.0.0
-  Downloaded encoding_rs v0.8.44
-  Downloaded multiversion_no_op v1.0.0
-  Downloaded symphonia v0.5.5
-  Downloaded symphonia-core v0.5.5
-  Downloaded symphonia-metadata v0.5.5
-  Downloaded symphonia-bundle-mp3 v0.5.5
-   Compiling arrayvec v0.7.8
-   Compiling encoding_rs v0.8.44
-   Compiling core_detect v1.0.0
-   Compiling simdutf8 v0.1.5
-   Compiling polycool v0.4.0
-   Compiling lyon_geom v1.0.20
-   Compiling tiny-skia v0.12.0
-   Compiling lyon_path v1.0.19
-   Compiling kurbo v0.13.1
-   Compiling lyon_extra v1.1.0
-   Compiling lyon_algorithms v1.0.22
-   Compiling taffy v0.10.1
-   Compiling svgtypes v0.16.2
-   Compiling multiversion_no_op v1.0.0
-   Compiling usvg v0.48.1
-   Compiling symphonia-core v0.5.5
-   Compiling sst v0.1.12-blue.9 (D:\a\sst-blueversion\sst-blueversion)
-   Compiling vte v0.15.0
-   Compiling vt100 v0.16.2
-   Compiling symphonia-metadata v0.5.5
-   Compiling resvg v0.48.1
-   Compiling i-slint-common v1.18.1
-   Compiling i-slint-core v1.18.1
-   Compiling symphonia-bundle-mp3 v0.5.5
-   Compiling symphonia v0.5.5
-   Compiling i-slint-renderer-software v1.18.1
-   Compiling i-slint-backend-winit v1.18.1
-   Compiling i-slint-backend-selector v1.18.1
-   Compiling slint v1.18.1
-    Finished `release` profile [optimized] target(s) in 4m 38s
+   Compiling sst v0.1.12-blue.10 (D:\a\sst-blueversion\sst-blueversion)
+    Finished `release` profile [optimized] target(s) in 4m 20s
