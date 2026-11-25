@@ -52,6 +52,110 @@ pub(super) fn fields(rows: &[&str], styles: &[&str], width: usize, out: &mut Vec
     }
 }
 
+/// Compact metadata uses a two-column editorial grid when both regions fit.
+/// Long values, metric bars and statuses retain their full-width reading order.
+pub(super) fn field_grid(rows:&[&str],width:usize,out:&mut Vec<String>)->bool{
+    if width<78 || rows.len()<4{return false;}
+    let Some(items)=rows.iter().map(|row|field_parts(row)).collect::<Option<Vec<_>>>() else{return false;};
+    let gap=5;
+    let region=(width-gap)/2;
+    let label_width=items.iter().map(|(name,_)|display_width(name)+1).max().unwrap_or(0);
+    if label_width>region/2 || items.iter().any(|(name,value)|
+        value.trim().is_empty() || display_width(value)+label_width+3>region
+        || Metric::named(name).is_some() || is_status_field(&format!("{name}: {value}"))
+        || matches!(name.to_lowercase().as_str(),"error"|"aviso"|"advertencia"|"fallo"|"crítico"|"critico"|"warning"|"autorización efectiva")){
+        return false;
+    }
+    for pair in items.chunks(2){
+        let mut line=String::new();
+        for (i,(label,value)) in pair.iter().enumerate(){
+            if i>0{line.push_str(&" ".repeat(gap));}
+            let padded=label_width+3-display_width(label)-1;
+            line.push_str(&format!("{LABEL}{label}:{RESET}{}{VALUE}{value}{RESET}"," ".repeat(padded)));
+            if i==0 && pair.len()==2{
+                line.push_str(&" ".repeat(region-label_width-3-display_width(value)));
+            }
+        }
+        out.push(line);
+    }
+    true
+}
+
+/// Measure complete cells before wrapping. A narrow table reflows each cell
+/// independently; the first cell never spills into the status or metric column.
+pub(super) fn table(header:&str,rows:&[&str],width:usize)->String{
+    let cells=|line:&str|table_columns(line).into_iter().map(|(a,b)|line[a..b].to_owned()).collect::<Vec<_>>();
+    let labels=cells(header);
+    let data=rows.iter().map(|line|cells(line)).collect::<Vec<_>>();
+    let style=TableStyle::from_header(header);
+    let count=labels.len();
+    let mut out=String::new();
+    let gap=2;
+    let budget=width.saturating_sub(gap*(count-1));
+    if budget<count*6 {
+        // Extremely narrow: retain all data as labelled records, not truncated rows.
+        out.push_str(&Role::Title.paint(header.trim()));
+        out.push('\n');
+        for row in &data{
+            out.push('\n');
+            for (i,value) in row.iter().enumerate(){
+                let key=&labels[i];
+                out.push_str(&Role::Label.paint(key));out.push_str(":\n");
+                for fragment in wrap_line(value,width.saturating_sub(2)){
+                    out.push_str("  ");out.push_str(style.tone(i,value).unwrap_or(VALUE));
+                    out.push_str(fragment.trim_start());out.push_str(RESET);out.push('\n');
+                }
+            }
+        }
+        return out;
+    }
+    let mut widths:Vec<_>=labels.iter().map(|s|display_width(s).max(6)).collect();
+    for row in &data{
+        for (i,value) in row.iter().enumerate(){widths[i]=widths[i].max(display_width(value));}
+    }
+    while widths.iter().sum::<usize>()>budget{
+        let Some((i,_))=widths.iter().enumerate().filter(|(_,w)|**w>6).max_by_key(|(_,w)|**w)else{break;};
+        widths[i]-=1;
+    }
+    let emit=|out:&mut String,row:&[String],heading:bool,index:usize|{
+        let fragments:Vec<_>=row.iter().zip(&widths).map(|(value,w)|{
+            if display_width(value)<=*w{vec![value.clone()]}else{
+                // Cell-local wrapping, without the report paragraph's hanging indent.
+                let mut pieces=Vec::new();let mut part=String::new();
+                for ch in value.chars(){
+                    if display_width(&part)+display_width(&ch.to_string())>*w{
+                        pieces.push(std::mem::take(&mut part));
+                    }
+                    part.push(ch);
+                }
+                if !part.is_empty(){pieces.push(part);}pieces
+            }
+        }).collect();
+        let height=fragments.iter().map(Vec::len).max().unwrap_or(1);
+        for line in 0..height{
+            let mut visible=String::new();
+            let mut styled=String::new();
+            for (i,parts) in fragments.iter().enumerate(){
+                if i>0{visible.push_str("  ");styled.push_str("  ");}
+                let part=parts.get(line).map(String::as_str).unwrap_or("");
+                let padding=" ".repeat(widths[i].saturating_sub(display_width(part)));
+                visible.push_str(part);visible.push_str(&padding);
+                let tone=if heading{HEADING}else{style.tone(i,&row[i]).unwrap_or(VALUE)};
+                styled.push_str(tone);styled.push_str(part);styled.push_str(RESET);styled.push_str(&padding);
+            }
+            if heading{
+                // Apply the same shared surface as every other table header.
+                styled.push_str(&" ".repeat(width.saturating_sub(display_width(&visible))));
+                out.push_str(&preserve_band(&styled,TABLE_HEADER));
+            }else{out.push_str(&table_body_band(&visible,&styled,width,index));}
+            out.push('\n');
+        }
+    };
+    emit(&mut out,&labels,true,0);
+    for (index,row) in data.iter().enumerate(){emit(&mut out,row,false,index);}
+    out
+}
+
 /// Editorial feature strip: short values receive display-size typography,
 /// labels sit above them, and columns stack when there is insufficient space.
 /// The reserved row travels with the value through the VT scrollback.
@@ -196,5 +300,32 @@ mod editorial_regressions{
         let text="Un texto sin estructura\nOtra línea\n";
         assert_eq!(render(text,80,false),text);
         assert_eq!(render(text,80,true),text);
+    }
+}
+
+#[cfg(test)]
+mod responsive_editorial_tests{
+    use super::*;
+    #[test]
+    fn metadata_reflows_as_a_grid_without_kpi_decoration(){
+        let rows=["Nombre: equipo","Modelo: estación","Dominio: oficina","Sistema: Windows"];
+        let mut out=Vec::new();
+        assert!(field_grid(&rows,96,&mut out));
+        assert_eq!(out.len(),2);
+        let plain=report_text(&out[0]);
+        assert!(plain.contains("Nombre:")&&plain.contains("Modelo:"));
+        assert!(out.iter().all(|line|display_width(&report_text(line))<=96));
+        assert!(!field_grid(&rows,40,&mut Vec::new()));
+    }
+    #[test]
+    fn narrow_tables_preserve_cell_boundaries_and_statuses(){
+        let header="NOMBRE    ESTADO    CPU%";
+        let rows=["Estación universitaria de laboratorio    ACTIVO    65"];
+        for width in [24,38,96]{
+            let out=table(header,&rows,width);
+            assert!(out.contains(GOOD)&&out.contains(BAD));
+            assert!(report_text(&out).lines().all(|line|display_width(line)<=width));
+            assert!(report_text(&out).contains("65"));
+        }
     }
 }

@@ -1,6 +1,6 @@
 # SST Formatter — contrato de presentación
 
-Todos los resultados interactivos completos atraviesan Formatter::result una sola vez. El motor Bash devuelve datos sin decoración. stdout, stderr, líneas en vivo y monitores utilizan el módulo src/presentation/formatter.rs; report y tui_style son fachadas de compatibilidad sin paletas propias.
+Todos los resultados interactivos completos atraviesan Formatter::present una sola vez. El motor Bash devuelve datos sin decoración. stdout, stderr, líneas en vivo y monitores utilizan el módulo src/presentation/formatter.rs; report y tui_style son fachadas de compatibilidad sin paletas propias.
 
 Roles: título, comando, etiqueta, detalle, valor, éxito, aviso, fallo y óptimo. El tema controla color, peso, escala tipográfica y acentos gráficos. La terminal mantiene una cuadrícula monoespaciada; los tamaños se ajustan a cada celda para evitar superposición. Slint pinta reglas y acentos reales para títulos semánticos; no hay cajas de caracteres.
 
@@ -12,7 +12,7 @@ La selección y el cursor son capas globales de la ventana. El cursor se anima s
 
 ## Composición editorial
 
-El componente feature_grid separa etiquetas, espacios de reserva y valores; utiliza dos columnas cuando el ancho permite leer ambos valores y se apila en ventanas estrechas. El renderizador nativo emplea un tamaño de exhibición de hasta 1,65 veces el tamaño base, limitado por la anchura de cada región y dos filas de altura. El adaptador NOTSH prioriza el resultado y las mediciones observadas, seguido de comprobaciones. Los informes ordinarios con dos campos breves tras una cabecera reutilizan el mismo componente; el resto conserva tablas y grupos de campos. La salida original para máquinas no cambia. Se mantiene el tema existente, sin copiar las fuentes ni motivos decorativos de las referencias.
+El componente feature_grid separa etiquetas, espacios de reserva y valores; utiliza dos columnas cuando el ancho permite leer ambos valores y se apila en ventanas estrechas. El renderizador nativo emplea un tamaño de exhibición de hasta 1,65 veces el tamaño base, limitado por la anchura de cada región y dos filas de altura. El adaptador NOTSH prioriza el resultado y las mediciones observadas, seguido de comprobaciones. Los campos corrientes no son cifras de exhibición: desde cuatro campos compactos pueden ocupar una retícula de dos regiones sin fondo; en anchos reducidos vuelven a una columna. Un resultado explícito al inicio de un informe tiene prioridad visual sobre sus metadatos. Las tablas miden cada columna y se repliegan por celda, o como registros etiquetados en ventanas muy estrechas. Los monitores conservan la identidad de las columnas entre muestras. La salida original para máquinas no cambia. Se mantiene el tema existente, sin copiar las fuentes ni motivos decorativos de las referencias.
 
 ## Jerarquía sin paneles indiscriminados
 

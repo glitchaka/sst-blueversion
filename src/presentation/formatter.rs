@@ -154,10 +154,10 @@ impl Formatter {
         if mode!=OutputMode::Interactive{
             return FormattedOutput{stdout:stdout.to_owned(),stderr:stderr.to_owned()};
         }
-        let width = usize::from(cols.saturating_sub(2)).clamp(18,160);
+        let width = usize::from(cols.saturating_sub(3)).clamp(18,160);
         let clean = report_text(stdout);
         let kind=classify(&clean);
-        let text = compose_text(&clean,cols.saturating_sub(3),kind);
+        let text = compose_text(&clean,cols,kind);
         FormattedOutput {
             stdout:if kind==LayoutKind::Reference{text}else{report_layout::render(&text,width,kind!=LayoutKind::Plain)},
             stderr:report_layout::render(&Self::diagnostic(stderr),width,true),
@@ -277,16 +277,19 @@ impl TableStyle {
         }
         style
     }
+    fn tone(&self, index:usize, value:&str)->Option<&'static str>{
+        if self.status==Some(index){status_color(value)}else{
+            self.metrics.iter().find(|(i,_,_)|*i==index)
+                .and_then(|(_,metric,implicit)|metric.color(value,*implicit))
+        }
+    }
     fn row(&self, line:&str) -> String {
         if self.status.is_none() && self.metrics.is_empty() { return style_line(line); }
         let mut out = String::new();
         let mut last = 0;
         for (i,(a,b)) in table_columns(line).into_iter().enumerate() {
             let value = &line[a..b];
-            let tone = if self.status == Some(i) { status_color(value) } else {
-                self.metrics.iter().find(|(index,_,_)| *index == i)
-                    .and_then(|(_,metric,implicit)|metric.color(value,*implicit))
-            };
+            let tone = self.tone(i,value);
             if let Some(color) = tone {
                 out.push_str(&line[last..a]);
                 out.push_str(color);
@@ -301,18 +304,27 @@ impl TableStyle {
 }
 
 #[derive(Default)]
-pub struct LiveReport { table: TableStyle }
+pub struct LiveReport { table: TableStyle, header: Option<String> }
 impl LiveReport {
     pub fn line(&mut self, line:&str)->String {
         let text = report_text(line);
         if text.contains(['\r','\0','\x1b']) { return text.into_owned(); }
-        if is_table_header(&text) {
-            self.table = TableStyle::from_header(&text);
-            Role::Command.paint(&text)
-        } else {
-            if text.trim().is_empty() || (is_section_heading(&text) && table_columns(&text).len() <= 1) { self.table = TableStyle::default(); }
-            if is_section_heading(&text){stream_line(&text)}else{self.table.row(&text)}
+        let columns=table_columns(&text).len();
+        // A numeric PID and an uppercase state are a data row, not a title.
+        // Preserve the live schema until a real boundary or a repeated header.
+        if let Some(header)=&self.header {
+            if text.as_ref()!=header.as_str() && columns==table_columns(header).len() {
+                return self.table.row(&text);
+            }
         }
+        if is_table_header(&text) && columns>=2 {
+            self.table=TableStyle::from_header(&text);
+            self.header=Some(text.to_string());
+            return Role::Command.paint(&text);
+        }
+        self.header=None;
+        self.table=TableStyle::default();
+        stream_line(&text)
     }
 }
 
@@ -605,7 +617,9 @@ fn render_field_group(lines:&[&str],width:usize)->String {
     let styles:Vec<_>=lines.iter().map(|s|style_line(s)).collect();
     let styles:Vec<_>=styles.iter().map(String::as_str).collect();
     let mut out=Vec::new();
-    report_layout::fields(lines,&styles,width,&mut out);
+    if !report_layout::field_grid(lines,width,&mut out){
+        report_layout::fields(lines,&styles,width,&mut out);
+    }
     out.push(String::new());
     out.join("\n")
 }
@@ -804,19 +818,37 @@ fn compose_text(stdout:&str,cols:u16,kind:LayoutKind)->String{
             let start=cursor-1;
             while cursor<lines.len()&&field_parts(lines[cursor]).is_some(){cursor+=1;}
             let group=&lines[start..cursor];
-            let header_precedes=start>0 && (is_section_heading(lines[start-1]) || report_layout::underline(lines[start-1]));
-            let features:Vec<_>=group.iter().filter_map(|line|field_parts(line)).map(|(name,value)|(name,value,VALUE)).collect();
-            let short_metadata=header_precedes && features.len()==group.len() && features.len()==2
-                && features.iter().all(|(name,value,_)|display_width(name)<=22 && display_width(value)<=25
-                    && !value.is_empty() && Metric::named(name).is_none()
-                    && !is_status_field(&format!("{name}: {value}"))
-                    && !matches!(name.to_lowercase().as_str(),"error"|"aviso"|"advertencia"|"fallo"|"crítico"|"critico"|"warning"|"autorización efectiva"));
-            if short_metadata{result.push_str(&report_layout::feature_grid(&features,width));}
-            else{result.push_str(&render_field_group(group,width));}
+            // Ordinary metadata does not become a display-size KPI merely
+            // because there are two fields. Only explicit outcome fields lead.
+            let top_level=start>0 && lines[..start].iter().filter(|l|!l.trim().is_empty()&&!report_layout::underline(l)).count()==1;
+            if top_level && group.len()>=3 {
+                if let Some(index)=group.iter().position(|line|is_status_field(line)
+                    && field_parts(line).is_some_and(|(_,value)|status_color(value).is_some())) {
+                    let (label,value)=field_parts(group[index]).unwrap();
+                    result.push_str(&report_layout::feature_grid(&[(label,value,status_color(value).unwrap_or(VALUE))],width));
+                    result.push('\n');
+                    let rest:Vec<_>=group.iter().enumerate().filter_map(|(i,row)|(i!=index).then_some(*row)).collect();
+                    result.push_str(&render_field_group(&rest,width));
+                } else {result.push_str(&render_field_group(group,width));}
+            } else {result.push_str(&render_field_group(group,width));}
             previous_blank=false;
             continue;
         }
         if is_table_header(line) && table_columns(line).len()>=2 {
+            let count=table_columns(line).len();
+            let start=cursor;
+            while cursor<lines.len() && !lines[cursor].trim().is_empty()
+                && lines[cursor]!=line && table_columns(lines[cursor]).len()==count
+                && field_parts(lines[cursor]).is_none() && !report_layout::underline(lines[cursor]) {
+                cursor+=1;
+            }
+            if cursor>start {
+                result.push_str(&report_layout::table(line,&lines[start..cursor],width));
+                previous_blank=false;
+                table=TableStyle::default();
+                table_active=false;
+                continue;
+            }
             table = TableStyle::from_header(line);
             table_active=true;table_index=0;
             if display_width(line)<=width{
@@ -835,6 +867,9 @@ fn compose_text(stdout:&str,cols:u16,kind:LayoutKind)->String{
             if !previous_blank { result.push('\n'); }
             previous_blank = true;
             continue;
+        }
+        if is_section_heading(line) && !is_table_header(line) && !previous_blank {
+            if !result.ends_with("\n\n"){result.push('\n');}
         }
         previous_blank = false;
         let is_bullet = line.trim_start().starts_with("+ ");
