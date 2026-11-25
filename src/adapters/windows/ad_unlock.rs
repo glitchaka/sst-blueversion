@@ -1,5 +1,5 @@
 //! Unlock an AD user via WinLDAP and domain controller discovery.
-//! Explicit domain credentials through native CredUI and sealed SSPI Negotiate LDAP; no PowerShell.
+//! Explicit domain credentials through SST terminal and sealed SSPI Negotiate LDAP; no PowerShell.
 #![cfg(windows)]
 use std::{ffi::c_void, ptr};
 use anyhow::{bail, Context, Result};
@@ -53,28 +53,6 @@ unsafe extern "system" {
     fn ldap_unbind(ld: *mut c_void) -> u32;
 }
 
-#[repr(C)]
-struct CredUiInfo {
-    size: u32,
-    parent: *mut c_void,
-    message: *const u16,
-    caption: *const u16,
-    banner: *mut c_void,
-}
-#[link(name = "credui")]
-unsafe extern "system" {
-    fn CredUIPromptForCredentialsW(
-        ui: *const CredUiInfo, target: *const u16,
-        reserved: *mut c_void, error: u32,
-        username: *mut u16, username_count: u32,
-        password: *mut u16, password_count: u32,
-        save: *mut i32, flags: u32,
-    ) -> u32;
-}
-
-// CREDUI_FLAGS_DO_NOT_PERSIST | CREDUI_FLAGS_ALWAYS_SHOW_UI |
-// CREDUI_FLAGS_GENERIC_CREDENTIALS. Do not offer credential persistence.
-const CREDUI_FLAGS: u32 = 0x2 | 0x80 | 0x40000;
 struct DomainCredentials {
     username: Vec<u16>,
     password: Vec<u16>,
@@ -90,36 +68,53 @@ impl Drop for DomainCredentials {
         std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
     }
 }
-fn domain_credentials(domain_controller: &str) -> Result<DomainCredentials> {
-    let target = wide(&format!("SST Active Directory - {domain_controller}"));
-    let message = wide("Introduce una cuenta del dominio autorizada para desbloquear usuarios. No se guardarán las credenciales.");
-    let caption = wide("SST - Autenticación Active Directory");
-    let ui = CredUiInfo {
-        size: std::mem::size_of::<CredUiInfo>() as u32,
-        parent: ptr::null_mut(),
-        message: message.as_ptr(),
-        caption: caption.as_ptr(),
-        banner: ptr::null_mut(),
-    };
-    let mut username = vec![0u16; 513];
-    let mut password = vec![0u16; 513];
-    let mut save = 0i32;
-    let rc = unsafe {
-        CredUIPromptForCredentialsW(&ui, target.as_ptr(), ptr::null_mut(), 0,
-            username.as_mut_ptr(), username.len() as u32,
-            password.as_mut_ptr(), password.len() as u32,
-            &mut save, CREDUI_FLAGS)
-    };
-    if rc != 0 {
-        drop(DomainCredentials { username, password });
-        if rc == 1223 { bail!("autenticación de dominio cancelada por el usuario"); }
-        bail!("no se pudo obtener credenciales AD mediante Windows (Win32 {rc})");
+fn domain_credentials(terminal: &mut dyn crate::core::ports::TerminalSession, dc: &str) -> Result<DomainCredentials> {
+    use crate::core::ports::TerminalKey;
+    use std::time::Duration;
+    let mut credentials = DomainCredentials { username: Vec::with_capacity(1025), password: Vec::with_capacity(1025) };
+    let mut password_field = false;
+    loop {
+        let user = String::from_utf16_lossy(&credentials.username);
+        let mask = "*".repeat(credentials.password.len());
+        terminal.clear()?;
+        terminal.write(&format!("\x1b[1;38;2;250;189;47mAUTENTICACIÓN ACTIVE DIRECTORY\x1b[0m\r\n\r\nControlador: {dc}\r\n\r\n{} Usuario administrador: {user}\r\n{} Contraseña: {mask}\r\n\r\nEnter: continuar / confirmar    Esc: cancelar\r\n", if password_field {" "} else {">"}, if password_field {">"} else {" "}))?;
+        terminal.flush()?;
+        match terminal.poll_key(Duration::from_millis(100))? {
+            Some(TerminalKey::Escape) => bail!("autenticación cancelada"),
+            Some(TerminalKey::Enter) if !password_field && !credentials.username.is_empty() => password_field = true,
+            Some(TerminalKey::Enter) if password_field && !credentials.password.is_empty() => break,
+            Some(TerminalKey::Backspace) => {
+                let field = if password_field { &mut credentials.password } else { &mut credentials.username };
+                if let Some(last) = field.last_mut() {
+                    let surrogate = (0xdc00..=0xdfff).contains(last);
+                    unsafe { std::ptr::write_volatile(last, 0); }
+                    field.pop();
+                    if surrogate {
+                        if let Some(last) = field.last_mut() {
+                            unsafe { std::ptr::write_volatile(last, 0); }
+                            field.pop();
+                        }
+                    }
+                }
+            }
+            Some(key @ (TerminalKey::Char(_) | TerminalKey::Space)) => {
+                let ch = match key { TerminalKey::Char(ch) => ch, _ => ' ' };
+                let field = if password_field { &mut credentials.password } else { &mut credentials.username };
+                if !ch.is_control() && field.len() < 1022 {
+                    let mut buf = [0u16; 2];
+                    field.extend_from_slice(ch.encode_utf16(&mut buf));
+                    for value in &mut buf { unsafe { std::ptr::write_volatile(value, 0); } }
+                }
+            }
+            _ => {}
+        }
     }
-    if username.first() == Some(&0) || password.first() == Some(&0) {
-        let _cleared = DomainCredentials { username, password };
-        bail!("usuario y contraseña de AD son obligatorios");
-    }
-    Ok(DomainCredentials { username, password })
+    credentials.username.push(0);
+    credentials.password.push(0);
+    terminal.clear()?;
+    terminal.write("AUTENTICACIÓN ACTIVE DIRECTORY\r\n[2/3] Autenticando mediante LDAP firmado y cifrado...\r\n")?;
+    terminal.flush()?;
+    Ok(credentials)
 }
 
 // SSPI expects explicit user/domain/password in this C ABI layout.
@@ -235,11 +230,15 @@ fn user_filter(name: &str) -> String {
 
 /// Unlock exactly one unambiguously identified AD user. Only lockoutTime changes.
 /// The DC independently enforces delegated AD rights, irrespective of local UAC.
-pub fn unlock(account: &str) -> Result<String> {
+pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::TerminalFactory) -> Result<String> {
+    let mut terminal = terminal_factory.alternate_screen()?;
+    terminal.clear()?;
+    terminal.write("AUTENTICACIÓN ACTIVE DIRECTORY\r\n[1/3] Localizando controlador de dominio escribible...\r\n")?;
+    terminal.flush()?;
     let dc = controller()?;
     // Explicit administrative identity: local UAC or logged-on Windows
     // credentials never authorize an AD change. Credential buffers are wiped.
-    let mut credentials = domain_credentials(&dc)?;
+    let mut credentials = domain_credentials(&mut *terminal, &dc)?;
     let typed_len = credentials.username.iter().position(|ch| *ch == 0)
         .unwrap_or(credentials.username.len());
     let typed = String::from_utf16_lossy(&credentials.username[..typed_len]);
@@ -289,6 +288,8 @@ pub fn unlock(account: &str) -> Result<String> {
     drop(identity);
     drop(credentials);
 
+    terminal.write("[3/3] Localizando y desbloqueando la cuenta...\r\n")?;
+    terminal.flush()?;
     let root = search(session.0, "", LDAP_SCOPE_BASE,
         "(objectClass=*)", &["defaultNamingContext"])?;
     let entry = unsafe { ldap_first_entry(session.0, root.0) };
