@@ -1,25 +1,26 @@
 {
   "schema": 1,
-  "version": "0.1.12-blue.14",
+  "version": "0.1.13-blue.1",
   "channel": "blue",
-  "published_at": "2026-11-25T21:24:37.9532409+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.14/sst.exe",
-  "sha256": "bdbe847a7b618cf7fea1f040cc2186f15198113a3f44b99ca8218d110a959488",
-  "size": 60286464,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.14/sst-updater.exe",
-  "updater_sha256": "2669467f9f7440ad55e0b3b429e8dce81e3a58a16d343b1b85f999ce78169717",
+  "published_at": "2026-11-25T21:40:35.4668231+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.13-blue.1/sst.exe",
+  "sha256": "27c1f1fdfc02b9b44bb7993917d032b75cf772344630c1bf62b8fe4680e5e573",
+  "size": 60302848,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.13-blue.1/sst-updater.exe",
+  "updater_sha256": "574fc35bee478e2c9f196893196a82cde818749792efa87ad81962c0109c26e8",
   "updater_size": 433664,
   "changes": [
-    "El formatter presenta texto normal verde amarillo, comandos naranja, títulos ámbar y etiquetas verde agua. El contenido y los estados tienen colores distintos.",
-    "La terminal gráfica y los monitores comparten el tema. Los informes interactivos y los errores en vivo pasan por el formatter.",
-    "La actualización migra el antiguo color predeterminado. Conserva los colores personalizados y los datos de CSV, JSON, scripts y tuberías."
+    "El tema central usa texto verde amarillo, títulos ámbar, comandos naranja y etiquetas verde agua.",
+    "La terminal destaca la fila al seleccionar texto de cualquier comando. El cursor pulsa de naranja a ámbar en una capa independiente.",
+    "El formatter colorea campos, tablas y líneas en vivo según sus estados y porcentajes de CPU, utilización y pérdida. Los avisos y fallos conservan su color al seleccionar.",
+    "En el monitor de procesos, el clic y las teclas de navegación siguen al proceso seleccionado. CPU alta y aumentos bruscos se indican en rojo y recuperan su color al bajar."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.12-blue.14.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.14/SST-Setup-0.1.12-blue.14.exe",
-    "sha256": "6d0700ef1f3e39ab4e6f861cd185b840da70893a6c4e937d821c8430d57306c9",
-    "size": 69449269,
+    "name": "SST-Setup-0.1.13-blue.1.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.13-blue.1/SST-Setup-0.1.13-blue.1.exe",
+    "sha256": "5c0a4df98fc6ea3dacb3376135274491d9dbf6f22215f4a1284c773641fa2c0f",
+    "size": 69465653,
     "single_use": true,
-    "package_id": "6a307da24dd7911f714f013ba4df12c5"
+    "package_id": "e99b59e2e5a08256c9b7983ec5ed0722"
   }
 }
