@@ -1203,6 +1203,7 @@ struct KeygenGlyphBody{
     x:f32,y:f32,z:f32,vx:f32,vy:f32,vz:f32,
     rx:f32,ry:f32,rz:f32,wx:f32,wy:f32,wz:f32,
     speed:f32,rest_y:f32,seed:f32,orbit:f32,
+    trail:[[f32;3];8],
 }
 impl KeygenGlyphBody{
     fn new(line:usize,index:usize)->Self{
@@ -1219,7 +1220,8 @@ impl KeygenGlyphBody{
             rx:(seed-0.5)*0.65,ry:(0.5-seed)*0.85,rz:(seed-0.5)*0.40,
             wx:(seed-0.5)*1.2,wy:(0.5-seed)*1.6,wz:(seed-0.5)*0.8,
             speed:83.0+seed*22.0,rest_y,seed,
-            orbit:seed*std::f32::consts::TAU+index as f32*0.29}
+            orbit:seed*std::f32::consts::TAU+index as f32*0.29,
+            trail:[[x,rest_y,0.0];8]}
     }
 }
 
@@ -1227,8 +1229,54 @@ impl KeygenGlyphBody{
 struct KeygenPhysics{
     bodies:HashMap<(usize,usize),KeygenGlyphBody>,
     pulse:f32,
+    cue:u8,
+    cue_time:f32,
+    sample_tick:u8,
 }
 impl KeygenPhysics{
+    // The director follows decoded musical onsets, not render frames.
+    // A complete sequence lasts 120 detected transients; quiet passages
+    // hold the current formation rather than inventing a beat.
+    fn direct(&mut self,beat:VisualBeat){
+        let musical=beat.beat_count as f32+beat.beat_phase;
+        let cycle=musical.rem_euclid(120.0);
+        self.cue=(cycle/24.0).floor().min(4.0) as u8;
+        self.cue_time=(cycle%24.0)/24.0;
+    }
+
+    fn target(cue:u8,t:f32,line:usize,index:usize,body:&KeygenGlyphBody)->[f32;3]{
+        let (text,_,spacing,_)=KEYGEN_TITLES[line];
+        let half=(text.chars().count()-1) as f32*0.5;
+        let u=(index as f32-half)/half.max(1.0);
+        let tau=std::f32::consts::TAU;
+        let theta=u*std::f32::consts::PI+line as f32*std::f32::consts::PI;
+        match cue{
+            // Counter-rotating rings of letters, with genuine depth.
+            1=>{
+                let a=theta+(if line==0{1.0}else{-1.0})*t*tau;
+                let r=if line==0{345.0}else{206.0};
+                [576.0+r*a.cos(),142.0+77.0*a.sin(),110.0*a.sin()+body.seed*30.0]
+            }
+            // A perspective spiral: outer letters pass the near plane
+            // while the inner characters travel into the scene.
+            2=>{
+                let a=theta+t*tau*1.35+u*1.4;
+                let r=100.0+u.abs()*245.0;
+                [576.0+r*a.cos(),148.0+82.0*a.sin(),
+                 95.0*(a+body.seed).cos()+70.0*(1.0-u.abs())]
+            }
+            // Two crossing formations pass through different depth planes.
+            3=>{
+                let a=t*tau+u*1.8+line as f32*std::f32::consts::PI;
+                let direction=if line==0{1.0}else{-1.0};
+                [576.0+u*360.0+direction*92.0*a.cos(),
+                 150.0+direction*(40.0+48.0*a.sin()),105.0*a.cos()]
+            }
+            // Reassemble the original readable composition before the
+            // individual continuous scroll resumes.
+            _=>[576.0+u*half*spacing,body.rest_y,0.0],
+        }
+    }
     fn react(&mut self,beat:usize,strength:f32){
         self.pulse=strength.clamp(0.0,1.0);
         for (&(line,index),body) in &mut self.bodies{
@@ -1253,7 +1301,12 @@ impl KeygenPhysics{
     fn tick(&mut self){
         let dt=1.0/60.0;
         self.pulse*=0.965;
-        for body in self.bodies.values_mut(){
+        let cue=self.cue;
+        let cue_time=self.cue_time;
+        self.sample_tick=self.sample_tick.wrapping_add(1);
+        let sample=self.sample_tick%4==0;
+        for (&(line,index),body) in &mut self.bodies{
+            let old_x=body.x;
             // Integrate each position, linear momentum and angular momentum.
             // Only a soft individual vertical restoring force keeps the
             // upper scene clear of the fixed system information below.
@@ -1262,20 +1315,46 @@ impl KeygenPhysics{
             // letters independent height and depth, not a shared wave.
             let target_y=body.rest_y+body.orbit.sin()*19.0;
             let target_z=body.orbit.cos()*38.0;
-            body.vx+=(-body.speed-12.0*self.pulse-body.vx)*1.1*dt;
-            body.vy+=(-4.5*(body.y-target_y)-1.6*body.vy)*dt;
-            body.vz+=(-3.8*(body.z-target_z)-1.5*body.vz)*dt;
-            body.vx=body.vx.clamp(-190.0,-45.0);
-            body.x=keygen_wrap_glyph(body.x+body.vx*dt);
-            body.y+=body.vy*dt;body.z+=body.vz*dt;
-            let limit=if body.rest_y<150.0{42.0}else{33.0};
-            let dy=body.y-body.rest_y;
-            if dy.abs()>limit{body.y=body.rest_y+dy.signum()*limit;body.vy=-body.vy*0.72;}
-            if body.z.abs()>95.0{body.z=body.z.signum()*95.0;body.vz=-body.vz*0.7;}
+            if cue==0{
+                body.vx+=(-body.speed-12.0*self.pulse-body.vx)*1.1*dt;
+                body.vy+=(-4.5*(body.y-target_y)-1.6*body.vy)*dt;
+                body.vz+=(-3.8*(body.z-target_z)-1.5*body.vz)*dt;
+                body.vx=body.vx.clamp(-190.0,-45.0);
+                body.x=keygen_wrap_glyph(body.x+body.vx*dt);
+                body.y+=body.vy*dt;body.z+=body.vz*dt;
+                let limit=if body.rest_y<150.0{42.0}else{33.0};
+                let dy=body.y-body.rest_y;
+                if dy.abs()>limit{body.y=body.rest_y+dy.signum()*limit;body.vy=-body.vy*0.72;}
+                if body.z.abs()>95.0{body.z=body.z.signum()*95.0;body.vz=-body.vz*0.7;}
+            }else{
+                let [tx,ty,tz]=Self::target(cue,cue_time,line,index,body);
+                let stiffness=if cue==4{12.0}else{7.0+body.seed*2.0};
+                let damping=if cue==4{6.5}else{4.0};
+                body.vx+=(stiffness*(tx-body.x)-damping*body.vx)*dt;
+                body.vy+=(stiffness*(ty-body.y)-damping*body.vy)*dt;
+                body.vz+=(stiffness*(tz-body.z)-damping*body.vz)*dt;
+                body.vx=body.vx.clamp(-800.0,800.0);
+                body.vy=body.vy.clamp(-350.0,350.0);
+                body.vz=body.vz.clamp(-400.0,400.0);
+                body.x=(body.x+body.vx*dt).clamp(-64.0,1216.0);
+                body.y=(body.y+body.vy*dt).clamp(22.0,246.0);
+                body.z=(body.z+body.vz*dt).clamp(-180.0,180.0);
+            }
+            if (body.x-old_x).abs()>1000.0{
+                // Never draw a line across the screen when a glyph wraps.
+                body.trail=[[body.x,body.y,body.z];8];
+            }else if sample{
+                body.trail.rotate_left(1);
+                body.trail[7]=[body.x,body.y,body.z];
+            }
             let torque=4.0+body.seed*1.5;
-            body.wx+=(-torque*body.rx-1.7*body.wx)*dt;
-            body.wy+=(-torque*body.ry-1.5*body.wy)*dt;
-            body.wz+=(-torque*body.rz-1.8*body.wz)*dt;
+            let tilt=if cue==0||cue==4{0.0}else{0.55};
+            let tx=tilt*body.orbit.sin();
+            let ty=tilt*(body.orbit+cue_time*std::f32::consts::TAU).cos();
+            let tz=tilt*0.55*(body.orbit+body.seed).sin();
+            body.wx+=(torque*(tx-body.rx)-1.7*body.wx)*dt;
+            body.wy+=(torque*(ty-body.ry)-1.5*body.wy)*dt;
+            body.wz+=(torque*(tz-body.rz)-1.8*body.wz)*dt;
             body.rx=(body.rx+body.wx*dt).clamp(-0.85,0.85);
             body.ry=(body.ry+body.wy*dt).clamp(-1.0,1.0);
             body.rz=(body.rz+body.wz*dt).clamp(-0.65,0.65);
@@ -1283,6 +1362,7 @@ impl KeygenPhysics{
         // Loose spacing constraints between neighboring objects, including
         // across the screen seam. Spaces remain spaces. This prevents H/E
         // overlap or runaway gaps without attaching glyphs to a rigid strip.
+        if cue!=0{return;}
         for (line,(text,_,spacing,_)) in KEYGEN_TITLES.iter().enumerate(){
             let ids:Vec<_>=text.chars().enumerate().filter(|(_,ch)|*ch!=' ').map(|(i,_)|i).collect();
             for pair in ids.windows(2){
@@ -1419,6 +1499,32 @@ fn keygen_backdrop<T: sdl2::render::RenderTarget>(
     canvas.clear();
 }
 
+// A light trace is generated from the actual motion history of each glyph.
+// It is intentionally absent from the calm readable scroll and reassembly.
+fn keygen_motion_traces<T:sdl2::render::RenderTarget>(
+    canvas:&mut sdl2::render::Canvas<T>,physics:&KeygenPhysics,beat:VisualBeat,
+)->anyhow::Result<()>{
+    use sdl2::{pixels::Color,rect::Point};
+    if !(1..=3).contains(&physics.cue){return Ok(());}
+    for (&(line,index),body) in &physics.bodies{
+        let (r,g,b)=keygen_glyph_color(beat,index,line);
+        let mut history=body.trail;
+        history.rotate_left(1);
+        history[7]=[body.x,body.y,body.z];
+        for (i,pair) in history.windows(2).enumerate(){
+            let a=pair[0];let bpt=pair[1];
+            let distance=(a[0]-bpt[0]).hypot(a[1]-bpt[1]);
+            if !(0.8..=100.0).contains(&distance){continue;}
+            let strength=(i+1) as f32/7.0;
+            let alpha=(18.0+strength*86.0+beat.pulse*22.0) as u8;
+            canvas.set_draw_color(Color::RGBA(r,g,b,alpha));
+            canvas.draw_line(Point::new(a[0] as i32,a[1] as i32),
+                Point::new(bpt[0] as i32,bpt[1] as i32)).map_err(anyhow::Error::msg)?;
+        }
+    }
+    Ok(())
+}
+
 pub(crate) enum KeygenFrame { Draw(slint::SharedPixelBuffer<slint::Rgba8Pixel>), Closed }
 pub(crate) static KEYGEN_FRAME: std::sync::Mutex<Option<KeygenFrame>> = std::sync::Mutex::new(None);
 struct KeygenView;
@@ -1515,6 +1621,7 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
         let beat=music.visual();
         let beat_id=(music.track_number(),beat.beat_count);
         if !music.is_paused(){
+            physics.direct(beat);
             if beat_id!=last_beat{
                 if beat.beat_count>0{physics.react(beat.beat_count,beat.pulse);}
                 last_beat=beat_id;
@@ -1531,6 +1638,7 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
         let mut sprites=keygen_scene(&mut physics,beat,&facts,music.is_paused(),music.track_number());
         sprites.sort_by(|a,b|a.z.total_cmp(&b.z));
         keygen_backdrop(&mut renderer);
+        keygen_motion_traces(&mut renderer,&physics,beat)?;
         mesh_vertices.clear();
         use sdl2::render::VertexIndices;
         for sprite in sprites.iter().filter(|s|s.depth>1){
@@ -1674,6 +1782,31 @@ mod keygen_motion_regressions {
         for _ in 0..60{physics.tick();}
         let later=keygen_scene(&mut physics,time(60),&[],false,1);
         assert!((later[0].z-first[0].z-later[1].z+first[1].z).abs()>0.1);
+    }
+
+    #[test]
+    fn musical_director_changes_the_geometry_and_reassembles(){
+        let mut physics=KeygenPhysics::default();
+        let original=keygen_scene(&mut physics,time(0),&[],false,1);
+        let mut positions=Vec::new();
+        for cue in 1..=4{
+            for frame in 0..240{
+                let musical=cue*24+frame/10;
+                let beat=VisualBeat{beat_count:musical,beat_phase:(frame%10) as f32/10.0,
+                    seconds:frame as f32/60.0,pulse:0.7};
+                physics.direct(beat);
+                if frame%10==0{physics.react(musical,0.7);}
+                physics.tick();
+            }
+            let sprites=keygen_scene(&mut physics,time(0),&[],false,1);
+            assert!(sprites.iter().all(|s|s.x.is_finite()&&s.y.is_finite()&&s.z.is_finite()));
+            positions.push(sprites[0].x);
+        }
+        assert!(positions.windows(2).any(|p|(p[0]-p[1]).abs()>60.0));
+        assert!((physics.bodies[&(0,0)].x-original[0].x).abs()<30.0);
+        assert!(physics.bodies.values().all(|b|b.trail.iter().flatten().all(|v|v.is_finite())));
+        physics.direct(VisualBeat{beat_count:120,..VisualBeat::default()});
+        assert_eq!(physics.cue,0);
     }
 
     #[test]
