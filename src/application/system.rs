@@ -1180,9 +1180,10 @@ fn keygen_system_facts(system: &System) -> Vec<String> {
 /// Colors are per glyph, never one flat shade across the entire artwork.
 /// Colors are used directly by the SDL scene renderer.
 fn keygen_glyph_color(beat: VisualBeat, index: usize, row: usize) -> (u8, u8, u8) {
-    let phase = beat.seconds*1.6+(beat.beat_count as f32+beat.beat_phase)*0.36+index as f32*0.19+row as f32*0.55;
+    // Original November 23 chromatic cycle, now clocked by the audio.
+    let phase = beat.seconds*1.6+(beat.beat_count as f32+beat.beat_phase)*0.30+index as f32*0.24+row as f32*0.55;
     let chan = |shift: f32| -> u8 {
-        (137.0 + 90.0 * (phase + shift).sin()+beat.pulse*27.0).clamp(45.0,255.0) as u8
+        (128.0 + 118.0 * (phase + shift).sin()+beat.pulse*15.0).clamp(25.0,255.0) as u8
     };
     (chan(0.0), chan(2.094), chan(4.188))
 }
@@ -1190,8 +1191,10 @@ fn keygen_glyph_color(beat: VisualBeat, index: usize, row: usize) -> (u8, u8, u8
 
 // Each character owns an absolute world-space rigid-body transform.
 const KEYGEN_TITLES:[(&str,f32,f32,f32);2]=[
-    ("SHELL SHOCK TOOL",112.0,43.0,62.0),
-    ("SST / KEYGEN",222.0,33.0,48.0),
+    // Restore the compact two-arc composition of the 23 November intro.
+    // Spacing deliberately exceeds the original font advance.
+    ("SHELL SHOCK TOOL",144.0,28.0,32.0),
+    ("SST / KEYGEN",229.0,25.0,28.0),
 ];
 const KEYGEN_PERIOD:f32=1280.0;
 
@@ -1199,7 +1202,7 @@ const KEYGEN_PERIOD:f32=1280.0;
 struct KeygenGlyphBody{
     x:f32,y:f32,z:f32,vx:f32,vy:f32,vz:f32,
     rx:f32,ry:f32,rz:f32,wx:f32,wy:f32,wz:f32,
-    speed:f32,rest_y:f32,seed:f32,
+    speed:f32,rest_y:f32,seed:f32,orbit:f32,
 }
 impl KeygenGlyphBody{
     fn new(line:usize,index:usize)->Self{
@@ -1207,11 +1210,16 @@ impl KeygenGlyphBody{
         let seed=((index*17+line*29)%23) as f32/22.0;
         let x=(1152.0-(text.chars().count()-1) as f32*spacing)*0.5
             +index as f32*spacing-line as f32*100.0;
-        Self{x,y:y+(seed-0.5)*36.0,z:(seed-0.5)*55.0,
-            vx:-112.0-seed*24.0,vy:(seed-0.5)*95.0,vz:(0.5-seed)*50.0,
-            rx:(seed-0.5)*0.55,ry:(0.5-seed)*0.65,rz:(seed-0.5)*0.40,
+        let half=((text.chars().count()-1) as f32*0.5).max(1.0);
+        let u=(index as f32-half)/half;
+        let lift=(1.0-u*u).max(0.0)*if line==0{88.0}else{57.0};
+        let rest_y=y-lift;
+        Self{x,y:rest_y+(seed-0.5)*26.0,z:(seed-0.5)*100.0,
+            vx:-83.0-seed*22.0,vy:(seed-0.5)*58.0,vz:(0.5-seed)*55.0,
+            rx:(seed-0.5)*0.65,ry:(0.5-seed)*0.85,rz:(seed-0.5)*0.40,
             wx:(seed-0.5)*1.2,wy:(0.5-seed)*1.6,wz:(seed-0.5)*0.8,
-            speed:112.0+seed*24.0,rest_y:y,seed}
+            speed:83.0+seed*22.0,rest_y,seed,
+            orbit:seed*std::f32::consts::TAU+index as f32*0.29}
     }
 }
 
@@ -1227,14 +1235,19 @@ impl KeygenPhysics{
             // Different impulses on each axis for every object. No shared
             // sinusoidal title transform or prescribed string shape.
             let r=((beat*13+index*7+line*11)%19) as f32/18.0;
-            let sign=if (beat+index+line)%2==0{1.0}else{-1.0};
-            let p=self.pulse;
-            body.vy+=sign*(45.0+80.0*r)*p;
-            body.vx+=(r-0.5)*48.0*p;
+            // Let the kick travel through characters rather than shaking
+            // every letter in opposite directions at each onset.
+            let accents=KEYGEN_TITLES[line].0.chars().count();
+            let step=beat%accents;
+            let d=index.abs_diff(step).min(accents-index.abs_diff(step));
+            let accent=if d==0{1.0}else if d<=2{0.62}else{0.19};
+            let p=self.pulse*accent;
+            body.vy-= (28.0+54.0*r)*p;
+            body.vx+=(r-0.5)*38.0*p;
             body.vz+=(0.5-r)*95.0*p;
-            body.wx+=sign*(0.6+r)*p;
-            body.wy+=(r-0.5)*2.8*p;
-            body.wz-=sign*(0.35+r*0.65)*p;
+            body.wx+=(r-0.5)*1.9*p;
+            body.wy+=(r-0.5)*3.2*p;
+            body.wz+=(r-0.5)*1.2*p;
         }
     }
     fn tick(&mut self){
@@ -1244,16 +1257,21 @@ impl KeygenPhysics{
             // Integrate each position, linear momentum and angular momentum.
             // Only a soft individual vertical restoring force keeps the
             // upper scene clear of the fixed system information below.
-            body.vx+=(-body.speed-18.0*self.pulse-body.vx)*1.1*dt;
-            body.vy+=(-4.5*(body.y-body.rest_y)-1.9*body.vy)*dt;
-            body.vz+=(-3.8*body.z-1.5*body.vz)*dt;
-            body.vx=body.vx.clamp(-220.0,-45.0);
+            body.orbit=(body.orbit+dt*(1.4+body.seed*0.75)).rem_euclid(std::f32::consts::TAU);
+            // Individual orbital targets and momentum give the arcing
+            // letters independent height and depth, not a shared wave.
+            let target_y=body.rest_y+body.orbit.sin()*19.0;
+            let target_z=body.orbit.cos()*38.0;
+            body.vx+=(-body.speed-12.0*self.pulse-body.vx)*1.1*dt;
+            body.vy+=(-4.5*(body.y-target_y)-1.6*body.vy)*dt;
+            body.vz+=(-3.8*(body.z-target_z)-1.5*body.vz)*dt;
+            body.vx=body.vx.clamp(-190.0,-45.0);
             body.x=keygen_wrap_glyph(body.x+body.vx*dt);
             body.y+=body.vy*dt;body.z+=body.vz*dt;
-            let limit=if body.rest_y<150.0{52.0}else{39.0};
+            let limit=if body.rest_y<150.0{42.0}else{33.0};
             let dy=body.y-body.rest_y;
             if dy.abs()>limit{body.y=body.rest_y+dy.signum()*limit;body.vy=-body.vy*0.72;}
-            if body.z.abs()>70.0{body.z=body.z.signum()*70.0;body.vz=-body.vz*0.7;}
+            if body.z.abs()>95.0{body.z=body.z.signum()*95.0;body.vz=-body.vz*0.7;}
             let torque=4.0+body.seed*1.5;
             body.wx+=(-torque*body.rx-1.7*body.wx)*dt;
             body.wy+=(-torque*body.ry-1.5*body.wy)*dt;
@@ -1272,7 +1290,7 @@ impl KeygenPhysics{
                 let (Some(a),Some(b))=(self.bodies.get(&ka).copied(),self.bodies.get(&kb).copied())else{continue;};
                 let nominal=*spacing*(pair[1]-pair[0]) as f32;
                 let gap=(b.x-a.x+KEYGEN_PERIOD*0.5).rem_euclid(KEYGEN_PERIOD)-KEYGEN_PERIOD*0.5;
-                let min=nominal*0.78;let max=nominal*1.48;
+                let min=nominal*0.73;let max=nominal*1.48;
                 let error=gap-gap.clamp(min,max);
                 if error.abs()>0.001{
                     let correction=error*0.40;
@@ -1335,7 +1353,9 @@ fn keygen_scene(physics:&mut KeygenPhysics,beat:VisualBeat,facts:&[String],
             if glyph==' '||glyph.is_control(){continue;}
             let color=if animated{
                 let (r,g,b)=keygen_glyph_color(beat,i,row+2);
-                let bright=|v:u8| 140+(f32::from(v)*0.45) as u8;
+                // Preserve saturated color bands, but keep a readable
+                // luminance floor on the original wallpaper.
+                let bright=|v:u8| 40+(f32::from(v)*0.84) as u8;
                 (bright(r),bright(g),bright(b))
             }else{(189,174,147)};
             sprites.push(KeygenSprite{glyph,x:start+i as f32*spacing,
@@ -1343,11 +1363,11 @@ fn keygen_scene(physics:&mut KeygenPhysics,beat:VisualBeat,facts:&[String],
         }
     };
     for (i,fact) in facts.iter().enumerate(){
-        text_line(fact,304.0+i as f32*24.0,22.0,true,i);
+        text_line(fact,278.0+i as f32*21.0,19.0,true,i);
     }
     let state=if paused{"PAUSA"}else{"PLAY"};
     text_line(&format!("[MP3 {track}/2]  {state}   1/2: pista   Espacio: pausa   ESC/Q: salir"),
-        650.0,18.0,false,0);
+        650.0,16.0,false,0);
     sprites
 }
 
@@ -1616,7 +1636,7 @@ mod keygen_motion_regressions {
             }
             previous=sprites;
         }
-        assert!(crossings>30);
+        assert!(crossings>25);
         assert!(split,"a title must be simultaneously visible on opposite edges");
         assert!(flexible,"individual horizontal velocities must differ");
     }
@@ -1637,6 +1657,23 @@ mod keygen_motion_regressions {
         let first=keygen_scene(&mut physics,time(120),&[],false,1)[0];
         let next=keygen_scene(&mut physics,time(0),&[],false,2)[0];
         assert_eq!(first.x,next.x);
+    }
+
+    #[test]
+    fn reference_layout_keeps_compact_arcs_and_independent_depth(){
+        let mut physics=KeygenPhysics::default();
+        let first=keygen_scene(&mut physics,time(0),&[],false,1);
+        let title=&first[.. "SHELLSHOCKTOOL".len()];
+        let left=title.first().unwrap();
+        let right=title.last().unwrap();
+        let center=&title[title.len()/2];
+        assert!(right.x-left.x<450.0);
+        assert!(center.y+50.0<left.y && center.y+50.0<right.y);
+        assert!(title.iter().all(|s|s.size<36.0));
+        assert!(title.iter().any(|s|(s.z-left.z).abs()>30.0));
+        for _ in 0..60{physics.tick();}
+        let later=keygen_scene(&mut physics,time(60),&[],false,1);
+        assert!((later[0].z-first[0].z-later[1].z+first[1].z).abs()>0.1);
     }
 
     #[test]

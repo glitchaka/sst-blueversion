@@ -1,0 +1,1 @@
+Build reference-derived compact arc scene with independently orbiting solid glyphs.
