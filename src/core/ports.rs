@@ -155,6 +155,7 @@ pub trait TrafficMonitorFactory: Send + Sync {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalKey {
+    Row(u16),
     Char(char),
     Escape,
     Up,

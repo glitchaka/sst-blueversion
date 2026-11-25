@@ -50,6 +50,7 @@ impl TerminalSession for CrosstermTerminalSession {
         }
 
         match io::read()? {
+            Event::Mouse(mouse) if mouse.kind == crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => Ok(Some(TerminalKey::Row(mouse.row))),
             Event::Key(key) if key.kind != KeyEventKind::Release => Ok(Some(map_key(key.code))),
             _ => Ok(None),
         }

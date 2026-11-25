@@ -57,6 +57,52 @@ impl Role {
     }
     pub fn paint(self,text:&str)->String{format!("{}{text}{RESET}",self.ansi())}
 }
+/// Interaction surfaces are shared by the native viewport and VT monitors.
+pub const SELECTED_RGB: (u8, u8, u8) = (21, 62, 58);
+pub const SURFACE: &str = "\x1b[48;2;29;32;33m";
+pub const SURFACE_ALT: &str = "\x1b[48;2;40;40;40m";
+pub const SURFACE_HEAD: &str = "\x1b[48;2;60;56;54m";
+pub fn selected_surface() -> String {
+    let (r,g,b) = SELECTED_RGB;
+    format!("\x1b[48;2;{r};{g};{b}m")
+}
+
+/// One cycle per 1.6 seconds. A focused caret always remains visible.
+pub fn caret_color(step: u8) -> (u8,u8,u8) {
+    let level = 8 - (step % 16).abs_diff(8);
+    let mix = |a:u8,b:u8| ((u16::from(a)*(8-u16::from(level)) + u16::from(b)*u16::from(level))/8) as u8;
+    (mix(COMMAND_RGB.0,TITLE_RGB.0),mix(COMMAND_RGB.1,TITLE_RGB.1),mix(COMMAND_RGB.2,TITLE_RGB.2))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Metric { Cpu, Utilization, Loss }
+impl Metric {
+    fn named(label:&str)->Option<Self>{
+        match label.trim().to_lowercase().as_str(){
+            "cpu"|"cpu%"|"cpu %"|"cpu global"|"uso de cpu"|"cpu uso" => Some(Self::Cpu),
+            "ram"|"ram %"|"memoria usada"|"uso de memoria"|"disk usage"|"uso de disco" => Some(Self::Utilization),
+            "pérdida"|"perdida"|"packet loss"|"pérdida de paquetes" => Some(Self::Loss),
+            _ => None,
+        }
+    }
+
+    pub fn role(self, value:f32, previous:Option<f32>)->Role{
+        if !value.is_finite() || value < 0.0 { return Role::Value; }
+        let (warning, critical) = match self {
+            Self::Cpu => (25.0,50.0),
+            Self::Utilization => (75.0,90.0),
+            Self::Loss => (0.1,5.0),
+        };
+        if value >= critical || (self == Self::Cpu && previous.is_some_and(|old|value-old >= 25.0)) { Role::Failure }
+        else if value >= warning { Role::Warning } else { Role::Value }
+    }
+    fn color(self, text:&str, implicit_percent:bool)->Option<&'static str>{
+        let value = text.trim();
+        let number = value.strip_suffix('%').or_else(|| implicit_percent.then_some(value))?;
+        Some(self.role(number.trim().replace(',',".").parse().ok()?,None).ansi())
+    }
+}
+
 /// Typography uses the same monospace grid for all output. Larger headings
 /// and smaller secondary text may vary within the cell bounds, never overlap.
 pub fn font_pixels(role:Option<Role>,base:f32,cell_width:f32,cell_height:f32)->f32{
@@ -170,6 +216,7 @@ fn is_table_header(line: &str) -> bool {
     let columns = trimmed.split_whitespace().collect::<Vec<_>>();
     columns.len() >= 2 && trimmed.len() >= 5
         && columns.iter().all(|column| {
+            if matches!(*column,"MiB"|"GiB"|"KiB"|"%") { return true; }
             column.chars().any(char::is_alphabetic)
                 && !column.chars().any(char::is_lowercase)
         })
@@ -194,21 +241,61 @@ fn table_columns(line: &str) -> Vec<(usize, usize)> {
     columns
 }
 
-fn style_table_row(line: &str, status_column: Option<usize>) -> String {
-    let Some(status_column) = status_column else { return line.to_owned(); };
-    let columns = table_columns(line);
-    let Some(&(start, end)) = columns.get(status_column) else { return line.to_owned(); };
-    let value = line.get(start..end).unwrap_or("");
-    let Some(color) = status_color(value) else { return line.to_owned(); };
-    format!("{}{color}{value}{RESET}{}", &line[..start], &line[end..])
+#[derive(Default)]
+struct TableStyle {
+    status: Option<usize>,
+    metrics: Vec<(usize, Metric, bool)>,
+}
+impl TableStyle {
+    fn from_header(line: &str) -> Self {
+        let mut style = Self::default();
+        for (i,(a,b)) in table_columns(line).into_iter().enumerate() {
+            let label = line[a..b].trim();
+            if matches!(label.to_ascii_uppercase().as_str(),"ESTADO"|"STATUS"|"SALUD"|"HEALTH"|"RESULTADO") {
+                style.status = Some(i);
+            } else if let Some(metric) = Metric::named(label) {
+                style.metrics.push((i,metric,label.contains('%')));
+            }
+        }
+        style
+    }
+    fn row(&self, line:&str) -> String {
+        if self.status.is_none() && self.metrics.is_empty() { return style_line(line); }
+        let mut out = String::new();
+        let mut last = 0;
+        for (i,(a,b)) in table_columns(line).into_iter().enumerate() {
+            let value = &line[a..b];
+            let tone = if self.status == Some(i) { status_color(value) } else {
+                self.metrics.iter().find(|(index,_,_)| *index == i)
+                    .and_then(|(_,metric,implicit)|metric.color(value,*implicit))
+            };
+            if let Some(color) = tone {
+                out.push_str(&line[last..a]);
+                out.push_str(color);
+                out.push_str(value);
+                out.push_str(RESET);
+                last = b;
+            }
+        }
+        out.push_str(&line[last..]);
+        out
+    }
 }
 
-fn status_column_index(heading: &str) -> Option<usize> {
-    table_columns(heading).iter().enumerate().find_map(|(index, &(start, end))| {
-        let field = heading.get(start..end)?.trim().to_ascii_uppercase();
-        matches!(field.as_str(), "ESTADO" | "STATUS" | "SALUD" | "HEALTH" | "RESULTADO")
-            .then_some(index)
-    })
+#[derive(Default)]
+pub struct LiveReport { table: TableStyle }
+impl LiveReport {
+    pub fn line(&mut self, line:&str)->String {
+        let text = report_text(line);
+        if text.contains(['\r','\0','\x1b']) { return text.into_owned(); }
+        if is_table_header(&text) {
+            self.table = TableStyle::from_header(&text);
+            Role::Title.paint(&text)
+        } else {
+            if text.trim().is_empty() || (is_section_heading(&text) && table_columns(&text).len() <= 1) { self.table = TableStyle::default(); }
+            self.table.row(&text)
+        }
+    }
 }
 
 fn suitable(command: &str, stdout: &str, registered_native: Option<&[String]>) -> bool {
@@ -377,7 +464,7 @@ fn style_line(line: &str) -> String {
             let label_color = if alarm { BAD } else if warning { CAUTION } else { LABEL };
             let value_color = if alarm || warning { VALUE }
                 else if is_status_field(stripped) || key == "autorización efectiva" { status_color(value).unwrap_or(VALUE) }
-                else { VALUE };
+                else { Metric::named(&key).and_then(|metric|metric.color(value,key.contains('%'))).unwrap_or(VALUE) };
             return format!("{indent}{label_color}{field}:{RESET} {value_color}{value}{RESET}");
         }
     }
@@ -578,14 +665,14 @@ fn decorate_with_native_commands(
                     && style_command_row(trimmed).is_some())
         });
     // The prompt already shows the command. Do not echo it in every report.
-    let mut status_column: Option<usize> = None;
+    let mut table = TableStyle::default();
     let mut previous_blank = true;
     for original in stdout.split_inclusive('\n') {
         let line = original.strip_suffix('\n').unwrap_or(original).trim_end_matches('\r');
         if is_table_header(line) {
-            status_column = status_column_index(line);
-        } else if line.trim().is_empty() || is_section_heading(line) {
-            status_column = None;
+            table = TableStyle::from_header(line);
+        } else if line.trim().is_empty() || (is_section_heading(line) && table_columns(line).len() <= 1) {
+            table = TableStyle::default();
         }
         if line.trim().is_empty() {
             if !previous_blank { result.push('\n'); }
@@ -609,7 +696,7 @@ fn decorate_with_native_commands(
             } else if is_table_header(&fragment) {
                 format!("{HEADING}{fragment}{RESET}")
             } else {
-                if status_column.is_some() { style_table_row(&fragment, status_column) } else { style_line(&fragment) }
+                table.row(&fragment)
             };
             result.push_str(&styled);
             result.push('\n');
@@ -667,11 +754,12 @@ mod tests {
     fn table_status_color_is_column_scoped() {
         let title = "NOMBRE    ESTADO    DETALLE";
         assert!(is_table_header(title));
-        assert_eq!(status_column_index(title), Some(1));
+        let style = TableStyle::from_header(title);
+        assert_eq!(style.status, Some(1));
         let row = "Red A     ACTIVO    enlace conectado";
-        assert!(style_table_row(row, Some(1)).contains(GOOD));
+        assert!(style.row(row).contains(GOOD));
         let description = "Red A     desconocido    conectado";
-        assert!(!style_table_row(description, Some(1)).contains(GOOD));
+        assert!(!style.row(description).contains(GOOD));
     }
 
     #[test]
@@ -791,8 +879,23 @@ use crate::core::ports::TerminalPanel;
 pub const ACCENT:&str=HEADING;
 pub const WARN:&str=CAUTION;
 pub const CONTENT:&str=DETAILS;
-/// One alternate-screen view; body text is kept independent of native panel
-/// strokes. Even a non-Slint stdout produces semantic headings and statuses.
+/// Style a whole terminal row, including empty cells. This ensures the
+/// alternate-screen TUI has readable contrast independently of the wallpaper.
+pub fn monitor_row(
+    buffer: &mut String,
+    text: &str,
+    width: usize,
+    foreground: &str,
+    background: &str,
+) {
+    let visible: String = text.chars().take(width).collect();
+    buffer.push_str(background);
+    buffer.push_str(foreground);
+    buffer.push_str(&visible);
+    buffer.push_str(&" ".repeat(width.saturating_sub(visible.chars().count())));
+    buffer.push_str("\x1b[0m\r\n");
+}
+
 pub struct LiveScreen {
     text: String,
     line: usize,
@@ -813,10 +916,18 @@ impl LiveScreen {
         self.text.push('\n');
         self.line += 1;
 
+        let mut table = TableStyle::default();
         for line in body.trim_end_matches('\n').split('\n') {
             if line.is_empty() && body.trim().is_empty() { break; }
             self.text.push_str("  ");
-            self.text.push_str(line);
+            if line.contains('\x1b') {
+                self.text.push_str(line);
+            } else if is_table_header(line) {
+                table = TableStyle::from_header(line);
+                self.text.push_str(&Role::Label.paint(line));
+            } else {
+                self.text.push_str(&table.row(line));
+            }
             self.text.push('\n');
             self.line += 1;
         }
@@ -857,6 +968,27 @@ pub fn shorten(value: &str, max: usize) -> String {
 #[cfg(test)]
 mod monitor_tests {
     use super::*;
+
+    #[test]
+    fn metrics_work_for_unrelated_reports_tables_and_streams() {
+        for name in ["inventario", "reporte-nuevo"] {
+            let body = "PID      CPU%     ESTADO\n431      72.2     ACTIVO\n";
+            let report = Formatter::result(name,body,"",100,&[name.into()],OutputMode::Interactive);
+            assert!(report.stdout.contains(&format!("{BAD}72.2{RESET}")));
+            assert!(report.stdout.contains(&format!("{GOOD}ACTIVO{RESET}")));
+            assert_eq!(Formatter::result(name,body,"",100,&[],OutputMode::Machine).stdout,body);
+        }
+        let mut stream = LiveReport::default();
+        stream.line("PID      CPU%     ESTADO");
+        assert!(stream.line("431      35.2     ACTIVO").contains(CAUTION));
+        assert!(stream.line("431      85.2     ACTIVO").contains(BAD));
+        assert!(!stream.line("431      5.2      ACTIVO").contains(BAD));
+        stream.line("");
+        assert!(stream.line("Pérdida: 10%").contains(BAD));
+        assert!(!stream.line("RAM: 90 MiB").contains(BAD));
+        assert_eq!(Metric::Cpu.role(32.0,Some(3.0)), Role::Failure);
+        assert_eq!(Metric::Cpu.role(8.0,Some(32.0)), Role::Value);
+    }
 
     #[test]
     fn sections_report_real_cell_coordinates_without_character_frames() {

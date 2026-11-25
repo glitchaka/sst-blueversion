@@ -163,8 +163,7 @@ mod viewport_regression_tests {
 
 const FG: Rgb = Rgb(crate::presentation::formatter::DEFAULT_FOREGROUND.0,crate::presentation::formatter::DEFAULT_FOREGROUND.1,crate::presentation::formatter::DEFAULT_FOREGROUND.2);
 const BG: Rgb = Rgb(0x28, 0x28, 0x28);
-const CURSOR: Rgb = Rgb(0xFE, 0x80, 0x19);
-const SELECTION: Rgb = Rgb(0x50, 0x49, 0x45);
+use crate::presentation::formatter::{caret_color, SELECTED_RGB};
 
 const NERD_FONT_BYTES: &[u8] = crate::application::system::SST_TERMINAL_FONT_BYTES;
 
@@ -292,6 +291,11 @@ slint::slint! {
         background: transparent;
 
         in property <image> terminal-image;
+        in property <bool> caret-visible;
+        in property <float> caret-x;
+        in property <float> caret-y;
+        in property <float> caret-height;
+        in property <color> caret-tone;
         in property <image> keygen-image;
         in property <bool> keygen-visible;
         in property <int> report-heading-count: 0;
@@ -383,6 +387,14 @@ slint::slint! {
                 visible: !root.keygen-visible;
                 source: root.terminal-image;
                 image-fit: fill;
+            }
+
+            if root.caret-visible && !root.keygen-visible: Rectangle {
+                x: root.caret-x * 1px;
+                y: root.caret-y * 1px;
+                width: 2px;
+                height: root.caret-height * 1px;
+                background: root.caret-tone;
             }
 
             // Ordinary SST help and reports receive the same genuine native
@@ -932,7 +944,6 @@ struct TerminalModel {
     dragging: bool,
     last_click: Option<(Instant, usize)>,
     click_count: u8,
-    cursor_on: bool,
     blink: Instant,
     dirty: bool,
     focused: bool,
@@ -957,7 +968,6 @@ impl TerminalModel {
             dragging: false,
             last_click: None,
             click_count: 0,
-            cursor_on: true,
             blink: Instant::now(),
             dirty: true,
             focused: true,
@@ -981,7 +991,6 @@ impl TerminalModel {
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
         self.selection_anchor = None;
-        self.cursor_on = true;
         self.blink = Instant::now();
         self.dirty = true;
         let _ = self.session.write(bytes);
@@ -991,7 +1000,6 @@ impl TerminalModel {
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
         self.selection_anchor = None;
-        self.cursor_on = true;
         self.blink = Instant::now();
         self.dirty = true;
         let _ = self.session.send_key_event(CtKeyEvent::new(code, modifiers));
@@ -1001,7 +1009,6 @@ impl TerminalModel {
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
         self.selection_anchor = None;
-        self.cursor_on = true;
         self.blink = Instant::now();
         self.dirty = true;
         let _ = self.session.paste(text);
@@ -1124,12 +1131,6 @@ impl TerminalModel {
             self.dirty = true;
         }
 
-        if self.blink.elapsed() >= Duration::from_millis(550) {
-            self.cursor_on = !self.cursor_on;
-            self.blink = Instant::now();
-            self.dirty = true;
-        }
-
         self.session.check_timeout();
     }
 
@@ -1219,6 +1220,15 @@ impl TerminalModel {
 
     fn pointer_down(&mut self, x: f32, y: f32) {
         let index = self.cell_at_logical(x, y);
+        if self.session.raw_mode() && self.parser.screen().mouse_protocol_mode() == vt100::MouseProtocolMode::Press {
+            let cols = usize::from(self.parser.screen().size().1).max(1);
+            let _ = self.session.click_cell((index % cols) as u16,(index / cols) as u16);
+            self.selection = None;
+            self.selection_anchor = None;
+            self.dragging = false;
+            self.dirty = true;
+            return;
+        }
         let now = Instant::now();
         let repeated = self.last_click.is_some_and(|(when, previous)| {
             now.duration_since(when) <= Duration::from_millis(450)
@@ -1335,14 +1345,12 @@ impl TerminalModel {
 
             let screen = self.parser.screen();
             let (rows, cols) = screen.size();
-            let cursor = screen.cursor_position();
             let selection = self.selection;
-            let cursor_on =
-                self.cursor_on && screen.scrollback() == 0 && !screen.hide_cursor();
             let (left_pad, top_pad, cell_width, cell_height) = self.geometry();
             let font_px = (self.appearance.font_size as f32 * self.scale).round().max(8.0);
             let default_fg = parse_rgb(&self.appearance.font_color).unwrap_or(FG);
 
+            let selected_row = selection.and_then(|(a,b)| (cols != 0 && a / cols as usize == b.saturating_sub(1) / cols as usize).then(|| a / cols as usize));
             for row in 0..rows {
                 use crate::presentation::formatter::{Role,font_pixels,SECTION_RAIL,SECTION_RULE};
                 // A native visual accent appears only for a semantic title.
@@ -1376,17 +1384,22 @@ impl TerminalModel {
                     }
 
                     let index = row as usize * cols as usize + col as usize;
+                    if selected_row == Some(usize::from(row)) {
+                        bg = Rgb(SELECTED_RGB.0,SELECTED_RGB.1,SELECTED_RGB.2);
+                        paint_background = true;
+                    }
                     if selection
                         .is_some_and(|(a, b)| index >= a.min(b) && index < a.max(b))
                     {
-                        fg = FG;
-                        bg = SELECTION;
-                        paint_background = true;
-                    }
-
-                    if cursor_on && cursor == (row, col) {
-                        fg = BG;
-                        bg = CURSOR;
+                        let tone = Role::from_rgb((fg.0,fg.1,fg.2));
+                        let alert = matches!(tone,Some(Role::Failure | Role::Warning));
+                        if !alert {
+                            fg = BG;
+                            let (r,g,b) = Role::Label.style().rgb;
+                            bg = Rgb(r,g,b);
+                        } else {
+                            bg = BG;
+                        }
                         paint_background = true;
                     }
 
@@ -2375,6 +2388,20 @@ pub fn run() -> Result<()> {
                 }
                 model.tick();
 
+                let screen = model.parser.screen();
+                let show_caret = drawable && screen.scrollback() == 0 && !screen.hide_cursor();
+                ui.set_caret_visible(show_caret);
+                if show_caret {
+                    let (row,col) = screen.cursor_position();
+                    let (left,top,w,h) = model.geometry();
+                    let factor = model.scale.max(0.5);
+                    ui.set_caret_x((left+f32::from(col)*w)/factor);
+                    ui.set_caret_y((top+f32::from(row)*h)/factor);
+                    ui.set_caret_height((h/factor-1.0).max(1.0));
+                    let phase = if model.focused { ((model.blink.elapsed().as_millis()/100)%16) as u8 } else { 0 };
+                    let (r,g,b) = caret_color(phase);
+                    ui.set_caret_tone(slint::Color::from_rgb_u8(r,g,b));
+                }
                 let panels = model.session.panels_snapshot();
                 // Reports use typography, not arbitrary per-line vector boxes.
                 // Dedicated live monitors retain their explicit section frames.

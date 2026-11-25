@@ -1775,13 +1775,14 @@ fn relay_live_console<R: Read>(
     let mut buffer = [0u8; 4096];
     let mut partial = Vec::<u8>::new();
     let mut pending_cr = false;
-    let flush = |line: &mut Vec<u8>, ending: &[u8]| {
+    let mut report = crate::presentation::formatter::LiveReport::default();
+    let mut flush = |line: &mut Vec<u8>, ending: &[u8]| {
         if line.is_empty() && ending.is_empty() { return; }
         let mut rendered = if let Ok(text) = std::str::from_utf8(line) {
             use crate::presentation::formatter::Formatter;
             if ending == b"\r" { line.clone() }
             else if diagnostic { Formatter::diagnostic(text).into_bytes() }
-            else { Formatter::stream_bytes(text.as_bytes(),false) }
+            else { report.line(text).into_bytes() }
         } else {
             line.clone()
         };

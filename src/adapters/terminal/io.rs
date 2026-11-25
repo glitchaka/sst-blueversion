@@ -120,7 +120,7 @@ pub fn enter() -> Result<()> {
 
 pub fn leave() {
     set_panels(Vec::new());
-    let _ = write(b"\x1b[?25h\x1b[?1049l");
+    let _ = write(b"\x1b[?9l\x1b[?25h\x1b[?1049l");
     leave_raw();
 }
 pub fn poll(timeout: Duration) -> Result<bool> {

@@ -165,11 +165,18 @@ impl SystemService {
         let mut terminal = self.terminal.alternate_screen()?;
         let mut sort_cpu = true;
         let mut tree = false;
+        use crate::presentation::formatter::{Metric, Role, monitor_row, selected_surface, SURFACE, SURFACE_ALT, SURFACE_HEAD};
+        let selected_bg = selected_surface();
+        let interval = Duration::from_millis(900);
         let mut offset = 0usize;
+        let mut selected = None;
+        let mut previous = HashMap::new();
         // Two samples initialize meaningful CPU utilization, and then the same
         // sampler is refreshed after each 900-ms frame.
         let mut system = sampled_processes();
 
+        let mut sample_at = std::time::Instant::now();
+        terminal.write("\x1b[?9h")?;
         loop {
             let mut rows = if tree {
                 process_tree_rows(&system, sort_cpu)
@@ -185,19 +192,24 @@ impl SystemService {
             // Leave a column free to prevent the terminal's automatic wrap.
             let width = usize::from(columns.saturating_sub(1)).max(1);
             let max_rows = usize::from(height.saturating_sub(7));
-            offset = offset.min(rows.len().saturating_sub(max_rows.max(1)));
+            let identity = |pid: Pid| system.process(pid).map(|p| (pid,p.start_time()));
+            let mut index = selected.and_then(|id| rows.iter().position(|(pid,_)|identity(*pid)==Some(id)));
+            if index.is_none() { selected = None; }
+            let page = max_rows.max(1);
+            if let Some(i) = index { offset = offset.min(i).max(i.saturating_sub(page-1)); }
+            offset = offset.min(rows.len().saturating_sub(page));
             let mut screen = String::new();
 
-            top_screen_line(
+            monitor_row(
                 &mut screen,
                 "  SST  /  MONITOR DE PROCESOS",
                 width,
-                "\x1b[1;38;2;235;219;178m",
-                "\x1b[48;2;60;56;54m",
+                Role::Title.ansi(),
+                SURFACE_HEAD,
             );
             let used = system.used_memory() / 1024 / 1024;
             let total = system.total_memory() / 1024 / 1024;
-            top_screen_line(
+            monitor_row(
                 &mut screen,
                 &format!(
                     "  Procesos: {}   ·   CPU global: {:.1}%   ·   RAM: {} / {} MiB   ·   Uptime: {}m",
@@ -208,10 +220,10 @@ impl SystemService {
                     System::uptime() / 60
                 ),
                 width,
-                "\x1b[38;2;235;219;178m",
-                "\x1b[48;2;40;40;40m",
+                Role::Value.ansi(),
+                SURFACE_ALT,
             );
-            top_screen_line(
+            monitor_row(
                 &mut screen,
                 &format!(
                     "  {}  ·  Orden: {}  ·  [c] CPU [m] RAM [t] Árbol [↑↓] mover [q] salir",
@@ -219,22 +231,22 @@ impl SystemService {
                     if sort_cpu { "CPU" } else { "RAM" }
                 ),
                 width,
-                "\x1b[38;2;189;174;147m",
-                "\x1b[48;2;40;40;40m",
+                Role::Label.ansi(),
+                SURFACE_ALT,
             );
-            top_screen_line(
+            monitor_row(
                 &mut screen,
                 "",
                 width,
-                "\x1b[38;2;235;219;178m",
-                "\x1b[48;2;29;32;33m",
+                Role::Value.ansi(),
+                SURFACE,
             );
-            top_screen_line(
+            monitor_row(
                 &mut screen,
                 "  PID      PPID     CPU %     RAM MiB   PROCESO / JERARQUÍA",
                 width,
-                "\x1b[1;38;2;250;189;47m",
-                "\x1b[48;2;60;56;54m",
+                Role::Label.ansi(),
+                SURFACE_HEAD,
             );
 
             let mut shown = 0usize;
@@ -250,86 +262,71 @@ impl SystemService {
 
                 let cpu = process.cpu_usage();
                 let memory = process.memory() as f64 / 1024.0 / 1024.0;
+                let active = selected.is_some() && identity(*pid) == selected;
+                let marker = if active { "›" } else { " " };
                 let content = format!(
-                    "  {:<8} {:<8} {:>6.1} {:>11.1}   {}",
-                    pid, ppid, cpu, memory, name
+                    "{marker} {:<8} {:<8} {:>6.1} {:>11.1}   {}", pid, ppid, cpu, memory, name
                 );
-                let foreground = if cpu >= 50.0 {
-                    "\x1b[1;38;2;251;73;52m"
-                } else if memory >= 1024.0 {
-                    "\x1b[38;2;184;187;38m"
-                } else {
-                    "\x1b[38;2;235;219;178m"
-                };
-                let background = if shown % 2 == 0 {
-                    "\x1b[48;2;29;32;33m"
-                } else {
-                    "\x1b[48;2;40;40;40m"
-                };
-                top_screen_line(&mut screen, &content, width, foreground, background);
+                let previous_cpu = previous.get(&(*pid,process.start_time())).copied();
+                let tone = Metric::Cpu.role(cpu,previous_cpu);
+                let background = if active { &selected_bg } else if shown % 2 == 0 { SURFACE } else { SURFACE_ALT };
+                monitor_row(&mut screen,&content,width,tone.ansi(),background);
                 shown += 1;
             }
             // Draw a full opaque alternate screen; the desktop wallpaper must
             // not obscure process names, headings, or empty parts of the table.
             for _ in shown..max_rows {
-                top_screen_line(
+                monitor_row(
                     &mut screen, "", width,
-                    "\x1b[38;2;235;219;178m",
-                    "\x1b[48;2;29;32;33m",
+                    Role::Value.ansi(),
+                    SURFACE,
                 );
             }
-            top_screen_line(
+            monitor_row(
                 &mut screen, "", width,
-                "\x1b[38;2;235;219;178m",
-                "\x1b[48;2;29;32;33m",
+                Role::Value.ansi(),
+                SURFACE,
             );
-            top_screen_line(
+            monitor_row(
                 &mut screen,
                 "  SST top   ·   Actualización automática de métricas   ·   q para cerrar",
                 width,
-                "\x1b[38;2;189;174;147m",
-                "\x1b[48;2;60;56;54m",
+                Role::Label.ansi(),
+                SURFACE_HEAD,
             );
 
-            terminal.clear()?;
-            terminal.write(&screen)?;
+            // Send an entire frame at once so the user never sees a blank frame.
+            let frame = screen.trim_end_matches("\r\n");
+            terminal.write(&format!("\x1b[H{frame}\x1b[J"))?;
             terminal.flush()?;
-
-            match terminal.poll_key(Duration::from_millis(900))? {
+            let last = rows.len().saturating_sub(1);
+            let current = index.unwrap_or(offset);
+            match terminal.poll_key(interval.saturating_sub(sample_at.elapsed()))? {
                 Some(TerminalKey::Char('q') | TerminalKey::Escape) => break,
-                Some(TerminalKey::Char('c')) => { sort_cpu = true; offset = 0; }
-                Some(TerminalKey::Char('m')) => { sort_cpu = false; offset = 0; }
-                Some(TerminalKey::Char('t')) => { tree = !tree; offset = 0; }
-                Some(TerminalKey::Up) => offset = offset.saturating_sub(1),
-                Some(TerminalKey::Down) => offset = (offset + 1).min(rows.len().saturating_sub(max_rows.max(1))),
-                Some(TerminalKey::PageUp) => offset = offset.saturating_sub(max_rows.max(1)),
-                Some(TerminalKey::PageDown) => offset = offset.saturating_add(max_rows.max(1)).min(rows.len().saturating_sub(max_rows.max(1))),
-                Some(TerminalKey::Home) => offset = 0,
-                Some(TerminalKey::End) => offset = rows.len().saturating_sub(max_rows.max(1)),
+                Some(TerminalKey::Char('c')) => sort_cpu = true,
+                Some(TerminalKey::Char('m')) => sort_cpu = false,
+                Some(TerminalKey::Char('t')) => tree = !tree,
+                Some(TerminalKey::Row(row)) if (5..5+shown).contains(&usize::from(row)) =>
+                    index = Some(offset + usize::from(row) - 5),
+                Some(TerminalKey::Up) => index = Some(current.saturating_sub(1)),
+                Some(TerminalKey::Down) => index = Some(if index.is_none() { offset } else { (current+1).min(last) }),
+                Some(TerminalKey::PageUp) => index = Some(current.saturating_sub(page)),
+                Some(TerminalKey::PageDown) => index = Some(current.saturating_add(page).min(last)),
+                Some(TerminalKey::Home) => index = Some(0),
+                Some(TerminalKey::End) => index = Some(last),
                 _ => {}
             }
-            system.refresh_all();
+            selected = index.and_then(|i|rows.get(i)).and_then(|(pid,_)|identity(*pid));
+            if sample_at.elapsed() >= interval {
+                previous.clear();
+                previous.extend(system.processes().iter().map(|(&pid,p)|((pid,p.start_time()),p.cpu_usage())));
+                system.refresh_all();
+                sample_at = std::time::Instant::now();
+            }
         }
 
         Ok(CommandOutput::ok(""))
     }
-}
-
-/// Style a whole terminal row, including empty cells. This ensures the
-/// alternate-screen TUI has readable contrast independently of the wallpaper.
-fn top_screen_line(
-    buffer: &mut String,
-    text: &str,
-    width: usize,
-    foreground: &str,
-    background: &str,
-) {
-    let visible: String = text.chars().take(width).collect();
-    buffer.push_str(background);
-    buffer.push_str(foreground);
-    buffer.push_str(&visible);
-    buffer.push_str(&" ".repeat(width.saturating_sub(visible.chars().count())));
-    buffer.push_str("\x1b[0m\r\n");
 }
 
 fn system_help() -> CommandOutput {

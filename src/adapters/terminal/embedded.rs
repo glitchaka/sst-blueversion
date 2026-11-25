@@ -270,6 +270,13 @@ impl EmbeddedSession {
         self.redraw();
         true
     }
+    pub fn click_cell(&self, column:u16, row:u16) -> Result<()> {
+        use crossterm::event::{MouseEvent,MouseEventKind,MouseButton};
+        self.keys.send(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),column,row,modifiers:KeyModifiers::NONE,
+        }))?;
+        Ok(())
+    }
     pub fn send_raw_key(&self, key: KeyEvent) -> Result<()> {
         self.keys.send(Event::Key(key))?;
         Ok(())
