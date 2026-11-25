@@ -1657,6 +1657,11 @@ fn render_triage_priorities(
         snapshots.len(), system.global_cpu_usage(), used_percent,
     );
 
+    let critical=findings.iter().filter(|f|f.level==AttentionLevel::Alert).count();
+    let suspicious=findings.iter().filter(|f|f.level==AttentionLevel::Suspicious).count();
+    let review=findings.iter().filter(|f|f.level==AttentionLevel::Attention).count();
+    out.push_str(&format!("Conteo: Hallazgos: {} · Críticos: {critical} · Sospechosos: {suspicious} · Revisar: {review}\n",findings.len()));
+
     if !groups.is_empty() {
         out.push_str(&format!(
             "\nSEGURIDAD — {} procesos, {} grupos de señales\n\

@@ -165,7 +165,7 @@ impl SystemService {
         let mut terminal = self.terminal.alternate_screen()?;
         let mut sort_cpu = true;
         let mut tree = false;
-        use crate::presentation::formatter::{Metric, Role, monitor_row, selected_surface, SURFACE, SURFACE_ALT, SURFACE_HEAD};
+        use crate::presentation::formatter::{Metric, Role, monitor_row, monitor_cells, selected_surface, SURFACE, SURFACE_ALT, SURFACE_HEAD};
         let selected_bg = selected_surface();
         let interval = Duration::from_millis(900);
         let mut offset = 0usize;
@@ -243,7 +243,7 @@ impl SystemService {
             );
             monitor_row(
                 &mut screen,
-                "  PID      PPID     CPU %     RAM MiB   PROCESO / JERARQUÍA",
+                "  PID      PPID      CPU %      RAM MiB   PROCESO / JERARQUÍA",
                 width,
                 Role::Label.ansi(),
                 SURFACE_HEAD,
@@ -264,13 +264,13 @@ impl SystemService {
                 let memory = process.memory() as f64 / 1024.0 / 1024.0;
                 let active = selected.is_some() && identity(*pid) == selected;
                 let marker = if active { "›" } else { " " };
-                let content = format!(
-                    "{marker} {:<8} {:<8} {:>6.1} {:>11.1}   {}", pid, ppid, cpu, memory, name
-                );
+                let identity_text=format!("{marker} {:<8} {:<8} ",pid,ppid);
+                let cpu_text=format!("{cpu:>6.1}");
+                let memory_text=format!(" {memory:>11.1}   ");
                 let previous_cpu = previous.get(&(*pid,process.start_time())).copied();
                 let tone = Metric::Cpu.role(cpu,previous_cpu);
                 let background = if active { &selected_bg } else if shown % 2 == 0 { SURFACE } else { SURFACE_ALT };
-                monitor_row(&mut screen,&content,width,tone.ansi(),background);
+                monitor_cells(&mut screen,&[(&identity_text,Role::Label),(&cpu_text,tone),(&memory_text,Role::Value),(&name,Role::Value)],width,background);
                 shown += 1;
             }
             // Draw a full opaque alternate screen; the desktop wallpaper must

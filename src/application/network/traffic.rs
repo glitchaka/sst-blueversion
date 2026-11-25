@@ -375,19 +375,10 @@ impl NetworkTrafficService {
                     let rows = output.stdout.lines().collect::<Vec<_>>();
                     let max_rows = terminal_height.saturating_sub(9).max(2);
                     let mut body = String::new();
-                    for (index, row) in rows.iter().take(max_rows).enumerate() {
-                        let tone = if index == 0 {
-                            tui_style::LABEL
-                        } else if row.starts_with("telemetry:") {
-                            tui_style::WARN
-                        } else {
-                            tui_style::CONTENT
-                        };
-                        body.push_str(tone);
-                        body.push_str(&tui_style::shorten(
-                            row, terminal_width.saturating_sub(4).max(40),
-                        ));
-                        body.push_str(tui_style::RESET);
+                    for row in rows.iter().take(max_rows) {
+                        if row.starts_with("telemetry:"){body.push_str(tui_style::WARN);}
+                        body.push_str(&tui_style::shorten(row,terminal_width.saturating_sub(4).max(40)));
+                        if row.starts_with("telemetry:"){body.push_str(tui_style::RESET);}
                         body.push('\n');
                     }
                     if rows.len() > max_rows {

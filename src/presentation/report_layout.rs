@@ -79,6 +79,36 @@ pub(super) fn feature_grid(items:&[(&str,&str,&str)],width:usize)->String {
     if out.is_empty(){String::new()}else{out.join("\n")+"\n"}
 }
 
+/// Security result layout uses explicit counts supplied by the producer,
+/// never invents or extrapolates findings from the displayed subset.
+pub(super) fn triage_summary(text:&str,width:usize)->Option<String>{
+    let mut lines=text.lines();
+    let title=lines.next()?;
+    let mut rest:Vec<_>=lines.filter(|l|!underline(l)).collect();
+    let index=rest.iter().position(|l|l.starts_with("ESTADO: "))?;
+    let state=rest.remove(index).strip_prefix("ESTADO: ")?;
+    let (label,detail)=state.split_once(": ").unwrap_or((state,""));
+    let tone=if label=="ALERTA"{BAD}else if matches!(label,"SOSPECHA"|"REVISAR"|"RECURSOS"){CAUTION}else{VALUE};
+    let mut out=format!("{HEADING}{title}{RESET}\n");
+    out.push_str(&feature_grid(&[("RESULTADO",label,tone)],width));
+    if !detail.is_empty(){for line in wrap_line(detail,width){out.push_str(&Role::Detail.paint(&line));out.push('\n');}}
+    if let Some(index)=rest.iter().position(|l|l.starts_with("Conteo: ")){
+        let line=rest.remove(index);
+        let counts:Vec<_>=line.strip_prefix("Conteo: ")?.split(" · ").filter_map(|p|p.split_once(": ")).collect();
+        let styled=counts.iter().map(|(name,value)|{
+            let tone=match *name{"Críticos" if *value!="0"=>BAD,"Sospechosos"|"Revisar" if *value!="0"=>CAUTION,_=>VALUE};
+            format!("{LABEL}{name}{RESET} {tone}{value}{RESET}")
+        }).collect::<Vec<_>>();
+        if display_width(line)<=width{out.push_str(&styled.join("   │   "));out.push('\n');}
+        else{for item in styled{out.push_str(&item);out.push('\n');}}
+    }
+    for line in rest{
+        if line.trim().is_empty(){out.push('\n');continue;}
+        for fragment in wrap_line(line,width){out.push_str(&style_line(&fragment));out.push('\n');}
+    }
+    Some(out)
+}
+
 /// Final composition pass. Only the first document title gets display
 /// typography; section headings get an unobtrusive native rule. Existing
 /// field groups, tables, prose and live terminal data are not boxed again.

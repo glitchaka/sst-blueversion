@@ -153,8 +153,9 @@ impl Formatter {
         let clean = report_text(stdout);
         let structured = suitable(command,&clean,Some(native));
         let text = decorate_registered_at_width(command,&clean,cols.saturating_sub(3),native);
+        let reference=help_document(command,&clean);
         FormattedOutput {
-            stdout:report_layout::render(&text,width,structured),
+            stdout:if reference{text}else{report_layout::render(&text,width,structured)},
             stderr:report_layout::render(&Self::diagnostic(stderr),width,true),
         }
     }
@@ -177,8 +178,9 @@ impl Formatter {
         out
     }
     pub fn live(text:&str)->String{style_live_line(&report_text(text))}
-    pub fn live_layout(styled:&str,cols:u16)->String {
-        report_layout::render(styled,usize::from(cols.saturating_sub(2)).clamp(18,160),true)
+    pub fn live_layout(styled:&str,_cols:u16)->String {
+        // Streaming lines never reserve rows, add cards or draw rules.
+        styled.to_owned()
     }
     pub fn terminal(text:&str)->String{text.to_owned()}
     pub fn stream_bytes(bytes:&[u8],terminal:bool)->Vec<u8>{
@@ -302,10 +304,10 @@ impl LiveReport {
         if text.contains(['\r','\0','\x1b']) { return text.into_owned(); }
         if is_table_header(&text) {
             self.table = TableStyle::from_header(&text);
-            Role::Title.paint(&text)
+            Role::Command.paint(&text)
         } else {
             if text.trim().is_empty() || (is_section_heading(&text) && table_columns(&text).len() <= 1) { self.table = TableStyle::default(); }
-            self.table.row(&text)
+            if is_section_heading(&text){stream_line(&text)}else{self.table.row(&text)}
         }
     }
 }
@@ -359,7 +361,7 @@ fn status_color(value: &str) -> Option<&'static str> {
     let status = normalized.as_str();
     if ["CRÍTICO", "CRITICO", "ERROR", "FALLO", "FAILED",
         "DENEGADO", "DESCONECTADO", "SIN ENLACE",
-        "NO DISPONIBLE", "DETENIDO", "DESHABILITADO", "SIN CONEXIÓN",
+        "NO DISPONIBLE", "DETENIDO", "DESHABILITADO", "SIN CONEXIÓN", "ALERTA",
         "INACTIVO", "BLOQUEADO", "DOWN", "OFFLINE"]
         .iter().any(|term| status == *term || status.starts_with(&format!("{term} ")))
     {
@@ -367,7 +369,7 @@ fn status_color(value: &str) -> Option<&'static str> {
     } else if ["ADVERTENCIA", "ATENCIÓN", "ATENCION",
         "PENDIENTE", "DEGRADADO", "INDETERMINADO",
         "SIN IP", "DESCONOCIDO", "WARNING", "REQUIERE REVISIÓN", "NO VERIFICADA",
-        "SIN PERFIL DOT3 CONFIRMADO", "SIN GATEWAY POR DEFECTO", "SIN DIRECCIONES", "ICMP NO RESPONDE", "NO RESPONDE"]
+        "SIN PERFIL DOT3 CONFIRMADO", "SIN GATEWAY POR DEFECTO", "SIN DIRECCIONES", "ICMP NO RESPONDE", "NO RESPONDE", "SOSPECHA", "REVISAR", "RECURSOS"]
         .iter().any(|term| status == *term || status.starts_with(&format!("{term} ")))
     {
         Some(CAUTION)
@@ -376,7 +378,7 @@ fn status_color(value: &str) -> Option<&'static str> {
         .contains(&status)
     {
         Some(PERFECT)
-    } else if ["CONECTADO", "CONECTADA", "CORRECTO",
+    } else if ["ESTABLISHED", "LISTENING", "CONECTADO", "CONECTADA", "CORRECTO",
         "CORRECTA", "ACTIVO", "ACTIVA", "OPERATIVO",
         "OPERATIVA", "DISPONIBLE", "OK", "UP", "ENLACE DETECTADO", "PRESENTE",
         "ICMP RESPONDE", "RESPONDE", "RESUELTO", "CONECTIVIDAD TCP CONFIRMADA", "CUENTA DESBLOQUEADA", "CUENTA SIN BLOQUEO PENDIENTE"]
@@ -456,6 +458,12 @@ fn style_help_entry(line: &str) -> Option<String> {
 fn style_line(line: &str) -> String {
     if line.trim().is_empty() { return line.to_owned(); }
     let stripped = line.trim_start();
+    if let Some(rest)=stripped.strip_prefix('[') {
+        if let Some((severity,detail))=rest.split_once("] ") {
+            let tone=match severity {"CRÍTICO"=>Some(BAD),"SOSPECHOSO"|"REVISAR"=>Some(CAUTION),"OBSERVAR"=>Some(LABEL),_=>None};
+            if let Some(tone)=tone{return format!("{tone}● {severity}{RESET}  {VALUE}{detail}{RESET}");}
+        }
+    }
     if is_section_heading(stripped) {
         return format!("{HEADING}{stripped}{RESET}");
     }
@@ -499,11 +507,18 @@ pub fn style_live_line(line: &str) -> String {
     if line.contains('\n') {
         line.split_inclusive('\n').map(|part| {
             let body=part.strip_suffix('\n').unwrap_or(part);
-            let mut styled=style_line(body);
+            let mut styled=stream_line(body);
             if part.ends_with('\n'){styled.push('\n');}
             styled
         }).collect()
-    } else { style_line(line) }
+    } else { stream_line(line) }
+}
+
+fn stream_line(line:&str)->String{
+    if line.trim().is_empty(){return line.to_owned();}
+    if is_section_heading(line){return Role::Command.paint(line);}
+    // A stream is a running transcript, not a sequence of report headers.
+    style_line(line)
 }
 
 fn display_width(s: &str) -> usize {
@@ -733,6 +748,67 @@ pub fn decorate_registered_at_width(
     decorate_with_native_commands(command, stdout, cols, Some(registered_native))
 }
 
+
+fn help_document(command:&str,stdout:&str)->bool{
+    let root=command.split_whitespace().next().unwrap_or("");
+    command.split_whitespace().any(|p|matches!(p,"help"|"--help"|"-h"))
+        || stdout.lines().take(8).any(|line| {
+            let lower=line.trim_start().to_ascii_lowercase();
+            lower.starts_with("uso:")||lower.starts_with("usage:")
+        })
+        || (!root.is_empty()&&stdout.lines().any(|line|{
+            let trimmed=line.trim_start();
+            trimmed.strip_prefix(root).is_some_and(|rest|rest.starts_with(' ')&&style_command_row(trimmed).is_some())
+        }))
+}
+fn help_pair(line:&str)->Option<(&str,&str)>{
+    let line=line.trim();
+    let i=line.find("  ")?;
+    let syntax=line[..i].trim();
+    let description=line[i..].trim();
+    if syntax.is_empty()||description.is_empty()||display_width(syntax)>65||syntax.ends_with(':'){return None;}
+    Some((syntax,description))
+}
+/// Help is an indexed reference, not an inventory or a diagnosis. The
+/// descriptions of an entire document share one left edge.
+fn compact_help(command:&str,stdout:&str,width:usize)->String{
+    let root=command.split_whitespace().next().unwrap_or("");
+    let label_width=stdout.lines().filter_map(help_pair).map(|(k,_)|display_width(k))
+        .max().unwrap_or(0).min(width.saturating_sub(22)).min(40);
+    let mut result=Vec::new();
+    for line in stdout.lines(){
+        let trimmed=line.trim();
+        if trimmed.is_empty(){
+            if result.last().is_some_and(|l:&String|!l.is_empty()){result.push(String::new());}
+        }else if let Some((key,value))=trimmed.split_once(": ")
+            && matches!(key.to_ascii_lowercase().as_str(),"uso"|"usage"|"ejemplo"|"example"|"ejemplos"|"examples")
+        {
+            result.push(format!("{HEADING}{key}:{RESET} {COMMAND}{value}{RESET}"));
+        }else if is_section_heading(trimmed){
+            result.push(Role::Title.paint(trimmed));
+        }else if let Some((syntax,description))=help_pair(line){
+            let indent=label_width+4;
+            if display_width(syntax)>label_width||width<36{
+                result.push(format!("  {}",Role::Command.paint(syntax)));
+                for part in wrap_line(description,width.saturating_sub(4)){result.push(format!("    {}",Role::Detail.paint(&part)));}
+            }else{
+                for (i,part) in wrap_line(description,width.saturating_sub(indent)).iter().enumerate(){
+                    if i==0{
+                        result.push(format!("  {COMMAND}{syntax}{RESET}{}{DETAILS}{part}{RESET}"," ".repeat(indent-2-display_width(syntax))));
+                    }else{result.push(format!("{}{DETAILS}{part}{RESET}"," ".repeat(indent)));}
+                }
+            }
+        }else if !root.is_empty()&&trimmed.starts_with(&format!("{root} "))&&!trimmed.contains(" — "){
+            result.push(format!("  {}",Role::Command.paint(trimmed)));
+        }else{
+            for part in wrap_line(trimmed,width){result.push(Role::Detail.paint(&part));}
+        }
+    }
+    while result.last().is_some_and(String::is_empty){result.pop();}
+    if result.is_empty(){String::new()}else{result.join("\n")+"\n"}
+}
+
+
 fn decorate_with_native_commands(
     command: &str, stdout: &str, cols: u16,
     registered_native: Option<&[String]>,
@@ -740,23 +816,15 @@ fn decorate_with_native_commands(
     if !suitable(command, stdout, registered_native) { return stdout.to_owned(); }
     // Leave a small right margin so the cursor never autowraps a full row.
     let width = (cols as usize).saturating_sub(3).clamp(18, 160);
+    if stdout.lines().next().is_some_and(|l|l.starts_with("SST TRIAGE — RESUMEN PRIORIZADO")) {
+        if let Some(summary)=report_layout::triage_summary(stdout,width){return summary;}
+    }
     if command.split_whitespace().take(2).eq(["notsh","test"]) {
         if let Some(compact)=compact_network_assessment(stdout,width){return compact;}
     }
     let mut result = String::new();
-    let command_root = command.split_whitespace().next().unwrap_or("");
-    let help_document = command.split_whitespace().any(|part|
-        matches!(part, "help" | "--help" | "-h"))
-        || stdout.lines().take(6).any(|line| line.trim_start().starts_with("uso:"))
-        || stdout.lines().any(|line| {
-            // Native help can be requested by a bare builtin and may not
-            // include a literal "uso:" heading. Recognize a row only when
-            // its command syntax begins with the invoking builtin.
-            let trimmed = line.trim_start();
-            trimmed.strip_prefix(command_root)
-                .is_some_and(|rest| rest.starts_with(' ')
-                    && style_command_row(trimmed).is_some())
-        });
+    let help_document=help_document(command,stdout);
+    if help_document{return compact_help(command,stdout,width);}
     // The prompt already shows the command. Do not echo it in every report.
     let mut table = TableStyle::default();
     let mut table_active=false;
@@ -1031,6 +1099,21 @@ pub fn monitor_row(
     buffer.push_str("\x1b[0m\r\n");
 }
 
+
+/// Fixed-width live rows preserve alignment, background and per-cell role.
+pub fn monitor_cells(buffer:&mut String,cells:&[(&str,Role)],width:usize,background:&str){
+    let mut used=0;
+    buffer.push_str(background);
+    for (text,role) in cells{
+        if used>=width{break;}
+        let part=shorten(text,width-used);
+        used+=display_width(&part);
+        buffer.push_str(role.ansi());buffer.push_str(&part);
+    }
+    buffer.push_str(&" ".repeat(width.saturating_sub(used)));
+    buffer.push_str("\x1b[0m\r\n");
+}
+
 pub struct LiveScreen {
     text: String,
     line: usize,
@@ -1229,5 +1312,32 @@ mod component_layout_tests{
         assert!(out.contains(TABLE_HEADER)&&out.contains(TABLE_BAND));
         assert!(out.contains(GOOD)&&out.contains(BAD));
         assert!(out.contains("431")&&out.contains("432"));
+    }
+}
+
+#[cfg(test)]
+mod editorial_reference_tests{
+    use super::*;
+    #[test]
+    fn reference_help_has_aligned_descriptions_without_report_bands(){
+        let raw="sys — información\nuso: sys SUBCOMANDO\n\nInformación:\nsys info      resumen\nsys processes [NOMBRE]   procesos\n";
+        let out=Formatter::result("sys",raw,"",100,&["sys".into()],OutputMode::Interactive).stdout;
+        let clean=report_text(&out);
+        let x=|word:&str|clean.lines().find_map(|l|l.find(word)).unwrap();
+        assert_eq!(x("resumen"),x("procesos"));
+        assert!(!out.contains("\x1b[48;"));
+    }
+    #[test]
+    fn live_lines_never_expand_into_a_display_card(){
+        let line="Haciendo ping a 8.8.8.8 con 32 bytes de datos:";
+        let out=Formatter::live_layout(&Formatter::live(line),80);
+        assert_eq!(report_text(&out),line);
+        assert!(!out.contains(HEADING)&&!out.contains("\x1b[48;"));
+    }
+    #[test]
+    fn monitor_cpu_alert_is_scoped_to_its_column(){
+        let mut row=String::new();
+        monitor_cells(&mut row,&[("431 ",Role::Label),("65.0",Role::Failure),(" firefox.exe",Role::Value)],80,SURFACE);
+        assert!(row.contains(&format!("{BAD}65.0{VALUE} firefox.exe")));
     }
 }
