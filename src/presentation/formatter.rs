@@ -571,6 +571,86 @@ fn wrap_line(line: &str, width: usize) -> Vec<String> {
 
 /// Reorder the network assessment only for the interactive display. Raw output,
 /// CSV, scripts and redirects retain the original evidence and layout.
+
+// Reusable report components. Layout is computed in visible cells before
+// styling, so both native and console frontends receive identical content.
+const TABLE_BAND: &str = "\x1b[48;2;36;39;38m";
+const TABLE_HEADER: &str = "\x1b[48;2;56;54;46m";
+const METER_TRACK: &str = "\x1b[48;2;60;56;54m";
+pub const METER_OK_RGB:(u8,u8,u8)=(103,145,85);
+pub const METER_WARN_RGB:(u8,u8,u8)=(184,108,35);
+pub const METER_BAD_RGB:(u8,u8,u8)=(179,57,43);
+
+fn background(rgb:(u8,u8,u8))->String{
+    format!("\x1b[48;2;{};{};{}m",rgb.0,rgb.1,rgb.2)
+}
+fn preserve_band(text:&str,band:&str)->String {
+    // Existing semantic foreground spans must not reset the row background.
+    let mut out=String::from(band);
+    out.push_str(&text.replace(RESET,&format!("{RESET}{band}")));
+    out.push_str(RESET);
+    out
+}
+fn field_parts(line:&str)->Option<(&str,&str)>{
+    let (name,value)=line.trim_start().split_once(": ")?;
+    if name.is_empty()||name.chars().count()>40||name.contains("  ")
+        || !name.chars().any(char::is_alphabetic){return None;}
+    Some((name,value))
+}
+fn percent_metric(name:&str,value:&str)->Option<(Metric,f32)>{
+    let metric=Metric::named(name)?;
+    let value=value.trim();
+    let raw=value.strip_suffix('%').or_else(||name.contains('%').then_some(value))?;
+    let amount=raw.trim().replace(',',".").parse::<f32>().ok()?;
+    if !amount.is_finite()||!(0.0..=100.0).contains(&amount){return None;}
+    Some((metric,amount))
+}
+fn meter(metric:Metric,value:f32,width:usize)->String{
+    let filled=(width as f32*value/100.0).round() as usize;
+    let rgb=match metric.role(value,None){
+        Role::Failure=>METER_BAD_RGB,Role::Warning=>METER_WARN_RGB,_=>METER_OK_RGB,
+    };
+    format!("{}{}{RESET}{METER_TRACK}{}{RESET}",background(rgb),
+        " ".repeat(filled)," ".repeat(width-filled))
+}
+fn render_field_group(lines:&[&str],width:usize)->String{
+    let label_width=lines.iter().filter_map(|line|field_parts(line))
+        .map(|(name,_)|display_width(name)+1).max().unwrap_or(0)
+        .min((width/3).max(8));
+    let mut out=String::new();
+    for line in lines{
+        let Some((name,value))=field_parts(line)else{continue;};
+        let indent=" ".repeat(2);
+        let label=format!("{name}:");
+        let styled=style_line(&format!("{name}: {value}"));
+        let gap=label_width.saturating_sub(display_width(&label))+2;
+        if display_width(&label)+gap+display_width(value)+2>width{
+            for part in wrap_line(line,width){out.push_str(&style_line(&part));out.push('\n');}
+            continue;
+        }
+        // Preserve diagnostic/status semantics assigned by the shared classifier.
+        let aligned=styled.replacen(&format!("{label}{RESET} "),&format!("{label}{RESET}{}"," ".repeat(gap)),1);
+        out.push_str(&indent);out.push_str(&aligned);
+        if let Some((metric,value))=percent_metric(name,value){
+            let used=2+display_width(&label)+gap+display_width(field_parts(line).unwrap().1);
+            let bar_width=width.saturating_sub(used+3).min(22);
+            if bar_width>=8{out.push_str("   ");out.push_str(&meter(metric,value,bar_width));}
+        }
+        out.push('\n');
+    }
+    out
+}
+fn table_header_band(line:&str,width:usize)->String {
+    let padded=format!("{HEADING}{line}{}"," ".repeat(width.saturating_sub(display_width(line))));
+    preserve_band(&padded,TABLE_HEADER)
+}
+fn table_body_band(line:&str,styled:&str,width:usize,index:usize)->String{
+    if index%2==0 {
+        let padded=format!("{styled}{}"," ".repeat(width.saturating_sub(display_width(line))));
+        preserve_band(&padded,TABLE_BAND)
+    } else { styled.to_owned() }
+}
+
 fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
     let mut blocks:Vec<(String,Vec<String>)>=Vec::new();
     let mut meta=Vec::new();
@@ -599,22 +679,34 @@ fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
         } else { emit(&mut out,&line); }
     }
     out.push('\n');
-    for line in summary{emit(&mut out,&line);}
+    out.push_str(&format!("{HEADING}Resultado{RESET}\n"));
+    for line in summary{
+        if let Some(status)=line.strip_prefix("Estado: "){
+            let color=status_color(status).unwrap_or(VALUE);
+            let headline=format!("{color}{status}{RESET}");
+            out.push_str(&preserve_band(&format!("  {headline}"),TABLE_HEADER));
+            out.push('\n');
+        }else{emit(&mut out,&line);}
+    }
     out.push_str(&format!("\n{HEADING}Comprobaciones{RESET}\n"));
-    for (name,rows) in blocks{
+    let label_width=blocks.iter().map(|(n,_)|display_width(n.split_once(". ").map_or(n.as_str(),|(_,t)|t))).max().unwrap_or(0).min(width/2);
+    for (index,(name,rows)) in blocks.into_iter().enumerate(){
         let name=name.split_once(". ").map_or(name.as_str(),|(_,title)|title);
         let status=rows.iter().find_map(|s|s.strip_prefix("Estado: "));
         if let Some(status)=status{
             let color=status_color(status).unwrap_or(RESET);
-            if display_width(name)+2+display_width(status)<=width{
-                out.push_str(&format!("{LABEL}{name}:{RESET} {color}{status}{RESET}\n"));
+            let gap=label_width.saturating_sub(display_width(name))+3;
+            if display_width(name)+gap+display_width(status)<=width{
+                let line=format!("{LABEL}{name}{RESET}{}{color}{status}{RESET}"," ".repeat(gap));
+                let raw=format!("{name}{}{status}"," ".repeat(gap));
+                out.push_str(&table_body_band(&raw,&line,width,index));out.push('\n');
             }else{
                 emit(&mut out,&format!("{name}:"));
                 emit(&mut out,&format!("  Estado: {status}"));
             }
         }else{emit(&mut out,name);}
         for row in rows.iter().filter(|s|!s.starts_with("Estado: ")){
-            emit(&mut out,&format!("  {row}"));
+            emit(&mut out,&format!("    {row}"));
         }
     }
     if let Some(evidence)=evidence{out.push('\n');emit(&mut out,&evidence);}
@@ -666,13 +758,37 @@ fn decorate_with_native_commands(
         });
     // The prompt already shows the command. Do not echo it in every report.
     let mut table = TableStyle::default();
+    let mut table_active=false;
+    let mut table_index=0usize;
     let mut previous_blank = true;
-    for original in stdout.split_inclusive('\n') {
-        let line = original.strip_suffix('\n').unwrap_or(original).trim_end_matches('\r');
-        if is_table_header(line) {
+    let lines:Vec<&str>=stdout.lines().collect();
+    let mut cursor=0;
+    while cursor<lines.len(){
+        let line=lines[cursor].trim_end_matches('\r');
+        cursor+=1;
+        // A run of fields becomes a component, not a series of unrelated
+        // coloured strings. Help and fixed-width tables retain their syntax.
+        if !help_document && !table_active && field_parts(line).is_some(){
+            let start=cursor-1;
+            while cursor<lines.len()&&field_parts(lines[cursor]).is_some(){cursor+=1;}
+            result.push_str(&render_field_group(&lines[start..cursor],width));
+            previous_blank=false;
+            continue;
+        }
+        if is_table_header(line) && table_columns(line).len()>=2 {
             table = TableStyle::from_header(line);
+            table_active=true;table_index=0;
+            if !help_document && display_width(line)<=width{
+                result.push_str(&table_header_band(line,width));result.push('\n');
+                previous_blank=false;
+                continue;
+            }
         } else if line.trim().is_empty() || (is_section_heading(line) && table_columns(line).len() <= 1) {
-            table = TableStyle::default();
+            table = TableStyle::default();table_active=false;
+        }
+        if !help_document && table_active && display_width(line)<=width && !is_table_header(line){
+            result.push_str(&table_body_band(line,&table.row(line),width,table_index));
+            result.push('\n');table_index+=1;previous_blank=false;continue;
         }
         if line.trim().is_empty() {
             if !previous_blank { result.push('\n'); }
@@ -917,6 +1033,8 @@ impl LiveScreen {
         self.line += 1;
 
         let mut table = TableStyle::default();
+        let mut table_active=false;
+        let mut index=0;
         for line in body.trim_end_matches('\n').split('\n') {
             if line.is_empty() && body.trim().is_empty() { break; }
             self.text.push_str("  ");
@@ -924,9 +1042,13 @@ impl LiveScreen {
                 self.text.push_str(line);
             } else if is_table_header(line) {
                 table = TableStyle::from_header(line);
-                self.text.push_str(&Role::Label.paint(line));
+                table_active=true;index=0;
+                self.text.push_str(&table_header_band(line,display_width(line)));
             } else {
-                self.text.push_str(&table.row(line));
+                if line.trim().is_empty(){table_active=false;table=TableStyle::default();}
+                let styled=table.row(line);
+                if table_active{self.text.push_str(&table_body_band(line,&styled,display_width(line),index));index+=1;}
+                else{self.text.push_str(&styled);}
             }
             self.text.push('\n');
             self.line += 1;
@@ -1061,5 +1183,32 @@ mod formatter_contract_tests {
         for role in [Role::Title,Role::Label,Role::Success,Role::Warning,Role::Optimal]{
             assert_eq!(Role::from_rgb(role.style().rgb),Some(role));
         }
+    }
+}
+
+#[cfg(test)]
+mod component_layout_tests{
+    use super::*;
+    #[test]
+    fn independent_commands_share_field_and_meter_layout(){
+        let data="RECURSOS\nCPU: 65%\nRAM: 81%\nNombre: equipo\n";
+        for root in ["inventario","diagnostico-nuevo"] {
+            let out=Formatter::result(root,data,"",92,&[root.into()],OutputMode::Interactive).stdout;
+            assert!(out.contains(METER_TRACK));
+            assert!(out.contains(&background(METER_BAD_RGB)));
+            assert!(out.contains(&background(METER_WARN_RGB)));
+            assert!(out.contains("65%")&&out.contains("81%")&&out.contains("equipo"));
+            assert_eq!(Formatter::result(root,data,"",92,&[],OutputMode::Machine).stdout,data);
+        }
+        assert!(percent_metric("RAM","81 MiB").is_none());
+        assert!(percent_metric("CPU","120%").is_none());
+    }
+    #[test]
+    fn tables_have_actual_backgrounds_and_preserve_statuses(){
+        let raw="PID     ESTADO    CPU%\n431     ACTIVO    65\n432     ACTIVO    12\n";
+        let out=Formatter::result("inventario",raw,"",85,&["inventario".into()],OutputMode::Interactive).stdout;
+        assert!(out.contains(TABLE_HEADER)&&out.contains(TABLE_BAND));
+        assert!(out.contains(GOOD)&&out.contains(BAD));
+        assert!(out.contains("431")&&out.contains("432"));
     }
 }

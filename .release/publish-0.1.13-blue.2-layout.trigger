@@ -1,0 +1,1 @@
+Publish the formatter component layout revision.

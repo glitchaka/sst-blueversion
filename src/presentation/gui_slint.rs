@@ -1431,11 +1431,12 @@ impl TerminalModel {
                             self.glyphs.insert(key, Glyph { metrics, alpha });
                         }
                         if let Some(glyph) = self.glyphs.get(&key) {
+                            let centered=if role.is_some(){pen_x+((cell_width*wide-glyph.metrics.advance_width).max(0.0)*0.5).round() as i32}else{pen_x};
                             draw_glyph(
                                 pixels,
                                 width,
                                 height,
-                                pen_x,
+                                centered,
                                 baseline,
                                 glyph,
                                 fg,
@@ -1445,7 +1446,7 @@ impl TerminalModel {
                                     pixels,
                                     width,
                                     height,
-                                    pen_x + self.scale.max(1.0).round() as i32,
+                                    centered + self.scale.max(1.0).round() as i32,
                                     baseline,
                                     glyph,
                                     fg,
