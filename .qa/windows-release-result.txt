@@ -1,13 +1,13 @@
 SST Windows release CI report
-Source commit: afa72bd400ad05932d1d9a12adbf705215ad5d77
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45639051419
-Recorded UTC: 2026-11-25 14:59:45Z
+Source commit: 5410c801685222c65f0891da399037c807ab4d69
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45640291912
+Recorded UTC: 2026-11-25 15:11:12Z
 Compile: success
 Rust tests: success
-Software GUI startup: skipped
-Packaging: skipped
+Software GUI startup: success
+Packaging: success
 Compiler log tail:
-  Downloaded zerocopy-derive v0.8.65
+  Downloaded zerocopy v0.8.65
   Downloaded zlib-rs v0.6.9
    Compiling zerocopy v0.8.65
    Compiling crc32fast v1.5.6
@@ -18,57 +18,57 @@ Compiler log tail:
    Compiling cipher v0.4.4
    Compiling toml_edit v0.25.21+spec-1.1.0
    Compiling vtable-macro v0.5.1
-   Compiling vtable v0.5.1
    Compiling proc-macro-crate v3.5.0
-   Compiling cmake v0.1.58
    Compiling flate2 v1.1.11
-   Compiling cfg-if v1.0.5
-   Compiling version-compare v0.1.1
-   Compiling num_enum_derive v0.7.6
-   Compiling sdl2-sys v0.38.1
+   Compiling vtable v0.5.1
    Compiling png v0.18.1
    Compiling usvg v0.48.1
-   Compiling num_enum v0.7.6
+   Compiling cmake v0.1.58
+   Compiling cfg-if v1.0.5
+   Compiling version-compare v0.1.1
+   Compiling sdl2-sys v0.38.1
    Compiling tiny-skia v0.12.0
+   Compiling num_enum_derive v0.7.6
+   Compiling resvg v0.48.1
    Compiling half v2.7.1
    Compiling tiff v0.11.3
    Compiling image v0.25.10
-   Compiling resvg v0.48.1
    Compiling ppv-lite86 v0.2.21
    Compiling i-slint-common v1.18.1
-   Compiling i-slint-core v1.18.1
-   Compiling arboard v3.7.0
+   Compiling num_enum v0.7.6
    Compiling constant_time_eq v0.6.2
    Compiling curve25519-dalek v4.1.3
    Compiling filetime v0.2.30
+   Compiling i-slint-core v1.18.1
+   Compiling arboard v3.7.0
    Compiling i-slint-compiler v1.18.1
    Compiling i-slint-renderer-software v1.18.1
    Compiling i-slint-backend-winit v1.18.1
    Compiling rand_chacha v0.9.0
    Compiling rand_chacha v0.3.1
    Compiling mio v1.2.5
-   Compiling sdl2 v0.38.1
    Compiling bumpalo v3.20.4
+   Compiling sdl2 v0.38.1
    Compiling litrs v1.1.0
-   Compiling document-features v0.2.12
    Compiling zopfli v0.8.4
+   Compiling document-features v0.2.12
    Compiling tokio v1.54.1
    Compiling i-slint-backend-selector v1.18.1
-   Compiling sst v0.1.12-blue.3 (D:\a\sst-blueversion\sst-blueversion)
    Compiling rand v0.8.8
    Compiling rand v0.9.5
+   Compiling sst v0.1.12-blue.4 (D:\a\sst-blueversion\sst-blueversion)
    Compiling slint-macros v1.18.1
-   Compiling cbc v0.1.2
+   Compiling chacha20 v0.9.1
    Compiling aes v0.8.4
    Compiling des v0.8.1
    Compiling cfb-mode v0.8.2
-   Compiling chacha20 v0.9.1
+   Compiling cbc v0.1.2
    Compiling zip v9.8.2
-   Compiling chacha20poly1305 v0.10.1
    Compiling ferrisetw v1.2.0
+   Compiling chacha20poly1305 v0.10.1
    Compiling snmp2 v0.5.3
    Compiling slint v1.18.1
    Compiling crossterm v0.29.0
    Compiling tar v0.4.46
    Compiling x25519-dalek v2.0.1
-    Finished `release` profile [optimized] target(s) in 3m 46s
+    Finished `release` profile [optimized] target(s) in 5m 56s
