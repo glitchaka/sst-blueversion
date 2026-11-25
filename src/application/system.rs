@@ -17,6 +17,8 @@ use crate::application::keygen_audio::VisualBeat;
 
 #[path = "keygen_mesh.rs"]
 mod keygen_mesh;
+#[path = "keygen_demo.rs"]
+mod keygen_demo;
 
 pub(crate) const SST_TERMINAL_FONT_BYTES: &[u8] = include_bytes!(concat!(
     env!("OUT_DIR"), "/JetBrainsMonoNerdFontMono-Regular.ttf"
@@ -1425,7 +1427,7 @@ fn keygen_scene(physics:&mut KeygenPhysics,beat:VisualBeat,facts:&[String],
             });
         }
     }
-    let mut text_line=|text:&str,y:f32,size:f32,animated:bool,row:usize|{
+    let text_line=|sprites:&mut Vec<KeygenSprite>,text:&str,y:f32,size:f32,animated:bool,row:usize|{
         let chars:Vec<char>=text.chars().take(100).collect();
         let spacing=size*0.60;
         let start=if animated {576.0-(chars.len().saturating_sub(1) as f32)*spacing*0.5}else{12.0};
@@ -1443,10 +1445,15 @@ fn keygen_scene(physics:&mut KeygenPhysics,beat:VisualBeat,facts:&[String],
         }
     };
     for (i,fact) in facts.iter().enumerate(){
-        text_line(fact,278.0+i as f32*21.0,19.0,true,i);
+        let col=i/6;let row=i%6;
+        let size=(500.0/(fact.chars().count().clamp(1,100) as f32*0.60)).min(19.0);
+        let first=sprites.len();
+        text_line(&mut sprites,fact,460.0+row as f32*26.0,size,true,i);
+        let shift=if col==0{-278.0}else{278.0};
+        for sprite in &mut sprites[first..]{sprite.x+=shift;}
     }
     let state=if paused{"PAUSA"}else{"PLAY"};
-    text_line(&format!("[MP3 {track}/2]  {state}   1/2: pista   Espacio: pausa   ESC/Q: salir"),
+    text_line(&mut sprites,&format!("[MP3 {track}/2]  {state}   1/2: pista   Espacio: pausa   ESC/Q: salir"),
         650.0,16.0,false,0);
     sprites
 }
@@ -1518,8 +1525,8 @@ fn keygen_motion_traces<T:sdl2::render::RenderTarget>(
             let strength=(i+1) as f32/7.0;
             let alpha=(18.0+strength*86.0+beat.pulse*22.0) as u8;
             canvas.set_draw_color(Color::RGBA(r,g,b,alpha));
-            canvas.draw_line(Point::new(a[0] as i32,a[1] as i32),
-                Point::new(bpt[0] as i32,bpt[1] as i32)).map_err(anyhow::Error::msg)?;
+            canvas.draw_line(Point::new(a[0] as i32,(30.0+a[1]*1.42) as i32),
+                Point::new(bpt[0] as i32,(30.0+bpt[1]*1.42) as i32)).map_err(anyhow::Error::msg)?;
         }
     }
     Ok(())
@@ -1581,6 +1588,7 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
     let mut physics=KeygenPhysics::default();
     let mut glyph_cache=HashMap::<(char,u32),(fontdue::Metrics,Vec<u8>)>::new();
     let mut mesh_vertices=Vec::with_capacity(16384);
+    let mut stage=keygen_demo::Stage::default();
     let mut last=Instant::now();
     let mut metrics_at=Instant::now();
     let mut audio_at=Instant::now();
@@ -1638,6 +1646,7 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
         let mut sprites=keygen_scene(&mut physics,beat,&facts,music.is_paused(),music.track_number());
         sprites.sort_by(|a,b|a.z.total_cmp(&b.z));
         keygen_backdrop(&mut renderer);
+        stage.draw(&mut renderer,beat,physics.cue,physics.cue_time)?;
         keygen_motion_traces(&mut renderer,&physics,beat)?;
         mesh_vertices.clear();
         use sdl2::render::VertexIndices;
@@ -1646,12 +1655,27 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
             if let std::collections::hash_map::Entry::Vacant(entry)=mesh_cache.entry(sprite.glyph){
                 entry.insert(keygen_mesh::GlyphMesh::from_font(&display_face,sprite.glyph)?);
             }
-            mesh_cache[&sprite.glyph].append_vertices(&mut mesh_vertices,sprite.size,
-                sprite.color,keygen_projector(sprite));
+            let mut placed=*sprite;
+            placed.y=30.0+placed.y*1.42;
+            mesh_cache[&sprite.glyph].append_vertices(&mut mesh_vertices,placed.size,
+                placed.color,keygen_projector(&placed));
         }
         if !mesh_vertices.is_empty(){
             renderer.render_geometry(&mesh_vertices,None,VertexIndices::Sequential).map_err(anyhow::Error::msg)?;
         }
+        mesh_vertices.clear();
+        // A restrained solid SST signature anchors the changing stage.
+        for (i,glyph) in "SST".chars().enumerate(){
+            let sprite=KeygenSprite{glyph,x:576.0+(i as f32-1.0)*95.0,
+                y:212.0,z:24.0+beat.pulse*12.0,rx:0.10*(beat.seconds*0.9).sin(),
+                ry:0.16*(beat.seconds*0.72).sin(),rz:0.0,size:142.0,
+                color:(202+(beat.pulse*32.0) as u8,213,220),depth:2};
+            if let std::collections::hash_map::Entry::Vacant(entry)=mesh_cache.entry(glyph){
+                entry.insert(keygen_mesh::GlyphMesh::from_font(&display_face,glyph)?);
+            }
+            mesh_cache[&glyph].append_vertices(&mut mesh_vertices,sprite.size,sprite.color,keygen_projector(&sprite));
+        }
+        renderer.render_geometry(&mesh_vertices,None,VertexIndices::Sequential).map_err(anyhow::Error::msg)?;
         renderer.present();
         // SDL renders directly into a CPU surface. Copy it once into the
         // thread-safe Slint buffer, avoiding read_pixels plus a second GUI copy.

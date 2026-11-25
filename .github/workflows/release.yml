@@ -13,6 +13,10 @@ on:
         type: boolean
         default: true
 
+concurrency:
+  group: sst-blue-publication
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -253,6 +257,13 @@ jobs:
           name: SST-${{ steps.version.outputs.version }}
           path: dist/*
           if-no-files-found: error
+
+      - name: Verify latest application revision before publication
+        shell: pwsh
+        run: |
+          git fetch origin main
+          git diff --quiet $env:GITHUB_SHA origin/main -- src Cargo.toml Cargo.lock assets scripts
+          if ($LASTEXITCODE -ne 0) { throw 'La revisión compilada ya no coincide con el código actual de main. No publicar un ejecutable obsoleto.' }
 
       - name: Publish source GitHub Release (public backup for updater)
         if: ${{ github.event_name == 'push' || inputs.publish_release }}
