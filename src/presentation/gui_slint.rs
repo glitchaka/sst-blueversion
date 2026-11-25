@@ -382,17 +382,6 @@ slint::slint! {
                 image-fit: fill;
             }
 
-            if root.keygen-visible : Rectangle {
-                width: 100%;
-                height: 100%;
-                background: #0c0c0c;
-                Image {
-                    width: 100%;
-                    height: 100%;
-                    source: root.keygen-image;
-                    image-fit: contain;
-                }
-            }
             // Ordinary SST help and reports receive the same genuine native
             // section accents. No box characters enter the command stream.
             ReportHeadingBand {
@@ -477,6 +466,17 @@ slint::slint! {
                 height: (root.monitor-d-rows * root.monitor-line-height) * 1px;
             }
 
+            if root.keygen-visible : Rectangle {
+                width: 100%;
+                height: 100%;
+                background: #0c0c0c;
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.keygen-image;
+                    image-fit: contain;
+                }
+            }
         terminal-focus := FocusScope {
             x: 0;
             y: 0;
@@ -551,7 +551,7 @@ slint::slint! {
         // This graphic occupies lines reserved by the command *inside* SST.
         // It is not a floating modal/card and does not obstruct other output.
         InlineTransferBar {
-            visible: root.transfer-visible;
+            visible: root.transfer-visible && !root.keygen-visible;
             x: root.transfer-x * 1px;
             y: root.transfer-y * 1px;
             width: min(585px, root.width - root.transfer-x * 1px - 18px);
