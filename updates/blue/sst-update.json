@@ -1,25 +1,25 @@
 {
   "schema": 1,
-  "version": "0.1.12-blue.7",
+  "version": "0.1.12-blue.8",
   "channel": "blue",
-  "published_at": "2026-11-25T16:46:13.4734155+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.7/sst.exe",
-  "sha256": "bee66d713435c043dd57330b2d821661eeffaf030f6774a45c5fa8e3a0c89210",
-  "size": 61591552,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.7/sst-updater.exe",
-  "updater_sha256": "61b349f98f454fd882bf167a4262765c73eb0fd8834a138da7e02c2628ae0df3",
+  "published_at": "2026-11-25T16:50:23.9771731+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.8/sst.exe",
+  "sha256": "37d968e9790c000200da7d3bef3b694c8b5e47571490683f4c5d5a656dd39a09",
+  "size": 61573120,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.8/sst-updater.exe",
+  "updater_sha256": "84bbd0598231b8ac3caf8fb4140287c78156b6a8b01abfd32408b2b3be83c204",
   "updater_size": 433664,
   "changes": [
-    "Keygen: letras sólidas a partir del contorno TrueType original de Garamond regular o Consolas regular, sin fuentes gruesas ni capas de textura.",
-    "Caras planas y paredes de profundidad uniforme, conservando huecos y proporciones de la tipografía. SDL2 sigue integrado dentro de SST.",
-    "Conserva los cambios de blue.6 en Neofetch, unban y el actualizador. No se modifica el audio."
+    "Keygen utiliza exclusivamente JetBrainsMono Nerd Font Mono Regular, el mismo archivo tipográfico integrado en la consola.",
+    "Recupera la composición compacta y centrada del 23 de noviembre: títulos ondulantes en 3D, datos con color animado y fondo original de SST.",
+    "Conserva la geometría sólida de profundidad uniforme y el cambio de modo integrado. Sin cambios de audio, sin barras raster ni marquesina añadida."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.12-blue.7.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.7/SST-Setup-0.1.12-blue.7.exe",
-    "sha256": "963eb7cdb83346d66d968ec995fdbd384e8ddd12c2c41c59f357de08fadabcbc",
-    "size": 70754310,
+    "name": "SST-Setup-0.1.12-blue.8.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.8/SST-Setup-0.1.12-blue.8.exe",
+    "sha256": "0cf12ccc67fe9c1938e13a2e7a145836f22e23c2e95bbb62ef17afdf15eb6af0",
+    "size": 70735878,
     "single_use": true,
-    "package_id": "e0482432ff56117e00a4e32dd60217a9"
+    "package_id": "7add8328c0bc9d3932d646a52732bb82"
   }
 }
