@@ -1,12 +1,16 @@
-UNBAN — desbloquear usuario de Active Directory (nativo SST)
+UNBAN — desbloquear una cuenta de Active Directory (SST nativo)
 
-Uso: unban NOMBRE_DE_USUARIO
+Uso: sudo unban NOMBRE_DE_USUARIO
+También puede ejecutarse «unban NOMBRE_DE_USUARIO» si SST ya está elevado.
 
-1. No requiere sudo ni privilegios de administrador local.
-2. SST localiza un controlador de dominio escribible mediante DsGetDcNameW.
-3. Windows presenta un diálogo de credenciales enmascarado para una cuenta AD autorizada.
-4. SST abre una conexión LDAPS al puerto 636, autentica esas credenciales ante el DC y busca una única cuenta por sAMAccountName.
-5. Si el DC autoriza la operación, SST modifica solo lockoutTime=0.
-6. No guarda contraseñas ni las pasa por la línea de comandos. El diálogo reaparece para cada invocación.
+1. SST exige elevación local antes de iniciar la operación. La elevación de Windows no equivale a autorización en Active Directory.
+2. Localiza un controlador AD escribible y obtiene el nombre DNS del dominio real mediante DsGetDcNameW (sin deducirlo a partir del FQDN del controlador).
+3. Solicita dentro de la terminal integrada de SST las credenciales de una cuenta AD con derechos de desbloqueo. Acepta DOMINIO\usuario, usuario@dominio y nombres sin dominio (en este último caso usa el dominio descubierto).
+4. Abre LDAP al puerto 389 y autentica mediante SSPI Negotiate con firma y cifrado LDAP habilitados. No hace un bind LDAP simple sin protección.
+5. Tras autenticar, consulta RootDSE, localiza por sAMAccountName exactamente una cuenta y solicita únicamente la modificación lockoutTime=0.
+6. Si falla el bind, no se desbloquea ninguna cuenta; LDAP 49 es un rechazo de autenticación, no una prueba de falta de permisos de desbloqueo. Cuando el DC aporta el subcódigo diagnóstico, SST muestra la causa interpretada sin imprimir la contraseña.
+7. No admite contraseñas por argumentos. Los búferes de credenciales se limpian al finalizar el intento.
 
-Requiere conectividad LDAPS y certificado TLS válido en el controlador. SST rechaza la operación si la autenticación o los permisos fallan; no hace fallback a LDAP sin TLS ni a la identidad local.
+Requisitos: equipo Windows con acceso al DC, credenciales AD válidas, derecho delegado para modificar lockoutTime en la cuenta solicitada y soporte del controlador para autenticación Negotiate firmada y cifrada.
+
+Nota: esta guía describe el comportamiento implementado, no certifica la autenticación contra un dominio real. La verificación operativa exige ejecutar la compilación publicada contra un controlador de dominio autorizado.
