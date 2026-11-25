@@ -1,7 +1,7 @@
 //! Solid 3D glyphs from unmodified TrueType outlines.
 //! Caps are tessellated with the even-odd fill rule; every contour edge,
 //! including the holes in O, R, etc., has a real connecting side wall.
-use sdl2::{pixels::Color,rect::FPoint,render::{Canvas,RenderTarget,Vertex}};
+use sdl2::{pixels::Color,rect::FPoint,render::Vertex};
 
 type P = [f32;2];
 type Triangle = [[f32;3];3];
@@ -124,33 +124,30 @@ impl GlyphMesh {
         }
         Self{faces}
     }
-    pub(super) fn draw<T:RenderTarget>(&self,canvas:&mut Canvas<T>,size:f32,rgb:(u8,u8,u8),
-        project:impl Fn([f32;3])->(f32,f32,f32))->anyhow::Result<()> {
+    pub(super) fn append_vertices(&self,vertices:&mut Vec<Vertex>,size:f32,rgb:(u8,u8,u8),
+        project:impl Fn([f32;3])->(f32,f32,f32)){
         let mut projected:Vec<_>=self.faces.iter().map(|face|{
             let pts=face.vertices.map(|v|project(v.map(|c|c*size)));
             let depth=pts.iter().map(|p|p.2).sum::<f32>()/3.0;
             (depth,pts,face.shade)
         }).collect();
-        // Back to front; each glyph is a solid, no stacked textured copies.
-        projected.sort_by(|a,b|a.0.total_cmp(&b.0));
-        let indices:Vec<u8>=(0..240).collect();
-        let mut vertices=Vec::with_capacity(240);
+        projected.sort_unstable_by(|a,b|a.0.total_cmp(&b.0));
         for (_,pts,shade) in projected {
             let tone=|v:u8|(f32::from(v)*shade).round() as u8;
             let color=Color::RGB(tone(rgb.0),tone(rgb.1),tone(rgb.2));
-            for (x,y,_) in pts {
+            for (x,y,_) in pts{
                 vertices.push(Vertex{position:FPoint::new(x,y),color,tex_coord:FPoint::new(0.0,0.0)});
             }
-            if vertices.len()==240 {
-                canvas.render_geometry(&vertices,None,&indices[..]).map_err(anyhow::Error::msg)?;
-                vertices.clear();
-            }
         }
-        if !vertices.is_empty() {
-            canvas.render_geometry(&vertices,None,&indices[..vertices.len()]).map_err(anyhow::Error::msg)?;
-        }
-        Ok(())
     }
+    #[cfg(test)]
+    fn draw<T:sdl2::render::RenderTarget>(&self,canvas:&mut sdl2::render::Canvas<T>,size:f32,rgb:(u8,u8,u8),
+        project:impl Fn([f32;3])->(f32,f32,f32))->anyhow::Result<()>{
+        let mut vertices=Vec::new();
+        self.append_vertices(&mut vertices,size,rgb,project);
+        canvas.render_geometry(&vertices,None,sdl2::render::VertexIndices::Sequential).map_err(anyhow::Error::msg)
+    }
+
 }
 #[cfg(test)]
 mod tests {

@@ -3,6 +3,11 @@
 use std::{env, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
+use std::time::Instant;
+#[path = "keygen_rhythm.rs"]
+mod rhythm;
+pub(super) use rhythm::VisualBeat;
+use rhythm::BeatMap;
 
 pub const TRACK_NAMES: [&str; 2] = ["track01.mp3", "track02.mp3"];
 
@@ -139,6 +144,9 @@ pub struct KeygenMusic {
     index: usize,
     tracks: [PathBuf; 2],
     paused: bool,
+    beat_maps: [Option<BeatMap>;2],
+    position_ms: u64,
+    position_at: Instant,
 }
 
 impl KeygenMusic {
@@ -156,6 +164,9 @@ impl KeygenMusic {
             index: first % 2,
             tracks,
             paused: false,
+            beat_maps: [None,None],
+            position_ms:0,
+            position_at:Instant::now(),
         };
         player.start(first % 2)?;
         Ok(player)
@@ -164,6 +175,19 @@ impl KeygenMusic {
     pub fn track_number(&self) -> usize { self.index + 1 }
 
     pub fn is_paused(&self) -> bool { self.paused }
+
+    pub(super) fn visual(&self) -> VisualBeat {
+        let elapsed=if self.paused {0.0} else {self.position_at.elapsed().as_secs_f32()};
+        let seconds=self.position_ms as f32/1000.0+elapsed;
+        self.beat_maps[self.index].as_ref().map_or(VisualBeat{seconds,..VisualBeat::default()},|m|m.at(seconds))
+    }
+
+    #[cfg(windows)]
+    fn sync_position(&mut self)->Result<()> {
+        self.position_ms=mci("status SSTKeygenAudio position")?.trim().parse::<u64>()?;
+        self.position_at=Instant::now();
+        Ok(())
+    }
 
     #[cfg(windows)]
     fn close(&mut self) {
@@ -181,6 +205,10 @@ impl KeygenMusic {
         self.close();
         self.index = next % self.tracks.len();
         self.paused = false;
+        self.position_ms=0;
+        if self.beat_maps[self.index].is_none() {
+            self.beat_maps[self.index]=Some(BeatMap::read(&self.tracks[self.index])?);
+        }
         #[cfg(windows)]
         {
             let path = self.tracks[self.index]
@@ -191,10 +219,12 @@ impl KeygenMusic {
             if path.contains('"') { bail!("keygen: ruta MP3 inválida"); }
             mci(&format!("open \"{path}\" type mpegvideo alias SSTKeygenAudio"))?;
             self.open = true;
-            if let Err(error) = mci("play SSTKeygenAudio from 0") {
+            if let Err(error) = mci("set SSTKeygenAudio time format milliseconds")
+                .and_then(|_|mci("play SSTKeygenAudio from 0")) {
                 self.close();
                 return Err(error);
             }
+            self.position_at=Instant::now();
         }
         #[cfg(not(windows))]
         bail!("keygen: la reproducción de MP3 requiere Windows");
@@ -215,6 +245,7 @@ impl KeygenMusic {
                 mci("pause SSTKeygenAudio")?;
             }
             self.paused = !self.paused;
+            self.sync_position()?;
         }
         Ok(())
     }
@@ -223,8 +254,10 @@ impl KeygenMusic {
     pub fn tick(&mut self) -> Result<()> {
         if self.paused { return Ok(()); }
         #[cfg(windows)]
-        if mci("status SSTKeygenAudio mode")?.trim().eq_ignore_ascii_case("stopped") {
-            self.start((self.index + 1) % self.tracks.len())?;
+        {
+            if mci("status SSTKeygenAudio mode")?.trim().eq_ignore_ascii_case("stopped") {
+                self.start((self.index+1)%self.tracks.len())?;
+            }else{self.sync_position()?;}
         }
         Ok(())
     }

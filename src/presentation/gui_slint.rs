@@ -2210,21 +2210,6 @@ pub fn run() -> Result<()> {
                 minimized,
             );
 
-            use crate::application::system::{KEYGEN_FRAME, KeygenFrame};
-            let frame = KEYGEN_FRAME.lock().unwrap_or_else(|e| e.into_inner()).take();
-            match frame {
-                Some(KeygenFrame::Draw(pixels)) if drawable => {
-                    let buffer = SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&pixels, 1152, 672);
-                    ui.set_keygen_image(Image::from_rgba8(buffer));
-                    ui.set_keygen_visible(true);
-                }
-                Some(KeygenFrame::Closed) => {
-                    ui.set_keygen_visible(false);
-                    ui.set_keygen_image(Image::default());
-                }
-                _ => {}
-            }
-
             let reload_requested = {
                 let model = model.borrow();
                 model.session.take_config_reload_request()
@@ -2476,7 +2461,7 @@ pub fn run() -> Result<()> {
                     ui.set_transfer_visible(false);
                 }
 
-                if drawable && model.dirty {
+                if drawable && model.dirty && !ui.get_keygen_visible() {
                     ui.set_terminal_image(model.render());
                 }
 
@@ -2511,7 +2496,30 @@ pub fn run() -> Result<()> {
         });
     }
 
+    // Keygen frames are independent of the 33 ms terminal-maintenance timer.
+    // The GUI receives the latest frame at 60 Hz with no queued stale frames.
+    let keygen_timer=Timer::default();
+    let keygen_weak=ui.as_weak();
+    keygen_timer.start(TimerMode::Repeated,Duration::from_millis(16),move||{
+        let Some(ui)=keygen_weak.upgrade() else{return;};
+        use crate::application::system::{KEYGEN_FRAME,KeygenFrame};
+        let frame=KEYGEN_FRAME.lock().unwrap_or_else(|e|e.into_inner()).take();
+        match frame{
+            Some(KeygenFrame::Draw(buffer))=>{
+                if !slint_hwnd(&ui).is_some_and(|hwnd|unsafe{IsIconic(hwnd)!=0}){
+                    ui.set_keygen_image(Image::from_rgba8(buffer));
+                    if !ui.get_keygen_visible(){ui.set_keygen_visible(true);}
+                }
+            }
+            Some(KeygenFrame::Closed)=>{
+                ui.set_keygen_visible(false);
+                ui.set_keygen_image(Image::default());
+            }
+            None=>{}
+        }
+    });
     slint::run_event_loop()?;
+    keygen_timer.stop();
     timer.stop();
     let _ = ui.hide();
     Ok(())

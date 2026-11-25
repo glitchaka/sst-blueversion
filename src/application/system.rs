@@ -13,6 +13,7 @@ use std::{
 use std::os::windows::process::CommandExt;
 
 use sysinfo::{Disks, Pid, System};
+use crate::application::keygen_audio::VisualBeat;
 
 #[path = "keygen_mesh.rs"]
 mod keygen_mesh;
@@ -1178,10 +1179,10 @@ fn keygen_system_facts(system: &System) -> Vec<String> {
 
 /// Colors are per glyph, never one flat shade across the entire artwork.
 /// Colors are used directly by the SDL scene renderer.
-fn keygen_glyph_color(frame: u64, index: usize, row: usize) -> (u8, u8, u8) {
-    let phase = frame as f32 * 0.115 + index as f32 * 0.19 + row as f32 * 0.55;
+fn keygen_glyph_color(beat: VisualBeat, index: usize, row: usize) -> (u8, u8, u8) {
+    let phase = beat.seconds*1.6+(beat.beat_count as f32+beat.beat_phase)*0.36+index as f32*0.19+row as f32*0.55;
     let chan = |shift: f32| -> u8 {
-        (118.0 + 115.0 * (phase + shift).sin()).clamp(0.0, 255.0) as u8
+        (137.0 + 90.0 * (phase + shift).sin()+beat.pulse*27.0).clamp(45.0,255.0) as u8
     };
     (chan(0.0), chan(2.094), chan(4.188))
 }
@@ -1230,19 +1231,19 @@ struct KeygenPhysics {
 }
 
 impl KeygenPhysics {
-    fn tick(&mut self, frame: u64) {
-        // Fixed-step integration: the letters really retain positions and
-        // velocities between frames, rather than sampling a scrolling wave.
-        let dt = 1.0_f32 / 60.0;
-        for (&(line, index), body) in &mut self.bodies {
-            let period = 110 + ((index * 7 + line * 11) % 90) as u64;
-            if frame % period == (index as u64 + line as u64 * 3) % period {
-                body.vy -= 3.2 + (index % 6) as f32 * 0.43;
-                body.vx += if (index + line) % 2 == 0 { 2.1 } else { -2.1 };
-                body.vz += if index % 2 == 0 { 0.75 } else { -0.75 };
-                body.wy += if index % 2 == 0 { 0.55 } else { -0.55 };
-                body.wz += if line % 2 == 0 { 0.2 } else { -0.2 };
-            }
+    fn react(&mut self,beat:usize,strength:f32) {
+        for (&(line,index),body) in &mut self.bodies {
+            let seed=(beat+index*3+line*7)%11;
+            let power=strength.clamp(0.0,1.0);
+            body.vy-=(1.5+seed as f32*0.12)*power;
+            body.vx+=((seed as f32-5.0)*0.12)*power;
+            body.vz+=((seed as f32-5.0)*0.07)*power;
+            body.wy+=((seed as f32-5.0)*0.06)*power;
+        }
+    }
+    fn tick(&mut self) {
+        let dt=1.0_f32/60.0;
+        for body in self.bodies.values_mut() {
             // Damped springs on X/Z, gravity and restitution on Y.
             body.vx += (-0.85 * body.x - 0.5 * body.vx) * dt;
             body.vy += 6.8 * dt;
@@ -1320,44 +1321,53 @@ struct KeygenSprite {
     depth: u8,
 }
 
-fn keygen_scene(physics: &mut KeygenPhysics, frame: u64, facts: &[String],
-    paused: bool, track: usize) -> Vec<KeygenSprite> {
-    let mut sprites = Vec::new();
-    // The November 23 intro: compact centered typography, two moving
-    // headings, a single centered block of colored system information.
-    // The original terminal wallpaper remains visible underneath SDL.
-    for (line, text, y, spacing, size) in [
-        (0, "SHELL SHOCK TOOL", 112.0_f32, 24.0_f32, 35.0_f32),
-        (1, "SST  /  KEYGEN  2000", 213.0, 19.0, 27.0),
-    ] {
-        let count = text.chars().count() as f32;
-        for (index,glyph) in text.chars().enumerate() {
+/// The complete phrase leaves the left edge before its next appearance
+/// at the right edge. The off-screen gap prevents a visible teleport.
+fn keygen_scroll_x(distance:f32,count:usize,spacing:f32)->f32{
+    let width=count as f32*spacing;
+    let left=-width-64.0;
+    let period=1152.0+width+128.0;
+    let initial=(1152.0-width)*0.5;
+    left+(initial-left-distance).rem_euclid(period)
+}
+
+fn keygen_scene(physics:&mut KeygenPhysics,beat:VisualBeat,facts:&[String],
+    paused:bool,track:usize)->Vec<KeygenSprite>{
+    let mut sprites=Vec::new();
+    for (line,text,y,spacing,size) in [
+        (0,"SHELL SHOCK TOOL",112.0_f32,29.0_f32,42.0_f32),
+        (1,"SST / KEYGEN",213.0,23.0,33.0),
+    ]{
+        let count=text.chars().count();
+        // The interpolation between measured onsets is continuous. No fixed
+        // artificial BPM and no dependency on the number of rendered frames.
+        let musical=beat.beat_count as f32+beat.beat_phase;
+        let distance=beat.seconds*112.0+musical*8.0;
+        let start=keygen_scroll_x(distance+line as f32*125.0,count,spacing);
+        for (index,glyph) in text.chars().enumerate(){
             if glyph==' ' {continue;}
             let body=physics.body(line,index);
-            let time=frame as f32/60.0;
-            let phase=time*2.7-index as f32*0.57+line as f32*1.3;
-            let x=(index as f32-(count-1.0)*0.5)*spacing;
-            sprites.push(KeygenSprite {
-                glyph, x:576.0+x+body.x.tanh()*spacing*0.22,
-                y:y+phase.sin()*30.0+body.y.tanh()*14.0,
-                z:phase.cos()*20.0+body.z.tanh()*27.0,
-                rx:body.rx.tanh()*0.30+phase.cos()*0.17,
-                ry:body.ry.tanh()*0.32+phase.sin()*0.23,
-                rz:body.rz.tanh()*0.18+phase.cos()*0.13,
-                size,color:keygen_glyph_color(frame/3,index,line),depth:2,
+            let phase=musical*std::f32::consts::TAU-index as f32*0.48+line as f32*1.2;
+            let wave=phase.sin()*(13.0+beat.pulse*16.0);
+            sprites.push(KeygenSprite{
+                glyph,x:start+index as f32*spacing+body.x.tanh()*spacing*0.18,
+                y:y+wave+body.y.tanh()*12.0,
+                z:phase.cos()*15.0+body.z.tanh()*20.0,
+                rx:body.rx.tanh()*0.28+phase.cos()*0.14,
+                ry:body.ry.tanh()*0.28+phase.sin()*0.20,
+                rz:body.rz.tanh()*0.16+phase.cos()*0.10,
+                size,color:keygen_glyph_color(beat,index,line),depth:2,
             });
         }
     }
-    // Stable layout, animated foreground colors, same regular Nerd Font.
-    let mut text_line=|text:&str,y:f32,size:f32,animated:bool,row:usize| {
+    let mut text_line=|text:&str,y:f32,size:f32,animated:bool,row:usize|{
         let chars:Vec<char>=text.chars().take(100).collect();
         let spacing=size*0.60;
-        let start=if animated {576.0-(chars.len().saturating_sub(1) as f32)*spacing*0.5} else {12.0};
-        for (i,glyph) in chars.into_iter().enumerate() {
+        let start=if animated {576.0-(chars.len().saturating_sub(1) as f32)*spacing*0.5}else{12.0};
+        for (i,glyph) in chars.into_iter().enumerate(){
             if glyph==' '||glyph.is_control(){continue;}
-            let color=if animated {
-                // Preserve contrast: avoid the almost-black troughs of RGB waves.
-                let (r,g,b)=keygen_glyph_color(frame/3,i,row+2);
+            let color=if animated{
+                let (r,g,b)=keygen_glyph_color(beat,i,row+2);
                 let bright=|v:u8| 65+(f32::from(v)*0.74) as u8;
                 (bright(r),bright(g),bright(b))
             }else{(189,174,147)};
@@ -1365,7 +1375,7 @@ fn keygen_scene(physics: &mut KeygenPhysics, frame: u64, facts: &[String],
                 y,z:0.0,rx:0.0,ry:0.0,rz:0.0,size,color,depth:1});
         }
     };
-    for (i,fact) in facts.iter().enumerate() {
+    for (i,fact) in facts.iter().enumerate(){
         text_line(fact,275.0+i as f32*22.0,19.0,true,i);
     }
     let state=if paused{"PAUSA"}else{"PLAY"};
@@ -1376,27 +1386,27 @@ fn keygen_scene(physics: &mut KeygenPhysics, frame: u64, facts: &[String],
 
 /// Euler rotations are applied to each corner in 3D before perspective.
 /// The renderer receives floating-point vertices, not rounded cell positions.
-fn keygen_transform(sprite: &KeygenSprite, [x,y,z]: [f32;3]) -> (f32,f32,f32) {
-    let (sx,cx) = sprite.rx.sin_cos();
-    let (sy,cy) = sprite.ry.sin_cos();
-    let (sz,cz) = sprite.rz.sin_cos();
-    let (y,z) = (y*cx-z*sx, y*sx+z*cx);
-    let (x,z) = (x*cy+z*sy, -x*sy+z*cy);
-    let (x,y) = (x*cz-y*sz, x*sz+y*cz);
-    let scale = 620.0 / (620.0 - sprite.z - z).clamp(250.0, 1250.0);
-    (sprite.x + x*scale, sprite.y + y*scale, sprite.z+z)
+fn keygen_projector(sprite:&KeygenSprite)->impl Fn([f32;3])->(f32,f32,f32)+'_{
+    let (sx,cx)=sprite.rx.sin_cos();let (sy,cy)=sprite.ry.sin_cos();let (sz,cz)=sprite.rz.sin_cos();
+    move |[x,y,z]|{
+        let (y,z)=(y*cx-z*sx,y*sx+z*cx);
+        let (x,z)=(x*cy+z*sy,-x*sy+z*cy);
+        let (x,y)=(x*cz-y*sz,x*sz+y*cz);
+        let scale=620.0/(620.0-sprite.z-z).clamp(250.0,1250.0);
+        (sprite.x+x*scale,sprite.y+y*scale,sprite.z+z)
+    }
 }
 
-fn keygen_project(sprite: &KeygenSprite, width: f32, height: f32,
-    layer: f32) -> [(f32, f32); 4] {
-    [(-0.5,-0.5), (0.5,-0.5), (0.5,0.5), (-0.5,0.5)].map(|(u,v)| {
-        let (x,y,_) = keygen_transform(sprite,[u*width,v*height,layer]);
-        (x,y)
+fn keygen_project(sprite:&KeygenSprite,width:f32,height:f32,layer:f32)->[(f32,f32);4]{
+    let project=keygen_projector(sprite);
+    [(-0.5,-0.5),(0.5,-0.5),(0.5,0.5),(-0.5,0.5)].map(|(u,v)|{
+        let (x,y,_)=project([u*width,v*height,layer]);(x,y)
     })
 }
 
 // Only ordinary, flat status text uses a texture. The animated title uses
 // an untextured, closed solid mesh generated from the actual font outline.
+#[cfg(test)]
 fn keygen_draw_glyph<T: sdl2::render::RenderTarget>(
     canvas: &mut sdl2::render::Canvas<T>, texture: &sdl2::render::Texture<'_>,
     sprite: &KeygenSprite, width: f32, height: f32,
@@ -1421,7 +1431,7 @@ fn keygen_backdrop<T: sdl2::render::RenderTarget>(
     canvas.clear();
 }
 
-pub(crate) enum KeygenFrame { Draw(Vec<u8>), Closed }
+pub(crate) enum KeygenFrame { Draw(slint::SharedPixelBuffer<slint::Rgba8Pixel>), Closed }
 pub(crate) static KEYGEN_FRAME: std::sync::Mutex<Option<KeygenFrame>> = std::sync::Mutex::new(None);
 struct KeygenView;
 impl Drop for KeygenView {
@@ -1450,20 +1460,47 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
         .map_err(|e| anyhow::anyhow!("keygen: fuente integrada SST inválida: {e}"))?;
     let display_face = ttf_parser::Face::parse(SST_TERMINAL_FONT_BYTES,0)
         .map_err(|e| anyhow::anyhow!("keygen: contorno de la fuente SST inválido: {e:?}"))?;
-    let mut mesh_cache = HashMap::new();
-    let mut glyph_cache = HashMap::new();
-    let interrupt = io::interrupt_flag();
-    let abort = io::force_abort_flag();
-    let mut system = System::new_all();
+    let mut mesh_cache=HashMap::new();
+    let interrupt=io::interrupt_flag();
+    let abort=io::force_abort_flag();
+    let mut system=System::new_all();
     system.refresh_all();
-    let mut facts = keygen_system_facts(&system);
-    let mut physics = KeygenPhysics::default();
-    let mut frame = 0u64;
-    let mut last = Instant::now();
-    let mut metrics_at = Instant::now();
-    let mut audio_at = Instant::now();
-    let mut accumulator = 0.0_f32;
-    const STEP: f32 = 1.0/60.0;
+    let mut facts=keygen_system_facts(&system);
+    let mut physics=KeygenPhysics::default();
+    // Rasterize regular terminal text once into a single texture atlas.
+    // One geometry batch replaces hundreds of individual SDL draw calls.
+    let mut charset:Vec<char>=(' '..='~').chain(facts.iter().flat_map(|f|f.chars())).collect();
+    charset.sort_unstable();charset.dedup();
+    const ATLAS_W:u32=1024;const CELL:u32=40;
+    let per_row=ATLAS_W/CELL;
+    let atlas_h=(charset.len() as u32).div_ceil(per_row)*CELL;
+    let mut atlas=creator.create_texture_streaming(PixelFormatEnum::RGBA32,ATLAS_W,atlas_h)
+        .map_err(|e|anyhow::anyhow!("keygen: atlas SDL2: {e}"))?;
+    atlas.set_blend_mode(BlendMode::Blend);
+    let mut glyphs=HashMap::new();
+    atlas.with_lock(None,|pixels,pitch|{
+        pixels.fill(0);
+        for (i,ch) in charset.into_iter().enumerate(){
+            let (metrics,bitmap)=font.rasterize(ch,32.0);
+            let ox=(i as u32%per_row)*CELL;let oy=(i as u32/per_row)*CELL;
+            let w=(metrics.width as u32).min(CELL-2);let h=(metrics.height as u32).min(CELL-2);
+            for y in 0..h as usize{for x in 0..w as usize{
+                let at=(oy as usize+y)*pitch+(ox as usize+x)*4;
+                pixels[at..at+4].copy_from_slice(&[255,255,255,bitmap[y*metrics.width+x]]);
+            }}
+            glyphs.insert(ch,(ox,oy,w,h));
+        }
+    }).map_err(anyhow::Error::msg)?;
+    let mut flat_vertices=Vec::with_capacity(4096);
+    let mut mesh_vertices=Vec::with_capacity(16384);
+    let mut last=Instant::now();
+    let mut metrics_at=Instant::now();
+    let mut audio_at=Instant::now();
+    let mut next_frame=Instant::now();
+    let mut last_beat=(music.track_number(),0usize);
+    let mut accumulator=0.0_f32;
+    const STEP:f32=1.0/60.0;
+    const FRAME:Duration=Duration::from_nanos(16_666_667);
     'running: loop {
         if interrupt.load(std::sync::atomic::Ordering::Relaxed) ||
             abort.load(std::sync::atomic::Ordering::Relaxed) { break; }
@@ -1479,86 +1516,96 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
                 _ => {}
             }
         }
-        let elapsed = last.elapsed();
-        if elapsed < Duration::from_millis(16) {
-            std::thread::sleep(Duration::from_millis(2));
+        let now=Instant::now();
+        if now<next_frame{
+            std::thread::sleep((next_frame-now).min(Duration::from_millis(1)));
             continue;
         }
-        last = Instant::now();
-        if !music.is_paused() {
-            accumulator += elapsed.as_secs_f32().min(0.10);
-            while accumulator >= STEP {
-                frame = frame.wrapping_add(1);
-                physics.tick(frame);
-                accumulator -= STEP;
+        // Maintain absolute frame deadlines. A slow frame cannot slow music
+        // or scroll; no extra full-frame sleep after rendering.
+        next_frame=(next_frame+FRAME).max(now);
+        let elapsed=now.duration_since(last);
+        last=now;
+        if audio_at.elapsed()>=Duration::from_millis(80){
+            music.tick()?;
+            audio_at=Instant::now();
+        }
+        let beat=music.visual();
+        let beat_id=(music.track_number(),beat.beat_count);
+        if !music.is_paused(){
+            if beat_id!=last_beat{
+                if beat.beat_count>0{physics.react(beat.beat_count,beat.pulse);}
+                last_beat=beat_id;
             }
-        } else { accumulator = 0.0; }
+            accumulator+=elapsed.as_secs_f32().min(0.10);
+            while accumulator>=STEP{physics.tick();accumulator-=STEP;}
+        }else{accumulator=0.0;}
         if metrics_at.elapsed() >= Duration::from_secs(1) {
             system.refresh_cpu_all();
             system.refresh_memory();
             facts = keygen_system_facts(&system);
             metrics_at = Instant::now();
         }
-        if audio_at.elapsed() >= Duration::from_millis(250) {
-            music.tick()?;
-            audio_at = Instant::now();
-        }
-        let mut sprites = keygen_scene(&mut physics,frame,&facts,music.is_paused(),music.track_number());
-        sprites.sort_by(|a,b| a.z.total_cmp(&b.z));
+        let mut sprites=keygen_scene(&mut physics,beat,&facts,music.is_paused(),music.track_number());
+        sprites.sort_by(|a,b|a.z.total_cmp(&b.z));
         keygen_backdrop(&mut renderer);
-        for sprite in sprites {
-            if sprite.depth > 1 {
-                if let std::collections::hash_map::Entry::Vacant(entry) = mesh_cache.entry(sprite.glyph) {
+        flat_vertices.clear();mesh_vertices.clear();
+        use sdl2::{pixels::Color,rect::FPoint,render::{Vertex,VertexIndices}};
+        for sprite in sprites{
+            if sprite.x < -80.0 || sprite.x > 1232.0 {continue;}
+            if sprite.depth>1{
+                if let std::collections::hash_map::Entry::Vacant(entry)=mesh_cache.entry(sprite.glyph){
                     entry.insert(keygen_mesh::GlyphMesh::from_font(&display_face,sprite.glyph)?);
                 }
-                let mesh = &mesh_cache[&sprite.glyph];
-                mesh.draw(&mut renderer,sprite.size,sprite.color,
-                    |p| keygen_transform(&sprite,p))?;
+                mesh_cache[&sprite.glyph].append_vertices(&mut mesh_vertices,sprite.size,
+                    sprite.color,keygen_projector(&sprite));
                 continue;
             }
-            let key = sprite.glyph;
-            if let std::collections::hash_map::Entry::Vacant(entry) = glyph_cache.entry(key) {
-                // Rasterize once at high resolution. SDL scales the textured
-                // triangles and keeps the glyph alpha mask intact.
-                let (metrics, bitmap) = font.rasterize(sprite.glyph, 80.0);
-                let tw = metrics.width.max(1) as u32;
-                let th = metrics.height.max(1) as u32;
-                let mut texture = creator.create_texture_streaming(PixelFormatEnum::RGBA32,tw,th)
-                    .map_err(|e| anyhow::anyhow!("keygen: textura SDL2: {e}"))?;
-                texture.set_blend_mode(BlendMode::Blend);
-                texture.with_lock(None, |buffer,pitch| {
-                    buffer.fill(0);
-                    for y in 0..metrics.height {
-                        for x in 0..metrics.width {
-                            let off = y*pitch+x*4;
-                            buffer[off..off+4].copy_from_slice(&[255,255,255,bitmap[y*metrics.width+x]]);
-                        }
-                    }
-                }).map_err(anyhow::Error::msg)?;
-                entry.insert((texture,tw,th));
+            let Some(&(ox,oy,tw,th))=glyphs.get(&sprite.glyph).or_else(||glyphs.get(&'?')) else{continue;};
+            if tw==0||th==0{continue;}
+            let width=tw as f32*sprite.size/32.0;let height=th as f32*sprite.size/32.0;
+            let pts=keygen_project(&sprite,width,height,0.0);
+            let u0=ox as f32/ATLAS_W as f32;let u1=(ox+tw) as f32/ATLAS_W as f32;
+            let v0=oy as f32/atlas_h as f32;let v1=(oy+th) as f32/atlas_h as f32;
+            let uv=[(u0,v0),(u1,v0),(u1,v1),(u0,v1)];
+            let color=Color::RGB(sprite.color.0,sprite.color.1,sprite.color.2);
+            for i in [0usize,1,2,0,2,3]{
+                flat_vertices.push(Vertex{position:FPoint::new(pts[i].0,pts[i].1),color,
+                    tex_coord:FPoint::new(uv[i].0,uv[i].1)});
             }
-            let (texture,tw,th) = &glyph_cache[&key];
-            let width = (*tw as f32 * sprite.size / 80.0).max(1.0);
-            let height = (*th as f32 * sprite.size / 80.0).max(1.0);
-            keygen_draw_glyph(&mut renderer,texture,&sprite,width,height)?;
+        }
+        if !mesh_vertices.is_empty(){
+            renderer.render_geometry(&mesh_vertices,None,VertexIndices::Sequential).map_err(anyhow::Error::msg)?;
+        }
+        if !flat_vertices.is_empty(){
+            renderer.render_geometry(&flat_vertices,Some(&atlas),VertexIndices::Sequential).map_err(anyhow::Error::msg)?;
         }
         renderer.present();
-        let pixels = renderer.read_pixels(None, PixelFormatEnum::RGBA32).map_err(anyhow::Error::msg)?;
-        *KEYGEN_FRAME.lock().unwrap_or_else(|e| e.into_inner()) = Some(KeygenFrame::Draw(pixels));
+        // SDL renders directly into a CPU surface. Copy it once into the
+        // thread-safe Slint buffer, avoiding read_pixels plus a second GUI copy.
+        let surface=renderer.surface();
+        let buffer=if surface.pitch()==1152*4{
+            surface.with_lock(|bytes|slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(bytes,1152,672))
+        }else{
+            let pixels=renderer.read_pixels(None,PixelFormatEnum::RGBA32).map_err(anyhow::Error::msg)?;
+            slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&pixels,1152,672)
+        };
+        *KEYGEN_FRAME.lock().unwrap_or_else(|e|e.into_inner())=Some(KeygenFrame::Draw(buffer));
     }
     Ok(CommandOutput::ok(""))
 }
 
 #[cfg(test)]
 mod keygen_motion_regressions {
-    use super::{KeygenPhysics, keygen_scene, keygen_project, keygen_draw_glyph, keygen_backdrop};
+    use super::{KeygenPhysics, VisualBeat, keygen_scene, keygen_project, keygen_draw_glyph, keygen_backdrop, keygen_scroll_x};
+    fn time(frame:u64)->VisualBeat{VisualBeat{seconds:frame as f32/60.0,beat_count:(frame/30) as usize,beat_phase:(frame%30) as f32/30.0,pulse:0.5}}
 
     #[test]
     fn letters_keep_independent_finite_velocity_and_bounce_above_floor() {
         let mut physics = KeygenPhysics::default();
-        let _ = keygen_scene(&mut physics,0,&[],false,1);
+        let _ = keygen_scene(&mut physics,time(0),&[],false,1);
         for frame in 0..900 {
-            physics.tick(frame);
+            if frame%30==0{physics.react((frame/30) as usize,0.7);} physics.tick();
             for body in physics.bodies.values() {
                 assert!(body.x.is_finite() && body.y.is_finite() && body.z.is_finite());
                 assert!(body.vx.is_finite() && body.vy.is_finite() && body.vz.is_finite());
@@ -1574,9 +1621,9 @@ mod keygen_motion_regressions {
     #[test]
     fn projected_letters_have_continuous_motion_and_distinct_depth_layers() {
         let mut physics = KeygenPhysics::default();
-        let initial = keygen_scene(&mut physics,0,&[],false,1)[0];
-        for frame in 0..37 { physics.tick(frame); }
-        let next = keygen_scene(&mut physics,37,&[],false,1)[0];
+        let initial = keygen_scene(&mut physics,time(0),&[],false,1)[0];
+        for _ in 0..37 { physics.tick(); }
+        let next = keygen_scene(&mut physics,time(37),&[],false,1)[0];
         assert_ne!((initial.x,initial.y,initial.z),(next.x,next.y,next.z));
         let front = keygen_project(&next,40.0,56.0,0.0);
         let back = keygen_project(&next,40.0,56.0,-8.0);
@@ -1588,11 +1635,11 @@ mod keygen_motion_regressions {
     fn both_titles_remain_ordered_and_face_the_viewer_during_motion() {
         let mut physics = KeygenPhysics::default();
         for frame in 0..3600 {
-            physics.tick(frame);
-            let sprites = keygen_scene(&mut physics, frame, &[], false, 1);
-            for (title, center) in [("SHELLSHOCKTOOL", 112.0), ("SST/KEYGEN2000", 213.0)] {
+            if frame%30==0{physics.react((frame/30) as usize,0.7);} physics.tick();
+            let sprites = keygen_scene(&mut physics,time(frame), &[], false, 1);
+            for (title, center) in [("SHELLSHOCKTOOL", 112.0), ("SST/KEYGEN", 213.0)] {
                 let line: Vec<_> = sprites.iter()
-                    .filter(|s| s.depth > 1 && (s.y - center).abs() < 50.0).collect();
+                    .filter(|s| s.depth > 1 && (s.y - center).abs() < 45.0).collect();
                 assert_eq!(line.iter().map(|s| s.glyph).collect::<String>(), title);
                 assert!(line.windows(2).all(|pair| pair[0].x < pair[1].x));
                 for sprite in line {
@@ -1600,6 +1647,22 @@ mod keygen_motion_regressions {
                     assert!(corners[1].0 - corners[0].0 > 12.0);
                     assert!(corners[3].1 - corners[0].1 > 16.0);
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn scrolling_title_crosses_both_edges_before_wrapping(){
+        let count=16;let spacing=29.0;
+        let w=count as f32*spacing;
+        let initial=keygen_scroll_x(0.0,count,spacing);
+        assert!(initial>0.0);
+        let samples:Vec<_>=(0..2200).map(|d|keygen_scroll_x(d as f32,count,spacing)).collect();
+        assert!(samples.iter().any(|x|*x+w<0.0));
+        assert!(samples.iter().any(|x|*x>1152.0));
+        for pair in samples.windows(2){
+            if pair[1]>pair[0]+5.0{
+                assert!(pair[0]+w<0.0 && pair[1]>1152.0);
             }
         }
     }
@@ -1615,8 +1678,8 @@ mod keygen_motion_regressions {
         assert!(face.glyph_index('S').is_some());
         let mut physics=KeygenPhysics::default();
         let facts=vec!["CPU :: TEST".to_owned()];
-        let first=keygen_scene(&mut physics,0,&facts,false,1);
-        let later=keygen_scene(&mut physics,120,&facts,false,1);
+        let first=keygen_scene(&mut physics,time(0),&facts,false,1);
+        let later=keygen_scene(&mut physics,time(120),&facts,false,1);
         assert!(first.iter().zip(later).any(|(a,b)| a.depth==1 && a.color!=b.color));
     }
 
@@ -1632,7 +1695,7 @@ mod keygen_motion_regressions {
         canvas.set_draw_color(Color::RGB(0,0,0));
         canvas.clear();
         let mut physics = KeygenPhysics::default();
-        let mut sprite = keygen_scene(&mut physics,0,&[],false,1)[0];
+        let mut sprite = keygen_scene(&mut physics,time(0),&[],false,1)[0];
         sprite.x=64.0; sprite.y=64.0; sprite.z=0.0;
         sprite.color=(255,80,20);
         keygen_draw_glyph(&mut canvas,&texture,&sprite,40.0,48.0).unwrap();
