@@ -17,3 +17,7 @@ El componente feature_grid separa etiquetas, espacios de reserva y valores; util
 ## Jerarquía sin paneles indiscriminados
 
 El texto ordinario y los grupos de campos no pintan bandas ni gutters. Únicamente el título inicial y las cifras destacadas reservan filas tipográficas; sus marcadores de layout son transparentes en la ventana nativa. Las tablas de datos y las barras de métricas conservan fondos funcionales. El diagnóstico muestra primero el resultado, seguido por metadatos, mediciones y evidencia. Se conserva el fondo y la paleta de SST.
+
+## Contrato independiente del productor
+
+La selección de composición se basa exclusivamente en la estructura del texto: referencia, evaluación con conclusión, resumen con conteo explícito, informe, o texto simple. El nombre del comando y el registro de comandos no intervienen en la selección ni en la presentación. Solo el enrutamiento de transporte distingue salida de máquina y protocolos VT. Una misma salida interactiva produce el mismo diseño independientemente de su productor. Pruebas de equivalencia cubren herramientas conocidas y desconocidas.

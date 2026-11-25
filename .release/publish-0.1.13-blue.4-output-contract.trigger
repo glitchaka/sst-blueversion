@@ -1,0 +1,1 @@
+Build current output-content-only formatter.

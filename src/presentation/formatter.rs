@@ -145,17 +145,16 @@ impl Formatter {
         }
         OutputMode::Interactive
     }
-    pub fn result(command:&str,stdout:&str,stderr:&str,cols:u16,native:&[String],mode:OutputMode)->FormattedOutput{
+    pub fn result(_command:&str,stdout:&str,stderr:&str,cols:u16,_native:&[String],mode:OutputMode)->FormattedOutput{
         if mode!=OutputMode::Interactive{
             return FormattedOutput{stdout:stdout.to_owned(),stderr:stderr.to_owned()};
         }
         let width = usize::from(cols.saturating_sub(2)).clamp(18,160);
         let clean = report_text(stdout);
-        let structured = suitable(command,&clean,Some(native));
-        let text = decorate_registered_at_width(command,&clean,cols.saturating_sub(3),native);
-        let reference=help_document(command,&clean);
+        let kind=classify(&clean);
+        let text = compose_text(&clean,cols.saturating_sub(3),kind);
         FormattedOutput {
-            stdout:if reference{text}else{report_layout::render(&text,width,structured)},
+            stdout:if kind==LayoutKind::Reference{text}else{report_layout::render(&text,width,kind!=LayoutKind::Plain)},
             stderr:report_layout::render(&Self::diagnostic(stderr),width,true),
         }
     }
@@ -312,28 +311,26 @@ impl LiveReport {
     }
 }
 
-fn suitable(command: &str, stdout: &str, registered_native: Option<&[String]>) -> bool {
-    if stdout.trim().is_empty() || stdout.contains('\x1b') || stdout.contains('\0')
-        || is_machine_or_shell_command(command)
-    { return false; }
-
-    // One shared presentation path for all foreground, human-readable output.
-    // Regular unstructured shell text (echo, printf, cat, etc.) stays raw;
-    // every structured native OR external report receives semantic formatting.
-    let root = command.split_whitespace().next().unwrap_or("");
-    // File viewers and UNIX text tools must never rewrite the data they show,
-    // even when a file happens to contain words such as "Estado: ERROR".
-    if crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| *name == root) {
-        return false;
-    }
-    let native = registered_native.is_some_and(|names| names.iter().any(|name| name == root));
-    native || stdout.lines().any(|line| {
-        is_section_heading(line) || is_status_field(line)
-            || looks_like_tabular_header(line) || is_table_header(line)
-            || line.trim().split_once(": ").is_some_and(|(label, _)| {
-                !label.is_empty() && label.len() < 42
-            })
-    })
+/// Classify only the *output*. Invocation and registry information are not
+/// permitted here. They are relevant only to machine/VT transport routing.
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+enum LayoutKind { Plain, Reference, Assessment, Summary, Report }
+fn classify(text:&str)->LayoutKind{
+    if text.trim().is_empty()||text.contains(['\x1b','\0']){return LayoutKind::Plain;}
+    if help_document(text){return LayoutKind::Reference;}
+    if text.lines().any(|l|matches!(l.trim().to_uppercase().as_str(),"CONCLUSIÓN"|"CONCLUSION"))
+        && text.lines().any(|l|numbered_section(l).is_some()){return LayoutKind::Assessment;}
+    if text.lines().any(|l|l.starts_with("Conteo: "))
+        && text.lines().any(is_status_field){return LayoutKind::Summary;}
+    if text.lines().any(|l|is_section_heading(l)||is_status_field(l)||looks_like_tabular_header(l)
+        ||is_table_header(l)||field_parts(l).is_some()||report_layout::underline(l)){
+        LayoutKind::Report
+    }else{LayoutKind::Plain}
+}
+fn numbered_section(line:&str)->Option<&str>{
+    let (number,title)=line.trim().split_once(". ")?;
+    (number.chars().next().is_some_and(|c|c.is_ascii_digit())
+        && number.chars().all(|c|c.is_ascii_alphanumeric())).then_some(title)
 }
 
 fn is_status_field(line: &str) -> bool {
@@ -412,47 +409,6 @@ fn is_section_heading(line: &str) -> bool {
     }
     !text.contains(':') && text.chars().any(char::is_alphabetic)
         && !text.chars().any(char::is_lowercase)
-}
-
-// Help syntax is identified structurally, not by a hard-coded list of commands.
-// New builtins receive the same formatting without editing this renderer.
-fn style_command_row(line: &str) -> Option<String> {
-    let trimmed = line.trim_start();
-    if trimmed.is_empty() || trimmed.contains(':') || trimmed.contains('=') {
-        return None;
-    }
-    let bytes = trimmed.as_bytes();
-    let split = (1..bytes.len().saturating_sub(1))
-        .find(|&i| bytes[i] == b' ' && bytes[i + 1] == b' '
-            && bytes[..i].iter().any(|b| !b.is_ascii_whitespace()))?;
-    let syntax = trimmed[..split].trim_end();
-    let description = trimmed[split..].trim_start();
-    if syntax.is_empty() || description.is_empty() || syntax.chars().count() > 60 {
-        return None;
-    }
-    let indent = &line[..line.len() - trimmed.len()];
-    Some(format!("{indent}  {COMMAND}{syntax}{RESET}  {DETAILS}{description}{RESET}"))
-}
-
-/// Generic two-column help entries used by builtins that omit the command
-/// prefix on each line. This acts on human-facing help only, never data tables.
-fn style_help_entry(line: &str) -> Option<String> {
-    let text = line.trim_start();
-    if text.is_empty() || text.starts_with('#') || text.contains('\x1b') {
-        return None;
-    }
-    let bytes = text.as_bytes();
-    let split = (1..bytes.len().saturating_sub(1))
-        .find(|&i| bytes[i] == b' ' && bytes[i + 1] == b' ');
-    let index = split?;
-    let syntax = text[..index].trim();
-    let description = text[index..].trim();
-    if syntax.is_empty() || description.is_empty() || syntax.chars().count() > 45 {
-        return None;
-    }
-    let indent = &line[..line.len() - text.len()];
-    let padding = " ".repeat(34usize.saturating_sub(display_width(syntax)).max(2));
-    Some(format!("{indent}  {COMMAND}{syntax}{RESET}{padding}{DETAILS}{description}{RESET}"))
 }
 
 fn style_line(line: &str) -> String {
@@ -659,73 +615,58 @@ fn table_body_band(line:&str,styled:&str,width:usize,index:usize)->String{
     } else { styled.to_owned() }
 }
 
-fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
+fn compose_assessment(stdout:&str,width:usize)->Option<String>{
+    let mut source=stdout.lines().map(str::trim).filter(|l|!l.is_empty());
+    let title=source.next()?;
     let mut blocks:Vec<(String,Vec<String>)>=Vec::new();
     let mut meta=Vec::new();
-    let mut evidence=None;
-    for line in stdout.lines().map(str::trim).filter(|l|!l.is_empty()){
-        if line=="DIAGNÓSTICO DE RED"{continue;}
-        if line.starts_with("Evidencia detallada: "){evidence=Some(line.to_owned());continue;}
-        if line=="CONCLUSIÓN" || line.split_once(". ").is_some_and(|(n,_)|
-            n.chars().next().is_some_and(|c|c.is_ascii_digit())&&n.chars().all(|c|c.is_ascii_alphanumeric())){
+    for line in source{
+        if matches!(line.to_uppercase().as_str(),"CONCLUSIÓN"|"CONCLUSION") {
             blocks.push((line.to_owned(),Vec::new()));
+        }else if let Some(name)=numbered_section(line){
+            blocks.push((name.to_owned(),Vec::new()));
         }else if let Some((_,rows))=blocks.last_mut(){rows.push(line.to_owned());}
         else{meta.push(line.to_owned());}
     }
-    let conclusion=blocks.iter().position(|(name,_)|name=="CONCLUSIÓN")?;
-    let (_,summary)=blocks.remove(conclusion);
-    let mut document = Document::default();
-    document.title("Diagnóstico de red");
-    let mut out = document.render(OutputMode::Interactive);
+    let index=blocks.iter().position(|(n,_)|matches!(n.to_uppercase().as_str(),"CONCLUSIÓN"|"CONCLUSION"))?;
+    let (caption,summary)=blocks.remove(index);
+    let mut doc=Document::default();doc.title(title);
+    let mut out=doc.render(OutputMode::Interactive);
     let emit=|out:&mut String,line:&str|{for part in wrap_line(line,width){out.push_str(&style_line(&part));out.push('\n');}};
-    let mut facts=Vec::new();
-    for line in &meta {
-        if let Some((name,value))=line.split_once(": "){facts.push((name,value,VALUE));}
-        else{emit(&mut out,line);}
-    }
     out.push('\n');
     for line in summary{
-        if let Some(status)=line.strip_prefix("Estado: "){
-            let color=status_color(status).unwrap_or(VALUE);
-            out.push_str(&report_layout::feature_grid(&[("ESTADO DEL DIAGNÓSTICO",status,color)],width));
-        }else{emit(&mut out,&line);}
-    }
-    out.push('\n');
-    let mut metadata=Document::default();
-    for (name,value,_) in &facts{metadata.field(name,value);}
-    out.push_str(&metadata.render(OutputMode::Interactive));
-    let mut measurements=Vec::new();
-    for (name,rows) in &blocks{
-        for row in rows{
-            if let Some(value)=row.strip_prefix("Gateway: "){measurements.push(("GATEWAY",value,VALUE));}
-            if name.ends_with("ICMP DESTINO"){
-                if let Some(value)=row.strip_prefix("Latencia: "){measurements.push(("LATENCIA DESTINO",value,VALUE));}
+        if is_status_field(&line){
+            if let Some((_,status))=line.split_once(": "){
+                out.push_str(&report_layout::feature_grid(&[(&caption,status,status_color(status).unwrap_or(VALUE))],width));
+                continue;
             }
         }
+        emit(&mut out,&line);
     }
-    if !measurements.is_empty(){out.push('\n');out.push_str(&report_layout::feature_grid(&measurements,width));}
+    if !meta.is_empty(){out.push('\n');}
+    let mut metadata=Document::default();
+    for line in &meta{
+        if let Some((name,value))=field_parts(line){metadata.field(name,value);}
+        else{metadata.line(Role::Detail,*line);}
+    }
+    out.push_str(&metadata.render(OutputMode::Interactive));
     out.push_str(&format!("\n{HEADING}Comprobaciones{RESET}\n"));
-    let label_width=blocks.iter().map(|(n,_)|display_width(n.split_once(". ").map_or(n.as_str(),|(_,t)|t))).max().unwrap_or(0).min(width/2);
+    let label_width=blocks.iter().map(|(n,_)|display_width(n)).max().unwrap_or(0).min(width/2);
     for (name,rows) in blocks{
-        let name=name.split_once(". ").map_or(name.as_str(),|(_,title)|title);
-        let status=rows.iter().find_map(|s|s.strip_prefix("Estado: "));
+        let status=rows.iter().find(|s|is_status_field(s)).and_then(|s|s.split_once(": ").map(|(_,v)|v));
         if let Some(status)=status{
-            let color=status_color(status).unwrap_or(RESET);
-            let gap=label_width.saturating_sub(display_width(name))+3;
-            if display_width(name)+gap+display_width(status)<=width{
-                let line=format!("{LABEL}{name}{RESET}{}{color}{status}{RESET}"," ".repeat(gap));
-                out.push_str(&line);out.push('\n');
-            }else{
-                emit(&mut out,&format!("{name}:"));
-                emit(&mut out,&format!("  Estado: {status}"));
-            }
-        }else{emit(&mut out,name);}
-        for row in rows.iter().filter(|s|!s.starts_with("Estado: ")){
-            if row.starts_with("Gateway: ") || (name=="ICMP DESTINO" && row.starts_with("Latencia: ")){continue;}
+            let gap=label_width.saturating_sub(display_width(&name))+3;
+            let color=status_color(status).unwrap_or(VALUE);
+            if display_width(&name)+gap+display_width(status)<=width{
+                out.push_str(&format!("{LABEL}{name}{RESET}{}{color}{status}{RESET}\n"," ".repeat(gap)));
+            }else{emit(&mut out,&name);emit(&mut out,&format!("  Estado: {status}"));}
+        }else{emit(&mut out,&name);}
+        let mut removed_status=false;
+        for row in rows{
+            if !removed_status&&is_status_field(&row){removed_status=true;continue;}
             emit(&mut out,&format!("    {row}"));
         }
     }
-    if let Some(evidence)=evidence{out.push('\n');emit(&mut out,&evidence);}
     Some(out)
 }
 
@@ -749,17 +690,18 @@ pub fn decorate_registered_at_width(
 }
 
 
-fn help_document(command:&str,stdout:&str)->bool{
-    let root=command.split_whitespace().next().unwrap_or("");
-    command.split_whitespace().any(|p|matches!(p,"help"|"--help"|"-h"))
-        || stdout.lines().take(8).any(|line| {
-            let lower=line.trim_start().to_ascii_lowercase();
-            lower.starts_with("uso:")||lower.starts_with("usage:")
-        })
-        || (!root.is_empty()&&stdout.lines().any(|line|{
-            let trimmed=line.trim_start();
-            trimmed.strip_prefix(root).is_some_and(|rest|rest.starts_with(' ')&&style_command_row(trimmed).is_some())
-        }))
+fn help_document(stdout:&str)->bool{
+    if stdout.lines().take(10).any(|line|{
+        let lower=line.trim_start().to_ascii_lowercase();
+        lower.starts_with("uso:")||lower.starts_with("usage:")
+    }){return true;}
+    // A syntax/description pair under a heading can identify a reference
+    // even without a usage line. A tabular header rules out that inference.
+    let lines:Vec<_>=stdout.lines().collect();
+    if lines.iter().any(|l|is_table_header(l)&&table_columns(l).len()>=2){return false;}
+    lines.iter().any(|l|is_section_heading(l))&&lines.iter().any(|l|{
+        help_pair(l).is_some_and(|(syntax,_)|syntax.contains(" --")||syntax.contains('['))
+    })
 }
 fn help_pair(line:&str)->Option<(&str,&str)>{
     let line=line.trim();
@@ -771,8 +713,8 @@ fn help_pair(line:&str)->Option<(&str,&str)>{
 }
 /// Help is an indexed reference, not an inventory or a diagnosis. The
 /// descriptions of an entire document share one left edge.
-fn compact_help(command:&str,stdout:&str,width:usize)->String{
-    let root=command.split_whitespace().next().unwrap_or("");
+fn compact_help(stdout:&str,width:usize)->String{
+    let root=stdout.lines().find_map(|line|help_pair(line).and_then(|(syntax,_)|syntax.split_whitespace().next())).unwrap_or("");
     let label_width=stdout.lines().filter_map(help_pair).map(|(k,_)|display_width(k))
         .max().unwrap_or(0).min(width.saturating_sub(22)).min(40);
     let mut result=Vec::new();
@@ -811,20 +753,23 @@ fn compact_help(command:&str,stdout:&str,width:usize)->String{
 
 fn decorate_with_native_commands(
     command: &str, stdout: &str, cols: u16,
-    registered_native: Option<&[String]>,
+    _registered_native: Option<&[String]>,
 ) -> String {
-    if !suitable(command, stdout, registered_native) { return stdout.to_owned(); }
+    if Formatter::mode(command,true)!=OutputMode::Interactive || stdout.contains(['\x1b','\0']) {return stdout.to_owned();}
+    compose_text(stdout,cols,classify(stdout))
+}
+
+fn compose_text(stdout:&str,cols:u16,kind:LayoutKind)->String{
+    if kind==LayoutKind::Plain{return stdout.to_owned();}
     // Leave a small right margin so the cursor never autowraps a full row.
     let width = (cols as usize).saturating_sub(3).clamp(18, 160);
-    if stdout.lines().next().is_some_and(|l|l.starts_with("SST TRIAGE — RESUMEN PRIORIZADO")) {
-        if let Some(summary)=report_layout::triage_summary(stdout,width){return summary;}
+    match kind {
+        LayoutKind::Reference=>return compact_help(stdout,width),
+        LayoutKind::Assessment=>if let Some(summary)=compose_assessment(stdout,width){return summary;},
+        LayoutKind::Summary=>if let Some(summary)=report_layout::counted_summary(stdout,width){return summary;},
+        _=>{}
     }
-    if command.split_whitespace().take(2).eq(["notsh","test"]) {
-        if let Some(compact)=compact_network_assessment(stdout,width){return compact;}
-    }
-    let mut result = String::new();
-    let help_document=help_document(command,stdout);
-    if help_document{return compact_help(command,stdout,width);}
+    let mut result=String::new();
     // The prompt already shows the command. Do not echo it in every report.
     let mut table = TableStyle::default();
     let mut table_active=false;
@@ -846,7 +791,7 @@ fn decorate_with_native_commands(
         }
         // A run of fields becomes a component, not a series of unrelated
         // coloured strings. Help and fixed-width tables retain their syntax.
-        if !help_document && !table_active && field_parts(line).is_some(){
+        if !table_active && field_parts(line).is_some(){
             let start=cursor-1;
             while cursor<lines.len()&&field_parts(lines[cursor]).is_some(){cursor+=1;}
             let group=&lines[start..cursor];
@@ -865,7 +810,7 @@ fn decorate_with_native_commands(
         if is_table_header(line) && table_columns(line).len()>=2 {
             table = TableStyle::from_header(line);
             table_active=true;table_index=0;
-            if !help_document && display_width(line)<=width{
+            if display_width(line)<=width{
                 result.push_str(&table_header_band(line,width));result.push('\n');
                 previous_blank=false;
                 continue;
@@ -873,7 +818,7 @@ fn decorate_with_native_commands(
         } else if line.trim().is_empty() || (is_section_heading(line) && table_columns(line).len() <= 1) {
             table = TableStyle::default();table_active=false;
         }
-        if !help_document && table_active && display_width(line)<=width && !is_table_header(line){
+        if table_active && display_width(line)<=width && !is_table_header(line){
             result.push_str(&table_body_band(line,&table.row(line),width,table_index));
             result.push('\n');table_index+=1;previous_blank=false;continue;
         }
@@ -890,17 +835,9 @@ fn decorate_with_native_commands(
             vec![line.to_owned()]
         };
         for fragment in fragments {
-            let styled = if help_document && is_section_heading(&fragment) {
-                style_line(&fragment)
-            } else if help_document {
-                style_command_row(&fragment)
-                    .or_else(|| style_help_entry(&fragment))
-                    .unwrap_or_else(|| style_line(&fragment))
-            } else if is_table_header(&fragment) {
+            let styled = if is_table_header(&fragment) {
                 format!("{HEADING}{fragment}{RESET}")
-            } else {
-                table.row(&fragment)
-            };
+            } else {table.row(&fragment)};
             result.push_str(&styled);
             result.push('\n');
         }
@@ -1320,11 +1257,11 @@ mod editorial_reference_tests{
     use super::*;
     #[test]
     fn reference_help_has_aligned_descriptions_without_report_bands(){
-        let raw="sys — información\nuso: sys SUBCOMANDO\n\nInformación:\nsys info      resumen\nsys processes [NOMBRE]   procesos\n";
+        let raw="sys — información\nuso: sys SUBCOMANDO\n\nInformación:\nsys info      resumen\nsys processes [NOMBRE]   listado detallado\n";
         let out=Formatter::result("sys",raw,"",100,&["sys".into()],OutputMode::Interactive).stdout;
         let clean=report_text(&out);
         let x=|word:&str|clean.lines().find_map(|l|l.find(word)).unwrap();
-        assert_eq!(x("resumen"),x("procesos"));
+        assert_eq!(x("resumen"),x("listado detallado"));
         assert!(!out.contains("\x1b[48;"));
     }
     #[test]
@@ -1339,5 +1276,27 @@ mod editorial_reference_tests{
         let mut row=String::new();
         monitor_cells(&mut row,&[("431 ",Role::Label),("65.0",Role::Failure),(" firefox.exe",Role::Value)],80,SURFACE);
         assert!(row.contains(&format!("{BAD}65.0{VALUE} firefox.exe")));
+    }
+}
+
+#[cfg(test)]
+mod content_contract{
+    use super::*;
+    #[test]
+    fn same_text_always_has_the_same_presentation(){
+        let fixtures=[
+            "uso: herramienta [opciones]\nComandos:\nlistar    muestra datos\n",
+            "RECURSOS\nCPU: 65%\nNombre: equipo\n",
+            "INVENTARIO\nNOMBRE    ESTADO\nEquipo    ACTIVO\n",
+            "AUDITORÍA\nEstado: ALERTA\nConteo: Hallazgos: 1 · Críticos: 1\n[CRÍTICO] señal\n",
+            "REVISIÓN\n1. ENLACE\nEstado: ACTIVO\nCONCLUSIÓN\nEstado: CORRECTO\n",
+            "Operación terminada.\n",
+        ];
+        for input in fixtures{
+            let first=Formatter::result("sys",input,"",100,&["sys".into()],OutputMode::Interactive);
+            for name in ["otra-herramienta","net","plugin-desconocido","triage --help"]{
+                assert_eq!(Formatter::result(name,input,"",100,&[],OutputMode::Interactive),first);
+            }
+        }
     }
 }

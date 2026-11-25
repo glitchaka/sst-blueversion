@@ -81,14 +81,14 @@ pub(super) fn feature_grid(items:&[(&str,&str,&str)],width:usize)->String {
 
 /// Security result layout uses explicit counts supplied by the producer,
 /// never invents or extrapolates findings from the displayed subset.
-pub(super) fn triage_summary(text:&str,width:usize)->Option<String>{
+pub(super) fn counted_summary(text:&str,width:usize)->Option<String>{
     let mut lines=text.lines();
     let title=lines.next()?;
     let mut rest:Vec<_>=lines.filter(|l|!underline(l)).collect();
-    let index=rest.iter().position(|l|l.starts_with("ESTADO: "))?;
-    let state=rest.remove(index).strip_prefix("ESTADO: ")?;
+    let index=rest.iter().position(|l|is_status_field(l))?;
+    let (_,state)=rest.remove(index).split_once(": ")?;
     let (label,detail)=state.split_once(": ").unwrap_or((state,""));
-    let tone=if label=="ALERTA"{BAD}else if matches!(label,"SOSPECHA"|"REVISAR"|"RECURSOS"){CAUTION}else{VALUE};
+    let tone=status_color(label).unwrap_or(VALUE);
     let mut out=format!("{HEADING}{title}{RESET}\n");
     out.push_str(&feature_grid(&[("RESULTADO",label,tone)],width));
     if !detail.is_empty(){for line in wrap_line(detail,width){out.push_str(&Role::Detail.paint(&line));out.push('\n');}}
