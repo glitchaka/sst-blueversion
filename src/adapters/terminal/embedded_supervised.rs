@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::Result;
 
-use super::embedded_inner;
+use super::{embedded_inner,io::DisplayPacket};
 
 const TERMINAL_ERROR_MARKER: &[u8] = b"Error de terminal:";
 const LEGACY_BANNER_MARKER: &[u8] = b"Escribe help para ver los comandos.";
@@ -35,7 +35,7 @@ enum StartupRelayState {
 /// settle period.
 pub struct EmbeddedSession {
     inner: embedded_inner::EmbeddedSession,
-    pub output: mpsc::Receiver<Vec<u8>>,
+    pub output: mpsc::Receiver<DisplayPacket>,
     worker_failed: Arc<AtomicBool>,
     exit_seen_at: Mutex<Option<Instant>>,
     startup_ready: Arc<AtomicBool>,
@@ -82,7 +82,7 @@ impl EmbeddedSession {
             let mut startup = StartupRelayState::WaitingForFetch;
 
             for data in source {
-                if contains_bytes(&data, TERMINAL_ERROR_MARKER) {
+                if matches!(&data,DisplayPacket::Bytes(_)) && contains_bytes(data.bytes(), TERMINAL_ERROR_MARKER) {
                     relay_failed.store(true, Ordering::SeqCst);
                     if relay_tx.send(data).is_err() {
                         break;
@@ -94,7 +94,7 @@ impl EmbeddedSession {
                     StartupRelayState::WaitingForFetch => {
                         // Ignore any startup-file chatter and the legacy banner.
                         // The first visible content in the GUI must be neofetch.
-                        if contains_bytes(&data, LEGACY_BANNER_MARKER) {
+                        if contains_bytes(data.bytes(), LEGACY_BANNER_MARKER) {
                             startup = StartupRelayState::FetchVisible;
                         }
                     }
@@ -102,7 +102,7 @@ impl EmbeddedSession {
                         // The first preload progress record marks the end of the
                         // neofetch block. From here until render_startup(), preload
                         // diagnostics stay internal instead of scrolling the GUI.
-                        if contains_bytes(&data, SECURITY_PRELOAD_MARKER) {
+                        if contains_bytes(data.bytes(), SECURITY_PRELOAD_MARKER) {
                             startup = StartupRelayState::SecurityHidden;
                             continue;
                         }
@@ -112,8 +112,8 @@ impl EmbeddedSession {
                         }
                     }
                     StartupRelayState::SecurityHidden => {
-                        if contains_bytes(&data, STARTUP_GREETING_MARKER.as_bytes()) {
-                            if relay_tx.send(STARTUP_FOOTER.as_bytes().to_vec()).is_err() {
+                        if contains_bytes(data.bytes(), STARTUP_GREETING_MARKER.as_bytes()) {
+                            if relay_tx.send(DisplayPacket::Bytes(STARTUP_FOOTER.as_bytes().to_vec())).is_err() {
                                 break;
                             }
 

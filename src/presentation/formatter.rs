@@ -163,6 +163,27 @@ impl Formatter {
             stderr:report_layout::render(&Self::diagnostic(stderr),width,true),
         }
     }
+    /// Only completed human-readable output can acquire a reading anchor.
+    /// Streams, raw screen applications and machine bytes retain VT behavior.
+    pub fn readable_result(result:&FormattedOutput,mode:OutputMode)->bool{
+        mode==OutputMode::Interactive
+            && (!result.stdout.trim().is_empty()||!result.stderr.trim().is_empty())
+            && [&result.stdout,&result.stderr].iter().all(|s|{
+                let clean=report_text(s);
+                !clean.contains(['\x1b','\0','\u{8}']) && !clean.replace("\r\n","\n").contains('\r')
+            })
+    }
+    /// Estimate row advances only when the finite VT history is saturated.
+    /// Normally the actual scrollback growth determines the viewport anchor.
+    pub fn visual_row_advances(bytes:&[u8],cols:u16)->usize{
+        let raw=String::from_utf8_lossy(bytes);
+        let clean=report_text(&raw);
+        let cols=usize::from(cols.max(1));
+        clean.split_inclusive('\n').map(|line|{
+            let body=line.trim_end_matches(['\r','\n']);
+            display_width(body).saturating_sub(1)/cols+usize::from(line.ends_with('\n'))
+        }).sum()
+    }
     pub fn diagnostic(text:&str)->String{
         let clean = report_text(text);
         let text = clean.as_ref();
@@ -668,7 +689,7 @@ fn compose_assessment(stdout:&str,width:usize)->Option<String>{
     let mut metadata=Document::default();
     for line in &meta{
         if let Some((name,value))=field_parts(line){metadata.field(name,value);}
-        else{metadata.line(Role::Detail,*line);}
+        else{metadata.line(Role::Detail,line.as_str());}
     }
     out.push_str(&metadata.render(OutputMode::Interactive));
     out.push_str(&format!("\n{HEADING}Comprobaciones{RESET}\n"));
@@ -741,10 +762,14 @@ fn compact_help(stdout:&str,width:usize)->String{
     let label_width=stdout.lines().filter_map(help_pair).map(|(k,_)|display_width(k))
         .max().unwrap_or(0).min(width.saturating_sub(22)).min(40);
     let mut result=Vec::new();
+    let mut first_content=true;
     for line in stdout.lines(){
         let trimmed=line.trim();
         if trimmed.is_empty(){
             if result.last().is_some_and(|l:&String|!l.is_empty()){result.push(String::new());}
+        }else if first_content && (trimmed.contains(" — ") || trimmed.contains(" – "))
+            && display_width(trimmed)<=width {
+            result.push(Role::Title.paint(trimmed));
         }else if let Some((key,value))=trimmed.split_once(": ")
             && matches!(key.to_ascii_lowercase().as_str(),"uso"|"usage"|"ejemplo"|"example"|"ejemplos"|"examples")
         {
@@ -768,6 +793,7 @@ fn compact_help(stdout:&str,width:usize)->String{
         }else{
             for part in wrap_line(trimmed,width){result.push(Role::Detail.paint(&part));}
         }
+        if !trimmed.is_empty(){first_content=false;}
     }
     while result.last().is_some_and(String::is_empty){result.pop();}
     if result.is_empty(){String::new()}else{result.join("\n")+"\n"}

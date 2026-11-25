@@ -4,8 +4,47 @@ use anyhow::Result;
 use crossterm::{event::Event, terminal};
 use crate::core::ports::TerminalPanel;
 
+/// Private UI transport: report boundaries cannot be forged by stdout or VT bytes.
+#[derive(Debug)]
+pub enum DisplayPacket {
+    Bytes(Vec<u8>),
+    Report(Vec<u8>),
+    ReportEnd,
+}
+impl DisplayPacket {
+    pub fn bytes(&self)->&[u8] {
+        match self {Self::Bytes(bytes)|Self::Report(bytes)=>bytes,Self::ReportEnd=>&[]}
+    }
+}
+#[derive(Clone)]
+pub struct DisplaySender(mpsc::Sender<DisplayPacket>);
+impl DisplaySender {
+    pub fn new(sender:mpsc::Sender<DisplayPacket>)->Self{Self(sender)}
+    pub fn send(&self,bytes:Vec<u8>)->std::result::Result<(),mpsc::SendError<DisplayPacket>>{
+        self.0.send(DisplayPacket::Bytes(bytes))
+    }
+    pub fn report(&self,stdout:&str,stderr:&str)->Result<()>{
+        let mut bytes=translated(stdout.as_bytes());
+        bytes.extend(translated(stderr.as_bytes()));
+        self.0.send(DisplayPacket::Report(bytes))?;
+        Ok(())
+    }
+    pub fn report_end(&self)->Result<()>{
+        self.0.send(DisplayPacket::ReportEnd)?;
+        Ok(())
+    }
+}
+fn translated(bytes:&[u8])->Vec<u8>{
+    let mut result=Vec::with_capacity(bytes.len());
+    for (index,&byte) in bytes.iter().enumerate(){
+        if byte==b'\n'&&(index==0||bytes[index-1]!=b'\r'){result.push(b'\r');}
+        result.push(byte);
+    }
+    result
+}
+
 pub struct WindowIo {
-    pub output: mpsc::Sender<Vec<u8>>,
+    pub output: DisplaySender,
     pub input: mpsc::Receiver<Event>,
     pub size: Arc<Mutex<(u16, u16)>>,
     pub panels: Arc<Mutex<Vec<TerminalPanel>>>,
@@ -16,7 +55,7 @@ pub struct WindowIo {
 }
 impl WindowIo {
     pub fn new(
-        output: mpsc::Sender<Vec<u8>>,
+        output: DisplaySender,
         input: mpsc::Receiver<Event>,
         size: Arc<Mutex<(u16,u16)>>,
         panels: Arc<Mutex<Vec<TerminalPanel>>>,
@@ -29,7 +68,7 @@ impl WindowIo {
 }
 thread_local! { static WINDOW: RefCell<Option<WindowIo>> = const { RefCell::new(None) }; }
 pub fn install(io: WindowIo) { WINDOW.with(|slot| *slot.borrow_mut() = Some(io)); }
-pub fn output_sender() -> Option<mpsc::Sender<Vec<u8>>> {
+pub fn output_sender() -> Option<DisplaySender> {
     WINDOW.with(|slot| slot.borrow().as_ref().map(|io| io.output.clone()))
 }
 
@@ -56,12 +95,7 @@ pub fn force_abort_flag() -> Arc<AtomicBool> {
 pub fn write(bytes: &[u8]) -> Result<()> {
     WINDOW.with(|slot| -> Result<()> {
         if let Some(io) = slot.borrow().as_ref() {
-            let mut translated = Vec::with_capacity(bytes.len());
-            for (index, &byte) in bytes.iter().enumerate() {
-                if byte == b'\n' && (index == 0 || bytes[index - 1] != b'\r') { translated.push(b'\r'); }
-                translated.push(byte);
-            }
-            io.output.send(translated)?;
+            io.output.send(translated(bytes))?;
         } else {
             let mut stdout = std::io::stdout().lock();
             stdout.write_all(bytes)?;

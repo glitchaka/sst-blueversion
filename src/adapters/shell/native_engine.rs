@@ -1770,7 +1770,7 @@ impl ShellCommandHost for WindowsShellHost {
 /// not a command-specific formatter for ping or any other Windows executable.
 fn relay_live_console<R: Read>(
     mut reader: R,
-    sender: mpsc::Sender<Vec<u8>>,
+    sender: crate::adapters::terminal::io::DisplaySender,
     diagnostic: bool,
     columns: u16,
 ) -> Result<()> {
@@ -1831,7 +1831,7 @@ fn relay_live_console<R: Read>(
 }
 
 fn send_async_terminal_output(
-    sender: Option<mpsc::Sender<Vec<u8>>>,
+    sender: Option<crate::adapters::terminal::io::DisplaySender>,
     bytes: &[u8],
     stderr: bool,
 ) {
@@ -1858,6 +1858,7 @@ fn send_async_terminal_output(
 #[cfg(test)]
 mod general_live_output_tests {
     use super::relay_live_console;
+    use crate::adapters::terminal::io::DisplaySender;
     use std::{io::Cursor, sync::mpsc};
 
     #[test]
@@ -1884,18 +1885,18 @@ mod general_live_output_tests {
         let worker = std::thread::spawn(move || {
             relay_live_console(
                 ControlledReader { rx: input_rx, chunk: Cursor::new(Vec::new()) },
-                output_tx, false, 80,
+                DisplaySender::new(output_tx), false, 80,
             )
         });
         input_tx.send(b"Respuesta desde 192.0.2.1: bytes=32 tiempo=1ms TTL=64\r\n".to_vec()).unwrap();
         let first = output_rx.recv_timeout(Duration::from_secs(2)).expect(
             "La primera respuesta debe llegar antes de producirse la segunda"
         );
-        assert!(String::from_utf8_lossy(&first).contains("tiempo=1ms"));
-        assert!(first.ends_with(b"\r\n"));
+        assert!(String::from_utf8_lossy(first.bytes()).contains("tiempo=1ms"));
+        assert!(first.bytes().ends_with(b"\r\n"));
         input_tx.send(b"Respuesta desde 192.0.2.1: bytes=32 tiempo=2ms TTL=64\r\n".to_vec()).unwrap();
         let second = output_rx.recv_timeout(Duration::from_secs(2)).unwrap();
-        assert!(String::from_utf8_lossy(&second).contains("tiempo=2ms"));
+        assert!(String::from_utf8_lossy(second.bytes()).contains("tiempo=2ms"));
         drop(input_tx);
         worker.join().unwrap().unwrap();
     }
@@ -1905,19 +1906,19 @@ mod general_live_output_tests {
         let text = b"Respuesta desde 192.0.2.10: bytes=32 tiempo=1ms TTL=64\n\
                      Respuesta desde 192.0.2.10: bytes=32 tiempo=2ms TTL=64\n";
         let (tx, rx) = mpsc::channel();
-        relay_live_console(Cursor::new(text.to_vec()), tx, false, 80).unwrap();
+        relay_live_console(Cursor::new(text.to_vec()), DisplaySender::new(tx), false, 80).unwrap();
         let lines = rx.into_iter().collect::<Vec<_>>();
         assert_eq!(lines.len(), 2);
-        assert!(String::from_utf8_lossy(&lines[0]).contains("tiempo=1ms"));
-        assert!(String::from_utf8_lossy(&lines[1]).contains("tiempo=2ms"));
-        assert!(lines.iter().all(|line| line.ends_with(b"\r\n")));
+        assert!(String::from_utf8_lossy(lines[0].bytes()).contains("tiempo=1ms"));
+        assert!(String::from_utf8_lossy(lines[1].bytes()).contains("tiempo=2ms"));
+        assert!(lines.iter().all(|line| line.bytes().ends_with(b"\r\n")));
     }
 
     #[test]
     fn windows_progress_carriage_returns_and_non_utf8_data_survive() {
         let (tx, rx) = mpsc::channel();
-        relay_live_console(Cursor::new(b"50%\r100%\r\n\xff\n".to_vec()), tx, false, 80).unwrap();
-        let data = rx.into_iter().flatten().collect::<Vec<_>>();
+        relay_live_console(Cursor::new(b"50%\r100%\r\n\xff\n".to_vec()), DisplaySender::new(tx), false, 80).unwrap();
+        let data = rx.into_iter().flat_map(|packet|packet.bytes().to_vec()).collect::<Vec<_>>();
         assert!(data.windows(4).any(|w| w == b"50%\r"));
         assert!(data.windows(5).any(|w| w == b"100%\r"));
         assert!(data.contains(&0xff));

@@ -2,7 +2,7 @@
 use std::{collections::HashMap, fs, path::PathBuf, sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}, mpsc}, thread, time::{Duration, Instant}};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use super::io::{self, WindowIo};
+use super::io::{self, WindowIo, DisplayPacket, DisplaySender};
 use crate::core::ports::TerminalPanel;
 
 enum WorkerRequest {
@@ -25,8 +25,8 @@ enum WorkerRequest {
 }
 
 pub struct EmbeddedSession {
-    commands: mpsc::Sender<WorkerRequest>, keys: mpsc::Sender<Event>, display: mpsc::Sender<Vec<u8>>,
-    pub output: mpsc::Receiver<Vec<u8>>,
+    commands: mpsc::Sender<WorkerRequest>, keys: mpsc::Sender<Event>, display: DisplaySender,
+    pub output: mpsc::Receiver<DisplayPacket>,
     size: Arc<Mutex<(u16,u16)>>, panels: Arc<Mutex<Vec<TerminalPanel>>>, raw: Arc<AtomicBool>, busy: Arc<AtomicBool>,
     interrupt: Arc<AtomicBool>, force_abort: Arc<AtomicBool>, exited: Arc<AtomicBool>,
     config_reload_requested: Arc<AtomicBool>,
@@ -72,6 +72,8 @@ impl EmbeddedSession {
         let (commands, requests) = mpsc::channel::<WorkerRequest>();
         let (keys, key_events) = mpsc::channel();
         let (display, output) = mpsc::channel();
+        let display=DisplaySender::new(display);
+        let worker_display=display.clone();
         let size = Arc::new(Mutex::new((cols, rows)));
         let panels = Arc::new(Mutex::new(Vec::new()));
         let raw = Arc::new(AtomicBool::new(false));
@@ -163,14 +165,21 @@ impl EmbeddedSession {
                             }
                             let ps0 = engine.pre_execute_prompt()?;
                             if !ps0.is_empty() { io::write(ps0.as_bytes())?; }
+                            let mut reading_report=false;
                             match engine.execute(&command) {
                                 Ok(result) => {
                                     let width = worker_size.lock()
                                         .unwrap_or_else(|e| e.into_inner()).0;
                                     use crate::presentation::formatter::Formatter;
-                                    let output=Formatter::present(&result.stdout,&result.stderr,width,Formatter::mode(&command,true));
-                                    io::write(output.stdout.as_bytes())?;
-                                    io::write(output.stderr.as_bytes())?;
+                                    let mode=Formatter::mode(&command,true);
+                                    let output=Formatter::present(&result.stdout,&result.stderr,width,mode);
+                                    if Formatter::readable_result(&output,mode) {
+                                        worker_display.report(&output.stdout,&output.stderr)?;
+                                        reading_report=true;
+                                    }else{
+                                        io::write(output.stdout.as_bytes())?;
+                                        io::write(output.stderr.as_bytes())?;
+                                    }
                                     if result.status == 0 {
                                         let normalized = command.split_whitespace().collect::<Vec<_>>().join(" ");
                                         let bg_change =
@@ -198,6 +207,7 @@ impl EmbeddedSession {
                             io::write(prompt_stderr.as_bytes())?;
                             let prompt = bash_prompt.unwrap_or_else(|| crate::presentation::shell::prompt::render(engine.working_dir()));
                             io::write(prompt.as_bytes())?;
+                            if reading_report{worker_display.report_end()?;}
                             let (_, _, ps2) = engine.prepare_prompt(true)?;
                             *worker_secondary_prompt.lock().unwrap_or_else(|error| error.into_inner()) =
                                 ps2.unwrap_or_else(|| "> ".to_owned());

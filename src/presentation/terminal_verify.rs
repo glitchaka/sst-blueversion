@@ -15,7 +15,7 @@ pub fn verify_transport() -> Result<()> {
             bail!("El intérprete no respondió. Pantalla: {}", parser.screen().contents());
         }
         if let Ok(bytes) = pty.output.recv_timeout(Duration::from_millis(100)) {
-            parser.process(&bytes);
+            parser.process(bytes.bytes());
         }
         let contents = parser.screen().contents();
         if !sent && (contents.contains("❯") || contents.contains("$ ")) {

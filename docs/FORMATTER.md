@@ -21,3 +21,7 @@ El texto ordinario y los grupos de campos no pintan bandas ni gutters. Únicamen
 ## Contrato independiente del productor
 
 La selección de composición se basa exclusivamente en la estructura del texto: referencia, evaluación con conclusión, resumen con conteo explícito, informe, o texto simple. El nombre del comando y el registro de comandos no intervienen en la selección ni en la presentación. Solo el enrutamiento de transporte distingue salida de máquina y protocolos VT. Una misma salida interactiva produce el mismo diseño independientemente de su productor. Pruebas de equivalencia cubren herramientas conocidas y desconocidas.
+
+## Lectura del resultado en la ventana nativa
+
+Los resultados humanos completos viajan por el mismo canal ordenado con límites de presentación tipados. Si el comienzo de un resultado sale del viewport, la ventana se posiciona en ese comienzo después de imprimir el prompt; no elimina el historial. La rueda y PageUp/PageDown permiten seguir leyendo; una nueva entrada regresa al prompt. Las aplicaciones de pantalla completa, la salida incremental y los modos de máquina no adoptan esta política. El usuario que ya está desplazado conserva el control de la lectura.

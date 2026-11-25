@@ -49,7 +49,7 @@ use windows_sys::Win32::{
 
 use crate::adapters::{
     persistence::{AppPaths, AppearanceConfig},
-    terminal::embedded::EmbeddedSession,
+    terminal::{embedded::EmbeddedSession,io::DisplayPacket},
 };
 
 const INITIAL_COLS: u16 = 112;
@@ -934,9 +934,42 @@ struct Glyph {
     alpha: Vec<u8>,
 }
 
+const HISTORY_ROWS:usize=10_000;
+
+/// The parser owns scrollback; a report owns only its reading position.
+/// Keep the actual top row of a completed result, never clear the transcript.
+struct ReadingAnchor { start_row:usize, history:usize, advances:usize }
+fn history_len(parser:&mut vt100::Parser)->usize{
+    let old=parser.screen().scrollback();
+    parser.screen_mut().set_scrollback(usize::MAX);
+    let len=parser.screen().scrollback();
+    parser.screen_mut().set_scrollback(old);
+    len
+}
+impl ReadingAnchor{
+    fn begin(parser:&mut vt100::Parser)->Self{
+        Self{start_row:usize::from(parser.screen().cursor_position().0),history:history_len(parser),advances:0}
+    }
+    fn observe(&mut self,bytes:&[u8],cols:u16){
+        self.advances=self.advances.saturating_add(crate::presentation::formatter::Formatter::visual_row_advances(bytes,cols));
+    }
+    fn finish(self,parser:&mut vt100::Parser){
+        let history=history_len(parser);
+        let mut scrolled=history.saturating_sub(self.history);
+        if history>=HISTORY_ROWS{
+            let end=usize::from(parser.screen().cursor_position().0);
+            scrolled=scrolled.max(self.start_row.saturating_add(self.advances).saturating_sub(end));
+        }
+        // Short output stays where it is. Long output opens on its first row.
+        let offset=scrolled.saturating_sub(self.start_row).min(history);
+        if offset>0{parser.screen_mut().set_scrollback(offset);}
+    }
+}
+
 struct TerminalModel {
     session: EmbeddedSession,
     parser: vt100::Parser,
+    reading_anchor:Option<ReadingAnchor>,
     font: Font,
     glyphs: HashMap<(char, u16), Glyph>,
     selection: Option<(usize, usize)>,
@@ -960,7 +993,8 @@ impl TerminalModel {
 
         Ok(Self {
             session: EmbeddedSession::start(INITIAL_COLS, INITIAL_ROWS)?,
-            parser: vt100::Parser::new(INITIAL_ROWS, INITIAL_COLS, 10_000),
+            parser: vt100::Parser::new(INITIAL_ROWS, INITIAL_COLS, HISTORY_ROWS),
+            reading_anchor:None,
             font,
             glyphs: HashMap::new(),
             selection: None,
@@ -988,6 +1022,7 @@ impl TerminalModel {
     }
 
     fn input(&mut self, bytes: &[u8]) {
+        self.reading_anchor=None;
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
         self.selection_anchor = None;
@@ -997,6 +1032,7 @@ impl TerminalModel {
     }
 
     fn key_event(&mut self, code: CtKeyCode, modifiers: CtKeyModifiers) {
+        self.reading_anchor=None;
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
         self.selection_anchor = None;
@@ -1006,6 +1042,7 @@ impl TerminalModel {
     }
 
     fn paste(&mut self, text: &str) {
+        self.reading_anchor=None;
         self.parser.screen_mut().set_scrollback(0);
         self.selection = None;
         self.selection_anchor = None;
@@ -1098,6 +1135,7 @@ impl TerminalModel {
             .clamp(2, 200) as u16;
 
         if self.parser.screen().size() != (rows, cols) {
+            self.reading_anchor=None;
             self.parser.screen_mut().set_size(rows, cols);
             self.session.resize(cols, rows);
             self.selection = None;
@@ -1126,8 +1164,26 @@ impl TerminalModel {
         // The background manifest check can alert the user without pausing
         // startup or overwriting an in-progress command line.
         self.session.poll_update_notification();
-        while let Ok(data) = self.session.output.try_recv() {
-            self.parser.process(&data);
+        while let Ok(packet) = self.session.output.try_recv() {
+            match packet {
+                DisplayPacket::Report(bytes)=>{
+                    // Do not steal a view the user is already inspecting.
+                    if self.parser.screen().scrollback()==0 && !self.session.raw_mode(){
+                        self.reading_anchor=Some(ReadingAnchor::begin(&mut self.parser));
+                    }
+                    let cols=self.parser.screen().size().1;
+                    if let Some(anchor)=self.reading_anchor.as_mut(){anchor.observe(&bytes,cols);}
+                    self.parser.process(&bytes);
+                }
+                DisplayPacket::Bytes(bytes)=>{
+                    let cols=self.parser.screen().size().1;
+                    if let Some(anchor)=self.reading_anchor.as_mut(){anchor.observe(&bytes,cols);}
+                    self.parser.process(&bytes);
+                }
+                DisplayPacket::ReportEnd=>{
+                    if let Some(anchor)=self.reading_anchor.take(){anchor.finish(&mut self.parser);}
+                }
+            }
             self.dirty = true;
         }
 
@@ -1309,6 +1365,11 @@ impl TerminalModel {
             return;
         }
         let rows = (delta_y / 40.0).round() as i32;
+        self.scroll_rows(rows);
+    }
+
+    fn scroll_rows(&mut self, rows:i32){
+        self.reading_anchor=None;
         let current = self.parser.screen().scrollback() as i32;
         self.parser
             .screen_mut()
@@ -1893,9 +1954,9 @@ fn handle_key(
     } else if key_is(text, Key::Insert) {
         model.input(b"\x1b[2~");
     } else if key_is(text, Key::PageUp) {
-        model.input(b"\x1b[5~");
+        model.scroll_rows(i32::from(model.parser.screen().size().0.saturating_sub(2).max(1)));
     } else if key_is(text, Key::PageDown) {
-        model.input(b"\x1b[6~");
+        model.scroll_rows(-i32::from(model.parser.screen().size().0.saturating_sub(2).max(1)));
     } else {
         let altgr_like = ctrl && alt;
         if ctrl && !altgr_like {
@@ -2583,4 +2644,31 @@ pub fn run() -> Result<()> {
     timer.stop();
     let _ = ui.hide();
     Ok(())
+}
+
+#[cfg(test)]
+mod reading_viewport_tests{
+    use super::*;
+    #[test]
+    fn completed_report_opens_at_beginning_and_retains_prompt(){
+        let mut parser=vt100::Parser::new(8,40,HISTORY_ROWS);
+        parser.process(b"previous output\r\n$ sys\r\n");
+        let mut anchor=ReadingAnchor::begin(&mut parser);
+        let body=b"TITLE\r\nrow 1\r\nrow 2\r\nrow 3\r\nrow 4\r\nrow 5\r\nrow 6\r\nrow 7\r\nrow 8\r\n";
+        anchor.observe(body,40);parser.process(body);
+        parser.process(b"$ ");
+        anchor.finish(&mut parser);
+        assert!(parser.screen().contents().lines().next().unwrap().contains("TITLE"));
+        parser.screen_mut().set_scrollback(0);
+        assert!(parser.screen().contents().contains("$ "));
+    }
+    #[test]
+    fn compact_output_does_not_jump(){
+        let mut parser=vt100::Parser::new(8,40,HISTORY_ROWS);
+        parser.process(b"$ sys\r\n");
+        let mut anchor=ReadingAnchor::begin(&mut parser);
+        anchor.observe(b"ok\r\n",40);parser.process(b"ok\r\n$ ");
+        anchor.finish(&mut parser);
+        assert_eq!(parser.screen().scrollback(),0);
+    }
 }
