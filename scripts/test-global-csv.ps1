@@ -52,7 +52,7 @@ try {
         'notsh routes --csv > routes.csv',
         'sys info --csv > system.csv',
         'echo hola --csv > echo.csv',
-        'netprobe --help --csv > netprobe.csv',
+        'notsh test --help --csv > network-test.csv',
         'echo __CSV_REDIRECTS_DONE'
     )
     [IO.File]::WriteAllLines($redirectScript, $redirectCommands, [Text.UTF8Encoding]::new($false))
@@ -72,7 +72,7 @@ try {
     if ($null -ne $redirectErrors -and $redirectErrors -match 'no está disponible para este subcomando') {
         throw "NOTSH sigue rechazando --csv: $redirectErrors"
     }
-    foreach ($filename in @('ethernet.csv','routes.csv','system.csv','echo.csv','netprobe.csv')) {
+    foreach ($filename in @('ethernet.csv','routes.csv','system.csv','echo.csv','network-test.csv')) {
         $file = Join-Path $root $filename
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
             throw "La redirección no creó $filename."
@@ -89,7 +89,7 @@ try {
     if ((Get-Content -Raw (Join-Path $root 'echo.csv')) -notmatch 'texto,,1,linea,hola') {
         throw 'El shell builtin echo no pasó por el modificador CSV global.'
     }
-    Write-Host 'CSV universal OK: NOTSH, sys, help, whoami, echo, netprobe y redirecciones reales a disco.'
+    Write-Host 'CSV universal OK: NOTSH, sys, help, whoami, echo, notsh test y redirecciones reales a disco.'
 
 }
 catch {
