@@ -19,7 +19,6 @@ pub struct ShellSession {
     engine: Box<dyn ShellEngine>,
     history_file: PathBuf,
     running: bool,
-    native_commands: Vec<String>,
 }
 
 impl ShellSession {
@@ -30,7 +29,7 @@ impl ShellSession {
     ) -> Result<Self> {
         engine.set_interactive(true);
 
-        let mut completion_names = command_names.clone();
+        let mut completion_names = command_names;
         completion_names.extend([
             "help".to_owned(),
             "man".to_owned(),
@@ -56,7 +55,6 @@ impl ShellSession {
             engine,
             history_file,
             running: true,
-            native_commands: command_names,
         })
     }
 
@@ -114,7 +112,7 @@ impl ShellSession {
                             use crate::presentation::formatter::Formatter;
                             let interactive=std::io::stdout().is_terminal()&&std::io::stderr().is_terminal();
                             let cols=crossterm::terminal::size().map(|s|s.0).unwrap_or(100);
-                            let output=Formatter::result(&command,&result.stdout,&result.stderr,cols,&self.native_commands,Formatter::mode(&command,interactive));
+                            let output=Formatter::present(&result.stdout,&result.stderr,cols,Formatter::mode(&command,interactive));
                             print!("{}", output.stdout);
                             eprint!("{}", output.stderr);
                             if result.exit_requested {

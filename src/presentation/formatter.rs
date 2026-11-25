@@ -145,7 +145,12 @@ impl Formatter {
         }
         OutputMode::Interactive
     }
+    #[cfg(test)]
     pub fn result(_command:&str,stdout:&str,stderr:&str,cols:u16,_native:&[String],mode:OutputMode)->FormattedOutput{
+        Self::present(stdout,stderr,cols,mode)
+    }
+    /// The production presentation API accepts content, width and transport only.
+    pub fn present(stdout:&str,stderr:&str,cols:u16,mode:OutputMode)->FormattedOutput{
         if mode!=OutputMode::Interactive{
             return FormattedOutput{stdout:stdout.to_owned(),stderr:stderr.to_owned()};
         }
@@ -620,7 +625,9 @@ fn compose_assessment(stdout:&str,width:usize)->Option<String>{
     let title=source.next()?;
     let mut blocks:Vec<(String,Vec<String>)>=Vec::new();
     let mut meta=Vec::new();
+    let mut trailing=Vec::new();
     for line in source{
+        if line.starts_with("Evidencia detallada: "){trailing.push(line);continue;}
         if matches!(line.to_uppercase().as_str(),"CONCLUSIÓN"|"CONCLUSION") {
             blocks.push((line.to_owned(),Vec::new()));
         }else if let Some(name)=numbered_section(line){
@@ -667,6 +674,7 @@ fn compose_assessment(stdout:&str,width:usize)->Option<String>{
             emit(&mut out,&format!("    {row}"));
         }
     }
+    if !trailing.is_empty(){out.push('\n');for line in trailing{emit(&mut out,line);}}
     Some(out)
 }
 
@@ -680,6 +688,7 @@ pub fn decorate_at_width(command: &str, stdout: &str, cols: u16) -> String {
 /// Shared human-facing report renderer for every SST-owned built-in command,
 /// including aliases added to the registry. Only machine output and external
 /// commands remain byte-for-byte untouched.
+#[allow(dead_code)] // legacy adapter; production uses Formatter::present
 pub fn decorate_registered_at_width(
     command: &str,
     stdout: &str,
@@ -1018,6 +1027,7 @@ mod tests {
 use crate::core::ports::TerminalPanel;
 pub const ACCENT:&str=HEADING;
 pub const WARN:&str=CAUTION;
+#[allow(dead_code)] // compatibility for legacy monitor adapters
 pub const CONTENT:&str=DETAILS;
 /// Style a whole terminal row, including empty cells. This ensures the
 /// alternate-screen TUI has readable contrast independently of the wallpaper.

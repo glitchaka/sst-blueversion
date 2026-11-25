@@ -161,7 +161,7 @@ impl WindowsShellHost {
 impl ShellCommandHost for WindowsShellHost {
     fn emit_output(&self, stdout: &str, stderr: &str) -> Result<()> {
         // Streamed script data is an explicit machine passthrough.
-        let output=crate::presentation::formatter::Formatter::result("",stdout,stderr,100,&[],crate::presentation::formatter::OutputMode::Machine);
+        let output=crate::presentation::formatter::Formatter::present(stdout,stderr,100,crate::presentation::formatter::OutputMode::Machine);
         if !output.stdout.is_empty(){crate::adapters::terminal::io::write(output.stdout.as_bytes())?;}
         if !output.stderr.is_empty(){crate::adapters::terminal::io::write(output.stderr.as_bytes())?;}
         Ok(())
