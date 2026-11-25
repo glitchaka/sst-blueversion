@@ -1,5 +1,7 @@
 # Distribución y autoupdate de SST
 
+En `0.V.F-blue.R`, V identifica la versión, F avanza cuando se incorporan funcionalidades y R avanza para publicar correcciones de esa funcionalidad. La primera publicación de una funcionalidad usa `blue.1`, como en las series 0.1.10, 0.1.11 y 0.1.12.
+
 `sst-blueversion` es el repositorio fuente privado. No debe usarse como canal de actualización para usuarios finales: los assets y `raw.githubusercontent.com` de un repositorio privado requieren autenticación de GitHub.
 
 ## Artefactos de una versión
