@@ -167,11 +167,10 @@ impl EmbeddedSession {
                                 Ok(result) => {
                                     let width = worker_size.lock()
                                         .unwrap_or_else(|e| e.into_inner()).0;
-                                    let output = crate::presentation::report::decorate_registered_at_width(
-                                        &command, &result.stdout, width, &native_commands,
-                                    );
-                                    io::write(output.as_bytes())?;
-                                    io::write(result.stderr.as_bytes())?;
+                                    use crate::presentation::formatter::Formatter;
+                                    let output=Formatter::result(&command,&result.stdout,&result.stderr,width,&native_commands,Formatter::mode(&command,true));
+                                    io::write(output.stdout.as_bytes())?;
+                                    io::write(output.stderr.as_bytes())?;
                                     if result.status == 0 {
                                         let normalized = command.split_whitespace().collect::<Vec<_>>().join(" ");
                                         let bg_change =
@@ -191,7 +190,7 @@ impl EmbeddedSession {
                                     }
                                     if result.exit_requested { break; }
                                 }
-                                Err(error) => io::write(format!("sst: {error}\n").as_bytes())?,
+                                Err(error) => io::write(crate::presentation::formatter::Formatter::diagnostic(&format!("sst: {error}\n")).as_bytes())?,
                             }
                             *worker_bindings.lock().unwrap_or_else(|error| error.into_inner()) = engine.readline_bindings();
                             let (prompt_stdout, prompt_stderr, bash_prompt) = engine.prepare_prompt(false)?;

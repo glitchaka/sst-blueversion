@@ -1,0 +1,887 @@
+//! Central SST output formatter. The shell keeps original data; only the
+//! presentation boundary chooses the human theme, machine passthrough or
+//! terminal-control passthrough. No command owns a visual palette.
+
+pub const RESET:&str="\x1b[0m";
+pub const HEADING:&str="\x1b[1;38;2;240;242;244m";
+pub const COMMAND:&str="\x1b[1;38;2;218;223;228m";
+pub const DETAILS:&str="\x1b[38;2;185;191;199m";
+pub const LABEL:&str="\x1b[38;2;163;172;182m";
+pub const GOOD:&str="\x1b[1;38;2;142;192;124m";
+pub const CAUTION:&str="\x1b[1;38;2;250;189;47m";
+pub const BAD:&str="\x1b[1;38;2;251;73;52m";
+pub const PERFECT:&str="\x1b[1;38;2;131;165;205m";
+const BULLET:&str=LABEL;
+pub const DEFAULT_FOREGROUND:(u8,u8,u8)=(223,227,232);
+pub const DEFAULT_FOREGROUND_HEX:&str="#DFE3E8";
+pub const SECTION_RAIL:(u8,u8,u8)=(125,135,145);
+pub const SECTION_RULE:(u8,u8,u8)=(79,86,94);
+
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+pub enum Role { Title, Command, Label, Detail, Value, Success, Warning, Failure, Optimal }
+#[derive(Clone,Copy,Debug)]
+pub struct TextStyle { pub rgb:(u8,u8,u8),pub scale:f32,pub bold:bool,pub section:bool }
+impl Role {
+    pub const fn style(self)->TextStyle {
+        let (rgb,scale,bold,section)=match self {
+            Self::Title=>((240,242,244),1.08,true,true),
+            Self::Command=>((218,223,228),1.0,true,false),
+            Self::Label=>((163,172,182),0.90,false,false),
+            Self::Detail=>((185,191,199),0.93,false,false),
+            Self::Value=>(DEFAULT_FOREGROUND,1.0,false,false),
+            Self::Success=>((142,192,124),1.0,true,false),
+            Self::Warning=>((250,189,47),1.0,true,false),
+            Self::Failure=>((251,73,52),1.0,true,false),
+            Self::Optimal=>((131,165,205),1.0,true,false),
+        };
+        TextStyle{rgb,scale,bold,section}
+    }
+    pub const fn ansi(self)->&'static str {
+        match self{
+            Self::Title=>HEADING,Self::Command=>COMMAND,Self::Label=>LABEL,Self::Detail=>DETAILS,
+            Self::Value=>RESET,Self::Success=>GOOD,Self::Warning=>CAUTION,Self::Failure=>BAD,Self::Optimal=>PERFECT,
+        }
+    }
+    pub fn from_rgb(rgb:(u8,u8,u8))->Option<Self>{
+        [Self::Title,Self::Command,Self::Label,Self::Detail,Self::Success,Self::Warning,Self::Failure,Self::Optimal]
+            .into_iter().find(|r|r.style().rgb==rgb)
+    }
+    pub fn paint(self,text:&str)->String{format!("{}{text}{RESET}",self.ansi())}
+}
+/// Typography uses the same monospace grid for all output. Larger headings
+/// and smaller secondary text may vary within the cell bounds, never overlap.
+pub fn font_pixels(role:Option<Role>,base:f32,cell_width:f32,cell_height:f32)->f32{
+    let scale=role.map_or(1.,|r|r.style().scale);
+    (base*scale).min(cell_width/0.60).min(cell_height*0.91).max(1.0)
+}
+
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+pub enum OutputMode { Interactive, Machine, Terminal }
+#[derive(Debug,PartialEq,Eq)]
+pub struct FormattedOutput { pub stdout:String,pub stderr:String }
+
+/// Explicit presentation contract for complete command results. Machine
+/// data and terminal protocols go through this same entrypoint unmodified.
+pub struct Formatter;
+impl Formatter {
+    pub fn mode(command:&str,interactive:bool)->OutputMode{
+        if !interactive || is_machine_or_shell_command(command){return OutputMode::Machine;}
+        let root=command.split_whitespace().next().unwrap_or("");
+        if matches!(root,"fetch"|"neofetch"|"keygen"|"helix"|"helix-sst"|"clear"|"reset"){
+            return OutputMode::Terminal;
+        }
+        OutputMode::Interactive
+    }
+    pub fn result(command:&str,stdout:&str,stderr:&str,cols:u16,native:&[String],mode:OutputMode)->FormattedOutput{
+        if mode!=OutputMode::Interactive{
+            return FormattedOutput{stdout:stdout.to_owned(),stderr:stderr.to_owned()};
+        }
+        FormattedOutput{
+            stdout:decorate_with_native_commands(command,stdout,cols,Some(native)),
+            stderr:Self::diagnostic(stderr),
+        }
+    }
+    pub fn diagnostic(text:&str)->String{
+        if text.is_empty()||text.contains('\x1b')||text.contains('\0')||text.contains('\r'){return text.to_owned();}
+        let mut out=String::new();
+        for line in text.split_inclusive('\n'){
+            let body=line.strip_suffix('\n').unwrap_or(line);
+            if body.is_empty(){out.push_str(line);continue;}
+            // Preserve diagnostic text; only the first label/short line uses
+            // the failure role. No extra headings or invented exit status.
+            let styled=if let Some((label,value))=body.split_once(": "){
+                if label.chars().count()<=40{format!("{}: {value}",Role::Failure.paint(label))}
+                else{Role::Failure.paint(body)}
+            }else{Role::Failure.paint(body)};
+            out.push_str(&styled);if line.ends_with('\n'){out.push('\n');}
+        }
+        out
+    }
+    pub fn live(text:&str)->String{style_live_line(text)}
+    pub fn terminal(text:&str)->String{text.to_owned()}
+    pub fn stream_bytes(bytes:&[u8],terminal:bool)->Vec<u8>{
+        // Binary/partial UTF-8, ANSI protocols and async chunks are passthrough.
+        // The complete-line relay opts into semantic styling only after framing.
+        if terminal{return bytes.to_vec();}
+        std::str::from_utf8(bytes).map_or_else(|_|bytes.to_vec(),|s|Self::live(s).into_bytes())
+    }
+}
+
+/// Explicit semantic document API for new native reports. The legacy text
+/// adapter below remains available during migration; all visual roles and
+/// the rendering of both kinds live here, not in command implementations.
+#[derive(Default)]
+pub struct Document { rows:Vec<(Role,String)> }
+impl Document{
+    pub fn title(&mut self,text:impl Into<String>){self.rows.push((Role::Title,text.into()));}
+    pub fn line(&mut self,role:Role,text:impl Into<String>){self.rows.push((role,text.into()));}
+    pub fn field(&mut self,name:&str,value:&str){
+        self.rows.push((Role::Value,format!("{name}: {value}")));
+    }
+    pub fn render(&self,mode:OutputMode)->String{
+        let mut out=String::new();
+        for (role,text) in &self.rows{
+            if mode==OutputMode::Interactive{
+                if *role==Role::Value{out.push_str(&style_line(text));}
+                else{out.push_str(&role.paint(text));}
+            }else{out.push_str(text);}
+            out.push('\n');
+        }
+        out
+    }
+}
+
+fn is_machine_or_shell_command(command: &str) -> bool {
+    // Only the human-facing foreground presentation is styled. Pipelines,
+    // redirects, scripts and machine-readable modes preserve their bytes.
+    command.chars().any(|ch| "|;&><\n\r".contains(ch))
+        || command.split_whitespace().any(|part| matches!(
+            part, "--json" | "--csv" | "--plain" | "--stdout" | "--xml" | "-j"
+        ))
+        || crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| {
+            command.split_whitespace().next() == Some(*name)
+        })
+}
+
+fn is_table_header(line: &str) -> bool {
+    let trimmed = line.trim();
+    let columns = trimmed.split_whitespace().collect::<Vec<_>>();
+    columns.len() >= 2 && trimmed.len() >= 5
+        && columns.iter().all(|column| {
+            column.chars().any(char::is_alphabetic)
+                && !column.chars().any(char::is_lowercase)
+        })
+        && !trimmed.contains("://")
+        && !trimmed.contains(':')
+}
+
+fn table_columns(line: &str) -> Vec<(usize, usize)> {
+    let bytes = line.as_bytes();
+    let mut columns = Vec::new();
+    let mut pos = 0;
+    while pos < bytes.len() {
+        while pos < bytes.len() && bytes[pos].is_ascii_whitespace() { pos += 1; }
+        if pos >= bytes.len() { break; }
+        let start = pos;
+        while pos < bytes.len() && !(bytes[pos] == b' ' && bytes.get(pos + 1) == Some(&b' ')) {
+            pos += 1;
+        }
+        let end = pos;
+        columns.push((start, end));
+    }
+    columns
+}
+
+fn style_table_row(line: &str, status_column: Option<usize>) -> String {
+    let Some(status_column) = status_column else { return line.to_owned(); };
+    let columns = table_columns(line);
+    let Some(&(start, end)) = columns.get(status_column) else { return line.to_owned(); };
+    let value = line.get(start..end).unwrap_or("");
+    let Some(color) = status_color(value) else { return line.to_owned(); };
+    format!("{}{color}{value}{RESET}{}", &line[..start], &line[end..])
+}
+
+fn status_column_index(heading: &str) -> Option<usize> {
+    table_columns(heading).iter().enumerate().find_map(|(index, &(start, end))| {
+        let field = heading.get(start..end)?.trim().to_ascii_uppercase();
+        matches!(field.as_str(), "ESTADO" | "STATUS" | "SALUD" | "HEALTH" | "RESULTADO")
+            .then_some(index)
+    })
+}
+
+fn suitable(command: &str, stdout: &str, registered_native: Option<&[String]>) -> bool {
+    if stdout.trim().is_empty() || stdout.contains('\x1b') || stdout.contains('\0')
+        || is_machine_or_shell_command(command)
+    { return false; }
+
+    // One shared presentation path for all foreground, human-readable output.
+    // Regular unstructured shell text (echo, printf, cat, etc.) stays raw;
+    // every structured native OR external report receives semantic formatting.
+    let root = command.split_whitespace().next().unwrap_or("");
+    // File viewers and UNIX text tools must never rewrite the data they show,
+    // even when a file happens to contain words such as "Estado: ERROR".
+    if crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| *name == root) {
+        return false;
+    }
+    let native = registered_native.is_some_and(|names| names.iter().any(|name| name == root));
+    native || stdout.lines().any(|line| {
+        is_section_heading(line) || is_status_field(line)
+            || looks_like_tabular_header(line) || is_table_header(line)
+            || line.trim().split_once(": ").is_some_and(|(label, _)| {
+                !label.is_empty() && label.len() < 42
+            })
+    })
+}
+
+fn is_status_field(line: &str) -> bool {
+    let Some((key, _)) = line.trim().split_once(": ") else { return false; };
+    matches!(key.to_ascii_lowercase().as_str(),
+        "estado" | "status" | "salud" | "health" | "resultado" | "result")
+}
+
+fn looks_like_tabular_header(line: &str) -> bool {
+    let text = line.trim();
+    text.len() > 7 && text.split_whitespace().count() >= 3
+        && text.chars().any(|c| c.is_ascii_uppercase())
+        && !text.chars().any(|c| c.is_ascii_lowercase())
+        && !text.contains("://")
+}
+
+fn status_color(value: &str) -> Option<&'static str> {
+    // Never infer a status from incidental words in help descriptions,
+    // hostnames, commands, process names or arbitrary prose.
+    let value = value.trim().trim_end_matches(['.', ';']);
+    if value.len() > 55 || value.split_whitespace().count() > 5 {
+        return None;
+    }
+    let normalized = value.to_uppercase();
+    let status = normalized.as_str();
+    if ["CRÍTICO", "CRITICO", "ERROR", "FALLO", "FAILED",
+        "DENEGADO", "DESCONECTADO", "SIN ENLACE",
+        "NO DISPONIBLE", "DETENIDO", "DESHABILITADO", "SIN CONEXIÓN",
+        "INACTIVO", "BLOQUEADO", "DOWN", "OFFLINE"]
+        .iter().any(|term| status == *term || status.starts_with(&format!("{term} ")))
+    {
+        Some(BAD)
+    } else if ["ADVERTENCIA", "ATENCIÓN", "ATENCION",
+        "PENDIENTE", "DEGRADADO", "INDETERMINADO",
+        "SIN IP", "DESCONOCIDO", "WARNING", "REQUIERE REVISIÓN", "NO VERIFICADA",
+        "SIN PERFIL DOT3 CONFIRMADO", "SIN GATEWAY POR DEFECTO", "SIN DIRECCIONES", "ICMP NO RESPONDE", "NO RESPONDE"]
+        .iter().any(|term| status == *term || status.starts_with(&format!("{term} ")))
+    {
+        Some(CAUTION)
+    } else if ["PERFECTO", "PERFECTA", "ÓPTIMO", "OPTIMO",
+        "ÓPTIMA", "OPTIMA", "EXCELENTE"]
+        .contains(&status)
+    {
+        Some(PERFECT)
+    } else if ["CONECTADO", "CONECTADA", "CORRECTO",
+        "CORRECTA", "ACTIVO", "ACTIVA", "OPERATIVO",
+        "OPERATIVA", "DISPONIBLE", "OK", "UP", "ENLACE DETECTADO", "PRESENTE",
+        "ICMP RESPONDE", "RESPONDE", "RESUELTO", "CONECTIVIDAD TCP CONFIRMADA", "CUENTA DESBLOQUEADA", "CUENTA SIN BLOQUEO PENDIENTE"]
+        .contains(&status)
+    {
+        Some(GOOD)
+    } else { None }
+}
+
+/// Recognize actual structural sections in a native SST report. We do not
+/// infer "a section" from every sentence containing a colon.
+fn is_section_heading(line: &str) -> bool {
+    let text = line.trim();
+    if text.is_empty() || text.chars().count() > 72 { return false; }
+    if text.ends_with(':') && !text.contains("://") {
+        let name = text.trim_end_matches(':').trim().to_ascii_lowercase();
+        // A status key without a value is NOT a decorative section.
+        if matches!(name.as_str(),
+            "estado" | "status" | "salud" | "resultado" |
+            "ip" | "mac" | "nombre" | "puerto" | "servidor" |
+            "error" | "aviso" | "advertencia" | "latencia")
+        { return false; }
+        return text.chars().any(char::is_alphabetic)
+            && text.chars().filter(|ch| *ch == ':').count() == 1;
+    }
+    if text.starts_with("== ") { return true; }
+    if let Some((number, title)) = text.split_once(". ") {
+        if number.chars().next().is_some_and(|c|c.is_ascii_digit())
+            && number.chars().all(|c|c.is_ascii_alphanumeric())
+            && title.chars().any(char::is_alphabetic) { return true; }
+    }
+    !text.contains(':') && text.chars().any(char::is_alphabetic)
+        && !text.chars().any(char::is_lowercase)
+}
+
+// Help syntax is identified structurally, not by a hard-coded list of commands.
+// New builtins receive the same formatting without editing this renderer.
+fn style_command_row(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    if trimmed.is_empty() || trimmed.contains(':') || trimmed.contains('=') {
+        return None;
+    }
+    let bytes = trimmed.as_bytes();
+    let split = (1..bytes.len().saturating_sub(1))
+        .find(|&i| bytes[i] == b' ' && bytes[i + 1] == b' '
+            && bytes[..i].iter().any(|b| !b.is_ascii_whitespace()))?;
+    let syntax = trimmed[..split].trim_end();
+    let description = trimmed[split..].trim_start();
+    if syntax.is_empty() || description.is_empty() || syntax.chars().count() > 60 {
+        return None;
+    }
+    let indent = &line[..line.len() - trimmed.len()];
+    Some(format!("{indent}  {COMMAND}{syntax}{RESET}  {DETAILS}{description}{RESET}"))
+}
+
+/// Generic two-column help entries used by builtins that omit the command
+/// prefix on each line. This acts on human-facing help only, never data tables.
+fn style_help_entry(line: &str) -> Option<String> {
+    let text = line.trim_start();
+    if text.is_empty() || text.starts_with('#') || text.contains('\x1b') {
+        return None;
+    }
+    let bytes = text.as_bytes();
+    let split = (1..bytes.len().saturating_sub(1))
+        .find(|&i| bytes[i] == b' ' && bytes[i + 1] == b' ');
+    let index = split?;
+    let syntax = text[..index].trim();
+    let description = text[index..].trim();
+    if syntax.is_empty() || description.is_empty() || syntax.chars().count() > 45 {
+        return None;
+    }
+    let indent = &line[..line.len() - text.len()];
+    let padding = " ".repeat(34usize.saturating_sub(display_width(syntax)).max(2));
+    Some(format!("{indent}  {COMMAND}{syntax}{RESET}{padding}{DETAILS}{description}{RESET}"))
+}
+
+fn style_line(line: &str) -> String {
+    if line.trim().is_empty() { return line.to_owned(); }
+    let stripped = line.trim_start();
+    if is_section_heading(stripped) {
+        return format!("{HEADING}{stripped}{RESET}");
+    }
+    if let Some((field, value)) = stripped.split_once(": ") {
+        // Semantic labels and values. Do not treat a command description as a
+        // status, even if it happens to contain "conectados" or "disponible".
+        if !field.is_empty() && field.chars().count() <= 40
+           && !field.contains("  ") && field.chars().any(char::is_alphabetic)
+        {
+            let indent = &line[..line.len() - stripped.len()];
+            let key = field.to_ascii_lowercase();
+            // Explicit diagnostic labels are authoritative; arbitrary
+            // occurrences of these words in descriptions are not.
+            let alarm = matches!(key.as_str(),
+                "error" | "error crítico" | "error critico" | "fallo" | "crítico" | "critico");
+            let warning = matches!(key.as_str(),
+                "advertencia" | "aviso" | "warning" | "atención" | "atencion");
+            let label_color = if alarm { BAD } else if warning { CAUTION } else { LABEL };
+            let value_color = if alarm || warning { RESET }
+                else if is_status_field(stripped) || key == "autorización efectiva" { status_color(value).unwrap_or(RESET) }
+                else { RESET };
+            return format!("{indent}{label_color}{field}:{RESET} {value_color}{value}{RESET}");
+        }
+    }
+    if stripped.starts_with('•') {
+        let indent = &line[..line.len() - stripped.len()];
+        return format!("{indent}{BULLET}•{RESET} {}", stripped.trim_start_matches('•').trim_start());
+    }
+    // A bare word in arbitrary output is not a verified machine state.
+    line.to_owned()
+}
+
+/// Shared presentation for incremental external-process output. Each complete
+/// line is formatted in place; no extra titles or blank lines get inserted.
+/// Data streams are untouched because only direct interactive GUI output uses
+/// this path. Existing ANSI, CR progress bars and NUL bytes are preserved.
+pub fn style_live_line(line: &str) -> String {
+    if line.contains('\x1b') || line.contains('\r') || line.contains('\0') {
+        return line.to_owned();
+    }
+    if line.contains('\n') {
+        line.split_inclusive('\n').map(|part| {
+            let body=part.strip_suffix('\n').unwrap_or(part);
+            let mut styled=style_line(body);
+            if part.ends_with('\n'){styled.push('\n');}
+            styled
+        }).collect()
+    } else { style_line(line) }
+}
+
+fn display_width(s: &str) -> usize {
+    // SST's embedded terminal primarily uses monospace Latin text and box
+    // drawing. Estimate display columns to prevent viewport overflow.
+    s.chars().map(|c| if c.is_ascii() || ('\u{2500}'..='\u{257f}').contains(&c) {
+        1
+    } else if ('\u{1100}'..='\u{115f}').contains(&c)
+        || ('\u{2e80}'..='\u{a4cf}').contains(&c)
+        || ('\u{ac00}'..='\u{d7a3}').contains(&c)
+        || ('\u{f900}'..='\u{faff}').contains(&c)
+        || ('\u{fe10}'..='\u{fe6f}').contains(&c)
+        || ('\u{ff00}'..='\u{ff60}').contains(&c)
+    { 2 } else { 1 }).sum()
+}
+
+/// Soft-wrap at word boundaries before passing text to vt100. Keeping complete
+/// fragments with their own indentation prevents one long release note from
+/// destroying the surrounding report structure.
+fn wrap_line(line: &str, width: usize) -> Vec<String> {
+    if display_width(line) <= width { return vec![line.to_owned()]; }
+    let leading = line.chars().take_while(|c| c.is_whitespace()).count().min(8);
+    let trimmed = line.trim();
+    let (first_indent, continuation) = if let Some(text) = trimmed.strip_prefix("+ ") {
+        let _ = text;
+        ("  • ".to_owned(), "    ".to_owned())
+    } else if let Some(text) = trimmed.strip_prefix("• ") {
+        let _ = text;
+        ("  • ".to_owned(), "    ".to_owned())
+    } else {
+        (" ".repeat(leading), " ".repeat((leading + 2).min(10)))
+    };
+    let text = trimmed.strip_prefix("+ ").or_else(|| trimmed.strip_prefix("• ")).unwrap_or(trimmed);
+    let available = width.max(12);
+    let mut lines = Vec::new();
+    let mut current = first_indent;
+    for word in text.split_whitespace() {
+        // A single long URL or hash also needs a bounded fallback; do not drop
+        // or truncate any content.
+        let mut word_chunk = String::new();
+        for ch in word.chars() {
+            let next = display_width(&word_chunk) + display_width(&ch.to_string());
+            if next + display_width(&continuation) > available && !word_chunk.is_empty() {
+                if !current.trim().is_empty() {
+                    if display_width(&current) + display_width(&word_chunk) + 1 <= available {
+                        if !current.ends_with(' ') { current.push(' '); }
+                        current.push_str(&word_chunk);
+                    } else {
+                        lines.push(current);
+                        current = format!("{continuation}{word_chunk}");
+                    }
+                } else {
+                    current.push_str(&word_chunk);
+                }
+                if display_width(&current) >= available {
+                    lines.push(current);
+                    current = continuation.clone();
+                }
+                word_chunk.clear();
+            }
+            word_chunk.push(ch);
+        }
+        if word_chunk.is_empty() { continue; }
+        let separator = if current.trim().is_empty() || current.ends_with(' ') { 0 } else { 1 };
+        if display_width(&current) + separator + display_width(&word_chunk) > available
+            && !current.trim().is_empty()
+        {
+            lines.push(current);
+            current = continuation.clone();
+        }
+        if !current.ends_with(' ') && !current.trim().is_empty() { current.push(' '); }
+        current.push_str(&word_chunk);
+    }
+    if !current.trim().is_empty() { lines.push(current); }
+    lines
+}
+
+/// Reorder the network assessment only for the interactive display. Raw output,
+/// CSV, scripts and redirects retain the original evidence and layout.
+fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
+    let mut blocks:Vec<(String,Vec<String>)>=Vec::new();
+    let mut meta=Vec::new();
+    let mut evidence=None;
+    for line in stdout.lines().map(str::trim).filter(|l|!l.is_empty()){
+        if line=="DIAGNÓSTICO DE RED"{continue;}
+        if line.starts_with("Evidencia detallada: "){evidence=Some(line.to_owned());continue;}
+        if line=="CONCLUSIÓN" || line.split_once(". ").is_some_and(|(n,_)|
+            n.chars().next().is_some_and(|c|c.is_ascii_digit())&&n.chars().all(|c|c.is_ascii_alphanumeric())){
+            blocks.push((line.to_owned(),Vec::new()));
+        }else if let Some((_,rows))=blocks.last_mut(){rows.push(line.to_owned());}
+        else{meta.push(line.to_owned());}
+    }
+    let conclusion=blocks.iter().position(|(name,_)|name=="CONCLUSIÓN")?;
+    let (_,summary)=blocks.remove(conclusion);
+    let mut out=format!("{HEADING}Diagnóstico de red{RESET}\n");
+    let emit=|out:&mut String,line:&str|{for part in wrap_line(line,width){out.push_str(&style_line(&part));out.push('\n');}};
+    for line in meta{emit(&mut out,&line);}
+    out.push('\n');
+    for line in summary{emit(&mut out,&line);}
+    out.push_str(&format!("\n{HEADING}Comprobaciones{RESET}\n"));
+    for (name,rows) in blocks{
+        let name=name.split_once(". ").map_or(name.as_str(),|(_,title)|title);
+        let status=rows.iter().find_map(|s|s.strip_prefix("Estado: "));
+        if let Some(status)=status{
+            let color=status_color(status).unwrap_or(RESET);
+            if display_width(name)+2+display_width(status)<=width{
+                out.push_str(&format!("{LABEL}{name}:{RESET} {color}{status}{RESET}\n"));
+            }else{
+                emit(&mut out,&format!("{name}:"));
+                emit(&mut out,&format!("  Estado: {status}"));
+            }
+        }else{emit(&mut out,name);}
+        for row in rows.iter().filter(|s|!s.starts_with("Estado: ")){
+            emit(&mut out,&format!("  {row}"));
+        }
+    }
+    if let Some(evidence)=evidence{out.push('\n');emit(&mut out,&evidence);}
+    Some(out)
+}
+
+/// Called only for a direct, interactive GUI command. Uses the actual terminal
+/// width, including resized windows. Raw Bash redirections and pipes stay
+/// completely byte-for-byte intact.
+pub fn decorate_at_width(command: &str, stdout: &str, cols: u16) -> String {
+    decorate_with_native_commands(command, stdout, cols, None)
+}
+
+/// Shared human-facing report renderer for every SST-owned built-in command,
+/// including aliases added to the registry. Only machine output and external
+/// commands remain byte-for-byte untouched.
+pub fn decorate_registered_at_width(
+    command: &str,
+    stdout: &str,
+    cols: u16,
+    registered_native: &[String],
+) -> String {
+    decorate_with_native_commands(command, stdout, cols, Some(registered_native))
+}
+
+fn decorate_with_native_commands(
+    command: &str, stdout: &str, cols: u16,
+    registered_native: Option<&[String]>,
+) -> String {
+    if !suitable(command, stdout, registered_native) { return stdout.to_owned(); }
+    // Leave a small right margin so the cursor never autowraps a full row.
+    let width = (cols as usize).saturating_sub(3).clamp(18, 160);
+    if command.split_whitespace().take(2).eq(["notsh","test"]) {
+        if let Some(compact)=compact_network_assessment(stdout,width){return compact;}
+    }
+    let mut result = String::new();
+    let command_root = command.split_whitespace().next().unwrap_or("");
+    let help_document = command.split_whitespace().any(|part|
+        matches!(part, "help" | "--help" | "-h"))
+        || stdout.lines().take(6).any(|line| line.trim_start().starts_with("uso:"))
+        || stdout.lines().any(|line| {
+            // Native help can be requested by a bare builtin and may not
+            // include a literal "uso:" heading. Recognize a row only when
+            // its command syntax begins with the invoking builtin.
+            let trimmed = line.trim_start();
+            trimmed.strip_prefix(command_root)
+                .is_some_and(|rest| rest.starts_with(' ')
+                    && style_command_row(trimmed).is_some())
+        });
+    // The prompt already shows the command. Do not echo it in every report.
+    let mut status_column: Option<usize> = None;
+    let mut previous_blank = true;
+    for original in stdout.split_inclusive('\n') {
+        let line = original.strip_suffix('\n').unwrap_or(original).trim_end_matches('\r');
+        if is_table_header(line) {
+            status_column = status_column_index(line);
+        } else if line.trim().is_empty() || is_section_heading(line) {
+            status_column = None;
+        }
+        if line.trim().is_empty() {
+            if !previous_blank { result.push('\n'); }
+            previous_blank = true;
+            continue;
+        }
+        previous_blank = false;
+        let is_bullet = line.trim_start().starts_with("+ ");
+        let fragments = if is_bullet || display_width(line) > width {
+            wrap_line(line, width)
+        } else {
+            vec![line.to_owned()]
+        };
+        for fragment in fragments {
+            let styled = if help_document && is_section_heading(&fragment) {
+                style_line(&fragment)
+            } else if help_document {
+                style_command_row(&fragment)
+                    .or_else(|| style_help_entry(&fragment))
+                    .unwrap_or_else(|| style_line(&fragment))
+            } else if is_table_header(&fragment) {
+                format!("{HEADING}{fragment}{RESET}")
+            } else {
+                if status_column.is_some() { style_table_row(&fragment, status_column) } else { style_line(&fragment) }
+            };
+            result.push_str(&styled);
+            result.push('\n');
+        }
+    }
+    result.truncate(result.trim_end_matches('\n').len());
+    result.push('\n');
+    result
+}
+
+/// Backward-compatible entrypoint for non-GUI callers and unit tests.
+#[allow(dead_code)]
+pub fn decorate(command: &str, stdout: &str) -> String {
+    decorate_at_width(command, stdout, 100)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn future_command_help_is_structurally_styled() {
+        let formatted = decorate_at_width(
+            "futuretool help",
+            "uso: futuretool help\nfuturetool inspect     Consulta el sistema\n",
+            100,
+        );
+        assert!(formatted.contains(COMMAND));
+        assert!(formatted.contains("futuretool inspect"));
+    }
+
+    #[test]
+    fn generic_help_has_distinct_syntax_descriptions_and_no_duplicate_title() {
+        let styled = decorate_at_width(
+            "invented help",
+            "invented help\nuso:\ninvented scan    Detecta equipos\n", 110,
+        );
+        assert_eq!(styled.matches("invented help").count(), 1);
+        assert!(styled.contains(COMMAND));
+        assert!(styled.contains(DETAILS));
+        assert!(styled.contains("Detecta equipos"));
+    }
+
+    #[test]
+    fn unknown_commands_get_the_same_layout_without_command_specific_rules() {
+        let output = "REDES:\nNombre: Ethernet\nEstado: OPERATIVO\n";
+        let styled = decorate_at_width("futura-herramienta", output, 100);
+        assert!(styled.contains(HEADING));
+        assert!(styled.contains(LABEL));
+        assert!(styled.contains(GOOD));
+        assert_eq!(decorate_at_width("futura-herramienta --csv", output, 100), output);
+    }
+
+    #[test]
+    fn table_status_color_is_column_scoped() {
+        let title = "NOMBRE    ESTADO    DETALLE";
+        assert!(is_table_header(title));
+        assert_eq!(status_column_index(title), Some(1));
+        let row = "Red A     ACTIVO    enlace conectado";
+        assert!(style_table_row(row, Some(1)).contains(GOOD));
+        let description = "Red A     desconocido    conectado";
+        assert!(!style_table_row(description, Some(1)).contains(GOOD));
+    }
+
+    #[test]
+    fn all_native_registry_commands_share_consistent_human_report_design() {
+        let names = vec!["new-native-command".to_owned(), "sys".to_owned()];
+        let output = "Estado: OPERATIVA\nDetalles:\nClave: valor\n";
+        let formatted = decorate_registered_at_width("new-native-command", output, 95, &names);
+        assert!(formatted.contains(HEADING));
+        assert!(formatted.contains(GOOD));
+        assert!(formatted.contains("Detalles:"));
+        assert_eq!(
+            decorate_registered_at_width("new-native-command --csv", output, 95, &names),
+            output,
+        );
+        assert_eq!(
+            decorate_registered_at_width("new-native-command | cat", output, 95, &names),
+            output,
+        );
+    }
+    #[test]
+    fn neutral_structural_text_never_uses_cyan_without_a_real_state() {
+        let help = decorate_at_width(
+            "sys", "Información:\nsys drivers --devices    dispositivos PnP conectados\n", 95
+        );
+        assert!(help.contains(HEADING));
+        assert!(help.contains(COMMAND));
+        assert!(!help.contains(PERFECT));
+        assert!(!help.contains(GOOD));
+        assert!(!help.contains("\\x1b[38;2;152;222;247m"));
+    }
+
+    #[test]
+    fn semantic_colors_require_verified_status_fields() {
+        assert!(style_line("Estado: CRÍTICO").contains(BAD));
+        assert!(style_line("Estado: ADVERTENCIA").contains(CAUTION));
+        assert!(style_line("Estado: OPERATIVA").contains(GOOD));
+        assert!(style_line("Estado: PERFECTO").contains(PERFECT));
+        assert!(!style_line("Descripción: dispositivos PnP conectados").contains(GOOD));
+        assert!(!style_line("Texto: ERROR en un manual").contains(BAD));
+        assert!(style_line("Error: acceso rechazado").contains(BAD));
+        assert!(style_line("Advertencia: revisar conexión").contains(CAUTION));
+        assert!(!style_live_line("Respuesta desde 10.0.0.1: bytes=32 tiempo=1ms TTL=64").contains(PERFECT));
+    }
+
+    #[test]
+    fn scripts_and_machine_output_remain_unmodified() {
+        let text = "STATE   VALUE\nUP      1\n";
+        for command in ["notsh interfaces | cat", "notsh interfaces > out.txt",
+            "notsh interfaces --json", "notsh interfaces --csv", "echo foo", "notsh interfaces; echo ok",
+            "notsh interfaces --plain", "cat report.txt", "grep error report.txt"] {
+            assert_eq!(decorate(command, text), text, "{command}");
+        }
+    }
+    #[test]
+    fn preserves_precoloured_terminal_data() {
+        let ansi = "\x1b[31mError\x1b[0m\n";
+        assert_eq!(decorate("sys info", ansi), ansi);
+    }
+    #[test]
+    fn fields_keep_labels_distinct_from_values() {
+        let rendered = style_line("  Estado: DESCONECTADO");
+        assert!(rendered.contains(LABEL));
+        assert!(rendered.contains(BAD));
+        let rendered = style_line("  Estado: CONECTADO");
+        assert!(rendered.contains(GOOD));
+        assert!(!rendered.contains(BAD));
+    }
+    #[test]
+    fn long_release_notes_wrap_before_terminal_edge() {
+        let source = "  + Se instala un motor de informes nativos que consulta las APIs de Windows y produce resultados comprensibles sin perder datos de la conexión ni desbordar la pantalla.";
+        let lines = wrap_line(source, 49);
+        assert!(lines.len() > 2);
+        assert!(lines.iter().all(|line| display_width(line) <= 49), "{lines:?}");
+        assert!(lines.concat().contains("informes") && lines.concat().contains("pantalla"));
+    }
+    #[test]
+    fn diagnosis_prioritizes_findings_and_preserves_evidence(){
+        let input="DIAGNÓSTICO DE RED\nDestino: 10.6.11.7:443\nModo: solo lectura\n\n1. INTERFACES FÍSICAS\n  Estado: ENLACE DETECTADO\n  Evidencia: enlace físico\n\n1b. NAC / 802.1X CABLEADO\n  Estado: SIN PERFIL DOT3 CONFIRMADO\n  Autorización efectiva: NO VERIFICADA\n\n6. TCP\n  Estado: SIN CONEXIÓN\n  Error: connection timed out\n\nCONCLUSIÓN\n  Estado: REQUIERE REVISIÓN\n  ADVERTENCIA: No conecta TCP 443.\n\nEvidencia detallada: net routes\n";
+        let out=decorate_at_width("notsh test 10.6.11.7",input,100);
+        assert!(out.find("REQUIERE REVISIÓN").unwrap()<out.find("INTERFACES FÍSICAS").unwrap());
+        assert!(out.contains(GOOD)&&out.contains(CAUTION)&&out.contains(BAD));
+        assert!(out.contains("connection timed out")&&out.contains("NO VERIFICADA"));
+        assert!(!out.contains("notsh test 10.6.11.7"));
+        assert_eq!(decorate_at_width("notsh test 10.6.11.7 --csv",input,100),input);
+    }
+
+    #[test]
+    fn help_sections_are_semantic_and_command_descriptions_are_not_statuses() {
+        let out = decorate_at_width(
+            "sys",
+            "uso: sys SUBCOMANDO [opciones]\n\nInformación:\nsys info           resumen del equipo\nsys drivers --devices     dispositivos PnP conectados\n\nAdministración / auditoría de solo lectura:\n",
+            110,
+        );
+        assert!(out.contains("Información:"));
+        assert!(out.contains("Administración / auditoría"));
+        assert!(out.contains(HEADING));
+        assert!(out.contains(COMMAND));
+        assert!(!style_line("sys drivers --devices     dispositivos PnP conectados").contains(GOOD));
+    }
+    #[test]
+    fn preserves_fetch_logo_and_script_pipelines_as_is() {
+        let fetch = "SST ASCII mascot content";
+        assert_eq!(decorate_at_width("fetch", fetch, 80), fetch);
+        assert_eq!(decorate_at_width("sys | cat", fetch, 80), fetch);
+    }
+    #[test]
+    fn narrow_viewport_does_not_change_machine_reports() {
+        let text = "  Estado: ACTIVO\n  Estado: SIN ENLACE\n";
+        let rendered = decorate_at_width("notsh lan show interfaces", text, 42);
+        assert!(rendered.contains(GOOD));
+        assert!(rendered.contains(BAD));
+    }
+}
+
+// Alternate-screen monitor layouts share the same visual roles.
+use crate::core::ports::TerminalPanel;
+pub const ACCENT:&str=HEADING;
+pub const WARN:&str=CAUTION;
+pub const CONTENT:&str=DETAILS;
+/// One alternate-screen view; body text is kept independent of native panel
+/// strokes. Even a non-Slint stdout produces semantic headings and statuses.
+pub struct LiveScreen {
+    text: String,
+    line: usize,
+    panels: Vec<TerminalPanel>,
+}
+
+impl LiveScreen {
+    pub fn new() -> Self {
+        Self { text: String::new(), line: 0, panels: Vec::new() }
+    }
+
+    pub fn section(&mut self, title: &str, body: &str) {
+        let start = self.line;
+        self.text.push_str("  ");
+        self.text.push_str(ACCENT);
+        self.text.push_str(title);
+        self.text.push_str(RESET);
+        self.text.push('\n');
+        self.line += 1;
+
+        for line in body.trim_end_matches('\n').split('\n') {
+            if line.is_empty() && body.trim().is_empty() { break; }
+            self.text.push_str("  ");
+            self.text.push_str(line);
+            self.text.push('\n');
+            self.line += 1;
+        }
+
+        if self.panels.len() < 4 {
+            self.panels.push(TerminalPanel {
+                start_row: start.min(u16::MAX as usize) as u16,
+                rows: (self.line - start).min(u16::MAX as usize) as u16,
+            });
+        }
+        self.text.push('\n');
+        self.line += 1;
+    }
+
+    pub fn footer(&mut self, text: &str) {
+        self.text.push_str("  ");
+        self.text.push_str(LABEL);
+        self.text.push_str(text);
+        self.text.push_str(RESET);
+        self.text.push('\n');
+        self.line += 1;
+    }
+
+    pub fn finish(self) -> (String, Vec<TerminalPanel>) {
+        (self.text, self.panels)
+    }
+}
+
+/// Monitors must fit within terminal cells, not pixel width. ANSI escape
+/// sequences do not contribute to the visible width.
+pub fn shorten(value: &str, max: usize) -> String {
+    let max = max.max(1);
+    if value.chars().count() <= max { return value.to_owned(); }
+    if max <= 2 { return value.chars().take(max).collect(); }
+    format!("{}…", value.chars().take(max - 1).collect::<String>())
+}
+
+#[cfg(test)]
+mod monitor_tests {
+    use super::*;
+
+    #[test]
+    fn sections_report_real_cell_coordinates_without_character_frames() {
+        let mut screen = LiveScreen::new();
+        screen.section("RED", "escaneando");
+        screen.section("DISPOSITIVOS", "IP  NOMBRE\n10.0.0.3  PC");
+        let (text, panels) = screen.finish();
+        assert_eq!(panels.len(), 2);
+        assert_eq!(panels[0].start_row, 0);
+        assert_eq!(panels[0].rows, 2);
+        assert_eq!(panels[1].start_row, 3);
+        assert_eq!(panels[1].rows, 3);
+        assert!(text.contains(ACCENT));
+        assert!(!text.contains("┌"));
+        assert!(!text.contains("└"));
+        assert!(!text.contains("──"));
+    }
+
+    #[test]
+    fn clipped_display_columns_are_measured_by_characters() {
+        assert_eq!(shorten("aaaaaaaaaa", 6), "aaaaa…");
+        assert_eq!(shorten("SST", 8), "SST");
+    }
+}
+
+#[cfg(test)]
+mod formatter_contract_tests {
+    use super::*;
+    #[test]
+    fn all_channels_use_one_contract_and_keep_machine_bytes(){
+        let native=vec!["future".to_owned()];
+        let stdout="DIAGNÓSTICO:\nEstado: OPERATIVO\nNombre: host\n";
+        let stderr="Error: detalle del fallo\n";
+        let out=Formatter::result("future",stdout,stderr,90,&native,OutputMode::Interactive);
+        assert!(out.stdout.contains(HEADING)&&out.stdout.contains(GOOD)&&out.stdout.contains(LABEL));
+        assert!(out.stderr.contains(BAD)&&out.stderr.contains("detalle del fallo"));
+        for mode in [OutputMode::Machine,OutputMode::Terminal]{
+            let raw=Formatter::result("future",stdout,stderr,90,&native,mode);
+            assert_eq!(raw.stdout,stdout);assert_eq!(raw.stderr,stderr);
+        }
+        assert_eq!(Formatter::mode("future --csv",true),OutputMode::Machine);
+        assert_eq!(Formatter::mode("future | cat",true),OutputMode::Machine);
+        assert_eq!(Formatter::mode("fetch",true),OutputMode::Terminal);
+        assert_eq!(Formatter::stream_bytes(b"\xff",false),b"\xff");
+    }
+    #[test]
+    fn typography_and_document_share_roles(){
+        let mut d=Document::default();
+        d.title("Sistema");d.field("CPU","Intel");d.line(Role::Warning,"Revisar");
+        let human=d.render(OutputMode::Interactive);
+        assert!(human.contains(HEADING)&&human.contains(LABEL)&&human.contains(CAUTION));
+        assert_eq!(d.render(OutputMode::Machine),"Sistema\nCPU: Intel\nRevisar\n");
+        assert!(font_pixels(Some(Role::Title),13.,8.,17.)>font_pixels(Some(Role::Label),13.,8.,17.));
+        assert!(font_pixels(Some(Role::Title),32.,8.,17.)<=8./0.60);
+        for role in [Role::Title,Role::Label,Role::Success,Role::Warning,Role::Optimal]{
+            assert_eq!(Role::from_rgb(role.style().rgb),Some(role));
+        }
+    }
+}

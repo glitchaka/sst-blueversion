@@ -50,11 +50,11 @@ impl UnbanBuiltin {
         }
         match result{
             Ok((dc,changed))=>Ok(CommandOutput::ok(format!(
-                "\x1b[32m[AD] {}\x1b[0m\nUsuario: {user}\nControlador: {dc}\nEstado: lockoutTime=0 (verificado en el controlador)\n",
+                "ACTIVE DIRECTORY\nEstado: {}\nUsuario: {user}\nControlador: {dc}\nEvidencia: lockoutTime=0 (verificado en el controlador)\n",
                 if changed{"Cuenta desbloqueada"}else{"Cuenta sin bloqueo pendiente"}
             ))),
             Err(error)=>Ok(CommandOutput::error(format!(
-                "\x1b[31m[AD] No se pudo confirmar el desbloqueo\x1b[0m\nUsuario: {user}\n{error:#}\n"),1)),
+                "ACTIVE DIRECTORY\nEstado: ERROR\nUsuario: {user}\nError: {error:#}\n"),1)),
         }
     }
 }

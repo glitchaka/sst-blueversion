@@ -160,12 +160,10 @@ impl WindowsShellHost {
 
 impl ShellCommandHost for WindowsShellHost {
     fn emit_output(&self, stdout: &str, stderr: &str) -> Result<()> {
-        if !stdout.is_empty() {
-            crate::adapters::terminal::io::write(stdout.as_bytes())?;
-        }
-        if !stderr.is_empty() {
-            crate::adapters::terminal::io::write(stderr.as_bytes())?;
-        }
+        // Streamed script data is an explicit machine passthrough.
+        let output=crate::presentation::formatter::Formatter::result("",stdout,stderr,100,&[],crate::presentation::formatter::OutputMode::Machine);
+        if !output.stdout.is_empty(){crate::adapters::terminal::io::write(output.stdout.as_bytes())?;}
+        if !output.stderr.is_empty(){crate::adapters::terminal::io::write(output.stderr.as_bytes())?;}
         Ok(())
     }
 
@@ -855,7 +853,7 @@ impl ShellCommandHost for WindowsShellHost {
             let force_abort = std::sync::Arc::clone(&self.force_abort);
             let result = service.ping_live(
                 &args[1..],
-                &mut |line| crate::adapters::terminal::io::write(line.as_bytes()),
+                &mut |line| crate::adapters::terminal::io::write(crate::presentation::formatter::Formatter::live(line).as_bytes()),
                 &|| interrupt.load(Ordering::SeqCst)
                     || force_abort.load(Ordering::SeqCst),
             )?;
@@ -1779,7 +1777,7 @@ fn relay_live_console<R: Read>(
     let flush = |line: &mut Vec<u8>, ending: &[u8]| {
         if line.is_empty() && ending.is_empty() { return; }
         let mut rendered = if let Ok(text) = std::str::from_utf8(line) {
-            crate::presentation::report::style_live_line(text).into_bytes()
+            crate::presentation::formatter::Formatter::stream_bytes(text.as_bytes(),false)
         } else {
             line.clone()
         };
@@ -1831,6 +1829,7 @@ fn send_async_terminal_output(
 ) {
     if bytes.is_empty() { return; }
     if let Some(sender) = sender {
+        let bytes=crate::presentation::formatter::Formatter::stream_bytes(bytes,true);
         let mut translated = Vec::with_capacity(bytes.len());
         for (index, byte) in bytes.iter().copied().enumerate() {
             if byte == b'\n' && (index == 0 || bytes[index - 1] != b'\r') {
@@ -2029,7 +2028,6 @@ fn resolve_shell_script(program: &str, cwd: &Path) -> Option<PathBuf> {
 pub struct NativeShellEngine {
     interpreter: Interpreter,
     config_file: PathBuf,
-    native_commands: Vec<String>,
     interrupt: Arc<std::sync::atomic::AtomicBool>,
     force_abort: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -2045,7 +2043,6 @@ impl NativeShellEngine {
         config_file: PathBuf,
         script_routes: HashMap<String, ScriptRunner>,
     ) -> Result<Self> {
-        let native_commands = registry.names();
         let interrupt = crate::adapters::terminal::io::interrupt_flag();
         let force_abort = crate::adapters::terminal::io::force_abort_flag();
         let host = WindowsShellHost {
@@ -2079,7 +2076,6 @@ impl NativeShellEngine {
         let mut engine = Self {
             interpreter,
             config_file,
-            native_commands,
             interrupt,
             force_abort,
         };
@@ -2173,21 +2169,8 @@ impl ShellEngine for NativeShellEngine {
         } else {
             ShellExecution::continue_running(result.status)
         };
-        // Apply human-readable report presentation at one engine boundary,
-        // rather than separately in every builtin. Machine output, scripts,
-        // pipes, redirects and ANSI-native TUI output remain byte-for-byte.
-        execution.stdout = if stdin.is_none()
-            && self.interpreter.env.option_enabled("interactive")
-            && crate::adapters::terminal::io::output_sender().is_some()
-        {
-            let width = crate::adapters::terminal::io::size()
-                .map(|(cols, _)| cols).unwrap_or(100);
-            crate::presentation::report::decorate_registered_at_width(
-                line, &result.stdout, width, &self.native_commands,
-            )
-        } else {
-            result.stdout
-        };
+        // Execution results remain data until the presentation boundary.
+        execution.stdout = result.stdout;
         execution.stderr = result.stderr;
         Ok(execution)
     }

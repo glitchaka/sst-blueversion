@@ -161,7 +161,7 @@ mod viewport_regression_tests {
     }
 }
 
-const FG: Rgb = Rgb(0xDF, 0xE3, 0xE8);
+const FG: Rgb = Rgb(crate::presentation::formatter::DEFAULT_FOREGROUND.0,crate::presentation::formatter::DEFAULT_FOREGROUND.1,crate::presentation::formatter::DEFAULT_FOREGROUND.2);
 const BG: Rgb = Rgb(0x28, 0x28, 0x28);
 const CURSOR: Rgb = Rgb(0xFE, 0x80, 0x19);
 const SELECTION: Rgb = Rgb(0x50, 0x49, 0x45);
@@ -1337,10 +1337,23 @@ impl TerminalModel {
                 self.cursor_on && screen.scrollback() == 0 && !screen.hide_cursor();
             let (left_pad, top_pad, cell_width, cell_height) = self.geometry();
             let font_px = (self.appearance.font_size as f32 * self.scale).round().max(8.0);
-            let font_key = font_px.round() as u16;
             let default_fg = parse_rgb(&self.appearance.font_color).unwrap_or(FG);
 
             for row in 0..rows {
+                use crate::presentation::formatter::{Role,font_pixels,SECTION_RAIL,SECTION_RULE};
+                // A native visual accent appears only for a semantic title.
+                // No ANSI boxes or graphical decoration are emitted by commands.
+                let title= (0..cols.min(12)).any(|col|screen.cell(row,col).is_some_and(|cell|
+                    cell.bold()&&cell.contents().chars().any(char::is_alphabetic)&&
+                    matches!(cell.fgcolor(),vt100::Color::Rgb(r,g,b) if Role::from_rgb((r,g,b))==Some(Role::Title))));
+                if title {
+                    let y=(top_pad+row as f32*cell_height).round() as i32;
+                    let x=left_pad.round() as i32;
+                    let rail=Rgb(SECTION_RAIL.0,SECTION_RAIL.1,SECTION_RAIL.2);
+                    let rule=Rgb(SECTION_RULE.0,SECTION_RULE.1,SECTION_RULE.2);
+                    fill_rect(pixels,width,height,(x-5).max(0),y+2,2,(cell_height as i32-4).max(1),rail);
+                    fill_rect(pixels,width,height,x,y+cell_height as i32-1,(width as i32-x-8).max(0),1,rule);
+                }
                 for col in 0..cols {
                     let Some(cell) = screen.cell(row, col) else {
                         continue;
@@ -1388,6 +1401,10 @@ impl TerminalModel {
                         continue;
                     }
 
+                    let role=match cell.fgcolor(){vt100::Color::Rgb(r,g,b)=>Role::from_rgb((r,g,b)),_=>None};
+                    let font_px=if role.is_some(){font_pixels(role,font_px,cell_width,cell_height)}else{font_px};
+                    let font_key=font_px.round().max(1.0) as u16;
+                    let font_px=font_key as f32;
                     let mut pen_x = x;
                     let baseline = y + (cell_height * 0.80).round() as i32;
                     for ch in content.chars() {
@@ -1406,7 +1423,7 @@ impl TerminalModel {
                                 glyph,
                                 fg,
                             );
-                            if cell.bold() {
+                            if role.map_or(cell.bold(),|r|r.style().bold) {
                                 draw_glyph(
                                     pixels,
                                     width,

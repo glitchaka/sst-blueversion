@@ -13,6 +13,7 @@ mod gui_slint_base;
 #[path = "gui_slint_wrapper.rs"]
 pub mod gui_slint;
 pub mod shell;
+pub mod formatter;
 pub mod report;
 pub mod csv_output;
 pub mod tui_style;

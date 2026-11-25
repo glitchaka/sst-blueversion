@@ -28,7 +28,8 @@ impl TerminalSession for CrosstermTerminalSession {
     }
 
     fn write(&mut self, text: &str) -> Result<()> {
-        io::write(text.as_bytes())?;
+        // Alternate-screen protocols are explicit terminal passthrough.
+        io::write(crate::presentation::formatter::Formatter::terminal(text).as_bytes())?;
         Ok(())
     }
 
