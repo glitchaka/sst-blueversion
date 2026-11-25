@@ -17,6 +17,10 @@ use sysinfo::{Disks, Pid, System};
 #[path = "keygen_mesh.rs"]
 mod keygen_mesh;
 
+pub(crate) const SST_TERMINAL_FONT_BYTES: &[u8] = include_bytes!(concat!(
+    env!("OUT_DIR"), "/JetBrainsMonoNerdFontMono-Regular.ttf"
+));
+
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError},
@@ -1319,61 +1323,54 @@ struct KeygenSprite {
 fn keygen_scene(physics: &mut KeygenPhysics, frame: u64, facts: &[String],
     paused: bool, track: usize) -> Vec<KeygenSprite> {
     let mut sprites = Vec::new();
-    // Scene coordinates are fixed 1152 x 672 logical pixels, not character cells.
+    // The November 23 intro: compact centered typography, two moving
+    // headings, a single centered block of colored system information.
+    // The original terminal wallpaper remains visible underneath SDL.
     for (line, text, y, spacing, size) in [
-        (0, "SHELL SHOCK TOOL", 180.0_f32, 54.0_f32, 66.0_f32),
-        (1, "SST  /  KEYGEN  2000", 287.0, 31.0, 38.0),
+        (0, "SHELL SHOCK TOOL", 112.0_f32, 24.0_f32, 35.0_f32),
+        (1, "SST  /  KEYGEN  2000", 213.0, 19.0, 27.0),
     ] {
         let count = text.chars().count() as f32;
-        for (index, glyph) in text.chars().enumerate() {
-            if glyph == ' ' { continue; }
-            let body = physics.body(line, index);
-            let x = (index as f32 - (count - 1.0) * 0.5) * spacing;
-            let time = frame as f32 / 60.0;
-            let wave = time * 2.5 - index as f32 * 0.41;
-            let roll = time * 1.7 + line as f32 * 0.55;
+        for (index,glyph) in text.chars().enumerate() {
+            if glyph==' ' {continue;}
+            let body=physics.body(line,index);
+            let time=frame as f32/60.0;
+            let phase=time*2.7-index as f32*0.57+line as f32*1.3;
+            let x=(index as f32-(count-1.0)*0.5)*spacing;
             sprites.push(KeygenSprite {
-                glyph, x: 576.0 + x + roll.sin() * 18.0 + body.x.tanh() * spacing * 0.23,
-                y: y + wave.sin() * 23.0 + body.y.tanh() * 21.0,
-                z: wave.cos() * 24.0 + body.z.tanh() * 38.0,
-                rx: body.rx.tanh() * 0.40 + wave.cos() * 0.16,
-                ry: body.ry.tanh() * 0.40 + roll.sin() * 0.23,
-                rz: body.rz.tanh() * 0.23 + wave.cos() * 0.11,
-                size, color: keygen_glyph_color(frame / 4, index, line), depth: 2,
+                glyph, x:576.0+x+body.x.tanh()*spacing*0.22,
+                y:y+phase.sin()*30.0+body.y.tanh()*14.0,
+                z:phase.cos()*20.0+body.z.tanh()*27.0,
+                rx:body.rx.tanh()*0.30+phase.cos()*0.17,
+                ry:body.ry.tanh()*0.32+phase.sin()*0.23,
+                rz:body.rz.tanh()*0.18+phase.cos()*0.13,
+                size,color:keygen_glyph_color(frame/3,index,line),depth:2,
             });
         }
     }
-    // System metadata is deliberately readable, not affected by collisions.
-    let mut text_line = |text: &str, x: f32, y: f32, size: f32, color: (u8,u8,u8)| {
-        for (i, glyph) in text.chars().take(66).enumerate() {
-            if glyph == ' ' || glyph.is_control() { continue; }
-            sprites.push(KeygenSprite { glyph, x: x + i as f32 * size * 0.60,
-                y, z: 0.0, rx: 0.0, ry: 0.0, rz: 0.0, size, color, depth: 1 });
+    // Stable layout, animated foreground colors, same regular Nerd Font.
+    let mut text_line=|text:&str,y:f32,size:f32,animated:bool,row:usize| {
+        let chars:Vec<char>=text.chars().take(100).collect();
+        let spacing=size*0.60;
+        let start=if animated {576.0-(chars.len().saturating_sub(1) as f32)*spacing*0.5} else {12.0};
+        for (i,glyph) in chars.into_iter().enumerate() {
+            if glyph==' '||glyph.is_control(){continue;}
+            let color=if animated {
+                // Preserve contrast: avoid the almost-black troughs of RGB waves.
+                let (r,g,b)=keygen_glyph_color(frame/3,i,row+2);
+                let bright=|v:u8| 65+(f32::from(v)*0.74) as u8;
+                (bright(r),bright(g),bright(b))
+            }else{(189,174,147)};
+            sprites.push(KeygenSprite{glyph,x:start+i as f32*spacing,
+                y,z:0.0,rx:0.0,ry:0.0,rz:0.0,size,color,depth:1});
         }
     };
-    for (i, fact) in facts.iter().enumerate() {
-        let col = i / 6;
-        let row = i % 6;
-        text_line(&fact.chars().take(54).collect::<String>(), 58.0 + col as f32 * 560.0, 382.0 + row as f32 * 31.0,
-            16.0, (218, 207, 181));
+    for (i,fact) in facts.iter().enumerate() {
+        text_line(fact,275.0+i as f32*22.0,19.0,true,i);
     }
-    let state = if paused { "PAUSA" } else { "PLAY" };
-    text_line(&format!("MP3 {track}/2  {state}    [1/2] PISTA    [ESPACIO] PAUSA    [ESC/Q] SALIR"),
-        58.0, 643.0, 17.0, (250, 189, 47));
-    let message = "SHELL SHOCK TOOL   /   NATIVE SST   /   KEYGEN 2000   ///   ";
-    let step = 15.0;
-    let cycle = message.chars().count() as f32 * step;
-    let offset = (frame as f32 * 1.65) % cycle;
-    for (i, glyph) in message.chars().cycle().take(message.len() * 3).enumerate() {
-        let x = i as f32 * step - offset;
-        if x < -20.0 || x > 1172.0 || glyph == ' ' { continue; }
-        let phase = x * 0.015 + frame as f32 * 0.035;
-        sprites.push(KeygenSprite {
-            glyph, x, y: 594.0 + phase.sin() * 7.0, z: 0.0,
-            rx: 0.0, ry: 0.0, rz: phase.cos() * 0.12,
-            size: 21.0, color: (224, 207, 172), depth: 1,
-        });
-    }
+    let state=if paused{"PAUSA"}else{"PLAY"};
+    text_line(&format!("[MP3 {track}/2]  {state}   1/2: pista   Espacio: pausa   ESC/Q: salir"),
+        650.0,15.0,false,0);
     sprites
 }
 
@@ -1416,37 +1413,12 @@ fn keygen_draw_glyph<T: sdl2::render::RenderTarget>(
     canvas.render_geometry(&vertices,Some(texture),&INDICES[..]).map_err(anyhow::Error::msg)
 }
 
-/// Demoscene backdrop drawn in SDL logical pixels, not in terminal cells.
+/// Transparent SDL surface; the existing SST wallpaper is the backdrop.
 fn keygen_backdrop<T: sdl2::render::RenderTarget>(
-    canvas: &mut sdl2::render::Canvas<T>, frame: u64,
-) -> anyhow::Result<()> {
-    use sdl2::{pixels::Color, rect::{Point,Rect}};
-    let time = frame as f32 / 60.0;
-    canvas.set_draw_color(Color::RGB(8,9,15));
+    canvas: &mut sdl2::render::Canvas<T>,
+) {
+    canvas.set_draw_color(sdl2::pixels::Color::RGBA(0,0,0,0));
     canvas.clear();
-    for n in 0..96u32 {
-        let seed = n.wrapping_mul(747796405).wrapping_add(2891336453);
-        let sx = ((seed >> 8) & 1023) as f32 / 512.0 - 1.0;
-        let sy = ((seed >> 20) & 511) as f32 / 256.0 - 1.0;
-        let z = 0.28 + ((n as f32 * 0.618 + 1.0 - (time*0.17).fract()).rem_euclid(1.0))*1.72;
-        let x = 576.0 + sx * 385.0 / z;
-        let y = 198.0 + sy * 140.0 / z;
-        if !(0.0..1152.0).contains(&x) || !(43.0..330.0).contains(&y) { continue; }
-        let light = (125.0 / z).clamp(22.0, 205.0) as u8;
-        canvas.set_draw_color(Color::RGB(light/2,light-light/4,light));
-        let side = if z < 0.60 { 2 } else { 1 };
-        canvas.fill_rect(Rect::new(x as i32,y as i32,side,side)).map_err(anyhow::Error::msg)?;
-    }
-    for row in 0..25i32 {
-        let phase = time * 2.6 + row as f32 * 0.22;
-        let light = (phase.sin()*0.5+0.5)*42.0 + 8.0;
-        canvas.set_draw_color(Color::RGB(light as u8,(light*0.76) as u8,(light*0.34) as u8));
-        canvas.draw_line(Point::new(42,330+row),Point::new(1110,330+row)).map_err(anyhow::Error::msg)?;
-    }
-    canvas.set_draw_color(Color::RGB(24,23,29));
-    canvas.draw_line(Point::new(42,574),Point::new(1110,574)).map_err(anyhow::Error::msg)?;
-    canvas.draw_line(Point::new(42,618),Point::new(1110,618)).map_err(anyhow::Error::msg)?;
-    Ok(())
 }
 
 pub(crate) enum KeygenFrame { Draw(Vec<u8>), Closed }
@@ -1474,18 +1446,10 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
     let mut renderer = surface.into_canvas().map_err(anyhow::Error::msg)?;
     renderer.set_blend_mode(BlendMode::Blend);
     let creator = renderer.texture_creator();
-    let font_dir = std::path::PathBuf::from(env::var_os("WINDIR")
-        .unwrap_or_else(|| std::ffi::OsString::from(r"C:\Windows"))).join("Fonts");
-    let font_bytes = ["consolab.ttf","consola.ttf","lucon.ttf","cour.ttf"]
-        .into_iter().find_map(|name| std::fs::read(font_dir.join(name)).ok())
-        .ok_or_else(|| anyhow::anyhow!("keygen: falta una fuente monoespaciada Windows"))?;
-    let font = fontdue::Font::from_bytes(font_bytes, fontdue::FontSettings::default())
-        .map_err(|e| anyhow::anyhow!("keygen: fuente Windows inválida: {e}"))?;
-    let display_bytes = ["gara.ttf","garamond.ttf","consola.ttf","lucon.ttf","cour.ttf"]
-        .into_iter().find_map(|name| std::fs::read(font_dir.join(name)).ok())
-        .ok_or_else(|| anyhow::anyhow!("keygen: falta una tipografía regular para la malla 3D"))?;
-    let display_face = ttf_parser::Face::parse(&display_bytes,0)
-        .map_err(|e| anyhow::anyhow!("keygen: contorno TrueType inválido: {e:?}"))?;
+    let font = fontdue::Font::from_bytes(SST_TERMINAL_FONT_BYTES,fontdue::FontSettings::default())
+        .map_err(|e| anyhow::anyhow!("keygen: fuente integrada SST inválida: {e}"))?;
+    let display_face = ttf_parser::Face::parse(SST_TERMINAL_FONT_BYTES,0)
+        .map_err(|e| anyhow::anyhow!("keygen: contorno de la fuente SST inválido: {e:?}"))?;
     let mut mesh_cache = HashMap::new();
     let mut glyph_cache = HashMap::new();
     let interrupt = io::interrupt_flag();
@@ -1541,7 +1505,7 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
         }
         let mut sprites = keygen_scene(&mut physics,frame,&facts,music.is_paused(),music.track_number());
         sprites.sort_by(|a,b| a.z.total_cmp(&b.z));
-        keygen_backdrop(&mut renderer, frame)?;
+        keygen_backdrop(&mut renderer);
         for sprite in sprites {
             if sprite.depth > 1 {
                 if let std::collections::hash_map::Entry::Vacant(entry) = mesh_cache.entry(sprite.glyph) {
@@ -1626,7 +1590,7 @@ mod keygen_motion_regressions {
         for frame in 0..3600 {
             physics.tick(frame);
             let sprites = keygen_scene(&mut physics, frame, &[], false, 1);
-            for (title, center) in [("SHELLSHOCKTOOL", 180.0), ("SST/KEYGEN2000", 287.0)] {
+            for (title, center) in [("SHELLSHOCKTOOL", 112.0), ("SST/KEYGEN2000", 213.0)] {
                 let line: Vec<_> = sprites.iter()
                     .filter(|s| s.depth > 1 && (s.y - center).abs() < 50.0).collect();
                 assert_eq!(line.iter().map(|s| s.glyph).collect::<String>(), title);
@@ -1641,14 +1605,19 @@ mod keygen_motion_regressions {
     }
 
     #[test]
-    fn native_intro_background_changes_over_time() {
+    fn native_intro_preserves_wallpaper_and_console_font() {
         use sdl2::{pixels::PixelFormatEnum,surface::Surface};
-        let mut canvas = Surface::new(1152,672,PixelFormatEnum::RGBA32).unwrap().into_canvas().unwrap();
-        keygen_backdrop(&mut canvas,0).unwrap();
-        let first = canvas.read_pixels(None,PixelFormatEnum::RGBA32).unwrap();
-        keygen_backdrop(&mut canvas,120).unwrap();
-        let second = canvas.read_pixels(None,PixelFormatEnum::RGBA32).unwrap();
-        assert_ne!(first,second);
+        let mut canvas=Surface::new(32,32,PixelFormatEnum::RGBA32).unwrap().into_canvas().unwrap();
+        keygen_backdrop(&mut canvas);
+        let pixels=canvas.read_pixels(None,PixelFormatEnum::RGBA32).unwrap();
+        assert!(pixels.chunks_exact(4).all(|p|p[3]==0));
+        let face=ttf_parser::Face::parse(super::SST_TERMINAL_FONT_BYTES,0).unwrap();
+        assert!(face.glyph_index('S').is_some());
+        let mut physics=KeygenPhysics::default();
+        let facts=vec!["CPU :: TEST".to_owned()];
+        let first=keygen_scene(&mut physics,0,&facts,false,1);
+        let later=keygen_scene(&mut physics,120,&facts,false,1);
+        assert!(first.iter().zip(later).any(|(a,b)| a.depth==1 && a.color!=b.color));
     }
 
     #[test]

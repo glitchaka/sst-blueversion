@@ -184,13 +184,9 @@ mod tests {
         assert!(at(30,30)>100);
         assert_eq!(at(60,60),0);
     }
-    #[cfg(windows)]
     #[test]
-    fn actual_regular_windows_font_has_closed_glyphs() {
-        let root=std::path::PathBuf::from(std::env::var_os("WINDIR").unwrap_or_else(||r"C:\Windows".into())).join("Fonts");
-        let bytes=["gara.ttf","consola.ttf","lucon.ttf","cour.ttf"].iter()
-            .find_map(|name|std::fs::read(root.join(name)).ok()).expect("regular Windows font");
-        let face=ttf_parser::Face::parse(&bytes,0).unwrap();
+    fn actual_sst_terminal_font_has_closed_glyphs() {
+        let face=ttf_parser::Face::parse(super::super::SST_TERMINAL_FONT_BYTES,0).unwrap();
         for ch in "SHEL OCKT/KEYGN20".chars().filter(|c|*c!=' ') {
             let mesh=GlyphMesh::from_font(&face,ch).unwrap();
             assert!(mesh.faces.len()>4);

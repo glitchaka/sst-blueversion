@@ -165,10 +165,7 @@ const BG: Rgb = Rgb(0x28, 0x28, 0x28);
 const CURSOR: Rgb = Rgb(0xFE, 0x80, 0x19);
 const SELECTION: Rgb = Rgb(0x50, 0x49, 0x45);
 
-const NERD_FONT_BYTES: &[u8] = include_bytes!(concat!(
-    env!("OUT_DIR"),
-    "/JetBrainsMonoNerdFontMono-Regular.ttf"
-));
+const NERD_FONT_BYTES: &[u8] = crate::application::system::SST_TERMINAL_FONT_BYTES;
 
 slint::slint! {
     // Rendered vector outlines, never made of VT100/ASCII characters.
@@ -378,6 +375,7 @@ slint::slint! {
                 y: 0;
                 width: 100%;
                 height: 100%;
+                visible: !root.keygen-visible;
                 source: root.terminal-image;
                 image-fit: fill;
             }
@@ -385,7 +383,7 @@ slint::slint! {
             // Ordinary SST help and reports receive the same genuine native
             // section accents. No box characters enter the command stream.
             ReportHeadingBand {
-                visible: root.report-heading-count > 0;
+                visible: !root.keygen-visible && root.report-heading-count > 0;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-a-row * root.report-line-height) * 1px;
                 width: root.report-a-width * 1px;
@@ -393,7 +391,7 @@ slint::slint! {
             }
 
             ReportHeadingBand {
-                visible: root.report-heading-count > 1;
+                visible: !root.keygen-visible && root.report-heading-count > 1;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-b-row * root.report-line-height) * 1px;
                 width: root.report-b-width * 1px;
@@ -401,7 +399,7 @@ slint::slint! {
             }
 
             ReportHeadingBand {
-                visible: root.report-heading-count > 2;
+                visible: !root.keygen-visible && root.report-heading-count > 2;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-c-row * root.report-line-height) * 1px;
                 width: root.report-c-width * 1px;
@@ -409,7 +407,7 @@ slint::slint! {
             }
 
             ReportHeadingBand {
-                visible: root.report-heading-count > 3;
+                visible: !root.keygen-visible && root.report-heading-count > 3;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-d-row * root.report-line-height) * 1px;
                 width: root.report-d-width * 1px;
@@ -417,7 +415,7 @@ slint::slint! {
             }
 
             ReportHeadingBand {
-                visible: root.report-heading-count > 4;
+                visible: !root.keygen-visible && root.report-heading-count > 4;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-e-row * root.report-line-height) * 1px;
                 width: root.report-e-width * 1px;
@@ -425,7 +423,7 @@ slint::slint! {
             }
 
             ReportHeadingBand {
-                visible: root.report-heading-count > 5;
+                visible: !root.keygen-visible && root.report-heading-count > 5;
                 x: root.report-grid-left * 1px;
                 y: (root.report-grid-top + root.report-f-row * root.report-line-height) * 1px;
                 width: root.report-f-width * 1px;
@@ -435,7 +433,7 @@ slint::slint! {
             // Draw only for a TUI that explicitly supplies semantic sections.
             // The normal terminal (and its logo) has no vector overlays.
             TerminalSectionFrame {
-                visible: root.monitor-panel-count > 0;
+                visible: !root.keygen-visible && root.monitor-panel-count > 0;
                 x: root.monitor-grid-left * 1px;
                 y: (root.monitor-grid-top + root.monitor-a-row * root.monitor-line-height) * 1px;
                 width: root.monitor-grid-width * 1px;
@@ -443,7 +441,7 @@ slint::slint! {
             }
 
             TerminalSectionFrame {
-                visible: root.monitor-panel-count > 1;
+                visible: !root.keygen-visible && root.monitor-panel-count > 1;
                 x: root.monitor-grid-left * 1px;
                 y: (root.monitor-grid-top + root.monitor-b-row * root.monitor-line-height) * 1px;
                 width: root.monitor-grid-width * 1px;
@@ -451,7 +449,7 @@ slint::slint! {
             }
 
             TerminalSectionFrame {
-                visible: root.monitor-panel-count > 2;
+                visible: !root.keygen-visible && root.monitor-panel-count > 2;
                 x: root.monitor-grid-left * 1px;
                 y: (root.monitor-grid-top + root.monitor-c-row * root.monitor-line-height) * 1px;
                 width: root.monitor-grid-width * 1px;
@@ -459,7 +457,7 @@ slint::slint! {
             }
 
             TerminalSectionFrame {
-                visible: root.monitor-panel-count > 3;
+                visible: !root.keygen-visible && root.monitor-panel-count > 3;
                 x: root.monitor-grid-left * 1px;
                 y: (root.monitor-grid-top + root.monitor-d-row * root.monitor-line-height) * 1px;
                 width: root.monitor-grid-width * 1px;
@@ -469,7 +467,7 @@ slint::slint! {
             if root.keygen-visible : Rectangle {
                 width: 100%;
                 height: 100%;
-                background: #0c0c0c;
+                background: transparent;
                 Image {
                     width: 100%;
                     height: 100%;
