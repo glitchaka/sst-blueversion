@@ -1,25 +1,28 @@
 {
   "schema": 1,
-  "version": "0.1.12-blue.4",
+  "version": "0.1.12-blue.5",
   "channel": "blue",
-  "published_at": "2026-11-25T15:10:47.0318637+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.4/sst.exe",
-  "sha256": "d6a8f5a4e09d3f9e0ace8d5f96777f582d7a35b18c599561ffbe552de7a6e429",
-  "size": 59435520,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.4/sst-updater.exe",
-  "updater_sha256": "27d3c823731a6f07b55d5571fca3f963585f48b6c1624d47ace7d99c50b208c1",
+  "published_at": "2026-11-25T15:23:46.9380913+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.5/sst.exe",
+  "sha256": "4556754f8126329ed82911a3cec173fa5f73524641c2771ba5a788b25f166ef4",
+  "size": 59433472,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.5/sst-updater.exe",
+  "updater_sha256": "9f0a5eb77806a678aba20b66c5cb3c3ebb5b1bac7a8c77fc5837c810ff18a981",
   "updater_size": 433664,
   "changes": [
     "Recupera ascii-art.txt de 37 × 100 caracteres entregado por el autor. El logotipo completo conserva todos los caracteres; el compacto se deriva únicamente de ese texto mediante SDL2/libcaca, no del PNG/ICO.",
     "Paleta azul/plata aplicada a los caracteres sin cruzar geometría de imágenes con el ASCII. Pruebas de integridad del original y mapeo de color.",
-    "Incluye las correcciones previas de autenticación LDAP de unban y compilación sin diagnose obsoleto."
+    "Incluye las correcciones previas de autenticación LDAP de unban y compilación sin diagnose obsoleto.",
+    "Keygen abre una escena SDL2 nativa con letras en movimiento libre, rotaciones 3D, profundidad y simulación física de paso fijo.",
+    "La escena muestra los datos del sistema y ofrece controles para las dos pistas originales.",
+    "Prueba de renderizado real de triángulos texturizados en una superficie SDL y pruebas de movimiento/proyección."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.12-blue.4.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.4/SST-Setup-0.1.12-blue.4.exe",
-    "sha256": "c6cffc6230fe2f055d60ef13d98c0a6d7fff8a7f2cdd76241e4330779bf23b88",
-    "size": 68598277,
+    "name": "SST-Setup-0.1.12-blue.5.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.5/SST-Setup-0.1.12-blue.5.exe",
+    "sha256": "08a7d2c750dfc513f458a0de941a5cc1b52ba35e6c052303777000908f5cc5ad",
+    "size": 68596230,
     "single_use": true,
-    "package_id": "73a71ce3bdee7b435e0e74b42a7a69d2"
+    "package_id": "56aaac64d6567848460547d146cdbe7a"
   }
 }
