@@ -1228,9 +1228,18 @@ impl KeygenGlyphBody {
 #[derive(Default)]
 struct KeygenPhysics {
     bodies: HashMap<(usize, usize), KeygenGlyphBody>,
+    scroll_distance: f32,
 }
 
 impl KeygenPhysics {
+    // The musical transport is continuous across track changes. Each letter
+    // has an independent physical displacement and wraps independently.
+    fn advance_scroll(&mut self, elapsed: f32, pulse: f32) {
+        self.scroll_distance = (self.scroll_distance
+            + elapsed.max(0.0) * (112.0 + 28.0 * pulse.clamp(0.0,1.0)))
+            .rem_euclid(1280.0);
+    }
+
     fn react(&mut self,beat:usize,strength:f32) {
         for (&(line,index),body) in &mut self.bodies {
             let seed=(beat+index*3+line*7)%11;
@@ -1321,14 +1330,13 @@ struct KeygenSprite {
     depth: u8,
 }
 
-/// The complete phrase leaves the left edge before its next appearance
-/// at the right edge. The off-screen gap prevents a visible teleport.
-fn keygen_scroll_x(distance:f32,count:usize,spacing:f32)->f32{
-    let width=count as f32*spacing;
-    let left=-width-64.0;
-    let period=1152.0+width+128.0;
-    let initial=(1152.0-width)*0.5;
-    left+(initial-left-distance).rem_euclid(period)
+/// Wrap one glyph center after its whole mesh clears the left edge.
+/// The period is independent of the length of any text or word. Neighboring
+/// letters cross at different instants and appear on the opposite side while
+/// the remainder of the phrase is still visible at the first edge.
+fn keygen_wrap_glyph(x:f32)->f32{
+    const MARGIN:f32=64.0;
+    -MARGIN+(x+MARGIN).rem_euclid(1152.0+2.0*MARGIN)
 }
 
 fn keygen_scene(physics:&mut KeygenPhysics,beat:VisualBeat,facts:&[String],
@@ -1342,20 +1350,27 @@ fn keygen_scene(physics:&mut KeygenPhysics,beat:VisualBeat,facts:&[String],
         // The interpolation between measured onsets is continuous. No fixed
         // artificial BPM and no dependency on the number of rendered frames.
         let musical=beat.beat_count as f32+beat.beat_phase;
-        let distance=beat.seconds*112.0+musical*8.0;
-        let start=keygen_scroll_x(distance+line as f32*125.0,count,spacing);
+        let initial=(1152.0-(count.saturating_sub(1) as f32)*spacing)*0.5
+            - line as f32*125.0;
+        let distance=physics.scroll_distance;
         for (index,glyph) in text.chars().enumerate(){
             if glyph==' ' {continue;}
             let body=physics.body(line,index);
             let phase=musical*std::f32::consts::TAU-index as f32*0.48+line as f32*1.2;
+            // The musical wave adds a shared rhythm, not a shared transform.
+            // Each glyph has its own spring displacement, velocity, depth and
+            // angular state. Horizontal wrapping happens AFTER these offsets.
             let wave=phase.sin()*(13.0+beat.pulse*16.0);
+            let individual_x=body.x.tanh()*spacing*0.46
+                + body.z.tanh()*spacing*0.12;
+            let x=keygen_wrap_glyph(initial+index as f32*spacing-distance+individual_x);
             sprites.push(KeygenSprite{
-                glyph,x:start+index as f32*spacing+body.x.tanh()*spacing*0.18,
-                y:y+wave+body.y.tanh()*12.0,
-                z:phase.cos()*15.0+body.z.tanh()*20.0,
-                rx:body.rx.tanh()*0.28+phase.cos()*0.14,
-                ry:body.ry.tanh()*0.28+phase.sin()*0.20,
-                rz:body.rz.tanh()*0.16+phase.cos()*0.10,
+                glyph,x,
+                y:y+wave+body.y.tanh()*16.0,
+                z:phase.cos()*15.0+body.z.tanh()*30.0,
+                rx:body.rx.tanh()*0.40+phase.cos()*0.17,
+                ry:body.ry.tanh()*0.44+phase.sin()*0.22,
+                rz:body.rz.tanh()*0.26+phase.cos()*0.12,
                 size,color:keygen_glyph_color(beat,index,line),depth:2,
             });
         }
@@ -1533,6 +1548,7 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
         let beat=music.visual();
         let beat_id=(music.track_number(),beat.beat_count);
         if !music.is_paused(){
+            physics.advance_scroll(elapsed.as_secs_f32(),beat.pulse);
             if beat_id!=last_beat{
                 if beat.beat_count>0{physics.react(beat.beat_count,beat.pulse);}
                 last_beat=beat_id;
@@ -1597,7 +1613,7 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
 
 #[cfg(test)]
 mod keygen_motion_regressions {
-    use super::{KeygenPhysics, VisualBeat, keygen_scene, keygen_project, keygen_draw_glyph, keygen_backdrop, keygen_scroll_x};
+    use super::{KeygenPhysics, VisualBeat, keygen_scene, keygen_project, keygen_draw_glyph, keygen_backdrop, keygen_wrap_glyph};
     fn time(frame:u64)->VisualBeat{VisualBeat{seconds:frame as f32/60.0,beat_count:(frame/30) as usize,beat_phase:(frame%30) as f32/30.0,pulse:0.5}}
 
     #[test]
@@ -1632,39 +1648,61 @@ mod keygen_motion_regressions {
     }
 
     #[test]
-    fn both_titles_remain_ordered_and_face_the_viewer_during_motion() {
-        let mut physics = KeygenPhysics::default();
-        for frame in 0..3600 {
-            if frame%30==0{physics.react((frame/30) as usize,0.7);} physics.tick();
-            let sprites = keygen_scene(&mut physics,time(frame), &[], false, 1);
-            for (title, center) in [("SHELLSHOCKTOOL", 112.0), ("SST/KEYGEN", 213.0)] {
-                let line: Vec<_> = sprites.iter()
-                    .filter(|s| s.depth > 1 && (s.y - center).abs() < 45.0).collect();
-                assert_eq!(line.iter().map(|s| s.glyph).collect::<String>(), title);
-                assert!(line.windows(2).all(|pair| pair[0].x < pair[1].x));
-                for sprite in line {
-                    let corners = keygen_project(sprite, 28.0, 36.0, 0.0);
-                    assert!(corners[1].0 - corners[0].0 > 12.0);
-                    assert!(corners[3].1 - corners[0].1 > 16.0);
-                }
+    fn glyphs_cross_edges_individually_and_remain_front_facing() {
+        let mut physics=KeygenPhysics::default();
+        let mut previous=keygen_scene(&mut physics,time(0),&[],false,1);
+        let mut crossings=0;
+        let mut split=false;
+        let mut flexible=false;
+        for frame in 1..3600 {
+            if frame%30==0{physics.react((frame/30) as usize,0.7);}
+            physics.tick();
+            physics.advance_scroll(1.0/60.0,0.5);
+            let sprites=keygen_scene(&mut physics,time(frame),&[],false,1);
+            // Insertion order identifies each body, even when spatial order
+            // changes at the seam. No requirement that a whole title wraps.
+            let title_len="SHELLSHOCKTOOL".len();
+            let total=title_len+"SST/KEYGEN".len();
+            let old=&previous[..total];let new=&sprites[..total];
+            assert_eq!(new.iter().map(|s|s.glyph).collect::<String>(),"SHELLSHOCKTOOLSST/KEYGEN");
+            let crossed:Vec<_>=old.iter().zip(new).filter(|(a,b)|b.x-a.x>1000.0).collect();
+            if !crossed.is_empty(){
+                crossings+=crossed.len();
+                assert!(crossed.len()<title_len);
+                assert!(crossed.iter().all(|(a,b)|a.x< -40.0 && b.x>1190.0));
             }
+            split|=new[..title_len].iter().any(|s|s.x<120.0)
+                && new[..title_len].iter().any(|s|s.x>1032.0);
+            let dx0=keygen_wrap_glyph(new[0].x-old[0].x+576.0)-576.0;
+            let dx1=keygen_wrap_glyph(new[1].x-old[1].x+576.0)-576.0;
+            flexible|=(dx0-dx1).abs()>0.005;
+            for sprite in new {
+                let corners=keygen_project(sprite,28.0,36.0,0.0);
+                assert!(corners[1].0-corners[0].0>9.0);
+                assert!(corners[3].1-corners[0].1>12.0);
+            }
+            previous=sprites;
         }
+        assert!(crossings>40);
+        assert!(split,"a title must be simultaneously visible on opposite edges");
+        assert!(flexible,"individual horizontal velocities must differ");
     }
 
     #[test]
-    fn scrolling_title_crosses_both_edges_before_wrapping(){
-        let count=16;let spacing=29.0;
-        let w=count as f32*spacing;
-        let initial=keygen_scroll_x(0.0,count,spacing);
-        assert!(initial>0.0);
-        let samples:Vec<_>=(0..2200).map(|d|keygen_scroll_x(d as f32,count,spacing)).collect();
-        assert!(samples.iter().any(|x|*x+w<0.0));
-        assert!(samples.iter().any(|x|*x>1152.0));
-        for pair in samples.windows(2){
-            if pair[1]>pair[0]+5.0{
-                assert!(pair[0]+w<0.0 && pair[1]>1152.0);
-            }
-        }
+    fn each_glyph_wraps_only_when_its_mesh_is_offscreen(){
+        assert_eq!(keygen_wrap_glyph(-64.0),-64.0);
+        assert!(keygen_wrap_glyph(-64.01)>1215.0);
+        assert_eq!(keygen_wrap_glyph(12.0),12.0);
+        assert_eq!(keygen_wrap_glyph(12.0-1280.0),12.0);
+    }
+
+    #[test]
+    fn scroll_does_not_reset_when_track_position_resets(){
+        let mut physics=KeygenPhysics::default();
+        physics.advance_scroll(2.0,0.5);
+        let first=keygen_scene(&mut physics,time(120),&[],false,1)[0];
+        let next=keygen_scene(&mut physics,time(0),&[],false,2)[0];
+        assert_eq!(first.x,next.x);
     }
 
     #[test]

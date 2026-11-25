@@ -912,10 +912,6 @@ fn token_status_output() -> Result<CommandOutput> {
     Ok(CommandOutput::ok(out))
 }
 
-pub(super) fn is_elevated() -> Result<bool> {
-    Ok(current_token_status()?.elevated)
-}
-
 fn current_token_status() -> Result<TokenStatus> {
     unsafe {
         let mut token = null_mut();
