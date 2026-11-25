@@ -1,25 +1,25 @@
 {
   "schema": 1,
-  "version": "0.1.12-blue.8",
+  "version": "0.1.12-blue.9",
   "channel": "blue",
-  "published_at": "2026-11-25T16:50:23.9771731+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.8/sst.exe",
-  "sha256": "37d968e9790c000200da7d3bef3b694c8b5e47571490683f4c5d5a656dd39a09",
-  "size": 61573120,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.8/sst-updater.exe",
-  "updater_sha256": "84bbd0598231b8ac3caf8fb4140287c78156b6a8b01abfd32408b2b3be83c204",
+  "published_at": "2026-11-25T17:24:09.1797602+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.9/sst.exe",
+  "sha256": "b51c88cfe5f59e503fcf8762cb815d9fa848a088e0b913701b96f26de9fe589d",
+  "size": 61969408,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.9/sst-updater.exe",
+  "updater_sha256": "091a2f12d76c559cd511aab58c04087181c83aa097a4211c06ab3ae5e069fe47",
   "updater_size": 433664,
   "changes": [
-    "Keygen utiliza exclusivamente JetBrainsMono Nerd Font Mono Regular, el mismo archivo tipográfico integrado en la consola.",
-    "Recupera la composición compacta y centrada del 23 de noviembre: títulos ondulantes en 3D, datos con color animado y fondo original de SST.",
-    "Conserva la geometría sólida de profundidad uniforme y el cambio de modo integrado. Sin cambios de audio, sin barras raster ni marquesina añadida."
+    "Keygen elimina el año ficticio. Los títulos recorren toda la ventana y reaparecen por el borde opuesto, sin saltos visibles.",
+    "Las ondas, los rebotes y los colores siguen los transitorios del PCM original y la posición real del reproductor. No se cambian los MP3.",
+    "Presentación a 60 Hz con atlas de texto, geometría SDL por lotes y una única copia del fotograma. Conserva la fuente y el fondo de SST."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.12-blue.8.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.8/SST-Setup-0.1.12-blue.8.exe",
-    "sha256": "0cf12ccc67fe9c1938e13a2e7a145836f22e23c2e95bbb62ef17afdf15eb6af0",
-    "size": 70735878,
+    "name": "SST-Setup-0.1.12-blue.9.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.9/SST-Setup-0.1.12-blue.9.exe",
+    "sha256": "d870f6c3a06950655ebbda574ae8bd9b406e14910f630021e679f33d1a7c848a",
+    "size": 71132166,
     "single_use": true,
-    "package_id": "7add8328c0bc9d3932d646a52732bb82"
+    "package_id": "262d9eabbc5bc2554b0e27d9c0c9f286"
   }
 }
