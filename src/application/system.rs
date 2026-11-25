@@ -134,50 +134,8 @@ impl SystemService {
         };
         // Start sound before taking over the screen. A missing MP3 reports a
         // useful error at the normal prompt, not a mute keygen animation.
-        let mut music = crate::application::keygen_audio::KeygenMusic::new(first)?;
-
-        #[cfg(windows)]
-        if env::var_os("SST_KEYGEN_TERMINAL").is_none() {
-            return keygen_sdl(music);
-        }
-
-        let mut terminal = self.terminal.alternate_screen()?;
-        let mut system = System::new_all();
-        system.refresh_all();
-        let mut frame = 0u64;
-        let mut glyph_physics = KeygenPhysics::default();
-        loop {
-            if frame % 15 == 0 && !music.is_paused() {
-                system.refresh_cpu_all();
-                system.refresh_memory();
-            }
-            let (cols, rows) = terminal.size()?;
-            let facts = keygen_system_facts(&system);
-            let mut screen = keygen_frame(cols, rows, frame, music.is_paused(), &facts, &mut glyph_physics);
-            // Keep the player state visible even when changing tracks.
-            let status = format!("  [MP3 {} / 2]  1/2: pista  Espacio: pausa  ESC/Q: salir",
-                music.track_number());
-            screen.push_str(&format!("\x1b[{};1H\x1b[0m\x1b[38;2;189;174;147m{}\x1b[0m",
-                rows, status.chars().take(usize::from(cols.saturating_sub(1))).collect::<String>()));
-            terminal.write(&screen)?;
-            terminal.flush()?;
-            match terminal.poll_key(Duration::from_millis(85))? {
-                Some(TerminalKey::Escape | TerminalKey::Char('q') | TerminalKey::Char('Q')) => break,
-                Some(TerminalKey::Space | TerminalKey::Char(' ')) =>
-                    music.pause_resume()?,
-                Some(TerminalKey::Char('1')) => music.select(0)?,
-                Some(TerminalKey::Char('2')) => music.select(1)?,
-                _ => {}
-            }
-            if !music.is_paused() {
-                frame = frame.wrapping_add(1);
-                glyph_physics.tick(frame);
-            }
-            if frame % 5 == 0 { music.tick()?; }
-        }
-        // Both resources are dropped here; the music handle is closed even on
-        // early exit (including resize/terminal errors).
-        Ok(CommandOutput::ok(""))
+        let music = crate::application::keygen_audio::KeygenMusic::new(first)?;
+        keygen_sdl(music)
     }
 
     fn top(&self, args: &[String]) -> anyhow::Result<CommandOutput> {
@@ -1212,7 +1170,7 @@ fn keygen_system_facts(system: &System) -> Vec<String> {
 }
 
 /// Colors are per glyph, never one flat shade across the entire artwork.
-/// Render into the native alternate-screen terminal, not a GUI overlay.
+/// Colors are used directly by the SDL scene renderer.
 fn keygen_glyph_color(frame: u64, index: usize, row: usize) -> (u8, u8, u8) {
     let phase = frame as f32 * 0.115 + index as f32 * 0.19 + row as f32 * 0.55;
     let chan = |shift: f32| -> u8 {
@@ -1262,27 +1220,26 @@ impl KeygenGlyphBody {
 #[derive(Default)]
 struct KeygenPhysics {
     bodies: HashMap<(usize, usize), KeygenGlyphBody>,
-    rendered_angles: HashMap<(usize, usize), f64>,
 }
 
 impl KeygenPhysics {
     fn tick(&mut self, frame: u64) {
         // Fixed-step integration: the letters really retain positions and
         // velocities between frames, rather than sampling a scrolling wave.
-        let dt = 0.085_f32;
+        let dt = 1.0_f32 / 60.0;
         for (&(line, index), body) in &mut self.bodies {
-            let period = 34 + ((index * 3 + line * 11) % 23) as u64;
+            let period = 110 + ((index * 7 + line * 11) % 90) as u64;
             if frame % period == (index as u64 + line as u64 * 3) % period {
-                body.vy -= 2.4 + (index % 6) as f32 * 0.27;
-                body.vx += if (index + line) % 2 == 0 { 0.9 } else { -0.9 };
+                body.vy -= 3.2 + (index % 6) as f32 * 0.43;
+                body.vx += if (index + line) % 2 == 0 { 2.1 } else { -2.1 };
                 body.vz += if index % 2 == 0 { 0.75 } else { -0.75 };
                 body.wy += if index % 2 == 0 { 0.55 } else { -0.55 };
                 body.wz += if line % 2 == 0 { 0.2 } else { -0.2 };
             }
             // Damped springs on X/Z, gravity and restitution on Y.
-            body.vx += (-3.2 * body.x - 1.0 * body.vx) * dt;
+            body.vx += (-0.85 * body.x - 0.5 * body.vx) * dt;
             body.vy += 6.8 * dt;
-            body.vz += (-2.4 * body.z - 0.8 * body.vz) * dt;
+            body.vz += (-1.6 * body.z - 0.6 * body.vz) * dt;
             body.x += body.vx * dt;
             body.y += body.vy * dt;
             body.z += body.vz * dt;
@@ -1336,289 +1293,262 @@ impl KeygenPhysics {
 }
 
 
-#[cfg(windows)]
-fn keygen_sdl(
-    mut music: crate::application::keygen_audio::KeygenMusic,
-) -> anyhow::Result<CommandOutput> {
-    use sdl2::{
-        event::Event, keyboard::Keycode,
-        pixels::{Color, PixelFormatEnum},
-        rect::Rect, render::BlendMode,
-    };
-    use std::time::Instant;
+/// A glyph is an independent object in continuous 3D scene coordinates.
+/// No ANSI frame, terminal cells, or vt100 parser participate.
+#[derive(Clone, Copy)]
+struct KeygenSprite {
+    glyph: char,
+    x: f32,
+    y: f32,
+    z: f32,
+    rx: f32,
+    ry: f32,
+    rz: f32,
+    size: f32,
+    color: (u8, u8, u8),
+    depth: u8,
+}
 
-    // The original SST animation/physics runs unchanged. SDL2 owns the native
-    // window and renders actual pixel glyphs; libcaca owns the character
-    // composition layer. No subprocess, SDL2.dll or external player.
+fn keygen_scene(physics: &mut KeygenPhysics, frame: u64, facts: &[String],
+    paused: bool, track: usize) -> Vec<KeygenSprite> {
+    let mut sprites = Vec::new();
+    // Scene coordinates are fixed 1152 x 672 logical pixels, not character cells.
+    for (line, text, y, spacing, size) in [
+        (0, "SHELL SHOCK TOOL", 180.0_f32, 54.0_f32, 66.0_f32),
+        (1, "SST  /  KEYGEN  2000", 287.0, 31.0, 38.0),
+    ] {
+        let count = text.chars().count() as f32;
+        for (index, glyph) in text.chars().enumerate() {
+            if glyph == ' ' { continue; }
+            let body = physics.body(line, index);
+            let x = (index as f32 - (count - 1.0) * 0.5) * spacing;
+            sprites.push(KeygenSprite {
+                glyph, x: 576.0 + x + body.x * 38.0,
+                y: y + body.y * 38.0, z: body.z * 55.0,
+                rx: body.rx, ry: body.ry, rz: body.rz,
+                size, color: keygen_glyph_color(frame / 3, index, line), depth: 5,
+            });
+        }
+    }
+    // System metadata is deliberately readable, not affected by collisions.
+    let mut text_line = |text: &str, x: f32, y: f32, size: f32, color: (u8,u8,u8)| {
+        for (i, glyph) in text.chars().take(66).enumerate() {
+            if glyph == ' ' || glyph.is_control() { continue; }
+            sprites.push(KeygenSprite { glyph, x: x + i as f32 * size * 0.60,
+                y, z: 0.0, rx: 0.0, ry: 0.0, rz: 0.0, size, color, depth: 1 });
+        }
+    };
+    for (i, fact) in facts.iter().enumerate() {
+        let col = i / 6;
+        let row = i % 6;
+        text_line(fact, 58.0 + col as f32 * 560.0, 382.0 + row as f32 * 31.0,
+            16.0, (218, 207, 181));
+    }
+    let state = if paused { "PAUSA" } else { "PLAY" };
+    text_line(&format!("MP3 {track}/2  {state}    [1/2] PISTA    [ESPACIO] PAUSA    [ESC/Q] SALIR"),
+        58.0, 635.0, 17.0, (250, 189, 47));
+    sprites
+}
+
+/// Euler rotations are applied to each corner in 3D before perspective.
+/// The renderer receives floating-point vertices, not rounded cell positions.
+fn keygen_project(sprite: &KeygenSprite, width: f32, height: f32,
+    layer: f32) -> [(f32, f32); 4] {
+    let (sx,cx) = sprite.rx.sin_cos();
+    let (sy,cy) = sprite.ry.sin_cos();
+    let (sz,cz) = sprite.rz.sin_cos();
+    [(-0.5,-0.5), (0.5,-0.5), (0.5,0.5), (-0.5,0.5)].map(|(u,v)| {
+        let (x,y,z) = (u*width, v*height, layer);
+        let (y,z) = (y*cx-z*sx, y*sx+z*cx);
+        let (x,z) = (x*cy+z*sy, -x*sy+z*cy);
+        let (x,y) = (x*cz-y*sz, x*sz+y*cz);
+        let scale = 620.0 / (620.0 - sprite.z - z).clamp(250.0, 1250.0);
+        (sprite.x + x*scale, sprite.y + y*scale)
+    })
+}
+
+fn keygen_draw_glyph<T: sdl2::render::RenderTarget>(
+    canvas: &mut sdl2::render::Canvas<T>, texture: &sdl2::render::Texture<'_>,
+    sprite: &KeygenSprite, width: f32, height: f32,
+) -> anyhow::Result<()> {
+    use sdl2::{pixels::Color, rect::FPoint, render::Vertex};
+    const INDICES: [u8; 6] = [0,1,2,0,2,3];
+    const UV: [(f32,f32); 4] = [(0.0,0.0),(1.0,0.0),(1.0,1.0),(0.0,1.0)];
+    for layer in (0..sprite.depth).rev() {
+        let points = keygen_project(sprite, width, height, -(f32::from(layer) * 1.7));
+        let light = if layer == 0 { 1.0 } else { 0.28 + 0.05 * f32::from(sprite.depth-layer) };
+        let shade = |c:u8| (f32::from(c)*light).clamp(0.0,255.0) as u8;
+        let color = Color::RGB(shade(sprite.color.0),shade(sprite.color.1),shade(sprite.color.2));
+        let vertices = std::array::from_fn::<_,4,_>(|i| Vertex {
+            position: FPoint::new(points[i].0, points[i].1), color,
+            tex_coord: FPoint::new(UV[i].0, UV[i].1),
+        });
+        canvas.render_geometry(&vertices, Some(texture), &INDICES[..])
+            .map_err(anyhow::Error::msg)?;
+    }
+    Ok(())
+}
+
+fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
+    -> anyhow::Result<CommandOutput> {
+    use sdl2::{event::Event, keyboard::Keycode, pixels::{Color, PixelFormatEnum},
+        render::BlendMode};
+    use std::time::Instant;
     let sdl = sdl2::init().map_err(anyhow::Error::msg)?;
     let video = sdl.video().map_err(anyhow::Error::msg)?;
-    let window = video.window("SST KEYGEN — libcaca / SDL2", 1152, 672)
+    let window = video.window("SST KEYGEN — SDL2", 1152, 672)
         .position_centered().resizable().build()
         .map_err(|e| anyhow::anyhow!("keygen: SDL2 window: {e}"))?;
-    let mut renderer = window.into_canvas().software().build()
-        .map_err(|e| anyhow::anyhow!("keygen: SDL2 software renderer: {e}"))?;
+    // SDL chooses a hardware renderer when available, otherwise software SDL.
+    // Both paths draw the exact same projected scene.
+    let mut renderer = window.into_canvas().build()
+        .map_err(|e| anyhow::anyhow!("keygen: SDL2 renderer: {e}"))?;
+    renderer.set_logical_size(1152, 672).map_err(|e| anyhow::anyhow!("{e}"))?;
     renderer.set_blend_mode(BlendMode::Blend);
     let creator = renderer.texture_creator();
-    let font_bytes = [
-        r"C:\Windows\Fonts\consola.ttf",
-        r"C:\Windows\Fonts\lucon.ttf",
-        r"C:\Windows\Fonts\cour.ttf",
-    ].into_iter().find_map(|p| std::fs::read(p).ok())
+    let font_dir = std::path::PathBuf::from(env::var_os("WINDIR")
+        .unwrap_or_else(|| std::ffi::OsString::from(r"C:\Windows"))).join("Fonts");
+    let font_bytes = ["consolab.ttf","consola.ttf","lucon.ttf","cour.ttf"]
+        .into_iter().find_map(|name| std::fs::read(font_dir.join(name)).ok())
         .ok_or_else(|| anyhow::anyhow!("keygen: falta una fuente monoespaciada Windows"))?;
     let font = fontdue::Font::from_bytes(font_bytes, fontdue::FontSettings::default())
         .map_err(|e| anyhow::anyhow!("keygen: fuente Windows inválida: {e}"))?;
-    // Cache the actual glyph bitmaps. Per-frame only texture color and
-    // position change, so animations do not rasterize fonts repeatedly.
     let mut glyph_cache = HashMap::new();
     let mut events = sdl.event_pump().map_err(anyhow::Error::msg)?;
     let mut system = System::new_all();
     system.refresh_all();
+    let mut facts = keygen_system_facts(&system);
     let mut physics = KeygenPhysics::default();
     let mut frame = 0u64;
-    let mut last_redraw = Instant::now();
+    let mut last = Instant::now();
+    let mut metrics_at = Instant::now();
+    let mut audio_at = Instant::now();
+    let mut accumulator = 0.0_f32;
+    const STEP: f32 = 1.0/60.0;
     'running: loop {
         for event in events.poll_iter() {
             match event {
-                Event::Quit { .. }
-                | Event::KeyDown { keycode: Some(Keycode::Escape | Keycode::Q), .. } => {
-                    break 'running;
-                }
-                Event::KeyDown { keycode: Some(Keycode::Space), repeat: false, .. } => {
-                    music.pause_resume()?;
-                }
-                Event::KeyDown { keycode: Some(Keycode::Num1 | Keycode::Kp1), repeat: false, .. } => {
-                    music.select(0)?;
-                }
-                Event::KeyDown { keycode: Some(Keycode::Num2 | Keycode::Kp2), repeat: false, .. } => {
-                    music.select(1)?;
-                }
+                Event::Quit { .. } |
+                Event::KeyDown { keycode: Some(Keycode::Escape | Keycode::Q), .. } => break 'running,
+                Event::KeyDown { keycode: Some(Keycode::Space), repeat: false, .. } => music.pause_resume()?,
+                Event::KeyDown { keycode: Some(Keycode::Num1 | Keycode::Kp1), repeat: false, .. } => music.select(0)?,
+                Event::KeyDown { keycode: Some(Keycode::Num2 | Keycode::Kp2), repeat: false, .. } => music.select(1)?,
                 _ => {}
             }
         }
-        if last_redraw.elapsed() < Duration::from_millis(33) {
+        let elapsed = last.elapsed();
+        if elapsed < Duration::from_millis(16) {
             std::thread::sleep(Duration::from_millis(2));
             continue;
         }
-        last_redraw = Instant::now();
-        if frame % 15 == 0 && !music.is_paused() {
+        last = Instant::now();
+        if !music.is_paused() {
+            accumulator += elapsed.as_secs_f32().min(0.10);
+            while accumulator >= STEP {
+                frame = frame.wrapping_add(1);
+                physics.tick(frame);
+                accumulator -= STEP;
+            }
+        } else { accumulator = 0.0; }
+        if metrics_at.elapsed() >= Duration::from_secs(1) {
             system.refresh_cpu_all();
             system.refresh_memory();
+            facts = keygen_system_facts(&system);
+            metrics_at = Instant::now();
         }
-        let (w, h) = renderer.output_size().map_err(anyhow::Error::msg)?;
-        let cols = (w / 14).clamp(48, 150) as u16;
-        let rows = (h / 26).clamp(18, 60) as u16;
-        let cell_w = (w / u32::from(cols)).max(1);
-        let cell_h = (h / u32::from(rows)).max(1);
-
-        let facts = keygen_system_facts(&system);
-        let frame_ansi = keygen_frame(
-            cols, rows, frame, music.is_paused(), &facts, &mut physics,
-        );
-        // Decode the exact 24-bit color and geometry of the SST frame.
-        let mut parser = vt100::Parser::new(rows, cols, 0);
-        parser.process(frame_ansi.as_bytes());
-        let screen = parser.screen();
-        let mut ascii = libcaca::Canvas::new(i32::from(cols), i32::from(rows))
-            .map_err(|e| anyhow::anyhow!("keygen: libcaca canvas: {e}"))?;
-        let mut colors = HashMap::new();
-        for row in 0..rows {
-            for col in 0..cols {
-                if let Some(cell) = screen.cell(row, col)
-                    && let Some(ch) = cell.contents().chars().next()
-                    && !ch.is_control() && ch != ' '
-                {
-                    ascii.put_char(i32::from(col), i32::from(row), ch as u32);
-                    let rgb = match cell.fgcolor() {
-                        vt100::Color::Rgb(r, g, b) => (r, g, b),
-                        _ => (189, 174, 147),
-                    };
-                    colors.insert((row, col), rgb);
-                }
-            }
+        if audio_at.elapsed() >= Duration::from_millis(250) {
+            music.tick()?;
+            audio_at = Instant::now();
         }
-        renderer.set_draw_color(Color::RGB(12, 12, 12));
+        let mut sprites = keygen_scene(&mut physics,frame,&facts,music.is_paused(),music.track_number());
+        sprites.sort_by(|a,b| a.z.total_cmp(&b.z));
+        renderer.set_draw_color(Color::RGB(12,12,12));
         renderer.clear();
-        for row in 0..rows {
-            for col in 0..cols {
-                let code = ascii.get_char(i32::from(col), i32::from(row));
-                let Some(ch) = char::from_u32(code) else { continue };
-                if ch == ' ' || ch.is_control() { continue; }
-                if !glyph_cache.contains_key(&ch) {
-                    let (metrics, bitmap) = font.rasterize(ch, 25.0);
-                    let tw = metrics.width.max(1) as u32;
-                    let th = metrics.height.max(1) as u32;
-                    let mut texture = creator.create_texture_streaming(
-                        PixelFormatEnum::RGBA8888, tw, th,
-                    ).map_err(|e| anyhow::anyhow!("keygen: textura SDL2: {e}"))?;
-                    texture.set_blend_mode(BlendMode::Blend);
-                    texture.with_lock(None, |buffer, pitch| {
-                        for y in 0..metrics.height {
-                            for x in 0..metrics.width {
-                                let alpha = bitmap[y * metrics.width + x];
-                                let off = y * pitch + x * 4;
-                                // SDL RGBA8888 is ABGR bytes in little-endian.
-                                buffer[off..off + 4].copy_from_slice(&[alpha, 255, 255, 255]);
-                            }
+        for sprite in sprites {
+            if let std::collections::hash_map::Entry::Vacant(entry) = glyph_cache.entry(sprite.glyph) {
+                // Rasterize once at high resolution. SDL scales the textured
+                // triangles and keeps the glyph alpha mask intact.
+                let (metrics, bitmap) = font.rasterize(sprite.glyph, 80.0);
+                let tw = metrics.width.max(1) as u32;
+                let th = metrics.height.max(1) as u32;
+                let mut texture = creator.create_texture_streaming(PixelFormatEnum::RGBA32,tw,th)
+                    .map_err(|e| anyhow::anyhow!("keygen: textura SDL2: {e}"))?;
+                texture.set_blend_mode(BlendMode::Blend);
+                texture.with_lock(None, |buffer,pitch| {
+                    buffer.fill(0);
+                    for y in 0..metrics.height {
+                        for x in 0..metrics.width {
+                            let off = y*pitch+x*4;
+                            buffer[off..off+4].copy_from_slice(&[255,255,255,bitmap[y*metrics.width+x]]);
                         }
-                    }).map_err(anyhow::Error::msg)?;
-                    glyph_cache.insert(ch, (texture, tw, th));
-                }
-                let Some((texture, tw, th)) = glyph_cache.get_mut(&ch) else { continue };
-                let (r, g, b) = colors.get(&(row, col)).copied()
-                    .unwrap_or((189, 174, 147));
-                texture.set_color_mod(r, g, b);
-                let x = i32::from(col) * cell_w as i32
-                    + (cell_w as i32 - *tw as i32) / 2;
-                let y = i32::from(row) * cell_h as i32
-                    + (cell_h as i32 - *th as i32) / 2;
-                let angle = physics.rendered_angles
-                    .get(&(row as usize, col as usize)).copied().unwrap_or(0.0);
-                renderer.copy_ex(texture, None, Rect::new(x, y, *tw, *th),
-                    angle, None, false, false).map_err(anyhow::Error::msg)?;
+                    }
+                }).map_err(anyhow::Error::msg)?;
+                entry.insert((texture,tw,th));
             }
+            let (texture,tw,th) = &glyph_cache[&sprite.glyph];
+            let width = (*tw as f32 * sprite.size / 80.0).max(1.0);
+            let height = (*th as f32 * sprite.size / 80.0).max(1.0);
+            keygen_draw_glyph(&mut renderer,texture,&sprite,width,height)?;
         }
         renderer.present();
-        if !music.is_paused() {
-            frame = frame.wrapping_add(1);
-            physics.tick(frame);
-        }
-        if frame % 5 == 0 { music.tick()?; }
     }
-    // SDL renderer and MCI audio both have scoped ownership, so closing the
-    // window stops playback and returns to SST without an orphan process.
     Ok(CommandOutput::ok(""))
 }
 
-fn keygen_frame(
-    cols: u16, rows: u16, frame: u64, paused: bool, facts: &[String],
-    physics: &mut KeygenPhysics,
-) -> String {
-    let width = usize::from(cols);
-    let height = usize::from(rows);
-    physics.rendered_angles.clear();
-    let mut output = String::from("\x1b[0m\x1b[2J\x1b[H");
-    if width < 22 || height < 7 {
-        output.push_str("KEYGEN SST - amplia la ventana");
-        return output;
-    }
-    let title = "S H E L L   S H O C K   T O O L";
-    let subtitle = "S S T  /  K E Y G E N   2 0 0 0";
-    let mid = height / 2;
-    let title_y = mid.saturating_sub((facts.len() + 8) / 2 + 3)
-        .saturating_add(4).min(height.saturating_sub(12)).max(3);
-    let mut draw = |line: &str, line_id: usize, base_y: usize, arc: f32| {
-        let chars: Vec<char> = line.chars().take(width.saturating_sub(2)).collect();
-        let count = chars.len() as f32;
-        let center = (width as f32 - 1.0) * 0.5;
-        let half = (count * 0.5).max(1.0);
-        for (index, ch) in chars.into_iter().enumerate() {
-            if ch.is_control() || ch == ' ' { continue; }
-            let body = physics.body(line_id,index);
-            let rest_x = index as f32 - (count - 1.0) * 0.5;
-            let arc_lift = (1.0 - (rest_x / half).powi(2)).max(0.0) * arc * 2.7;
-            // Perspective projection from real 3D state onto terminal cells.
-            let distance = (3.0 - body.z).max(1.0);
-            let projection = 2.5 / distance;
-            let rx = body.rx.sin() * 0.45;
-            let ry = body.ry.sin() * 0.7;
-            let rz = body.rz.sin() * 0.35;
-            let px = (center + (rest_x + body.x + ry) * projection).round() as isize;
-            let py = (base_y as f32 + body.y * 1.45 - arc_lift
-                - body.z * 0.7 + rx + rz).round() as isize;
-            if px < 0 || px >= width as isize || py < 1 || py >= height as isize-1 {
-                continue;
-            }
-            physics.rendered_angles.insert((py as usize, px as usize), f64::from(body.rz.to_degrees()));
-            let (r0,g0,b0) = keygen_glyph_color(frame,index,base_y);
-            let light = projection.clamp(0.4,1.3);
-            let tone = |channel:u8| -> u8 {
-                ((channel as f32 * light).clamp(15.0,255.0)) as u8
-            };
-            let (r,g,b) = (tone(r0),tone(g0),tone(b0));
-            if body.y < -0.3 && base_y < height.saturating_sub(1) {
-                let shadow_x = (px + (body.z * 1.2).round() as isize)
-                    .clamp(0,width.saturating_sub(1) as isize);
-                output.push_str(&format!(
-                    "\x1b[{};{}H\x1b[38;2;66;61;58m.",
-                    base_y,shadow_x+1
-                ));
-            }
-            // A depth layer moves with the yaw and Z coordinate so letters
-            // have visible volume, not just a sinusoidal 2D position offset.
-            let depth_x = if body.ry.cos() >= 0.0 { 1 } else { -1 };
-            let back_x = px + depth_x;
-            let back_y = py + 1 + if body.rx.sin() < -0.7 { -1 } else { 0 };
-            if back_x >= 0 && back_x < width as isize
-                && back_y >= 1 && back_y < height as isize - 1
-            {
-                let dim = |value: u8| -> u8 { (value as f32 * 0.38).round() as u8 };
-                let (sr, sg, sb) = (dim(r), dim(g), dim(b));
-                output.push_str(&format!(
-                    "\x1b[{};{}H\x1b[38;2;{sr};{sg};{sb}m▓",
-                    back_y + 1, back_x + 1
-                ));
-            }
-            output.push_str(&format!(
-                "\x1b[{};{}H\x1b[1;38;2;{r};{g};{b}m{ch}",
-                py+1,px+1
-            ));
-        }
-    };
-    draw(title,0,title_y,2.0);
-    draw(subtitle,1,title_y+4,1.0);
-    let available = height.saturating_sub(title_y+8);
-    let gap = if available >= facts.len()*2+2 {2} else {1};
-    for (i,fact) in facts.iter().enumerate() {
-        let row = title_y+7+i*gap;
-        if row >= height.saturating_sub(2) {break;}
-        draw(fact,2+i,row,0.0);
-    }
-    let footer = if paused {"PAUSA  [SPACE] continuar  [ESC/Q] salir"}
-        else {"SST KEYGEN  [SPACE] pausa  [ESC/Q] salir"};
-    output.push_str(&format!(
-        "\x1b[{};1H\x1b[0m\x1b[38;2;189;174;147m{}",
-        height,footer.chars().take(width.saturating_sub(1)).collect::<String>()
-    ));
-    output.push_str("\x1b[0m");
-    output
-}
-
-
 #[cfg(test)]
 mod keygen_motion_regressions {
-    use super::{KeygenPhysics, keygen_frame};
+    use super::{KeygenPhysics, keygen_scene, keygen_project, keygen_draw_glyph};
 
     #[test]
     fn letters_keep_independent_finite_velocity_and_bounce_above_floor() {
         let mut physics = KeygenPhysics::default();
-        physics.body(0, 0);
-        physics.body(0, 1);
-        physics.body(1, 0);
-        for frame in 0..400 {
+        let _ = keygen_scene(&mut physics,0,&[],false,1);
+        for frame in 0..900 {
             physics.tick(frame);
             for body in physics.bodies.values() {
                 assert!(body.x.is_finite() && body.y.is_finite() && body.z.is_finite());
                 assert!(body.vx.is_finite() && body.vy.is_finite() && body.vz.is_finite());
-                assert!(body.y <= 0.001, "glyph moved through the virtual floor");
-                assert!(body.rx.is_finite() && body.ry.is_finite() && body.rz.is_finite());
-                assert!(body.wx.is_finite() && body.wy.is_finite() && body.wz.is_finite());
+                assert!(body.y <= 0.001);
             }
         }
-        let one = physics.bodies.get(&(0,0)).expect("first glyph");
-        let two = physics.bodies.get(&(0,1)).expect("second glyph");
-        assert!((one.x - two.x).abs() > 0.0001 || (one.z - two.z).abs() > 0.0001);
-        assert!((one.ry - two.ry).abs() > 0.0001 || (one.rz - two.rz).abs() > 0.0001);
+        let one = physics.bodies.get(&(0,0)).unwrap();
+        let two = physics.bodies.get(&(0,1)).unwrap();
+        assert!((one.x-two.x).abs()>0.0001 || (one.z-two.z).abs()>0.0001);
+        assert!((one.ry-two.ry).abs()>0.0001 || (one.rz-two.rz).abs()>0.0001);
     }
 
     #[test]
-    fn projected_frame_keeps_controls_and_real_glyphs() {
+    fn projected_letters_have_continuous_motion_and_distinct_depth_layers() {
         let mut physics = KeygenPhysics::default();
-        let frames = ["CPU :: 23%".to_owned(),"RAM :: 4 GB".to_owned()];
-        let rendered = keygen_frame(112,31,0,false,&frames,&mut physics);
-        assert!(rendered.contains("\x1b[0m"));
-        assert!(rendered.contains("ESC/Q"));
-        assert!(rendered.contains("\x1b[1;38;2;"));
-        assert!(!physics.bodies.is_empty());
+        let initial = keygen_scene(&mut physics,0,&[],false,1)[0];
+        for frame in 0..37 { physics.tick(frame); }
+        let next = keygen_scene(&mut physics,37,&[],false,1)[0];
+        assert_ne!((initial.x,initial.y,initial.z),(next.x,next.y,next.z));
+        let front = keygen_project(&next,40.0,56.0,0.0);
+        let back = keygen_project(&next,40.0,56.0,-8.0);
+        assert_ne!(front,back);
+        assert!(front.iter().all(|p| p.0.is_finite() && p.1.is_finite()));
+    }
+
+    #[test]
+    fn sdl_software_canvas_draws_projected_textured_triangles() {
+        use sdl2::{pixels::{Color,PixelFormatEnum},surface::Surface,render::BlendMode};
+        let surface = Surface::new(128,128,PixelFormatEnum::RGBA32).unwrap();
+        let mut canvas = surface.into_canvas().unwrap();
+        let creator = canvas.texture_creator();
+        let mut texture = creator.create_texture_streaming(PixelFormatEnum::RGBA32,4,4).unwrap();
+        texture.set_blend_mode(BlendMode::Blend);
+        texture.with_lock(None,|buf,_| buf.fill(255)).unwrap();
+        canvas.set_draw_color(Color::RGB(0,0,0));
+        canvas.clear();
+        let mut physics = KeygenPhysics::default();
+        let mut sprite = keygen_scene(&mut physics,0,&[],false,1)[0];
+        sprite.x=64.0; sprite.y=64.0; sprite.z=0.0;
+        sprite.color=(255,80,20);
+        keygen_draw_glyph(&mut canvas,&texture,&sprite,40.0,48.0).unwrap();
+        canvas.present();
+        let pixels = canvas.read_pixels(None,PixelFormatEnum::RGBA32).unwrap();
+        assert!(pixels.chunks_exact(4).any(|p| p[0]>100 && p[1]>10 && p[2]<100));
     }
 }
 

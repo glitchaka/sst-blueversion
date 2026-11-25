@@ -1,0 +1,1 @@
+Publish native SDL2 keygen scene, retaining all blue.4 fixes and mandatory release gates. A new version prevents earlier parallel blue.4 builds from hiding this change from the strictly monotonic updater.
