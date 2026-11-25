@@ -1626,56 +1626,34 @@ mod keygen_motion_regressions {
 /// Se conserva íntegro y sólo se reduce su representación durante el arranque.
 pub(crate) const FETCH_LOGO_ASCII: &[&str] = &["   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%=--::::--------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%-:::-----------------------------------------------------------------------------------------%%%%","%%%=---------%%%%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%---#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=---------%%%%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%---#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=------%%%%%%%%%%%%%%%%%%%%%%%%----------%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%","%%%=--+%%%%%%%%%%%%---------%%%---------=%%%%%%%%%%%%---------%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%---------%%%---------=%%%%%%%%%%%%---------%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%------------------------=%%%%%%%%%----------------------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%------------------------=%%%%%%%%%----------------------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%---------------------=%%%%%%%%%%%%-------------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%----------------------%%%%%%%%%%%%----------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%----------------------%%%%%%%%%%%%----------------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%---------%%%%","%%%=------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%---------%%%%","%%%=---------%%%%%%%%%%%%%%%%%%----------------%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=---------------%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=---------------%%%%%%%%%%%%%%%-------------------%%%%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%*------------------%%%%%%%%%---*%%*------------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%*------------------%%%%%%%%%---*%%*------------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%%%%%%%#---------------%%%%%%%%%---*%%%%%%---------------%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%---------%%%%%%%%%%%%=-----=%%%%%%---------%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%---------%%%%%%%%%%%%=-----=%%%%%%---------%%%%%%%%%%%%=---------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%%%%%%%%%%%%%---------=%%%%%%%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=--+%%%%%%%%%%%%%%%%%%%%%%%%---------=%%%%%%%%%%%%%%%%%%%%%%%%-------------%%%%%%%%%---------%%%%","%%%=---------%%%%%%%%%%%%----------------------%%%%%%%%%%%%-------------------%%%%%%%%%---------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","%%%=--------------------------------------------------------------------------------------------%%%%","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    ","   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    "];
 
-/// The icon's *actual embedded PNG bytes* determine the logo colors.
-/// No guessed RGB palette, no per-glyph rainbow, no background flood.
-fn sst_icon_palette() -> [(u8, u8, u8); 4] {
-    static PALETTE: std::sync::OnceLock<[(u8, u8, u8); 4]> =
-        std::sync::OnceLock::new();
-    *PALETTE.get_or_init(|| {
-        let bytes = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/sst-icon.png"));
-        let image = image::load_from_memory(bytes)
-            .expect("assets/sst-icon.png must be a valid original SST icon")
-            .to_rgba8();
-        let mut counts = std::collections::HashMap::<(u8, u8, u8), usize>::new();
-        for pixel in image.pixels() {
-            if pixel[3] < 128 { continue; }
-            *counts.entry((pixel[0], pixel[1], pixel[2])).or_default() += 1;
-        }
-        let mut candidates = counts.into_iter().collect::<Vec<_>>();
-        candidates.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        candidates.truncate(4);
-        assert!(!candidates.is_empty(), "SST icon has no opaque pixels");
-        candidates.sort_by_key(|((r, g, b), _)| {
-            2126_u32 * u32::from(*r) +
-            7152_u32 * u32::from(*g) +
-            722_u32 * u32::from(*b)
-        });
-        let colors = candidates.iter().map(|(rgb, _)| *rgb).collect::<Vec<_>>();
-        std::array::from_fn(|i| colors[i.min(colors.len() - 1)])
-    })
-}
+/// The established SST blue/silver palette. Geometry comes exclusively
+/// from ascii-art.txt; no raster icon is used to construct the logo.
+const SST_LOGO_COLORS: [(u8, u8, u8); 4] = [
+    (35, 52, 106), (54, 76, 119), (109, 143, 171), (186, 189, 198),
+];
 
 fn sst_icon_ansi(index: usize) -> String {
-    let (r, g, b) = sst_icon_palette()[index.min(3)];
+    let (r, g, b) = SST_LOGO_COLORS[index.min(3)];
     format!("\x1b[38;2;{r};{g};{b}m")
 }
 
-/// Map the author-supplied full ASCII's own geometry to the original icon palette.
+/// Dense percent marks are the lettering/frame; the hyphen field is blue.
+/// Shade marks retain intermediate colors without altering the source.
 fn sst_icon_rgb(glyph: char) -> Option<(u8, u8, u8)> {
     let index = match glyph {
-        '█' | '#' => 0,
-        '▓' | '*' | '+' | '=' => 1,
-        '▒' | '%' => 2,
-        '░' | '-' | ':' => 3,
+        '-' | ':' => 0,
+        '=' | '+' => 1,
+        '*' | '#' => 2,
+        '%' => 3,
         _ => return None,
     };
-    Some(sst_icon_palette()[index])
+    Some(SST_LOGO_COLORS[index])
 }
 
 /// Conservar la geometría renderizada por libcaca y emitir el RGB original
 /// en ANSI TrueColor. libcaca::Color sólo ofrece una paleta aproximada de 16
 /// colores, por lo que no debe sustituir los valores del icono oficial.
-/// SDL2 performs the pixel-space resampling for the startup libcaca logo.
+/// SDL2 resamples the source ASCII character-ID grid for compact display.
 /// This is an offscreen software surface: the logo remains inside the SST
 /// terminal instead of opening an unrelated second window.
 #[cfg(windows)]
@@ -1737,76 +1715,51 @@ fn sst_icon_truecolor(lines: Vec<String>) -> Vec<String> {
     }).collect()
 }
 
-/// Crop only the transparent outer padding of the official icon.
-fn sst_compact_icon() -> &'static image::RgbaImage {
-    static ICON: std::sync::OnceLock<image::RgbaImage> = std::sync::OnceLock::new();
-    ICON.get_or_init(|| {
-        let source = image::load_from_memory(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"), "/assets/sst-icon.png"
-        ))).expect("embedded SST PNG icon").to_rgba8();
-        let (mut left, mut top, mut right, mut bottom) =
-            (source.width(), source.height(), 0, 0);
-        for (x, y, pixel) in source.enumerate_pixels() {
-            if pixel[3] >= 128 {
-                left = left.min(x);
-                top = top.min(y);
-                right = right.max(x + 1);
-                bottom = bottom.max(y + 1);
-            }
-        }
-        assert!(left < right && top < bottom, "SST icon is transparent");
-        image::imageops::crop_imm(&source, left, top, right - left, bottom - top).to_image()
-    })
-}
+/// The compact renderer scales an ASCII-cell grid, not a PNG or ICO.
+/// Each ASCII character has a unique cell ID so SDL2 cannot invert the
+/// letters and background or mix their colors during the resize.
+const SST_ASCII_GLYPHS: [char; 8] = [' ', '-', ':', '=', '+', '*', '#', '%'];
 
-fn compact_icon_pixels(width: usize, height: usize) -> Vec<(u8, u8, u8, u8)> {
-    let icon = sst_compact_icon();
+fn compact_ascii_cells(width: usize, height: usize) -> Vec<char> {
+    let source_width = FETCH_LOGO_ASCII[0].len();
+    let source_height = FETCH_LOGO_ASCII.len();
+    let grid = image::RgbaImage::from_fn(source_width as u32, source_height as u32, |x, y| {
+        let glyph = char::from(FETCH_LOGO_ASCII[y as usize].as_bytes()[x as usize]);
+        let index = SST_ASCII_GLYPHS.iter().position(|&ch| ch == glyph)
+            .expect("unexpected character in original SST ASCII");
+        image::Rgba([index as u8, 0, 0, 255])
+    });
     #[cfg(windows)]
-    if let Some(pixels) = sst_logo_sdl_pixels(icon, width, height) {
-        return pixels;
+    if let Some(pixels) = sst_logo_sdl_pixels(&grid, width, height) {
+        return pixels.into_iter().map(|(id, _, _, _)|
+            SST_ASCII_GLYPHS[usize::from(id).min(SST_ASCII_GLYPHS.len() - 1)]).collect();
     }
-    image::imageops::resize(icon, width as u32, height as u32,
+    image::imageops::resize(&grid, width as u32, height as u32,
         image::imageops::FilterType::Nearest).pixels()
-        .map(|p| (p[0], p[1], p[2], p[3])).collect()
-}
-
-fn compact_icon_glyph((r, g, b, a): (u8, u8, u8, u8)) -> char {
-    if a < 128 { return ' '; }
-    // Only glyphs are emitted; never paint a terminal background or overlay.
-    // The silver field and the blue lettering both come from the same pixel.
-    if r > 200 && g > 200 && b < 100 { '*' }
-    else if r > 120 && g > 120 { '%' }
-    else if b > 130 { '+' }
-    else if r < 25 && g < 40 { '@' }
-    else { '#' }
+        .map(|p| SST_ASCII_GLYPHS[usize::from(p[0])]).collect()
 }
 
 fn caca_ansi(canvas: &libcaca::Canvas) -> anyhow::Result<String> {
     Ok(String::from_utf8(canvas.export_to_memory("utf8")?)?)
 }
 
-/// Render the compact official icon as native ASCII via SDL2 and libcaca.
+/// Render compact text from the author's original ASCII via SDL2 and libcaca.
 fn fetch_compact_logo(plain: bool, columns: usize) -> anyhow::Result<(Vec<String>, usize)> {
     let width = if columns < 70 { 30usize } else { 36usize };
     let height = 12usize;
-    let pixels = compact_icon_pixels(width, height);
+    let cells = compact_ascii_cells(width, height);
     let mut cv = libcaca::Canvas::new(width as i32, height as i32)?;
     cv.set_color_ansi(libcaca::Color::Default, libcaca::Color::Default)?;
-    for (i, &pixel) in pixels.iter().enumerate() {
-        cv.put_char((i % width) as i32, (i / width) as i32, compact_icon_glyph(pixel) as u32);
+    for (i, &glyph) in cells.iter().enumerate() {
+        cv.put_char((i % width) as i32, (i / width) as i32, glyph as u32);
     }
     let rendered = caca_ansi(&cv)?;
     let mut rendered_rows = rendered.lines();
-    let rows = (0..height).map(|y| {
-        let row = rendered_rows.next().unwrap_or("");
-        let glyphs = row.chars().chain(std::iter::repeat(' ')).take(width);
-        if plain { return glyphs.collect::<String>(); }
-        paint_logo_row(glyphs.zip(pixels[y * width..(y + 1) * width].iter())
-            .map(|(glyph, &(r, g, b, a))| (glyph, if a >= 128 && glyph != ' ' {
-                Some((r, g, b))
-            } else { None })))
-    }).collect();
-    Ok((rows, width))
+    let rows = (0..height).map(|_| {
+        rendered_rows.next().unwrap_or("").chars()
+            .chain(std::iter::repeat(' ')).take(width).collect::<String>()
+    }).collect::<Vec<_>>();
+    Ok((if plain { rows } else { sst_icon_truecolor(rows) }, width))
 }
 
 fn fetch_logo(plain: bool) -> anyhow::Result<(Vec<String>, usize)> {
@@ -2612,27 +2565,30 @@ mod fetch_text_logo_tests {
     }
 
     #[test]
-    fn original_icon_palette_is_used_without_rainbow_colors() {
-        let palette = super::sst_icon_palette();
-        for (glyph, index) in [('█', 0), ('▓', 1), ('▒', 2), ('░', 3)] {
-            assert_eq!(sst_icon_rgb(glyph), Some(palette[index]));
-        }
-        assert_eq!(sst_icon_rgb(' '), None);
-        let painted = sst_icon_truecolor(vec!["█▓▒░".to_owned()]).join("\n");
-        assert!(painted.contains("\x1b[38;2;"),
-            "original icon must generate valid ANSI truecolor");
+    fn original_ascii_asset_is_preserved_byte_for_byte() {
+        let original = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/ascii-art.txt"));
+        let (lines, _) = fetch_logo(true).unwrap();
+        assert_eq!(lines.join("\n"), original.trim_end_matches(['\r', '\n']).replace("\r\n", "\n"));
     }
 
     #[test]
-    fn compact_logo_uses_one_pixel_source_for_geometry_and_color() {
+    fn original_blue_silver_palette_is_applied_to_ascii_marks() {
+        assert_eq!(sst_icon_rgb('%'), Some((186, 189, 198)));
+        assert_eq!(sst_icon_rgb('-'), Some((35, 52, 106)));
+        assert_eq!(sst_icon_rgb(' '), None);
+        let painted = sst_icon_truecolor(vec!["%-%".to_owned()]).join("\n");
+        assert!(painted.contains("\x1b[38;2;186;189;198m%"));
+        assert!(painted.contains("\x1b[38;2;35;52;106m-"));
+    }
+
+    #[test]
+    fn compact_logo_geometry_comes_only_from_original_ascii() {
         let (rows, width) = fetch_compact_logo(true, 80).unwrap();
-        let pixels = super::compact_icon_pixels(width, rows.len());
-        for (i, ch) in rows.iter().flat_map(|row| row.chars()).enumerate() {
-            assert_eq!(ch, super::compact_icon_glyph(pixels[i]));
-            assert!(ch.is_ascii());
-        }
-        assert!(rows.iter().any(|row| row.contains('%')));
-        assert!(rows.iter().any(|row| row.contains('#') || row.contains('@')));
+        let cells = super::compact_ascii_cells(width, rows.len());
+        assert_eq!(rows.iter().flat_map(|row| row.chars()).collect::<Vec<_>>(), cells);
+        assert!(cells.iter().all(|ch| super::SST_ASCII_GLYPHS.contains(ch)));
+        assert!(cells.contains(&'%'));
+        assert!(cells.contains(&'-'));
     }
 
     #[test]
