@@ -1,26 +1,27 @@
 {
   "schema": 1,
-  "version": "0.1.13-blue.1",
+  "version": "0.1.13-blue.2",
   "channel": "blue",
-  "published_at": "2026-11-25T21:40:35.4668231+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.13-blue.1/sst.exe",
-  "sha256": "27c1f1fdfc02b9b44bb7993917d032b75cf772344630c1bf62b8fe4680e5e573",
-  "size": 60302848,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.13-blue.1/sst-updater.exe",
-  "updater_sha256": "574fc35bee478e2c9f196893196a82cde818749792efa87ad81962c0109c26e8",
+  "published_at": "2026-11-25T22:09:50.0966905+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.13-blue.2/sst.exe",
+  "sha256": "41fa1ac873d2b08c438ced5ea03978e0febe6dfdff051eea7a3bfa2620c5ddd0",
+  "size": 60352000,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.13-blue.2/sst-updater.exe",
+  "updater_sha256": "4fbf7acb05bdfa0da7a4b519fdf56231494c7322c2a2c80720a1912043beecc6",
   "updater_size": 433664,
   "changes": [
-    "El tema central usa texto verde amarillo, títulos ámbar, comandos naranja y etiquetas verde agua.",
-    "La terminal destaca la fila al seleccionar texto de cualquier comando. El cursor pulsa de naranja a ámbar en una capa independiente.",
-    "El formatter colorea campos, tablas y líneas en vivo según sus estados y porcentajes de CPU, utilización y pérdida. Los avisos y fallos conservan su color al seleccionar.",
-    "En el monitor de procesos, el clic y las teclas de navegación siguen al proceso seleccionado. CPU alta y aumentos bruscos se indican en rojo y recuperan su color al bajar."
+    "Formatter compone grupos de campos alineados, tablas con cabeceras y bandas, resumen de diagnóstico prioritario y barras de métricas verificadas.",
+    "Mantiene la paleta de la consola y aplica los componentes a informes registrados y monitores; preserva las salidas de máquina.",
+    "Centra glifos de tamaños semánticos distintos dentro de las celdas nativas.",
+    "Cabeceras con tipografía ampliada, campos con dos columnas y disposición vertical en ventanas estrechas.",
+    "Retícula editorial adaptable con etiquetas y cifras a tamaño de exhibición, resultado prioritario y bloques de medición reutilizables en el formatter central."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.13-blue.1.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.13-blue.1/SST-Setup-0.1.13-blue.1.exe",
-    "sha256": "5c0a4df98fc6ea3dacb3376135274491d9dbf6f22215f4a1284c773641fa2c0f",
-    "size": 69465653,
+    "name": "SST-Setup-0.1.13-blue.2.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.13-blue.2/SST-Setup-0.1.13-blue.2.exe",
+    "sha256": "1553082ca0438c7b08ba254ae3725b9a17ad4f41eb2238d21ec4234d7e24ffb1",
+    "size": 69514805,
     "single_use": true,
-    "package_id": "e99b59e2e5a08256c9b7983ec5ed0722"
+    "package_id": "b779c96c6eec88ebcd8f097f90dbba96"
   }
 }
