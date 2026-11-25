@@ -2,24 +2,26 @@
   "schema": 1,
   "version": "0.1.12-blue.9",
   "channel": "blue",
-  "published_at": "2026-11-25T17:24:09.1797602+00:00",
+  "published_at": "2026-11-25T17:26:32.1619602+00:00",
   "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.9/sst.exe",
-  "sha256": "b51c88cfe5f59e503fcf8762cb815d9fa848a088e0b913701b96f26de9fe589d",
-  "size": 61969408,
+  "sha256": "e3203f9930f24627f86610088b6008fe3afdd59082fed2818613afabd083851e",
+  "size": 60248064,
   "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.9/sst-updater.exe",
-  "updater_sha256": "091a2f12d76c559cd511aab58c04087181c83aa097a4211c06ab3ae5e069fe47",
+  "updater_sha256": "bd589606ca1d2013f26f1952873613292af4201727b964454ddaef7d6629baf6",
   "updater_size": 433664,
   "changes": [
     "Keygen elimina el año ficticio. Los títulos recorren toda la ventana y reaparecen por el borde opuesto, sin saltos visibles.",
     "Las ondas, los rebotes y los colores siguen los transitorios del PCM original y la posición real del reproductor. No se cambian los MP3.",
-    "Presentación a 60 Hz con atlas de texto, geometría SDL por lotes y una única copia del fotograma. Conserva la fuente y el fondo de SST."
+    "Presentación a 60 Hz con atlas de texto, geometría SDL por lotes y una única copia del fotograma. Conserva la fuente y el fondo de SST.",
+    "Unban solicita una sola autenticación de AD dentro de SST, sin elevar Windows. Verifica el resultado contra el mismo controlador.",
+    "Restaura el icono original del ejecutable en la ventana y en la clase Win32, incluso tras una pérdida del icono de ventana."
   ],
   "setup": {
     "name": "SST-Setup-0.1.12-blue.9.exe",
     "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.9/SST-Setup-0.1.12-blue.9.exe",
-    "sha256": "d870f6c3a06950655ebbda574ae8bd9b406e14910f630021e679f33d1a7c848a",
-    "size": 71132166,
+    "sha256": "21119e5afda3b54619114a8b6c38dff3b6553ceb524048493e6134f3b8273bb2",
+    "size": 69411152,
     "single_use": true,
-    "package_id": "262d9eabbc5bc2554b0e27d9c0c9f286"
+    "package_id": "1e3101ab0a3a8d401496572fcc294ac8"
   }
 }
