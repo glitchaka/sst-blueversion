@@ -1660,12 +1660,12 @@ fn sst_icon_ansi(index: usize) -> String {
     format!("\x1b[38;2;{r};{g};{b}m")
 }
 
-/// Characters are density levels of the same embedded source icon.
+/// Map the author-supplied full ASCII's own geometry to the original icon palette.
 fn sst_icon_rgb(glyph: char) -> Option<(u8, u8, u8)> {
     let index = match glyph {
-        '█' | '%' | '#' => 0,
-        '▓' | '*' | '+' => 1,
-        '▒' | '=' => 2,
+        '█' | '#' => 0,
+        '▓' | '*' | '+' | '=' => 1,
+        '▒' | '%' => 2,
         '░' | '-' | ':' => 3,
         _ => return None,
     };
@@ -1713,97 +1713,100 @@ fn sst_logo_sdl_pixels(
     Some(pixels)
 }
 
-fn sst_icon_truecolor(lines: Vec<String>) -> Vec<String> {
-    // libcaca supplies the glyph geometry. Its colors are spatially sampled
-    // from the exact PNG embedded in SST, never chosen by character density.
-    static ICON: std::sync::OnceLock<image::RgbaImage> =
-        std::sync::OnceLock::new();
-    let icon = ICON.get_or_init(|| {
-        image::load_from_memory(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"), "/assets/sst-icon.png"
-        )))
-        .expect("embedded SST PNG icon").to_rgba8()
-    });
-    let height = lines.len().max(1);
-    let width = lines.iter().map(|s| s.chars().count()).max().unwrap_or(1).max(1);
-    #[cfg(windows)]
-    let sdl_pixels = sst_logo_sdl_pixels(icon, width, height);
-    lines.into_iter().enumerate().map(|(y, line)| {
-        let mut out = String::with_capacity(line.len() * 4);
-        let mut current = None;
-        for (x, glyph) in line.chars().enumerate() {
-            let color = if sst_icon_rgb(glyph).is_some() {
-                let sx = ((x as u64 * icon.width() as u64) / width as u64)
-                    .min(icon.width().saturating_sub(1) as u64) as u32;
-                let sy = ((y as u64 * icon.height() as u64) / height as u64)
-                    .min(icon.height().saturating_sub(1) as u64) as u32;
-                #[cfg(windows)]
-                let scaled = sdl_pixels.as_ref()
-                    .and_then(|pixels| pixels.get(y * width + x).copied());
-                #[cfg(not(windows))]
-                let scaled: Option<(u8, u8, u8, u8)> = None;
-                let (r, g, b, a) = scaled.unwrap_or_else(|| {
-                    let p = icon.get_pixel(sx, sy);
-                    (p[0], p[1], p[2], p[3])
-                });
-                if a >= 128 { Some((r, g, b)) } else { sst_icon_rgb(glyph) }
-            } else { None };
-            if color != current {
-                if let Some((r, g, b)) = color {
-                    out.push_str(&format!("\x1b[38;2;{r};{g};{b}m"));
-                } else if current.is_some() {
-                    out.push_str("\x1b[0m");
-                }
-                current = color;
+fn paint_logo_row(cells: impl IntoIterator<Item = (char, Option<(u8, u8, u8)>)>) -> String {
+    let mut out = String::new();
+    let mut current = None;
+    for (glyph, color) in cells {
+        if color != current {
+            if let Some((r, g, b)) = color {
+                out.push_str(&format!("\x1b[38;2;{r};{g};{b}m"));
+            } else if current.is_some() {
+                out.push_str("\x1b[0m");
             }
-            out.push(glyph);
+            current = color;
         }
-        if current.is_some() { out.push_str("\x1b[0m"); }
-        out
+        out.push(glyph);
+    }
+    if current.is_some() { out.push_str("\x1b[0m"); }
+    out
+}
+
+fn sst_icon_truecolor(lines: Vec<String>) -> Vec<String> {
+    lines.into_iter().map(|line| {
+        paint_logo_row(line.chars().map(|glyph| (glyph, sst_icon_rgb(glyph))))
     }).collect()
+}
+
+/// Crop only the transparent outer padding of the official icon.
+fn sst_compact_icon() -> &'static image::RgbaImage {
+    static ICON: std::sync::OnceLock<image::RgbaImage> = std::sync::OnceLock::new();
+    ICON.get_or_init(|| {
+        let source = image::load_from_memory(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"), "/assets/sst-icon.png"
+        ))).expect("embedded SST PNG icon").to_rgba8();
+        let (mut left, mut top, mut right, mut bottom) =
+            (source.width(), source.height(), 0, 0);
+        for (x, y, pixel) in source.enumerate_pixels() {
+            if pixel[3] >= 128 {
+                left = left.min(x);
+                top = top.min(y);
+                right = right.max(x + 1);
+                bottom = bottom.max(y + 1);
+            }
+        }
+        assert!(left < right && top < bottom, "SST icon is transparent");
+        image::imageops::crop_imm(&source, left, top, right - left, bottom - top).to_image()
+    })
+}
+
+fn compact_icon_pixels(width: usize, height: usize) -> Vec<(u8, u8, u8, u8)> {
+    let icon = sst_compact_icon();
+    #[cfg(windows)]
+    if let Some(pixels) = sst_logo_sdl_pixels(icon, width, height) {
+        return pixels;
+    }
+    image::imageops::resize(icon, width as u32, height as u32,
+        image::imageops::FilterType::Nearest).pixels()
+        .map(|p| (p[0], p[1], p[2], p[3])).collect()
+}
+
+fn compact_icon_glyph((r, g, b, a): (u8, u8, u8, u8)) -> char {
+    if a < 128 { return ' '; }
+    // Only glyphs are emitted; never paint a terminal background or overlay.
+    // The silver field and the blue lettering both come from the same pixel.
+    if r > 200 && g > 200 && b < 100 { '*' }
+    else if r > 120 && g > 120 { '%' }
+    else if b > 130 { '+' }
+    else if r < 25 && g < 40 { '@' }
+    else { '#' }
 }
 
 fn caca_ansi(canvas: &libcaca::Canvas) -> anyhow::Result<String> {
     Ok(String::from_utf8(canvas.export_to_memory("utf8")?)?)
 }
 
-/// Reduce el original proporcionalmente y con niveles de cobertura reales,
-/// respetando la matriz de origen. Nunca sustituir por texto de color plano.
+/// Render the compact official icon as native ASCII via SDL2 and libcaca.
 fn fetch_compact_logo(plain: bool, columns: usize) -> anyhow::Result<(Vec<String>, usize)> {
     let width = if columns < 70 { 30usize } else { 36usize };
     let height = 12usize;
-    let source_height = FETCH_LOGO_ASCII.len();
-    let source_width = FETCH_LOGO_ASCII.iter().map(|s| s.len()).max().unwrap_or(100);
+    let pixels = compact_icon_pixels(width, height);
     let mut cv = libcaca::Canvas::new(width as i32, height as i32)?;
-    let mut plain_rows = vec![String::new(); height];
-    for y in 0..height {
-        for x in 0..width {
-            let x0 = x * source_width / width;
-            let x1 = ((x + 1) * source_width / width).max(x0 + 1);
-            let y0 = y * source_height / height;
-            let y1 = ((y + 1) * source_height / height).max(y0 + 1);
-            let mut ink = 0usize;
-            let mut total = 0usize;
-            for sy in y0..y1.min(source_height) {
-                for ch in FETCH_LOGO_ASCII[sy].as_bytes().iter().skip(x0).take(x1 - x0) {
-                    total += 1;
-                    if matches!(*ch, b'%' | b'#' | b'*' | b'+') { ink += 1; }
-                }
-            }
-            let coverage = ink as f32 / total.max(1) as f32;
-            let glyph = if coverage > 0.72 { '█' }
-                else if coverage > 0.48 { '▓' }
-                else if coverage > 0.25 { '▒' }
-                else if coverage > 0.09 { '░' }
-                else { ' ' };
-            plain_rows[y].push(glyph);
-            cv.set_color_ansi(libcaca::Color::Default, libcaca::Color::Default)?;
-            cv.put_char(x as i32, y as i32, glyph as u32);
-        }
+    cv.set_color_ansi(libcaca::Color::Default, libcaca::Color::Default)?;
+    for (i, &pixel) in pixels.iter().enumerate() {
+        cv.put_char((i % width) as i32, (i / width) as i32, compact_icon_glyph(pixel) as u32);
     }
-    if plain { return Ok((plain_rows, width)); }
     let rendered = caca_ansi(&cv)?;
-    Ok((sst_icon_truecolor(rendered.lines().map(str::to_owned).collect()), width))
+    let mut rendered_rows = rendered.lines();
+    let rows = (0..height).map(|y| {
+        let row = rendered_rows.next().unwrap_or("");
+        let glyphs = row.chars().chain(std::iter::repeat(' ')).take(width);
+        if plain { return glyphs.collect::<String>(); }
+        paint_logo_row(glyphs.zip(pixels[y * width..(y + 1) * width].iter())
+            .map(|(glyph, &(r, g, b, a))| (glyph, if a >= 128 && glyph != ' ' {
+                Some((r, g, b))
+            } else { None })))
+    }).collect();
+    Ok((rows, width))
 }
 
 fn fetch_logo(plain: bool) -> anyhow::Result<(Vec<String>, usize)> {
@@ -1877,7 +1880,6 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         .unwrap_or(80)
         .clamp(35, 240);
 
-    let icon_dark = sst_icon_ansi(0);
     let icon_mid = sst_icon_ansi(2);
     let icon_light = sst_icon_ansi(3);
     let info = if plain {
@@ -1899,12 +1901,12 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
         let title = format!(
             "\x1b[1m{icon_light}{user}{icon_mid}@{icon_light}{host}\x1b[0m"
         );
-        let label = format!("\x1b[1m{icon_mid}");
+        let label = format!("\x1b[1m{icon_light}");
         let reset = "\x1b[0m";
 
         vec![
             title,
-            format!("{icon_dark}────────────────────────────────────────\x1b[0m"),
+            format!("{icon_light}────────────────────────────────────────\x1b[0m"),
             format!("{label}OS:{reset} {}", truncate_fetch(&os, 58)),
             format!("{label}Host:{reset} {host}"),
             format!("{label}Kernel:{reset} {kernel}"),
@@ -1959,7 +1961,7 @@ fn fetch(args: &[String]) -> anyhow::Result<CommandOutput> {
                 out.push_str(&format!("\x1b[1m{icon_light}{fact}\x1b[0m"));
             } else if let Some((name, value)) = fact.split_once(':') {
                 out.push_str(&format!(
-                    "\x1b[1m{icon_mid}{name}:\x1b[0m{value}"
+                    "\x1b[1m{icon_light}{name}:\x1b[0m{value}"
                 ));
             } else {
                 out.push_str(&fact);
@@ -2619,6 +2621,18 @@ mod fetch_text_logo_tests {
         let painted = sst_icon_truecolor(vec!["█▓▒░".to_owned()]).join("\n");
         assert!(painted.contains("\x1b[38;2;"),
             "original icon must generate valid ANSI truecolor");
+    }
+
+    #[test]
+    fn compact_logo_uses_one_pixel_source_for_geometry_and_color() {
+        let (rows, width) = fetch_compact_logo(true, 80).unwrap();
+        let pixels = super::compact_icon_pixels(width, rows.len());
+        for (i, ch) in rows.iter().flat_map(|row| row.chars()).enumerate() {
+            assert_eq!(ch, super::compact_icon_glyph(pixels[i]));
+            assert!(ch.is_ascii());
+        }
+        assert!(rows.iter().any(|row| row.contains('%')));
+        assert!(rows.iter().any(|row| row.contains('#') || row.contains('@')));
     }
 
     #[test]
