@@ -51,6 +51,7 @@ unsafe extern "system" {
     fn ldap_modify_sW(ld: *mut c_void, dn: *mut u16,
         modifications: *mut *mut LdapMod) -> u32;
     fn ldap_unbind(ld: *mut c_void) -> u32;
+    fn ldap_get_optionW(ld: *mut c_void, option: i32, value: *mut c_void) -> u32;
 }
 
 struct DomainCredentials {
@@ -68,7 +69,7 @@ impl Drop for DomainCredentials {
         std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
     }
 }
-fn domain_credentials(terminal: &mut dyn crate::core::ports::TerminalSession, dc: &str) -> Result<DomainCredentials> {
+fn domain_credentials(terminal: &mut dyn crate::core::ports::TerminalSession, dc: &str, domain: &str) -> Result<DomainCredentials> {
     use crate::core::ports::TerminalKey;
     use std::time::Duration;
     let mut credentials = DomainCredentials { username: Vec::with_capacity(1025), password: Vec::with_capacity(1025) };
@@ -77,7 +78,7 @@ fn domain_credentials(terminal: &mut dyn crate::core::ports::TerminalSession, dc
         let user = String::from_utf16_lossy(&credentials.username);
         let mask = "*".repeat(credentials.password.len());
         terminal.clear()?;
-        terminal.write(&format!("\x1b[1;38;2;250;189;47mAUTENTICACIÓN ACTIVE DIRECTORY\x1b[0m\r\n\r\nControlador: {dc}\r\n\r\n{} Usuario administrador: {user}\r\n{} Contraseña: {mask}\r\n\r\nEnter: continuar / confirmar    Esc: cancelar\r\n", if password_field {" "} else {">"}, if password_field {">"} else {" "}))?;
+        terminal.write(&format!("\x1b[1;38;2;250;189;47mAUTENTICACIÓN ACTIVE DIRECTORY\x1b[0m\r\n\r\nControlador: {dc}\r\nDominio: {domain}\r\nFormato: DOMINIO\\usuario o usuario@dominio\r\n\r\n{} Usuario administrador: {user}\r\n{} Contraseña: {mask}\r\n\r\nEnter: continuar / confirmar    Esc: cancelar\r\n", if password_field {" "} else {">"}, if password_field {">"} else {" "}))?;
         terminal.flush()?;
         match terminal.poll_key(Duration::from_millis(100))? {
             Some(TerminalKey::Escape) => bail!("autenticación cancelada"),
@@ -169,18 +170,77 @@ fn ldap_check(code: u32, operation: &str) -> Result<()> {
           estado de la cuenta y conectividad con el controlador")
 }
 
-fn controller() -> Result<String> {
+fn controller() -> Result<(String, String)> {
     let mut result = ptr::null_mut::<DcInfo>();
     // DS_DIRECTORY_SERVICE_REQUIRED | DS_WRITABLE_REQUIRED.
     let rc = unsafe { DsGetDcNameW(ptr::null(), ptr::null(), ptr::null(),
-        ptr::null(), 0x10 | 0x1000, &mut result) };
+        ptr::null(), 0x10 | 0x1000 | 0x40000000, &mut result) };
     if rc != 0 { bail!("no se encontró un controlador AD escribible (Win32 {rc})"); }
     if result.is_null() { bail!("DsGetDcName no proporcionó un controlador"); }
     let hostname = unsafe { from_wide((*result).controller_name, 256) };
+    let domain = unsafe { from_wide((*result).domain_name, 256) };
     unsafe { NetApiBufferFree(result.cast()); }
     let hostname = hostname?.trim_start_matches('\\').to_owned();
     if hostname.is_empty() { bail!("nombre de controlador vacío"); }
-    Ok(hostname)
+    let domain = domain?;
+    if domain.trim().is_empty() { bail!("el controlador no devolvió el dominio AD"); }
+    Ok((hostname, domain))
+}
+
+fn administrative_identity(typed: &str, default_domain: &str) -> Result<(String, String)> {
+    let typed = typed.trim();
+    let (user, domain) = if let Some((realm, name)) = typed.split_once('\\') {
+        if realm.is_empty() || name.is_empty() || name.contains('\\') || name.contains('@') {
+            bail!("usa DOMINIO\\usuario o usuario@dominio");
+        }
+        (name.to_owned(), realm.to_owned())
+    } else if let Some((name, realm)) = typed.split_once('@') {
+        if name.is_empty() || realm.is_empty() || realm.contains('@') {
+            bail!("UPN administrativo inválido");
+        }
+        (typed.to_owned(), String::new())
+    } else {
+        (typed.to_owned(), default_domain.to_owned())
+    };
+    if user.is_empty() || user.chars().any(char::is_control) || domain.chars().any(char::is_control) {
+        bail!("identidad administrativa inválida");
+    }
+    Ok((user, domain))
+}
+
+fn bind_error(ld: *mut c_void, code: u32) -> anyhow::Error {
+    // LDAP_OPT_SERVER_ERROR is a WinLDAP-owned diagnostic string.
+    let mut diagnostic = ptr::null_mut::<u16>();
+    let status = unsafe { ldap_get_optionW(ld, 0x33, (&mut diagnostic as *mut *mut u16).cast()) };
+    let mut subcode = None;
+    if status == LDAP_SUCCESS && !diagnostic.is_null() {
+        if let Ok(message) = unsafe { from_wide(diagnostic, 8192) } {
+            let words = message.split_whitespace().collect::<Vec<_>>();
+            subcode = words.windows(2).find(|pair| pair[0].eq_ignore_ascii_case("data"))
+                .and_then(|pair| u32::from_str_radix(pair[1].trim_matches(|c: char| !c.is_ascii_hexdigit()), 16).ok());
+        }
+    }
+    if !diagnostic.is_null() { unsafe { ldap_memfreeW(diagnostic.cast()); } }
+    let reason = if code == 49 {
+        match subcode {
+            Some(0x525) => "cuenta administrativa no encontrada",
+            Some(0x52e) => "identidad o contraseña rechazadas",
+            Some(0x530) => "horario de inicio de sesión restringido",
+            Some(0x531) => "equipo no autorizado para iniciar sesión",
+            Some(0x532) => "contraseña expirada",
+            Some(0x533) => "cuenta administrativa deshabilitada",
+            Some(0x701) => "cuenta administrativa expirada",
+            Some(0x773) => "se requiere cambiar la contraseña",
+            Some(0x775) => "cuenta administrativa bloqueada",
+            _ => "el controlador rechazó la autenticación; verifica la identidad y las restricciones de la cuenta",
+        }
+    } else {
+        "falló la autenticación LDAP firmada y cifrada"
+    };
+    match subcode {
+        Some(data) => anyhow::anyhow!("LDAP {code}, data {data:x}: {reason}. No se modificó ninguna cuenta."),
+        None => anyhow::anyhow!("LDAP {code}: {reason}. No se modificó ninguna cuenta."),
+    }
 }
 
 fn search(ld: *mut c_void, base: &str, scope: u32, filter: &str,
@@ -235,23 +295,14 @@ pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::Terminal
     terminal.clear()?;
     terminal.write("AUTENTICACIÓN ACTIVE DIRECTORY\r\n[1/3] Localizando controlador de dominio escribible...\r\n")?;
     terminal.flush()?;
-    let dc = controller()?;
+    let (dc, dns_domain) = controller()?;
     // Explicit administrative identity: local UAC or logged-on Windows
     // credentials never authorize an AD change. Credential buffers are wiped.
-    let mut credentials = domain_credentials(&mut *terminal, &dc)?;
+    let mut credentials = domain_credentials(&mut *terminal, &dc, &dns_domain)?;
     let typed_len = credentials.username.iter().position(|ch| *ch == 0)
         .unwrap_or(credentials.username.len());
     let typed = String::from_utf16_lossy(&credentials.username[..typed_len]);
-    let (user, domain) = if let Some((realm, name)) = typed.split_once('\\') {
-        (name.to_owned(), realm.to_owned())
-    } else if typed.contains('@') {
-        (typed.clone(), String::new())
-    } else {
-        // DC discovery returns its FQDN; the suffix is the AD DNS domain.
-        let dns_domain = dc.split_once('.').map(|(_, suffix)| suffix)
-            .context("indica la cuenta administrativa como DOMINIO\\usuario o usuario@dominio")?;
-        (typed.clone(), dns_domain.to_owned())
-    };
+    let (user, domain) = administrative_identity(&typed, &dns_domain)?;
     if user.trim().is_empty() || user.chars().any(|ch| ch.is_control())
         || domain.chars().any(|ch| ch.is_control())
     {
@@ -281,12 +332,12 @@ pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::Terminal
     let limit = 12_i32;
     ldap_check(unsafe { ldap_set_optionW(session.0, LDAP_OPT_TIMELIMIT,
         (&limit as *const i32).cast()) }, "límite de consulta LDAP")?;
-    ldap_check(unsafe { ldap_bind_sW(session.0, ptr::null_mut(),
-        (&mut identity as *mut SecWinntAuthIdentityW).cast(),
-        LDAP_AUTH_NEGOTIATE) },
-        "autenticación de cuenta administrativa de Active Directory")?;
-    drop(identity);
+    let bind_status = unsafe { ldap_bind_sW(session.0, ptr::null_mut(),
+        (&mut identity as *mut SecWinntAuthIdentityW).cast(), LDAP_AUTH_NEGOTIATE) };
     drop(credentials);
+    if bind_status != LDAP_SUCCESS {
+        return Err(bind_error(session.0, bind_status));
+    }
 
     terminal.write("[3/3] Localizando y desbloqueando la cuenta...\r\n")?;
     terminal.flush()?;
@@ -328,7 +379,14 @@ pub fn unlock(account: &str, terminal_factory: &dyn crate::core::ports::Terminal
 
 #[cfg(test)]
 mod tests {
-    use super::user_filter;
+    use super::{administrative_identity, user_filter};
+    #[test]
+    fn admin_identity_uses_discovered_domain_and_preserves_explicit_formats() {
+        assert_eq!(administrative_identity("admin", "corp.example").unwrap(), ("admin".into(), "corp.example".into()));
+        assert_eq!(administrative_identity("CORP\\admin", "other.example").unwrap(), ("admin".into(), "CORP".into()));
+        assert_eq!(administrative_identity("admin@corp.example", "other.example").unwrap(), ("admin@corp.example".into(), String::new()));
+        assert!(administrative_identity("CORP\\", "corp.example").is_err());
+    }
     #[test]
     fn names_are_not_interpreted_as_ldap_filter_expressions() {
         assert_eq!(user_filter("john*"), "(&(objectCategory=person)(objectClass=user)(sAMAccountName=john\\2a))");
