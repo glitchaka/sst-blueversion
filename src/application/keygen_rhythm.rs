@@ -7,7 +7,7 @@ use symphonia::core::{audio::SampleBuffer,codecs::DecoderOptions,errors::Error,
 const HOP_SECONDS:f32=0.01;
 
 #[derive(Clone,Copy,Debug,Default)]
-pub(super) struct VisualBeat {
+pub(crate) struct VisualBeat {
     pub seconds:f32,
     pub pulse:f32,
     pub beat_count:usize,
