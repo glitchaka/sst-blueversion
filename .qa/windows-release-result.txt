@@ -1,25 +1,12 @@
 SST Windows release CI report
-Source commit: 07a6715a0531edbd2c0861965e00021a7c84f6e8
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45718840769
-Recorded UTC: 2026-11-25 23:10:04Z
-Compile: failure
-Rust tests: skipped
+Source commit: f1d24b782f9fc1b76df3b8badc223fda56015cc7
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45719448483
+Recorded UTC: 2026-11-25 23:16:18Z
+Compile: success
+Rust tests: failure
 Software GUI startup: skipped
 Packaging: skipped
 Compiler log tail:
     Updating crates.io index
    Compiling sst v0.1.13-blue.4 (D:\a\sst-blueversion\sst-blueversion)
-error[E0507]: cannot move out of `*line` which is behind a shared reference
-   --> src\presentation\formatter.rs:671:41
-    |
-671 |         else{metadata.line(Role::Detail,*line);}
-    |                                         ^^^^^ move occurs because `*line` has type `std::string::String`, which does not implement the `Copy` trait
-    |
-help: consider cloning the value if the performance cost is acceptable
-    |
-671 -         else{metadata.line(Role::Detail,*line);}
-671 +         else{metadata.line(Role::Detail,line.clone());}
-    |
-
-For more information about this error, try `rustc --explain E0507`.
-error: could not compile `sst` (bin "sst") due to 1 previous error
+    Finished `release` profile [optimized] target(s) in 3m 02s
