@@ -30,14 +30,17 @@ pub(super) fn fields(rows: &[&str], styles: &[&str], width: usize, out: &mut Vec
     let gutter = rows.iter().filter_map(|r|field(r)).map(|(k,_)|display_width(k)+1).max().unwrap_or(1);
     let stacked = width < gutter + 18;
     for (i,row) in rows.iter().enumerate() {
-        let (label,value) = field(row).unwrap();
+        let Some((label,value))=field(row) else {
+            for fragment in wrap_line(row,width){out.push(style_line(&fragment));}
+            continue;
+        };
         let surface = if i % 2 == 0 { SURFACE } else { SURFACE_ALT };
         let normalized = format!("{label}: {value}");
         let styled = style_line(&normalized);
         let value_tone = styled.split_once(&format!(":{RESET} ")).and_then(|(_,v)|v.split_once('m'))
             .filter(|(prefix,_)|prefix.starts_with("\x1b[")).map(|(prefix,_)|format!("{prefix}m")).unwrap_or_else(||VALUE.into());
         let label_tone = styles[i].trim_start().strip_prefix(BAD).map(|_|BAD).or_else(||styled.strip_prefix(CAUTION).map(|_|CAUTION)).unwrap_or(LABEL);
-        let padded = format!("{label}:{}", " ".repeat(gutter-display_width(label)-1));
+        let padded = format!("{label}:{}", " ".repeat(gutter.saturating_sub(display_width(label)+1)));
         if stacked { out.push(band(&format!("{label_tone}{label}:{RESET}"),&format!("{label}:"),width,GUTTER,RAIL)); }
         let indent = if stacked { 3 } else { gutter + 5 };
         let value = if value.is_empty() { "—" } else { value };

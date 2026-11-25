@@ -668,7 +668,11 @@ fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
         if let Some((name,value))=line.split_once(": "){facts.push((name,value,VALUE));}
         else{emit(&mut out,line);}
     }
-    out.push_str(&report_layout::feature_grid(&facts,width));
+    if facts.len()==1 {
+        let mut fallback=Document::default();
+        fallback.field(facts[0].0,facts[0].1);
+        out.push_str(&fallback.render(OutputMode::Interactive));
+    } else { out.push_str(&report_layout::feature_grid(&facts,width)); }
     out.push('\n');
     out.push_str(&format!("{HEADING}Resultado{RESET}\n"));
     for line in summary{
@@ -783,7 +787,7 @@ fn decorate_with_native_commands(
             let group=&lines[start..cursor];
             let header_precedes=start>0 && (is_section_heading(lines[start-1]) || report_layout::underline(lines[start-1]));
             let features:Vec<_>=group.iter().filter_map(|line|field_parts(line)).map(|(name,value)|(name,value,VALUE)).collect();
-            let short_metadata=header_precedes && features.len()==group.len() && (2..=4).contains(&features.len())
+            let short_metadata=header_precedes && features.len()==group.len() && features.len()==2
                 && features.iter().all(|(name,value,_)|display_width(name)<=22 && display_width(value)<=25
                     && !value.is_empty() && Metric::named(name).is_none()
                     && !is_status_field(&format!("{name}: {value}"))
