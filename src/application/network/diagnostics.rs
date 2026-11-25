@@ -39,16 +39,6 @@ impl NetworkDiagnosticsService {
         Self { probe }
     }
 
-    pub fn diagnose(&self) -> Result<CommandOutput> {
-        let mut out = String::new();
-        out.push_str("== interfaces ==\n");
-        out.push_str(&self.interfaces()?.stdout);
-        out.push_str("\n== vecinos ==\n");
-        out.push_str(&self.arp_table()?.stdout);
-        out.push_str("\n== conexiones ==\n");
-        out.push_str(&self.connections()?.stdout);
-        Ok(CommandOutput::ok(out))
-    }
 
     pub fn interfaces(&self) -> Result<CommandOutput> {
         Ok(CommandOutput::ok(self.probe.interfaces()?))

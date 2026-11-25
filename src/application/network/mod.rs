@@ -100,8 +100,5 @@ impl NetworkService {
         Ok(CommandOutput::ok(text))
     }
 
-    pub fn diagnose(&self) -> Result<CommandOutput> {
-        self.diagnostics.diagnose()
-    }
 
 }
