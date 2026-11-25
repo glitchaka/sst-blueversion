@@ -1,11 +1,14 @@
 //! Native Active Directory account unlock over Windows LDAP (Wldap32).
 //! No PowerShell module, shell commands, passwords in argv, or unauthenticated binds.
-//! Solicits separate Active Directory credentials in a masked Windows dialog.
+//! Solicits separate Active Directory credentials in the integrated SST terminal.
 use anyhow::Result;
 use crate::core::{CommandContext, CommandOutput};
 use super::BuiltinCommand;
 
-pub struct UnbanBuiltin;
+pub struct UnbanBuiltin { terminal: std::sync::Arc<dyn crate::core::ports::TerminalFactory> }
+impl UnbanBuiltin {
+    pub fn new(terminal: std::sync::Arc<dyn crate::core::ports::TerminalFactory>) -> Self { Self { terminal } }
+}
 
 impl BuiltinCommand for UnbanBuiltin {
     fn name(&self) -> &'static str { "unban" }
@@ -35,7 +38,7 @@ impl BuiltinCommand for UnbanBuiltin {
             if let Err(message) = validate_account(user) {
                 return Ok(CommandOutput::error(format!("unban: {message}"), 2));
             }
-            let result = crate::adapters::windows::ad_unlock::unlock(user);
+            let result = crate::adapters::windows::ad_unlock::unlock(user, &*self.terminal);
             // Independent AD operation audit, never mixed with sudo/UAC logs.
             if let Err(error) = audit_unban(user, result.is_ok()) {
                 eprintln!("unban: no se pudo registrar la auditoría: {error:#}");
