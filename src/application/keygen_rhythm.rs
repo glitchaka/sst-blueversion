@@ -26,15 +26,14 @@ struct Analyzer {
     energy:Vec<(f32,f32)>,
 }
 impl Analyzer {
-    fn push(&mut self, sample:f32, rate:u32) {
-        let alpha=1.0-(-std::f32::consts::TAU*145.0/rate as f32).exp();
+    fn push(&mut self, sample:f32, alpha:f32, hop:usize) {
         self.low+=alpha*(sample-self.low);
         let high=sample-self.previous;
         self.previous=sample;
         self.low_sum+=self.low*self.low;
         self.high_sum+=high*high;
         self.n+=1;
-        if self.n>=(rate/100).max(1) as usize {
+        if self.n>=hop {
             self.energy.push(((self.low_sum/self.n as f32).sqrt(),
                 (self.high_sum/self.n as f32).sqrt()));
             self.low_sum=0.0;self.high_sum=0.0;self.n=0;
@@ -97,9 +96,11 @@ impl BeatMap {
             let spec=*decoded.spec();
             let b=buffer.get_or_insert_with(||SampleBuffer::new(decoded.capacity() as u64,spec));
             b.copy_interleaved_ref(decoded);
+            let alpha=1.0-(-std::f32::consts::TAU*145.0/spec.rate as f32).exp();
+            let hop=(spec.rate/100).max(1) as usize;
             for frame in b.samples().chunks_exact(spec.channels.count()){
                 let mono=frame.iter().sum::<f32>()/frame.len() as f32;
-                analysis.push(mono,spec.rate);
+                analysis.push(mono,alpha,hop);
             }
         }
         let map=analysis.finish();

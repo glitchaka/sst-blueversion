@@ -158,13 +158,14 @@ impl KeygenMusic {
                 bail!("keygen: la banda sonora no está instalada: {}", track.display());
             }
         }
+        let beat_maps = [Some(BeatMap::read(&tracks[0])?), Some(BeatMap::read(&tracks[1])?)];
         let mut player = Self {
             #[cfg(windows)]
             open: false,
             index: first % 2,
             tracks,
             paused: false,
-            beat_maps: [None,None],
+            beat_maps,
             position_ms:0,
             position_at:Instant::now(),
         };
