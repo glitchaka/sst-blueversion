@@ -769,7 +769,7 @@ fn compact_help(stdout:&str,width:usize)->String{
             if result.last().is_some_and(|l:&String|!l.is_empty()){result.push(String::new());}
         }else if first_content && (trimmed.contains(" — ") || trimmed.contains(" – "))
             && display_width(trimmed)<=width {
-            result.push(Role::Title.paint(trimmed));
+            result.extend(report_layout::headline(trimmed,width));
         }else if let Some((key,value))=trimmed.split_once(": ")
             && matches!(key.to_ascii_lowercase().as_str(),"uso"|"usage"|"ejemplo"|"example"|"ejemplos"|"examples")
         {
@@ -1333,7 +1333,11 @@ mod editorial_reference_tests{
         let clean=report_text(&out);
         let x=|word:&str|clean.lines().find_map(|l|l.find(word)).unwrap();
         assert_eq!(x("resumen"),x("listado detallado"));
-        assert!(!out.contains("\x1b[48;"));
+        // A primary headline reserves transparent native display rows.
+        // Help must never acquire filled table/feature panels.
+        assert!(out.contains(&background(REPORT_HEADER_RGB)));
+        assert!(!out.contains(TABLE_HEADER)&&!out.contains(TABLE_BAND));
+        assert!(!out.contains(&background(FEATURE_RGB))&&!out.contains(&background(FEATURE_ALT_RGB)));
     }
     #[test]
     fn live_lines_never_expand_into_a_display_card(){

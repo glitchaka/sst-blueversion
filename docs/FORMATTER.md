@@ -25,3 +25,5 @@ La selección de composición se basa exclusivamente en la estructura del texto:
 ## Lectura del resultado en la ventana nativa
 
 Los resultados humanos completos viajan por el mismo canal ordenado con límites de presentación tipados. Si el comienzo de un resultado sale del viewport, la ventana se posiciona en ese comienzo después de imprimir el prompt; no elimina el historial. La rueda y PageUp/PageDown permiten seguir leyendo; una nueva entrada regresa al prompt. Las aplicaciones de pantalla completa, la salida incremental y los modos de máquina no adoptan esta política. El usuario que ya está desplazado conserva el control de la lectura.
+
+Las referencias de ayuda con título descriptivo usan la misma cabecera editorial de los informes, a escala de exhibición y sobre fondo transparente; las subsecciones y descripciones mantienen su tamaño compacto. No se introduce otra fuente, color ni marco.

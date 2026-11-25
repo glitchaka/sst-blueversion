@@ -213,6 +213,16 @@ pub(super) fn counted_summary(text:&str,width:usize)->Option<String>{
     Some(out)
 }
 
+/// One editorial headline, rendered at display size by the native viewport.
+/// These two reserved rows are transparent layout markers, not background art.
+pub(super) fn headline(text:&str,width:usize)->Vec<String>{
+    let body=text.trim();
+    if display_width(body)>width.saturating_sub(3){return vec![Role::Title.paint(body)];}
+    vec![format!("{HEADER}{}{RESET}"," ".repeat(width)),
+        format!("{HEADER}  {HEADING}{body}{RESET}{HEADER}{}{RESET}",
+            " ".repeat(width.saturating_sub(display_width(body)+2)))]
+}
+
 /// Final composition pass. Only the first document title gets display
 /// typography; section headings get an unobtrusive native rule. Existing
 /// field groups, tables, prose and live terminal data are not boxed again.
@@ -229,12 +239,7 @@ pub(super) fn render(styled:&str,width:usize,structured:bool)->String{
         let next_rule=!line.trim().is_empty()&&clean.get(i+1).is_some_and(|l|underline(l));
         let is_title=next_rule||lines[i].trim_start().starts_with(HEADING);
         if is_title&&first_title&&!is_table_header(line)&&display_width(line.trim())<=width.saturating_sub(3){
-            let body=line.trim();
-            // This marker is invisible in the native viewport. The blank
-            // row is reserved for the ascenders of the display-size title.
-            out.push(format!("{HEADER}{}{RESET}"," ".repeat(width)));
-            out.push(format!("{HEADER}  {HEADING}{body}{RESET}{HEADER}{}{RESET}",
-                " ".repeat(width.saturating_sub(display_width(body)+2))));
+            out.extend(headline(line,width));
             first_title=false;
         }else if next_rule{
             out.push(Role::Title.paint(line.trim()));

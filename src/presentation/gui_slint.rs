@@ -1558,9 +1558,9 @@ impl TerminalModel {
                         .map(|cell|cell.contents()).collect::<String>();
                     let heading = heading.trim();
                     let available = (f32::from(cols)-4.).max(1.)*cell_width;
-                    let size = (font_px*1.55).min(available/(0.62*heading.chars().count().max(1) as f32))
+                    let size = (font_px*1.7).min(available/(0.62*heading.chars().count().max(1) as f32))
                         .min(cell_height*1.6).round().max(1.) as u16;
-                    let mut x = (left_pad+3.*cell_width).round() as i32;
+                    let mut x = (left_pad+2.*cell_width).round() as i32;
                     let baseline = (top_pad+(f32::from(row)+0.48)*cell_height).round() as i32;
                     let (r,g,b) = Role::Title.style().rgb;
                     for ch in heading.chars() {
