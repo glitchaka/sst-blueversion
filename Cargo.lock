@@ -4664,7 +4664,7 @@ dependencies = [
 
 [[package]]
 name = "sst"
-version = "0.1.12-blue.6"
+version = "0.1.12-blue.7"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4699,6 +4699,7 @@ dependencies = [
  "sysinfo",
  "tar",
  "toml 0.5.11",
+ "ttf-parser",
  "vt100",
  "windows-sys 0.61.2",
  "winres",

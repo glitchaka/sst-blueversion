@@ -14,6 +14,9 @@ use std::os::windows::process::CommandExt;
 
 use sysinfo::{Disks, Pid, System};
 
+#[path = "keygen_mesh.rs"]
+mod keygen_mesh;
+
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError},
@@ -1336,7 +1339,7 @@ fn keygen_scene(physics: &mut KeygenPhysics, frame: u64, facts: &[String],
                 rx: body.rx.tanh() * 0.40 + wave.cos() * 0.16,
                 ry: body.ry.tanh() * 0.40 + roll.sin() * 0.23,
                 rz: body.rz.tanh() * 0.23 + wave.cos() * 0.11,
-                size, color: keygen_glyph_color(frame / 4, index, line), depth: 8,
+                size, color: keygen_glyph_color(frame / 4, index, line), depth: 2,
             });
         }
     }
@@ -1376,21 +1379,27 @@ fn keygen_scene(physics: &mut KeygenPhysics, frame: u64, facts: &[String],
 
 /// Euler rotations are applied to each corner in 3D before perspective.
 /// The renderer receives floating-point vertices, not rounded cell positions.
-fn keygen_project(sprite: &KeygenSprite, width: f32, height: f32,
-    layer: f32) -> [(f32, f32); 4] {
+fn keygen_transform(sprite: &KeygenSprite, [x,y,z]: [f32;3]) -> (f32,f32,f32) {
     let (sx,cx) = sprite.rx.sin_cos();
     let (sy,cy) = sprite.ry.sin_cos();
     let (sz,cz) = sprite.rz.sin_cos();
+    let (y,z) = (y*cx-z*sx, y*sx+z*cx);
+    let (x,z) = (x*cy+z*sy, -x*sy+z*cy);
+    let (x,y) = (x*cz-y*sz, x*sz+y*cz);
+    let scale = 620.0 / (620.0 - sprite.z - z).clamp(250.0, 1250.0);
+    (sprite.x + x*scale, sprite.y + y*scale, sprite.z+z)
+}
+
+fn keygen_project(sprite: &KeygenSprite, width: f32, height: f32,
+    layer: f32) -> [(f32, f32); 4] {
     [(-0.5,-0.5), (0.5,-0.5), (0.5,0.5), (-0.5,0.5)].map(|(u,v)| {
-        let (x,y,z) = (u*width, v*height, layer);
-        let (y,z) = (y*cx-z*sx, y*sx+z*cx);
-        let (x,z) = (x*cy+z*sy, -x*sy+z*cy);
-        let (x,y) = (x*cz-y*sz, x*sz+y*cz);
-        let scale = 620.0 / (620.0 - sprite.z - z).clamp(250.0, 1250.0);
-        (sprite.x + x*scale, sprite.y + y*scale)
+        let (x,y,_) = keygen_transform(sprite,[u*width,v*height,layer]);
+        (x,y)
     })
 }
 
+// Only ordinary, flat status text uses a texture. The animated title uses
+// an untextured, closed solid mesh generated from the actual font outline.
 fn keygen_draw_glyph<T: sdl2::render::RenderTarget>(
     canvas: &mut sdl2::render::Canvas<T>, texture: &sdl2::render::Texture<'_>,
     sprite: &KeygenSprite, width: f32, height: f32,
@@ -1398,25 +1407,13 @@ fn keygen_draw_glyph<T: sdl2::render::RenderTarget>(
     use sdl2::{pixels::Color, rect::FPoint, render::Vertex};
     const INDICES: [u8; 6] = [0,1,2,0,2,3];
     const UV: [(f32,f32); 4] = [(0.0,0.0),(1.0,0.0),(1.0,1.0),(0.0,1.0)];
-    for layer in (0..sprite.depth).rev() {
-        let points = keygen_project(sprite, width, height, -(f32::from(layer) * 1.7));
-        let light = if layer == 0 { 1.0 } else { 0.28 + 0.05 * f32::from(sprite.depth-layer) };
-        let shade = |c:u8| (f32::from(c)*light).clamp(0.0,255.0) as u8;
-        let base = (shade(sprite.color.0),shade(sprite.color.1),shade(sprite.color.2));
-        let vertices = std::array::from_fn::<_,4,_>(|i| {
-            let color = if sprite.depth > 1 && layer == 0 {
-                let highlight = |c:u8| if i < 2 {
-                    (f32::from(c)*0.72 + 70.0).min(255.0) as u8
-                } else { (f32::from(c)*0.68) as u8 };
-                Color::RGB(highlight(base.0),highlight(base.1),highlight(base.2))
-            } else { Color::RGB(base.0,base.1,base.2) };
-            Vertex { position: FPoint::new(points[i].0, points[i].1), color,
-                tex_coord: FPoint::new(UV[i].0, UV[i].1) }
-        });
-        canvas.render_geometry(&vertices, Some(texture), &INDICES[..])
-            .map_err(anyhow::Error::msg)?;
-    }
-    Ok(())
+    let points = keygen_project(sprite,width,height,0.0);
+    let vertices = std::array::from_fn::<_,4,_>(|i| Vertex {
+        position: FPoint::new(points[i].0, points[i].1),
+        color: Color::RGB(sprite.color.0,sprite.color.1,sprite.color.2),
+        tex_coord: FPoint::new(UV[i].0, UV[i].1),
+    });
+    canvas.render_geometry(&vertices,Some(texture),&INDICES[..]).map_err(anyhow::Error::msg)
 }
 
 /// Demoscene backdrop drawn in SDL logical pixels, not in terminal cells.
@@ -1484,9 +1481,12 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
         .ok_or_else(|| anyhow::anyhow!("keygen: falta una fuente monoespaciada Windows"))?;
     let font = fontdue::Font::from_bytes(font_bytes, fontdue::FontSettings::default())
         .map_err(|e| anyhow::anyhow!("keygen: fuente Windows inválida: {e}"))?;
-    let display_font = ["ariblk.ttf","impact.ttf","arialbd.ttf"].into_iter()
-        .find_map(|name| std::fs::read(font_dir.join(name)).ok())
-        .and_then(|bytes| fontdue::Font::from_bytes(bytes,fontdue::FontSettings::default()).ok());
+    let display_bytes = ["gara.ttf","garamond.ttf","consola.ttf","lucon.ttf","cour.ttf"]
+        .into_iter().find_map(|name| std::fs::read(font_dir.join(name)).ok())
+        .ok_or_else(|| anyhow::anyhow!("keygen: falta una tipografía regular para la malla 3D"))?;
+    let display_face = ttf_parser::Face::parse(&display_bytes,0)
+        .map_err(|e| anyhow::anyhow!("keygen: contorno TrueType inválido: {e:?}"))?;
+    let mut mesh_cache = HashMap::new();
     let mut glyph_cache = HashMap::new();
     let interrupt = io::interrupt_flag();
     let abort = io::force_abort_flag();
@@ -1543,13 +1543,20 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
         sprites.sort_by(|a,b| a.z.total_cmp(&b.z));
         keygen_backdrop(&mut renderer, frame)?;
         for sprite in sprites {
-            let display = sprite.depth > 1;
-            let key = (sprite.glyph,display);
+            if sprite.depth > 1 {
+                if let std::collections::hash_map::Entry::Vacant(entry) = mesh_cache.entry(sprite.glyph) {
+                    entry.insert(keygen_mesh::GlyphMesh::from_font(&display_face,sprite.glyph)?);
+                }
+                let mesh = &mesh_cache[&sprite.glyph];
+                mesh.draw(&mut renderer,sprite.size,sprite.color,
+                    |p| keygen_transform(&sprite,p))?;
+                continue;
+            }
+            let key = sprite.glyph;
             if let std::collections::hash_map::Entry::Vacant(entry) = glyph_cache.entry(key) {
                 // Rasterize once at high resolution. SDL scales the textured
                 // triangles and keeps the glyph alpha mask intact.
-                let face = if display { display_font.as_ref().unwrap_or(&font) } else { &font };
-                let (metrics, bitmap) = face.rasterize(sprite.glyph, 80.0);
+                let (metrics, bitmap) = font.rasterize(sprite.glyph, 80.0);
                 let tw = metrics.width.max(1) as u32;
                 let th = metrics.height.max(1) as u32;
                 let mut texture = creator.create_texture_streaming(PixelFormatEnum::RGBA32,tw,th)
@@ -1567,7 +1574,7 @@ fn keygen_sdl(mut music: crate::application::keygen_audio::KeygenMusic)
                 entry.insert((texture,tw,th));
             }
             let (texture,tw,th) = &glyph_cache[&key];
-            let width = (*tw as f32 * sprite.size / 80.0).clamp(1.0, if display { sprite.size * 0.67 } else { sprite.size });
+            let width = (*tw as f32 * sprite.size / 80.0).max(1.0);
             let height = (*th as f32 * sprite.size / 80.0).max(1.0);
             keygen_draw_glyph(&mut renderer,texture,&sprite,width,height)?;
         }
