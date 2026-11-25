@@ -1,25 +1,25 @@
 {
   "schema": 1,
-  "version": "0.1.12-blue.12",
+  "version": "0.1.12-blue.13",
   "channel": "blue",
-  "published_at": "2026-11-25T20:45:54.3852340+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.12/sst.exe",
-  "sha256": "dc51c22206001304c8dba4365b6cf2ddb370e003734439e577cf07c2834700e0",
-  "size": 60236288,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.12/sst-updater.exe",
-  "updater_sha256": "9e6cfaf7200ec7fd50caeec80e3c5f2bce4d0470f3a10adf376cf9c1fb329456",
+  "published_at": "2026-11-25T20:57:47.9842629+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.13/sst.exe",
+  "sha256": "7aa1e7ebc6f8ea1d40686185144cfbf3e00d88d4f99eea88653eb9d18e3911d8",
+  "size": 60261376,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.13/sst-updater.exe",
+  "updater_sha256": "bfba7644520bf23224b000f7f56a6b0a6401b381a0c554c6f29b4ccc7e016379",
   "updater_size": 433664,
   "changes": [
-    "Recupera la composición compacta de dos arcos de la animación del 23 de noviembre, usando la fuente real de SST y mallas SDL2 de grosor uniforme.",
-    "Cada letra conserva su movimiento, órbita de profundidad, impulso musical y retorno lateral independientes. El golpe musical recorre los caracteres en vez de sacudir toda la frase.",
-    "Recupera las bandas de color originales y el bloque informativo compacto, sin atlas de texturas ni cambios en audio, icono o unban."
+    "Escena demoscene procedural: cintas metálicas, túnel facetado, superficie deformable, cristales y partículas con iluminación y perspectiva.",
+    "Cinco fases musicales con transiciones, letras sólidas independientes, estelas de movimiento y firma SST en la tipografía de la consola.",
+    "Datos del sistema en dos columnas, audio original y modo integrado. Publicación serializada y rechazo de compilaciones obsoletas."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.12-blue.12.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.12/SST-Setup-0.1.12-blue.12.exe",
-    "sha256": "2b62cc3e9a3ace3236fd054b1d756f07e4f38068f09ae1aec54d6149d8c7b7c7",
-    "size": 69399093,
+    "name": "SST-Setup-0.1.12-blue.13.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.12-blue.13/SST-Setup-0.1.12-blue.13.exe",
+    "sha256": "fa93cd898ab49c48a30a2c36cd9b3151f0e0552c1e1a9ed8959eef740fbfa4c5",
+    "size": 69424181,
     "single_use": true,
-    "package_id": "a575981ec78d84d7ff612d2cc8254ae1"
+    "package_id": "20bc40e1266c78bfb1fd97dc2cce2d6d"
   }
 }
