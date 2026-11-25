@@ -1364,6 +1364,14 @@ impl TerminalModel {
                     matches!(cell.bgcolor(),vt100::Color::Rgb(r,g,b) if (r,g,b)==crate::presentation::formatter::REPORT_HEADER_RGB));
                 let card_title = title && row > 0 && selection.is_none() && is_band(row) && is_band(row-1)
                     && (0..cols).all(|col|screen.cell(row-1,col).is_none_or(|c|c.contents().trim().is_empty()));
+                let feature_color=|r:u16,c:u16|screen.cell(r,c).and_then(|cell|match cell.bgcolor(){
+                    vt100::Color::Rgb(a,b,d) if (a,b,d)==crate::presentation::formatter::FEATURE_RGB || (a,b,d)==crate::presentation::formatter::FEATURE_ALT_RGB=>Some((a,b,d)),
+                    _=>None
+                });
+                let feature_row=row>0 && selection.is_none() && selected_row!=Some(usize::from(row))
+                    && (0..cols).any(|col|feature_color(row,col).is_some()
+                        && feature_color(row-1,col)==feature_color(row,col))
+                    && (0..cols).all(|col|screen.cell(row-1,col).is_none_or(|c|c.contents().trim().is_empty()));
                 if title && !card_title {
                     let y=(top_pad+row as f32*cell_height).round() as i32;
                     let x=left_pad.round() as i32;
@@ -1420,7 +1428,7 @@ impl TerminalModel {
                     }
 
                     let content = cell.contents();
-                    if content.is_empty() || card_title {
+                    if content.is_empty() || card_title || (feature_row && feature_color(row,col).is_some()) {
                         continue;
                     }
 
@@ -1459,6 +1467,32 @@ impl TerminalModel {
                                 );
                             }
                             pen_x += glyph.metrics.advance_width.round() as i32;
+                        }
+                    }
+                }
+                if feature_row {
+                    let mut col=0;
+                    while col<cols{
+                        let Some(surface)=feature_color(row,col)else{col+=1;continue;};
+                        let start=col;
+                        while col<cols && feature_color(row,col)==Some(surface){col+=1;}
+                        let end=col;
+                        let text=(start..end).filter_map(|c|screen.cell(row,c)).map(|c|c.contents()).collect::<String>();
+                        let text=text.trim();
+                        if text.is_empty(){continue;}
+                        let color=(start..end).filter_map(|c|screen.cell(row,c)).find(|c|!c.contents().trim().is_empty())
+                            .map(|c|terminal_color(c.fgcolor(),default_fg)).unwrap_or(default_fg);
+                        let available=(f32::from(end-start)-3.).max(1.)*cell_width;
+                        let size=(font_px*1.65).min(available/(0.62*text.chars().count().max(1) as f32))
+                            .min(cell_height*1.6).round().max(1.) as u16;
+                        let mut x=(left_pad+(f32::from(start)+2.)*cell_width).round() as i32;
+                        let baseline=(top_pad+(f32::from(row)+0.56)*cell_height).round() as i32;
+                        for ch in text.chars(){
+                            let glyph=self.glyphs.entry((ch,size)).or_insert_with(||{
+                                let (metrics,alpha)=self.font.rasterize(ch,f32::from(size));Glyph{metrics,alpha}
+                            });
+                            draw_glyph(pixels,width,height,x,baseline,glyph,color);
+                            x+=glyph.metrics.advance_width.round() as i32;
                         }
                     }
                 }

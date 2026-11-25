@@ -27,6 +27,9 @@ tone!(PERFECT, OPTIMAL_RGB, "1;", 131, 165, 205);
 const BULLET: &str = LABEL;
 pub const DEFAULT_FOREGROUND_HEX: &str = "#B8BB26";
 pub const REPORT_HEADER_RGB: (u8,u8,u8) = (63,52,38);
+// Separate semantic surfaces identify the reserved display-size value region.
+pub const FEATURE_RGB: (u8,u8,u8) = (31,34,32);
+pub const FEATURE_ALT_RGB: (u8,u8,u8) = (35,38,35);
 pub const SECTION_RAIL: (u8, u8, u8) = COMMAND_RGB;
 pub const SECTION_RULE: (u8, u8, u8) = (117, 86, 45);
 
@@ -660,24 +663,30 @@ fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
     document.title("Diagnóstico de red");
     let mut out = document.render(OutputMode::Interactive);
     let emit=|out:&mut String,line:&str|{for part in wrap_line(line,width){out.push_str(&style_line(&part));out.push('\n');}};
-    for line in meta {
-        if let Some((name,value)) = line.split_once(": ")
-            && display_width(&line) <= width {
-            let mut fields = Document::default();
-            fields.field(name,value);
-            out.push_str(&fields.render(OutputMode::Interactive));
-        } else { emit(&mut out,&line); }
+    let mut facts=Vec::new();
+    for line in &meta {
+        if let Some((name,value))=line.split_once(": "){facts.push((name,value,VALUE));}
+        else{emit(&mut out,line);}
     }
+    out.push_str(&report_layout::feature_grid(&facts,width));
     out.push('\n');
     out.push_str(&format!("{HEADING}Resultado{RESET}\n"));
     for line in summary{
         if let Some(status)=line.strip_prefix("Estado: "){
             let color=status_color(status).unwrap_or(VALUE);
-            let headline=format!("{color}{status}{RESET}");
-            out.push_str(&preserve_band(&format!("  {headline}"),TABLE_HEADER));
-            out.push('\n');
+            out.push_str(&report_layout::feature_grid(&[("ESTADO DEL DIAGNÓSTICO",status,color)],width));
         }else{emit(&mut out,&line);}
     }
+    let mut measurements=Vec::new();
+    for (name,rows) in &blocks{
+        for row in rows{
+            if let Some(value)=row.strip_prefix("Gateway: "){measurements.push(("GATEWAY",value,VALUE));}
+            if name.ends_with("ICMP DESTINO"){
+                if let Some(value)=row.strip_prefix("Latencia: "){measurements.push(("LATENCIA DESTINO",value,VALUE));}
+            }
+        }
+    }
+    if !measurements.is_empty(){out.push('\n');out.push_str(&report_layout::feature_grid(&measurements,width));}
     out.push_str(&format!("\n{HEADING}Comprobaciones{RESET}\n"));
     let label_width=blocks.iter().map(|(n,_)|display_width(n.split_once(". ").map_or(n.as_str(),|(_,t)|t))).max().unwrap_or(0).min(width/2);
     for (index,(name,rows)) in blocks.into_iter().enumerate(){
@@ -696,6 +705,7 @@ fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
             }
         }else{emit(&mut out,name);}
         for row in rows.iter().filter(|s|!s.starts_with("Estado: ")){
+            if row.starts_with("Gateway: ") || (name=="ICMP DESTINO" && row.starts_with("Latencia: ")){continue;}
             emit(&mut out,&format!("    {row}"));
         }
     }
@@ -770,7 +780,16 @@ fn decorate_with_native_commands(
         if !help_document && !table_active && field_parts(line).is_some(){
             let start=cursor-1;
             while cursor<lines.len()&&field_parts(lines[cursor]).is_some(){cursor+=1;}
-            result.push_str(&render_field_group(&lines[start..cursor],width));
+            let group=&lines[start..cursor];
+            let header_precedes=start>0 && (is_section_heading(lines[start-1]) || report_layout::underline(lines[start-1]));
+            let features:Vec<_>=group.iter().filter_map(|line|field_parts(line)).map(|(name,value)|(name,value,VALUE)).collect();
+            let short_metadata=header_precedes && features.len()==group.len() && (2..=4).contains(&features.len())
+                && features.iter().all(|(name,value,_)|display_width(name)<=22 && display_width(value)<=25
+                    && !value.is_empty() && Metric::named(name).is_none()
+                    && !is_status_field(&format!("{name}: {value}"))
+                    && !matches!(name.to_lowercase().as_str(),"error"|"aviso"|"advertencia"|"fallo"|"crítico"|"critico"|"warning"|"autorización efectiva"));
+            if short_metadata{result.push_str(&report_layout::feature_grid(&features,width));}
+            else{result.push_str(&render_field_group(group,width));}
             previous_blank=false;
             continue;
         }

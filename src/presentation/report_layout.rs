@@ -53,6 +53,34 @@ pub(super) fn fields(rows: &[&str], styles: &[&str], width: usize, out: &mut Vec
     }
 }
 
+
+/// Editorial feature strip: short values receive display-size typography,
+/// labels sit above them, and columns stack when there is insufficient space.
+/// The reserved row travels with the value through the VT scrollback.
+pub(super) fn feature_grid(items:&[(&str,&str,&str)],width:usize)->String {
+    let mut out=Vec::new();
+    let columns=if width>=54 {2}else{1};
+    for group in items.chunks(columns){
+        let cell_width=(width.saturating_sub(group.len()-1))/group.len();
+        if group.iter().any(|(label,value,_)|display_width(label)+4>cell_width||display_width(value)+4>cell_width){
+            for (label,value,_) in group{
+                for fragment in wrap_line(&format!("{label}: {value}"),width){out.push(style_line(&fragment));}
+            }
+            continue;
+        }
+        let mut labels=String::new();let mut reserve=String::new();let mut values=String::new();
+        for (index,(label,value,tone)) in group.iter().enumerate(){
+            if index>0{labels.push(' ');reserve.push(' ');values.push(' ');}
+            let surface=background(if index%2==0{FEATURE_RGB}else{FEATURE_ALT_RGB});
+            labels.push_str(&format!("{surface}  {LABEL}{label}{RESET}{surface}{}{RESET}"," ".repeat(cell_width-display_width(label)-2)));
+            reserve.push_str(&format!("{surface}{}{RESET}"," ".repeat(cell_width)));
+            values.push_str(&format!("{surface}  {tone}{value}{RESET}{surface}{}{RESET}"," ".repeat(cell_width-display_width(value)-2)));
+        }
+        out.push(labels);out.push(reserve);out.push(values);
+    }
+    if out.is_empty(){String::new()}else{out.join("\n")+"\n"}
+}
+
 pub(super) fn render(styled: &str, width: usize, structured: bool) -> String {
     if styled.is_empty() || styled.contains(['\0','\r']) { return styled.into(); }
     let lines: Vec<_> = styled.lines().collect();
@@ -63,7 +91,7 @@ pub(super) fn render(styled: &str, width: usize, structured: bool) -> String {
     while i < lines.len() {
         let line = clean[i].as_ref();
         let next_rule = structured && !line.trim().is_empty() && clean.get(i+1).is_some_and(|l|underline(l));
-        if lines[i].starts_with(GUTTER) || lines[i].starts_with(SURFACE) || lines[i].starts_with(SURFACE_ALT) || lines[i].starts_with(TABLE_HEADER) || lines[i].starts_with(TABLE_BAND) {
+        if lines[i].starts_with(&background(FEATURE_RGB)) || lines[i].starts_with(&background(FEATURE_ALT_RGB)) || lines[i].starts_with(GUTTER) || lines[i].starts_with(SURFACE) || lines[i].starts_with(SURFACE_ALT) || lines[i].starts_with(TABLE_HEADER) || lines[i].starts_with(TABLE_BAND) {
             out.push(lines[i].to_owned());
             i+=1;
             continue;
@@ -110,6 +138,23 @@ mod tests {
             let plain = report_text(&out);
             let position = |word:&str|plain.lines().find_map(|l|l.find(word).map(|i|l[..i].chars().count())).unwrap();
             assert_eq!(position("Equipo"),position("Central"));
+        }
+    }
+}
+
+#[cfg(test)]
+mod feature_tests {
+    use super::*;
+    #[test]
+    fn feature_layout_is_responsive_and_preserves_values(){
+        let items=[("DESTINO","10.6.11.7",VALUE),("MODO","solo lectura",VALUE)];
+        for width in [34,80,120]{
+            let out=feature_grid(&items,width);
+            let plain=report_text(&out);
+            assert!(plain.contains("10.6.11.7")&&plain.contains("solo lectura"));
+            assert!(plain.lines().all(|line|display_width(line)<=width));
+            assert_eq!(plain.lines().count(),if width>=54{3}else{6});
+            assert_eq!(render(&out,width,true),out);
         }
     }
 }
