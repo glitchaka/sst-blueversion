@@ -2,6 +2,9 @@
 //! presentation boundary chooses the human theme, machine passthrough or
 //! terminal-control passthrough. No command owns a visual palette.
 
+#[path = "report_layout.rs"]
+mod report_layout;
+
 pub const RESET: &str = "\x1b[0m";
 
 // Generate the terminal escape and native renderer color from the same RGB.
@@ -23,6 +26,7 @@ tone!(BAD, FAILURE_RGB, "1;", 251, 73, 52);
 tone!(PERFECT, OPTIMAL_RGB, "1;", 131, 165, 205);
 const BULLET: &str = LABEL;
 pub const DEFAULT_FOREGROUND_HEX: &str = "#B8BB26";
+pub const REPORT_HEADER_RGB: (u8,u8,u8) = (63,52,38);
 pub const SECTION_RAIL: (u8, u8, u8) = COMMAND_RGB;
 pub const SECTION_RULE: (u8, u8, u8) = (117, 86, 45);
 
@@ -142,9 +146,13 @@ impl Formatter {
         if mode!=OutputMode::Interactive{
             return FormattedOutput{stdout:stdout.to_owned(),stderr:stderr.to_owned()};
         }
-        FormattedOutput{
-            stdout:decorate_registered_at_width(command, &report_text(stdout), cols, native),
-            stderr:Self::diagnostic(stderr),
+        let width = usize::from(cols.saturating_sub(2)).clamp(18,160);
+        let clean = report_text(stdout);
+        let structured = suitable(command,&clean,Some(native));
+        let text = decorate_registered_at_width(command,&clean,cols.saturating_sub(3),native);
+        FormattedOutput {
+            stdout:report_layout::render(&text,width,structured),
+            stderr:report_layout::render(&Self::diagnostic(stderr),width,true),
         }
     }
     pub fn diagnostic(text:&str)->String{
@@ -166,6 +174,9 @@ impl Formatter {
         out
     }
     pub fn live(text:&str)->String{style_live_line(&report_text(text))}
+    pub fn live_layout(styled:&str,cols:u16)->String {
+        report_layout::render(styled,usize::from(cols.saturating_sub(2)).clamp(18,160),true)
+    }
     pub fn terminal(text:&str)->String{text.to_owned()}
     pub fn stream_bytes(bytes:&[u8],terminal:bool)->Vec<u8>{
         // Binary/partial UTF-8, ANSI protocols and async chunks are passthrough.
@@ -206,9 +217,7 @@ fn is_machine_or_shell_command(command: &str) -> bool {
         || command.split_whitespace().any(|part| matches!(
             part, "--json" | "--csv" | "--plain" | "--stdout" | "--xml" | "-j"
         ))
-        || crate::builtins::UNIX_COMMANDS.iter().any(|(name, _)| {
-            command.split_whitespace().next() == Some(*name)
-        })
+
 }
 
 fn is_table_header(line: &str) -> bool {
@@ -613,32 +622,13 @@ fn meter(metric:Metric,value:f32,width:usize)->String{
     format!("{}{}{RESET}{METER_TRACK}{}{RESET}",background(rgb),
         " ".repeat(filled)," ".repeat(width-filled))
 }
-fn render_field_group(lines:&[&str],width:usize)->String{
-    let label_width=lines.iter().filter_map(|line|field_parts(line))
-        .map(|(name,_)|display_width(name)+1).max().unwrap_or(0)
-        .min((width/3).max(8));
-    let mut out=String::new();
-    for line in lines{
-        let Some((name,value))=field_parts(line)else{continue;};
-        let indent=" ".repeat(2);
-        let label=format!("{name}:");
-        let styled=style_line(&format!("{name}: {value}"));
-        let gap=label_width.saturating_sub(display_width(&label))+2;
-        if display_width(&label)+gap+display_width(value)+2>width{
-            for part in wrap_line(line,width){out.push_str(&style_line(&part));out.push('\n');}
-            continue;
-        }
-        // Preserve diagnostic/status semantics assigned by the shared classifier.
-        let aligned=styled.replacen(&format!("{label}{RESET} "),&format!("{label}{RESET}{}"," ".repeat(gap)),1);
-        out.push_str(&indent);out.push_str(&aligned);
-        if let Some((metric,value))=percent_metric(name,value){
-            let used=2+display_width(&label)+gap+display_width(field_parts(line).unwrap().1);
-            let bar_width=width.saturating_sub(used+3).min(22);
-            if bar_width>=8{out.push_str("   ");out.push_str(&meter(metric,value,bar_width));}
-        }
-        out.push('\n');
-    }
-    out
+fn render_field_group(lines:&[&str],width:usize)->String {
+    let styles:Vec<_>=lines.iter().map(|s|style_line(s)).collect();
+    let styles:Vec<_>=styles.iter().map(String::as_str).collect();
+    let mut out=Vec::new();
+    report_layout::fields(lines,&styles,width,&mut out);
+    out.push(String::new());
+    out.join("\n")
 }
 fn table_header_band(line:&str,width:usize)->String {
     let padded=format!("{HEADING}{line}{}"," ".repeat(width.saturating_sub(display_width(line))));
@@ -766,6 +756,15 @@ fn decorate_with_native_commands(
     while cursor<lines.len(){
         let line=lines[cursor].trim_end_matches('\r');
         cursor+=1;
+        if !line.trim().is_empty() && lines.get(cursor).is_some_and(|s|report_layout::underline(s)) {
+            cursor+=1;
+            result.push_str(&Role::Title.paint(line.trim()));
+            result.push('\n');
+            previous_blank=false;
+            table=TableStyle::default();
+            table_active=false;
+            continue;
+        }
         // A run of fields becomes a component, not a series of unrelated
         // coloured strings. Help and fixed-width tables retain their syntax.
         if !help_document && !table_active && field_parts(line).is_some(){

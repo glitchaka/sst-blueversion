@@ -1358,7 +1358,13 @@ impl TerminalModel {
                 let title= (0..cols.min(12)).any(|col|screen.cell(row,col).is_some_and(|cell|
                     cell.bold()&&cell.contents().chars().any(char::is_alphabetic)&&
                     matches!(cell.fgcolor(),vt100::Color::Rgb(r,g,b) if Role::from_rgb((r,g,b)).is_some_and(|role| role.style().section))));
-                if title {
+                // A semantic card reserves the preceding band for title ascenders.
+                // Render the actual glyph run at display size after painting its cells.
+                let is_band = |r:u16| screen.cell(r,1).is_some_and(|cell|
+                    matches!(cell.bgcolor(),vt100::Color::Rgb(r,g,b) if (r,g,b)==crate::presentation::formatter::REPORT_HEADER_RGB));
+                let card_title = title && row > 0 && selection.is_none() && is_band(row) && is_band(row-1)
+                    && (0..cols).all(|col|screen.cell(row-1,col).is_none_or(|c|c.contents().trim().is_empty()));
+                if title && !card_title {
                     let y=(top_pad+row as f32*cell_height).round() as i32;
                     let x=left_pad.round() as i32;
                     let rail=Rgb(SECTION_RAIL.0,SECTION_RAIL.1,SECTION_RAIL.2);
@@ -1414,7 +1420,7 @@ impl TerminalModel {
                     }
 
                     let content = cell.contents();
-                    if content.is_empty() {
+                    if content.is_empty() || card_title {
                         continue;
                     }
 
@@ -1454,6 +1460,26 @@ impl TerminalModel {
                             }
                             pen_x += glyph.metrics.advance_width.round() as i32;
                         }
+                    }
+                }
+                if card_title {
+                    let heading = (0..cols).filter_map(|col|screen.cell(row,col))
+                        .map(|cell|cell.contents()).collect::<String>();
+                    let heading = heading.trim();
+                    let available = (f32::from(cols)-4.).max(1.)*cell_width;
+                    let size = (font_px*1.55).min(available/(0.62*heading.chars().count().max(1) as f32))
+                        .min(cell_height*1.6).round().max(1.) as u16;
+                    let mut x = (left_pad+3.*cell_width).round() as i32;
+                    let baseline = (top_pad+(f32::from(row)+0.48)*cell_height).round() as i32;
+                    let (r,g,b) = Role::Title.style().rgb;
+                    for ch in heading.chars() {
+                        let glyph = self.glyphs.entry((ch,size)).or_insert_with(||{
+                            let (metrics,alpha) = self.font.rasterize(ch,f32::from(size));
+                            Glyph { metrics,alpha }
+                        });
+                        draw_glyph(pixels,width,height,x,baseline,glyph,Rgb(r,g,b));
+                        draw_glyph(pixels,width,height,x+1,baseline,glyph,Rgb(r,g,b));
+                        x += glyph.metrics.advance_width.round() as i32;
                     }
                 }
             }
