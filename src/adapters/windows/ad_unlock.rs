@@ -137,7 +137,7 @@ slint::slint! {
             name := LineEdit { text <=> root.username; accepted => { password.focus(); } }
             Text { text: "Contraseña"; }
             password := LineEdit {
-                input-type: password;
+                input-type: InputType.password;
                 text <=> root.secret;
                 accepted => { if root.username != "" && root.secret != "" { root.confirm(); } }
             }
