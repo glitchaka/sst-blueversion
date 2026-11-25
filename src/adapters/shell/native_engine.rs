@@ -1014,8 +1014,8 @@ impl ShellCommandHost for WindowsShellHost {
         let stderr = child.stderr.take()
             .context("no se pudo conectar stderr del comando nativo")?;
         let stdout_display = display.clone();
-        let out_reader = std::thread::spawn(move || relay_live_console(stdout, stdout_display));
-        let err_reader = std::thread::spawn(move || relay_live_console(stderr, display));
+        let out_reader = std::thread::spawn(move || relay_live_console(stdout, stdout_display, false));
+        let err_reader = std::thread::spawn(move || relay_live_console(stderr, display, true));
 
         let input_error = if let (Some(bytes), Some(mut writer)) = (stdin, child.stdin.take()) {
             writer.write_all(bytes).err()
@@ -1770,6 +1770,7 @@ impl ShellCommandHost for WindowsShellHost {
 fn relay_live_console<R: Read>(
     mut reader: R,
     sender: mpsc::Sender<Vec<u8>>,
+    diagnostic: bool,
 ) -> Result<()> {
     let mut buffer = [0u8; 4096];
     let mut partial = Vec::<u8>::new();
@@ -1777,7 +1778,10 @@ fn relay_live_console<R: Read>(
     let flush = |line: &mut Vec<u8>, ending: &[u8]| {
         if line.is_empty() && ending.is_empty() { return; }
         let mut rendered = if let Ok(text) = std::str::from_utf8(line) {
-            crate::presentation::formatter::Formatter::stream_bytes(text.as_bytes(),false)
+            use crate::presentation::formatter::Formatter;
+            if ending == b"\r" { line.clone() }
+            else if diagnostic { Formatter::diagnostic(text).into_bytes() }
+            else { Formatter::stream_bytes(text.as_bytes(),false) }
         } else {
             line.clone()
         };
@@ -1876,7 +1880,7 @@ mod general_live_output_tests {
         let worker = std::thread::spawn(move || {
             relay_live_console(
                 ControlledReader { rx: input_rx, chunk: Cursor::new(Vec::new()) },
-                output_tx,
+                output_tx, false,
             )
         });
         input_tx.send(b"Respuesta desde 192.0.2.1: bytes=32 tiempo=1ms TTL=64\r\n".to_vec()).unwrap();
@@ -1897,7 +1901,7 @@ mod general_live_output_tests {
         let text = b"Respuesta desde 192.0.2.10: bytes=32 tiempo=1ms TTL=64\n\
                      Respuesta desde 192.0.2.10: bytes=32 tiempo=2ms TTL=64\n";
         let (tx, rx) = mpsc::channel();
-        relay_live_console(Cursor::new(text.to_vec()), tx).unwrap();
+        relay_live_console(Cursor::new(text.to_vec()), tx, false).unwrap();
         let lines = rx.into_iter().collect::<Vec<_>>();
         assert_eq!(lines.len(), 2);
         assert!(String::from_utf8_lossy(&lines[0]).contains("tiempo=1ms"));
@@ -1908,7 +1912,7 @@ mod general_live_output_tests {
     #[test]
     fn windows_progress_carriage_returns_and_non_utf8_data_survive() {
         let (tx, rx) = mpsc::channel();
-        relay_live_console(Cursor::new(b"50%\r100%\r\n\xff\n".to_vec()), tx).unwrap();
+        relay_live_console(Cursor::new(b"50%\r100%\r\n\xff\n".to_vec()), tx, false).unwrap();
         let data = rx.into_iter().flatten().collect::<Vec<_>>();
         assert!(data.windows(4).any(|w| w == b"50%\r"));
         assert!(data.windows(5).any(|w| w == b"100%\r"));

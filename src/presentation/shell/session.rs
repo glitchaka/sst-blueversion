@@ -121,7 +121,13 @@ impl ShellSession {
                                 self.running = false;
                             }
                         }
-                        Err(error) => eprintln!("sst: {error}"),
+                        Err(error) => {
+                            use std::io::IsTerminal;
+                            let message = format!("sst: {error}\n");
+                            if std::io::stderr().is_terminal() {
+                                eprint!("{}",crate::presentation::formatter::Formatter::diagnostic(&message));
+                            } else { eprint!("{message}"); }
+                        }
                     }
                 }
                 Err(ReadlineError::Interrupted) => {

@@ -2,20 +2,29 @@
 //! presentation boundary chooses the human theme, machine passthrough or
 //! terminal-control passthrough. No command owns a visual palette.
 
-pub const RESET:&str="\x1b[0m";
-pub const HEADING:&str="\x1b[1;38;2;240;242;244m";
-pub const COMMAND:&str="\x1b[1;38;2;218;223;228m";
-pub const DETAILS:&str="\x1b[38;2;185;191;199m";
-pub const LABEL:&str="\x1b[38;2;163;172;182m";
-pub const GOOD:&str="\x1b[1;38;2;142;192;124m";
-pub const CAUTION:&str="\x1b[1;38;2;250;189;47m";
-pub const BAD:&str="\x1b[1;38;2;251;73;52m";
-pub const PERFECT:&str="\x1b[1;38;2;131;165;205m";
-const BULLET:&str=LABEL;
-pub const DEFAULT_FOREGROUND:(u8,u8,u8)=(223,227,232);
-pub const DEFAULT_FOREGROUND_HEX:&str="#DFE3E8";
-pub const SECTION_RAIL:(u8,u8,u8)=(125,135,145);
-pub const SECTION_RULE:(u8,u8,u8)=(79,86,94);
+pub const RESET: &str = "\x1b[0m";
+
+// Generate the terminal escape and native renderer color from the same RGB.
+macro_rules! tone {
+    ($ansi:ident, $rgb:ident, $weight:literal, $r:literal, $g:literal, $b:literal) => {
+        pub const $rgb: (u8, u8, u8) = ($r, $g, $b);
+        pub const $ansi: &str = concat!("\x1b[", $weight, "38;2;", stringify!($r),
+            ";", stringify!($g), ";", stringify!($b), "m");
+    };
+}
+tone!(HEADING, TITLE_RGB, "1;", 250, 189, 47);
+tone!(COMMAND, COMMAND_RGB, "1;", 254, 128, 25);
+tone!(DETAILS, DETAIL_RGB, "", 235, 219, 178);
+tone!(LABEL, LABEL_RGB, "", 131, 165, 152);
+tone!(VALUE, DEFAULT_FOREGROUND, "", 184, 187, 38);
+tone!(GOOD, SUCCESS_RGB, "1;", 142, 192, 124);
+tone!(CAUTION, WARNING_RGB, "1;", 255, 163, 61);
+tone!(BAD, FAILURE_RGB, "1;", 251, 73, 52);
+tone!(PERFECT, OPTIMAL_RGB, "1;", 131, 165, 205);
+const BULLET: &str = LABEL;
+pub const DEFAULT_FOREGROUND_HEX: &str = "#B8BB26";
+pub const SECTION_RAIL: (u8, u8, u8) = COMMAND_RGB;
+pub const SECTION_RULE: (u8, u8, u8) = (117, 86, 45);
 
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 pub enum Role { Title, Command, Label, Detail, Value, Success, Warning, Failure, Optimal }
@@ -24,26 +33,26 @@ pub struct TextStyle { pub rgb:(u8,u8,u8),pub scale:f32,pub bold:bool,pub sectio
 impl Role {
     pub const fn style(self)->TextStyle {
         let (rgb,scale,bold,section)=match self {
-            Self::Title=>((240,242,244),1.08,true,true),
-            Self::Command=>((218,223,228),1.0,true,false),
-            Self::Label=>((163,172,182),0.90,false,false),
-            Self::Detail=>((185,191,199),0.93,false,false),
+            Self::Title=>(TITLE_RGB,1.08,true,true),
+            Self::Command=>(COMMAND_RGB,1.0,true,false),
+            Self::Label=>(LABEL_RGB,0.90,false,false),
+            Self::Detail=>(DETAIL_RGB,0.93,false,false),
             Self::Value=>(DEFAULT_FOREGROUND,1.0,false,false),
-            Self::Success=>((142,192,124),1.0,true,false),
-            Self::Warning=>((250,189,47),1.0,true,false),
-            Self::Failure=>((251,73,52),1.0,true,false),
-            Self::Optimal=>((131,165,205),1.0,true,false),
+            Self::Success=>(SUCCESS_RGB,1.0,true,false),
+            Self::Warning=>(WARNING_RGB,1.0,true,false),
+            Self::Failure=>(FAILURE_RGB,1.0,true,false),
+            Self::Optimal=>(OPTIMAL_RGB,1.0,true,false),
         };
         TextStyle{rgb,scale,bold,section}
     }
     pub const fn ansi(self)->&'static str {
         match self{
             Self::Title=>HEADING,Self::Command=>COMMAND,Self::Label=>LABEL,Self::Detail=>DETAILS,
-            Self::Value=>RESET,Self::Success=>GOOD,Self::Warning=>CAUTION,Self::Failure=>BAD,Self::Optimal=>PERFECT,
+            Self::Value=>VALUE,Self::Success=>GOOD,Self::Warning=>CAUTION,Self::Failure=>BAD,Self::Optimal=>PERFECT,
         }
     }
     pub fn from_rgb(rgb:(u8,u8,u8))->Option<Self>{
-        [Self::Title,Self::Command,Self::Label,Self::Detail,Self::Success,Self::Warning,Self::Failure,Self::Optimal]
+        [Self::Title,Self::Command,Self::Label,Self::Detail,Self::Value,Self::Success,Self::Warning,Self::Failure,Self::Optimal]
             .into_iter().find(|r|r.style().rgb==rgb)
     }
     pub fn paint(self,text:&str)->String{format!("{}{text}{RESET}",self.ansi())}
@@ -60,6 +69,17 @@ pub enum OutputMode { Interactive, Machine, Terminal }
 #[derive(Debug,PartialEq,Eq)]
 pub struct FormattedOutput { pub stdout:String,pub stderr:String }
 
+/// Remove legacy styling from a human report. A cursor, OSC or other terminal
+/// protocol makes the entire input opaque so stripping cannot corrupt it.
+fn report_text(text: &str) -> std::borrow::Cow<'_, str> {
+    use std::borrow::Cow;
+    if !text.contains('\x1b') { return Cow::Borrowed(text); }
+    static SGR: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let sgr = SGR.get_or_init(|| regex::Regex::new(r"\x1b\[[0-9;:]*m").unwrap());
+    let clean = sgr.replace_all(text, "");
+    if clean.contains('\x1b') { Cow::Borrowed(text) } else { clean }
+}
+
 /// Explicit presentation contract for complete command results. Machine
 /// data and terminal protocols go through this same entrypoint unmodified.
 pub struct Formatter;
@@ -67,7 +87,7 @@ impl Formatter {
     pub fn mode(command:&str,interactive:bool)->OutputMode{
         if !interactive || is_machine_or_shell_command(command){return OutputMode::Machine;}
         let root=command.split_whitespace().next().unwrap_or("");
-        if matches!(root,"fetch"|"neofetch"|"keygen"|"helix"|"helix-sst"|"clear"|"reset"){
+        if matches!(root,"fetch"|"neofetch"|"fastfetch"|"keygen"|"helix"|"helix-sst"|"clear"|"reset"){
             return OutputMode::Terminal;
         }
         OutputMode::Interactive
@@ -77,11 +97,13 @@ impl Formatter {
             return FormattedOutput{stdout:stdout.to_owned(),stderr:stderr.to_owned()};
         }
         FormattedOutput{
-            stdout:decorate_with_native_commands(command,stdout,cols,Some(native)),
+            stdout:decorate_registered_at_width(command, &report_text(stdout), cols, native),
             stderr:Self::diagnostic(stderr),
         }
     }
     pub fn diagnostic(text:&str)->String{
+        let clean = report_text(text);
+        let text = clean.as_ref();
         if text.is_empty()||text.contains('\x1b')||text.contains('\0')||text.contains('\r'){return text.to_owned();}
         let mut out=String::new();
         for line in text.split_inclusive('\n'){
@@ -97,7 +119,7 @@ impl Formatter {
         }
         out
     }
-    pub fn live(text:&str)->String{style_live_line(text)}
+    pub fn live(text:&str)->String{style_live_line(&report_text(text))}
     pub fn terminal(text:&str)->String{text.to_owned()}
     pub fn stream_bytes(bytes:&[u8],terminal:bool)->Vec<u8>{
         // Binary/partial UTF-8, ANSI protocols and async chunks are passthrough.
@@ -116,7 +138,7 @@ impl Document{
     pub fn title(&mut self,text:impl Into<String>){self.rows.push((Role::Title,text.into()));}
     pub fn line(&mut self,role:Role,text:impl Into<String>){self.rows.push((role,text.into()));}
     pub fn field(&mut self,name:&str,value:&str){
-        self.rows.push((Role::Value,format!("{name}: {value}")));
+        self.line(Role::Value,format!("{name}: {value}"));
     }
     pub fn render(&self,mode:OutputMode)->String{
         let mut out=String::new();
@@ -353,9 +375,9 @@ fn style_line(line: &str) -> String {
             let warning = matches!(key.as_str(),
                 "advertencia" | "aviso" | "warning" | "atención" | "atencion");
             let label_color = if alarm { BAD } else if warning { CAUTION } else { LABEL };
-            let value_color = if alarm || warning { RESET }
-                else if is_status_field(stripped) || key == "autorización efectiva" { status_color(value).unwrap_or(RESET) }
-                else { RESET };
+            let value_color = if alarm || warning { VALUE }
+                else if is_status_field(stripped) || key == "autorización efectiva" { status_color(value).unwrap_or(VALUE) }
+                else { VALUE };
             return format!("{indent}{label_color}{field}:{RESET} {value_color}{value}{RESET}");
         }
     }
@@ -477,9 +499,18 @@ fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
     }
     let conclusion=blocks.iter().position(|(name,_)|name=="CONCLUSIÓN")?;
     let (_,summary)=blocks.remove(conclusion);
-    let mut out=format!("{HEADING}Diagnóstico de red{RESET}\n");
+    let mut document = Document::default();
+    document.title("Diagnóstico de red");
+    let mut out = document.render(OutputMode::Interactive);
     let emit=|out:&mut String,line:&str|{for part in wrap_line(line,width){out.push_str(&style_line(&part));out.push('\n');}};
-    for line in meta{emit(&mut out,&line);}
+    for line in meta {
+        if let Some((name,value)) = line.split_once(": ")
+            && display_width(&line) <= width {
+            let mut fields = Document::default();
+            fields.field(name,value);
+            out.push_str(&fields.render(OutputMode::Interactive));
+        } else { emit(&mut out,&line); }
+    }
     out.push('\n');
     for line in summary{emit(&mut out,&line);}
     out.push_str(&format!("\n{HEADING}Comprobaciones{RESET}\n"));
@@ -661,7 +692,7 @@ mod tests {
         );
     }
     #[test]
-    fn neutral_structural_text_never_uses_cyan_without_a_real_state() {
+    fn report_headings_and_commands_have_distinct_roles() {
         let help = decorate_at_width(
             "sys", "Información:\nsys drivers --devices    dispositivos PnP conectados\n", 95
         );
@@ -870,6 +901,21 @@ mod formatter_contract_tests {
         assert_eq!(Formatter::mode("future | cat",true),OutputMode::Machine);
         assert_eq!(Formatter::mode("fetch",true),OutputMode::Terminal);
         assert_eq!(Formatter::stream_bytes(b"\xff",false),b"\xff");
+    }
+    #[test]
+    fn human_reports_restyle_legacy_gray_and_preserve_terminal_controls() {
+        let data = "\x1b[37mNombre: equipo\x1b[0m\n";
+        let commands = vec!["sys".to_owned()];
+        let human = Formatter::result("sys info",data,data,100,&commands,OutputMode::Interactive);
+        assert!(human.stdout.contains(LABEL) && human.stdout.contains(VALUE));
+        assert!(human.stderr.contains(BAD));
+        assert!(!human.stdout.contains("\x1b[37m"));
+        assert!(Formatter::live(data).contains(LABEL));
+        let control = "\x1b[2J\x1b[37mredraw\x1b[0m";
+        assert_eq!(Formatter::live(control),control);
+        assert_eq!(Formatter::result("sys --csv",data,data,100,&commands,OutputMode::Machine).stdout,data);
+        let (r,g,b) = DEFAULT_FOREGROUND;
+        assert_eq!(format!("#{r:02X}{g:02X}{b:02X}"), DEFAULT_FOREGROUND_HEX);
     }
     #[test]
     fn typography_and_document_share_roles(){

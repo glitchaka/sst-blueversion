@@ -111,11 +111,11 @@ mod viewport_regression_tests {
     #[test]
     fn legacy_cyan_and_blue_accents_are_neutralized_globally() {
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(69, 209, 241)),
-            super::Rgb(0xDF, 0xE3, 0xE8));
+            super::Rgb(131, 165, 152));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(80, 150, 255)),
-            super::Rgb(0xB9, 0xBF, 0xC7));
+            super::Rgb(235, 219, 178));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(69, 133, 136)),
-            super::Rgb(0xDF, 0xE3, 0xE8));
+            super::Rgb(131, 165, 152));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(184, 187, 38)),
             super::Rgb(184, 187, 38));
         assert_eq!(super::gruvbox_terminal_color(super::Rgb(251, 73, 52)),
@@ -173,11 +173,15 @@ slint::slint! {
     // Transparent interiors preserve the user's terminal artwork and logo.
     // Text-report section headings are individual native vector outlines,
     // derived from semantic RGB markers in the VT100 viewport. No fake lines.
+    export global OutputTheme {
+        in property <color> rail;
+        in property <color> rule;
+    }
     component ReportHeadingBand inherits Rectangle {
         // Restrained semantic outline: no cyan wash, no opaque overlay.
         background: transparent;
         border-width: 1px;
-        border-color: #665c54;
+        border-color: OutputTheme.rule;
         border-radius: 6px;
 
         Rectangle {
@@ -186,14 +190,14 @@ slint::slint! {
             width: 3px;
             height: max(4px, parent.height - 6px);
             border-radius: 2px;
-            background: #bdae93;
+            background: OutputTheme.rail;
         }
     }
 
     component TerminalSectionFrame inherits Rectangle {
         background: transparent;
         border-width: 1px;
-        border-color: #665c54;
+        border-color: OutputTheme.rule;
         border-radius: 9px;
 
         Rectangle {
@@ -202,7 +206,7 @@ slint::slint! {
             width: 3px;
             height: min(24px, parent.height - 14px);
             border-radius: 2px;
-            background: #bdae93;
+            background: OutputTheme.rail;
         }
     }
 
@@ -1345,7 +1349,7 @@ impl TerminalModel {
                 // No ANSI boxes or graphical decoration are emitted by commands.
                 let title= (0..cols.min(12)).any(|col|screen.cell(row,col).is_some_and(|cell|
                     cell.bold()&&cell.contents().chars().any(char::is_alphabetic)&&
-                    matches!(cell.fgcolor(),vt100::Color::Rgb(r,g,b) if Role::from_rgb((r,g,b))==Some(Role::Title))));
+                    matches!(cell.fgcolor(),vt100::Color::Rgb(r,g,b) if Role::from_rgb((r,g,b)).is_some_and(|role| role.style().section))));
                 if title {
                     let y=(top_pad+row as f32*cell_height).round() as i32;
                     let x=left_pad.round() as i32;
@@ -1462,28 +1466,21 @@ fn gruvbox_terminal_color(color: Rgb) -> Rgb {
     ) {
         return color;
     }
-    // Old structural colors are not semantic states; normalize them while
-    // retaining the original logo and explicitly meaningful status colors.
-    match color {
-        Rgb(235,219,178) => return Rgb(223,227,232),
-        Rgb(213,196,161) => return Rgb(185,191,199),
-        Rgb(189,174,147) | Rgb(168,153,132) => return Rgb(163,172,182),
-        Rgb(131,165,205) => return color,
-        _ => {}
+    use crate::presentation::formatter::{Role, DEFAULT_FOREGROUND, DETAIL_RGB, LABEL_RGB};
+    let themed = |(r,g,b)| Rgb(r,g,b);
+    let Rgb(r,g,b) = color;
+    if Role::from_rgb((r,g,b)).is_some() { return color; }
+    match (r,g,b) {
+        (240,242,244) => themed(Role::Title.style().rgb),
+        (218,223,228) => themed(Role::Command.style().rgb),
+        (223,227,232) => themed(DEFAULT_FOREGROUND),
+        (185,191,199) | (213,196,161) => themed(DETAIL_RGB),
+        (163,172,182) | (189,174,147) | (168,153,132) => themed(LABEL_RGB),
+        _ if b >= 120 && b.saturating_add(5) >= g && b <= g.saturating_add(48)
+                && g > r.saturating_add(18) => themed(LABEL_RGB),
+        _ if b > 135 && b > r.saturating_add(28) && b > g.saturating_add(12) => themed(DETAIL_RGB),
+        _ => color,
     }
-    let Rgb(r, g, b) = color;
-    if b >= 120 && b.saturating_add(5) >= g
-        && b <= g.saturating_add(48) && g > r.saturating_add(18)
-    {
-        // Neutralize cyan only when blue and green are relatively close.
-        // Pure blue (e.g. 80,150,255) must retain the blue-specific rule.
-        return Rgb(0xDF, 0xE3, 0xE8);
-    }
-    if b > 135 && b > r.saturating_add(28) && b > g.saturating_add(12) {
-        // Loud blue structural accents become readable Gruvbox warm text.
-        return Rgb(0xB9, 0xBF, 0xC7);
-    }
-    color
 }
 
 fn terminal_color(value: vt100::Color, default: Rgb) -> Rgb {
@@ -2105,6 +2102,10 @@ pub fn run() -> Result<()> {
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new()));
     let ui = SstBlueWindow::new()?;
+    let color = |(r,g,b)| slint::Color::from_rgb_u8(r,g,b);
+    let theme = ui.global::<OutputTheme>();
+    theme.set_rail(color(crate::presentation::formatter::SECTION_RAIL));
+    theme.set_rule(color(crate::presentation::formatter::SECTION_RULE));
 
     // The sudo command starts a NEW Windows process for each privilege
     // escalation. Its token is immutable during this GUI session. Query that

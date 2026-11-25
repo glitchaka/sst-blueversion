@@ -4,6 +4,11 @@ use std::{env, fs, io::Write, path::PathBuf, sync::OnceLock, thread};
 use std::os::windows::process::CommandExt;
 
 use anyhow::{Context, Result};
+use crate::presentation::formatter::DEFAULT_FOREGROUND_HEX;
+
+fn legacy_font_default(value: &str) -> bool {
+    ["#EBDBB2", "#DFE8EF", "#DFE3E8"].iter().any(|old| value.eq_ignore_ascii_case(old))
+}
 
 const APPEARANCE_BLOCK: &str = r#"
 
@@ -36,7 +41,7 @@ SST_CONTENT_TOP_GAP=12
 
 # Densidad y texto de la terminal.
 SST_FONT_SIZE=13
-SST_FONT_COLOR='#DFE3E8'
+SST_FONT_COLOR='#B8BB26'
 SST_CELL_WIDTH=8
 SST_CELL_HEIGHT=17
 SST_TERMINAL_PADDING_X=8
@@ -162,7 +167,7 @@ impl Default for AppearanceConfig {
             corner_radius: 16,
             content_top_gap: 12,
             font_size: 13,
-            font_color: "#DFE3E8".to_owned(),
+            font_color: DEFAULT_FOREGROUND_HEX.to_owned(),
             cell_width: 8,
             cell_height: 17,
             terminal_padding_x: 8,
@@ -272,7 +277,7 @@ impl AppPaths {
 
             for (key, value, comment) in [
                 ("SST_FONT_SIZE", "13", "# Tamaño de fuente de la terminal."),
-                ("SST_FONT_COLOR", "'#DFE3E8'", "# Color base del texto de la terminal (#RRGGBB)."),
+                ("SST_FONT_COLOR", "'#B8BB26'", "# Color base del texto de la terminal (#RRGGBB)."),
                 ("SST_CELL_WIDTH", "8", "# Ancho de celda de la terminal."),
                 ("SST_CELL_HEIGHT", "17", "# Alto de celda de la terminal."),
                 ("SST_TERMINAL_PADDING_X", "8", "# Padding horizontal de la terminal."),
@@ -293,8 +298,8 @@ impl AppPaths {
         if assignment_value(&text, "SST_BACKGROUND_COLOR").as_deref() == Some("#111629") {
             set_assignment(&mut text, "SST_BACKGROUND_COLOR", "#282828");
         }
-        if assignment_value(&text, "SST_FONT_COLOR").is_some_and(|v|v.eq_ignore_ascii_case("#EBDBB2") || v.eq_ignore_ascii_case("#DFE8EF")) {
-            set_assignment(&mut text, "SST_FONT_COLOR", "#DFE3E8");
+        if assignment_value(&text, "SST_FONT_COLOR").is_some_and(|v|legacy_font_default(&v)) {
+            set_assignment(&mut text, "SST_FONT_COLOR", DEFAULT_FOREGROUND_HEX);
         }
         fs::write(path, text)?;
         Ok(())
@@ -416,7 +421,7 @@ impl AppPaths {
             config.font_size = value.clamp(8, 32);
         }
         if let Some(value) = assignment_value(&text, "SST_FONT_COLOR") {
-            config.font_color = if value.eq_ignore_ascii_case("#EBDBB2") || value.eq_ignore_ascii_case("#DFE8EF") { "#DFE3E8".to_owned() } else { value };
+            config.font_color = if legacy_font_default(&value) { DEFAULT_FOREGROUND_HEX.to_owned() } else { value };
         }
         if let Some(value) = assignment_value(&text, "SST_CELL_WIDTH")
             .and_then(|value| value.parse::<u16>().ok())
