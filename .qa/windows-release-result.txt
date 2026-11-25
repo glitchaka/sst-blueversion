@@ -1,12 +1,18 @@
 SST Windows release CI report
-Source commit: ea7a4a1df76c645044ad7d07f8e0e28933ee9026
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45643332110
-Recorded UTC: 2026-11-25 15:24:11Z
-Compile: success
-Rust tests: success
-Software GUI startup: success
-Packaging: success
+Source commit: 8e676e660faf2d8384b9fad2c14e19db4abe43b4
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45648789482
+Recorded UTC: 2026-11-25 15:49:40Z
+Compile: failure
+Rust tests: skipped
+Software GUI startup: skipped
+Packaging: skipped
 Compiler log tail:
     Updating crates.io index
-   Compiling sst v0.1.12-blue.5 (D:\a\sst-blueversion\sst-blueversion)
-    Finished `release` profile [optimized] target(s) in 4m 22s
+   Compiling sst v0.1.12-blue.6 (D:\a\sst-blueversion\sst-blueversion)
+error: Cannot take reference of an element. Use 'InputType.password' to access the enumeration value
+   --> src\adapters\windows\ad_unlock.rs:140:29
+    |
+140 |                 input-type: password;
+    |                             ^^^^^^^^
+
+error: could not compile `sst` (bin "sst") due to 1 previous error
