@@ -1,6 +1,6 @@
 //! Native Active Directory account unlock over Windows LDAP (Wldap32).
 //! No PowerShell module, shell commands, passwords in argv, or unauthenticated binds.
-//! Solicits separate Active Directory credentials in the integrated SST terminal.
+//! Solicits Active Directory credentials in the integrated SST terminal, without local elevation.
 use anyhow::Result;
 use crate::core::{CommandContext, CommandOutput};
 use super::BuiltinCommand;
@@ -14,7 +14,7 @@ impl BuiltinCommand for UnbanBuiltin {
     fn name(&self) -> &'static str { "unban" }
     fn help(&self) -> &'static str {
         "unban USUARIO — desbloquea una cuenta de Active Directory mediante LDAP nativo. \
-         Usa sudo unban USUARIO o una sesión ya elevada. Solicita una sola credencial de AD; el controlador exige permisos de desbloqueo. \
+         No requiere sudo ni elevación local. Solicita una sola credencial de AD; el controlador exige permisos de desbloqueo. \
          Nunca recibe contraseñas como argumentos."
     }
     fn execute(&self, _invoked_name: &str, args: &[String], _context: CommandContext<'_>)
@@ -28,9 +28,6 @@ impl BuiltinCommand for UnbanBuiltin {
 
         #[cfg(windows)]
         {
-            if !super::sudo::is_elevated()? {
-                return Ok(CommandOutput::error("unban: usa sudo unban USUARIO", 5));
-            }
             self.execute_domain_authorized(args)
         }
     }
@@ -38,11 +35,10 @@ impl BuiltinCommand for UnbanBuiltin {
 
 #[cfg(windows)]
 impl UnbanBuiltin {
-    // Only sudo's exact AD operation uses this route. No elevation or
-    // delegation of the local Windows token occurs; AD enforces its own ACL.
-    pub(super) fn execute_domain_authorized(&self,args:&[String])->Result<CommandOutput>{
+    // No local privilege change: the domain controller enforces its own ACL.
+    fn execute_domain_authorized(&self,args:&[String])->Result<CommandOutput>{
         if args.len()!=1{
-            return Ok(CommandOutput::error("Uso: sudo unban USUARIO",2));
+            return Ok(CommandOutput::error("Uso: unban USUARIO",2));
         }
         let user=args[0].trim();
         if let Err(message)=validate_account(user){

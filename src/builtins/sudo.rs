@@ -94,7 +94,6 @@ impl BuiltinCommand for SudoBuiltin {
                  uso:\n\
                    sudo                           sube la sesión al siguiente nivel\n\
                    sudo --status                  muestra nivel, token y privilegios\n\
-                   sudo unban USUARIO             autentica una vez en AD, sin elevar Windows\n\
                    sudo COMANDO [...]             ejecuta COMANDO como Administrador\n\
                    sudo --system COMANDO [...]    ejecuta COMANDO como LOCAL SYSTEM\n\
                    sudo --trustedinstaller COMANDO [...]\n\
@@ -196,13 +195,6 @@ impl BuiltinCommand for SudoBuiltin {
             return run_via_uac(&internal, context.cwd);
         }
 
-        // AD authorization is remote. This exact builtin keeps the current
-        // terminal and authenticates once, without granting local privileges.
-        if args.first().is_some_and(|arg|arg=="unban"){
-            let terminal:std::sync::Arc<dyn crate::core::ports::TerminalFactory>=
-                std::sync::Arc::new(crate::adapters::terminal::CrosstermTerminalFactory);
-            return super::unban::UnbanBuiltin::new(terminal).execute_domain_authorized(&args[1..]);
-        }
         let command = args.iter().map(|arg| shell_quote(arg)).collect::<Vec<_>>().join(" ");
         execute_with_elevation(&command, context.cwd)
         })();

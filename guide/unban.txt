@@ -1,9 +1,8 @@
 UNBAN — desbloquear una cuenta de Active Directory (SST nativo)
 
-Uso: sudo unban NOMBRE_DE_USUARIO
-También puede ejecutarse «unban NOMBRE_DE_USUARIO» si SST ya está elevado.
+Uso: unban NOMBRE_DE_USUARIO
 
-1. sudo unban autoriza exclusivamente una operación AD en la sesión actual; no eleva el token local ni solicita UAC. El comando directo unban sigue reservado a sesiones elevadas.
+1. No requiere sudo ni elevación local. El controlador de dominio verifica las credenciales y los permisos de la operación; no se modifica el token de Windows.
 2. Localiza un controlador AD escribible y obtiene el nombre DNS del dominio real mediante DsGetDcNameW (sin deducirlo a partir del FQDN del controlador).
 3. Solicita una sola vez dentro de la terminal integrada de SST las credenciales de una cuenta AD con derechos de desbloqueo. Acepta DOMINIO\usuario, usuario@dominio y nombres sin dominio (en este último caso usa el dominio descubierto).
 4. Abre LDAP al puerto 389 y autentica mediante SSPI Negotiate con firma y cifrado LDAP habilitados. No hace un bind LDAP simple sin protección.
