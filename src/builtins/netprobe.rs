@@ -36,15 +36,48 @@ impl NetworkAssessment {
             probes[1].insert(1, host.to_owned());
             probes[2].insert(1, host.to_owned());
         }
-        for cmd in probes {
-            let name = cmd[0].to_uppercase();
-            base.stdout.push_str(&format!("\n=== {name} ===\n"));
+        let mut failed = 0;
+        let total = probes.len();
+        for (index, cmd) in probes.into_iter().enumerate() {
+            let name = match cmd[0].as_str() {
+                "speed" => "VELOCIDAD", "loss" => "PÉRDIDA ICMP",
+                "stability" => "ESTABILIDAD", "traffic" => "TRÁFICO POR PROCESO",
+                "packets" => "EVENTOS DE RED", "capture" => "CAPTURA IPv4",
+                _ => "MEDICIÓN",
+            };
+            base.stdout.push_str(&format!("\n{}. {}\n", index + 1, name));
             match super::netprobe_extended::execute(&cmd, &*self.probe, &*self.traffic_factory) {
-                Ok(output) if output.status == 0 => base.stdout.push_str(&output.stdout),
-                Ok(output) => base.stdout.push_str(&format!("NO DISPONIBLE: {}\n", output.stderr.trim())),
-                Err(error) => base.stdout.push_str(&format!("ERROR: {error:#}\n")),
+                Ok(output) if output.status == 0 => {
+                    base.stdout.push_str("  Estado: MEDICIÓN REALIZADA\n");
+                    for line in output.stdout.lines() {
+                        if !line.trim().is_empty() {
+                            base.stdout.push_str(&format!("  {}\n", line.trim_end()));
+                        }
+                    }
+                }
+                result => {
+                    failed += 1;
+                    let detail = match result {
+                        Ok(output) => output.stderr,
+                        Err(error) => error.to_string(),
+                    };
+                    let lower = detail.to_lowercase();
+                    let denied = lower.contains("denegado") || lower.contains("denied")
+                        || lower.contains("2147024891") || lower.contains("10013");
+                    base.stdout.push_str("  Estado: NO DISPONIBLE\n");
+                    if denied {
+                        base.stdout.push_str("  Causa: permisos insuficientes.\n  Acción: ejecutar desde una sesión elevada.\n");
+                    } else {
+                        let summary = detail.lines().find(|l| !l.trim().is_empty()).unwrap_or("Sin detalle");
+                        let summary: String = summary.chars().filter(|c| !c.is_control()).take(150).collect();
+                        base.stdout.push_str(&format!("  Causa: {}\n", summary));
+                    }
+                    base.stdout.push_str("  No se generaron mediciones ficticias.\n");
+                }
             }
         }
+        base.stdout.push_str(&format!("\nRESUMEN DE MEDICIONES\n  Realizadas: {} / {}\n  No disponibles: {}\n", total - failed, total, failed));
+        if failed > 0 && base.status == 0 { base.status = 1; }
     }
 
     fn diagnose(&self, args: &[String]) -> Result<CommandOutput> {
