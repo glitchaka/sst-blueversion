@@ -668,19 +668,17 @@ fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
         if let Some((name,value))=line.split_once(": "){facts.push((name,value,VALUE));}
         else{emit(&mut out,line);}
     }
-    if facts.len()==1 {
-        let mut fallback=Document::default();
-        fallback.field(facts[0].0,facts[0].1);
-        out.push_str(&fallback.render(OutputMode::Interactive));
-    } else { out.push_str(&report_layout::feature_grid(&facts,width)); }
     out.push('\n');
-    out.push_str(&format!("{HEADING}Resultado{RESET}\n"));
     for line in summary{
         if let Some(status)=line.strip_prefix("Estado: "){
             let color=status_color(status).unwrap_or(VALUE);
             out.push_str(&report_layout::feature_grid(&[("ESTADO DEL DIAGNÓSTICO",status,color)],width));
         }else{emit(&mut out,&line);}
     }
+    out.push('\n');
+    let mut metadata=Document::default();
+    for (name,value,_) in &facts{metadata.field(name,value);}
+    out.push_str(&metadata.render(OutputMode::Interactive));
     let mut measurements=Vec::new();
     for (name,rows) in &blocks{
         for row in rows{
@@ -693,7 +691,7 @@ fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
     if !measurements.is_empty(){out.push('\n');out.push_str(&report_layout::feature_grid(&measurements,width));}
     out.push_str(&format!("\n{HEADING}Comprobaciones{RESET}\n"));
     let label_width=blocks.iter().map(|(n,_)|display_width(n.split_once(". ").map_or(n.as_str(),|(_,t)|t))).max().unwrap_or(0).min(width/2);
-    for (index,(name,rows)) in blocks.into_iter().enumerate(){
+    for (name,rows) in blocks{
         let name=name.split_once(". ").map_or(name.as_str(),|(_,title)|title);
         let status=rows.iter().find_map(|s|s.strip_prefix("Estado: "));
         if let Some(status)=status{
@@ -701,8 +699,7 @@ fn compact_network_assessment(stdout:&str,width:usize)->Option<String>{
             let gap=label_width.saturating_sub(display_width(name))+3;
             if display_width(name)+gap+display_width(status)<=width{
                 let line=format!("{LABEL}{name}{RESET}{}{color}{status}{RESET}"," ".repeat(gap));
-                let raw=format!("{name}{}{status}"," ".repeat(gap));
-                out.push_str(&table_body_band(&raw,&line,width,index));out.push('\n');
+                out.push_str(&line);out.push('\n');
             }else{
                 emit(&mut out,&format!("{name}:"));
                 emit(&mut out,&format!("  Estado: {status}"));

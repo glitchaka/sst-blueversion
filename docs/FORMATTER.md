@@ -13,3 +13,7 @@ La selección y el cursor son capas globales de la ventana. El cursor se anima s
 ## Composición editorial
 
 El componente feature_grid separa etiquetas, espacios de reserva y valores; utiliza dos columnas cuando el ancho permite leer ambos valores y se apila en ventanas estrechas. El renderizador nativo emplea un tamaño de exhibición de hasta 1,65 veces el tamaño base, limitado por la anchura de cada región y dos filas de altura. El adaptador NOTSH prioriza el resultado y las mediciones observadas, seguido de comprobaciones. Los informes ordinarios con dos campos breves tras una cabecera reutilizan el mismo componente; el resto conserva tablas y grupos de campos. La salida original para máquinas no cambia. Se mantiene el tema existente, sin copiar las fuentes ni motivos decorativos de las referencias.
+
+## Jerarquía sin paneles indiscriminados
+
+El texto ordinario y los grupos de campos no pintan bandas ni gutters. Únicamente el título inicial y las cifras destacadas reservan filas tipográficas; sus marcadores de layout son transparentes en la ventana nativa. Las tablas de datos y las barras de métricas conservan fondos funcionales. El diagnóstico muestra primero el resultado, seguido por metadatos, mediciones y evidencia. Se conserva el fondo y la paleta de SST.

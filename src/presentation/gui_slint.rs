@@ -1362,7 +1362,7 @@ impl TerminalModel {
                 // Render the actual glyph run at display size after painting its cells.
                 let is_band = |r:u16| screen.cell(r,1).is_some_and(|cell|
                     matches!(cell.bgcolor(),vt100::Color::Rgb(r,g,b) if (r,g,b)==crate::presentation::formatter::REPORT_HEADER_RGB));
-                let card_title = title && row > 0 && selection.is_none() && is_band(row) && is_band(row-1)
+                let card_title = title && row > 0 && selection.is_none() && selected_row!=Some(usize::from(row)) && is_band(row) && is_band(row-1)
                     && (0..cols).all(|col|screen.cell(row-1,col).is_none_or(|c|c.contents().trim().is_empty()));
                 let feature_color=|r:u16,c:u16|screen.cell(r,c).and_then(|cell|match cell.bgcolor(){
                     vt100::Color::Rgb(a,b,d) if (a,b,d)==crate::presentation::formatter::FEATURE_RGB || (a,b,d)==crate::presentation::formatter::FEATURE_ALT_RGB=>Some((a,b,d)),
@@ -1372,13 +1372,15 @@ impl TerminalModel {
                     && (0..cols).any(|col|feature_color(row,col).is_some()
                         && feature_color(row-1,col)==feature_color(row,col))
                     && (0..cols).all(|col|screen.cell(row-1,col).is_none_or(|c|c.contents().trim().is_empty()));
-                if title && !card_title {
+                if title && !card_title && !feature_row {
                     let y=(top_pad+row as f32*cell_height).round() as i32;
                     let x=left_pad.round() as i32;
                     let rail=Rgb(SECTION_RAIL.0,SECTION_RAIL.1,SECTION_RAIL.2);
                     let rule=Rgb(SECTION_RULE.0,SECTION_RULE.1,SECTION_RULE.2);
-                    fill_rect(pixels,width,height,(x-5).max(0),y+2,2,(cell_height as i32-4).max(1),rail);
-                    fill_rect(pixels,width,height,x,y+cell_height as i32-1,(width as i32-x-8).max(0),1,rule);
+                    // A restrained short accent and a thin separator,
+                    // not a frame or solid panel behind every heading.
+                    fill_rect(pixels,width,height,x,y+cell_height as i32-1,((cell_width*3.).round() as i32).min((width as i32-x-8).max(0)),1,rail);
+                    fill_rect(pixels,width,height,x+(cell_width*3.).round() as i32,y+cell_height as i32-1,(width as i32-x-(cell_width*3.).round() as i32-8).max(0),1,rule);
                 }
                 for col in 0..cols {
                     let Some(cell) = screen.cell(row, col) else {
@@ -1390,8 +1392,12 @@ impl TerminalModel {
 
                     let mut fg = terminal_color(cell.fgcolor(), default_fg);
                     let mut bg = terminal_color(cell.bgcolor(), BG);
+                    let layout_marker=matches!(cell.bgcolor(),vt100::Color::Rgb(r,g,b) if
+                        (r,g,b)==crate::presentation::formatter::REPORT_HEADER_RGB
+                        || (r,g,b)==crate::presentation::formatter::FEATURE_RGB
+                        || (r,g,b)==crate::presentation::formatter::FEATURE_ALT_RGB);
                     let mut paint_background =
-                        !matches!(cell.bgcolor(), vt100::Color::Default) || cell.inverse();
+                        (!matches!(cell.bgcolor(), vt100::Color::Default) && !layout_marker) || cell.inverse();
 
                     if cell.inverse() {
                         std::mem::swap(&mut fg, &mut bg);
