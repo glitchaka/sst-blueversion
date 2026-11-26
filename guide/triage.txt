@@ -90,4 +90,7 @@ Validación
 Ante una señal concreta, usa los comandos relacionados (`sys inspect`, `sys why`, `sys diff`, conexiones, startup, servicios) para confirmar el contexto antes de tomar acciones destructivas.
 `triage outlook` y `triage --find outlook` localizan procesos actuales de Outlook (new) y sus hijos WebView2. La auditoría general no imprime los linajes aprendidos salvo al pedir `triage --history`; esto evita desplazar los hallazgos actuales con historia.
 
-Límite operativo actual: triage orienta el diagnóstico y sugiere comandos relacionados; no ejecuta un flujo integrado de reparación y verificación posterior. Esa capacidad permanece pendiente.
+Recuperación de aplicaciones (Windows):
+  triage PID --plan
+  triage PID --close FILETIME
+El plan comprueba las ventanas visibles y su respuesta. FILETIME debe obtenerse del plan; valida la identidad de la instancia. El cierre envía WM_CLOSE, no fuerza el fin del proceso y verifica si la instancia terminó. Guarda el trabajo cuando sea posible. No repara automáticamente conexiones, autenticación o archivos. Pendiente validación en Windows.
