@@ -11,6 +11,12 @@ Formas públicas
   triage outlook
   triage --find NOMBRE
   triage --history
+  triage --status
+  triage --thermal
+  triage --csv
+  triage --json
+  triage PID --plan
+  triage PID --close FILETIME
   triage --deep
   triage PID --deep
   triage --memory
@@ -93,4 +99,4 @@ Ante una señal concreta, usa los comandos relacionados (`sys inspect`, `sys why
 Recuperación de aplicaciones (Windows):
   triage PID --plan
   triage PID --close FILETIME
-El plan comprueba las ventanas visibles y su respuesta. FILETIME debe obtenerse del plan; valida la identidad de la instancia. El cierre envía WM_CLOSE, no fuerza el fin del proceso y verifica si la instancia terminó. Guarda el trabajo cuando sea posible. No repara automáticamente conexiones, autenticación o archivos. Pendiente validación en Windows.
+El plan comprueba las ventanas visibles y su respuesta. FILETIME debe obtenerse del plan; valida la identidad de la instancia. El cierre envía WM_CLOSE, no fuerza el fin del proceso y verifica si la instancia terminó. Guarda el trabajo cuando sea posible. No repara automáticamente conexiones, autenticación o archivos. La disponibilidad de una acción no certifica la resolución de una incidencia concreta.
