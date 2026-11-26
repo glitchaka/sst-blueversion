@@ -1,24 +1,24 @@
 {
   "schema": 1,
-  "version": "0.1.14-blue.1",
+  "version": "0.1.14-blue.2",
   "channel": "blue",
-  "published_at": "2026-11-26T16:29:22.7568650+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.1/sst.exe",
-  "sha256": "708f922fb60e1eb2bcfa22b6639e189e754c0e0eec9e8aabc8d14b638c70b627",
-  "size": 60477440,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.1/sst-updater.exe",
-  "updater_sha256": "84da5645370bae91fe05e9e1375895d58bbfaac88fe157763827befd88bfe661",
+  "published_at": "2026-11-26T16:56:13.6308441+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.2/sst.exe",
+  "sha256": "ab1e4382c13c99b88d36c3ec791b6bc8eb71239be9033c2362c42f2c06010344",
+  "size": 60483584,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.2/sst-updater.exe",
+  "updater_sha256": "9f1d2bca12cdb3e8c56690bb753b3ea9a68797549e2873dfb2da5d4fe558dd97",
   "updater_size": 433664,
   "changes": [
-    "Componente gráfico integrado en la consola y el formatter. El emblema de pórtico, las cabeceras editoriales, las escalas graduadas y las marcas de selección, aviso y fallo comparten un diseño nativo.",
-    "La identidad conserva las paletas tipográficas seleccionables."
+    "La identidad experimental se muestra exclusivamente en la demo interactiva `demo graficos`. Recorre ocho elementos con las flechas, elige uno con 1–8 y vuelve al prompt con Esc.",
+    "Corrección de `config palette`: la interfaz pública reenvía los subcomandos de apariencia al backend nativo; autocompletado de Sunset, Golden y Gruvbox, ayuda y prueba de regresión de la ruta real del intérprete."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.14-blue.1.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.1/SST-Setup-0.1.14-blue.1.exe",
-    "sha256": "1834defdcb0ea464f79ab7bccea221f8a1c7f74e97be54dc7cfa4a9c53c8aa10",
-    "size": 69641407,
+    "name": "SST-Setup-0.1.14-blue.2.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.2/SST-Setup-0.1.14-blue.2.exe",
+    "sha256": "1cbb9d9c9384ab62456304c5bc263ccb1a476dbb11e8aa998fa3f623d12872d3",
+    "size": 69647724,
     "single_use": true,
-    "package_id": "37e11c3f49360bd0eb29d4e35e9c4b66"
+    "package_id": "d877356e640838ce774763d5997cd908"
   }
 }
