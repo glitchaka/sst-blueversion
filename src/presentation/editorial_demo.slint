@@ -1,5 +1,6 @@
 import { AngularMark, CutFrame, Registration } from "graphic_kit.slint";
 import { AsymmetricHeader, SignalSlashes, FieldBracket, SteppedDivider } from "graphic_kit.slint";
+import { WarningTriangle, StateBadge } from "graphic_kit.slint";
 import { RadialTwenty, RingEight, ActivityScale, SegmentedProgress, IndeterminateWait, HatchedTransfer } from "graphic_kit.slint";
 // SST native component catalogue. Each specimen is an isolated graphic at control scale.
 // No pictures, report covers, or changes to normal terminal rendering.
@@ -386,7 +387,7 @@ HatchedTransfer { x: 0px; y: 9px; width: parent.width; height: 27px; ratio: root
                 Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "25 / Correcto"; color: root.selected == 0 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 0 ? root.acid : root.line; }
                 Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
-CutFrame { x: 0px; y: 5px; width: parent.width; height: 32px;  ink: root.moss; outline: transparent; thickness: 0px; }Text { x: 9px; y: 5px; width: parent.width - 18px; height: 32px; text: "✓  CORRECTO"; color: root.on-success; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+StateBadge { x: 0px; y: 5px; width: parent.width; height: 32px; ink: root.moss; outline: transparent; }Text { x: 9px; y: 5px; width: parent.width - 18px; height: 32px; text: "✓  CORRECTO"; color: root.on-success; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 }
             }
             // specimen 26 — Advertencia
@@ -399,7 +400,7 @@ CutFrame { x: 0px; y: 5px; width: parent.width; height: 32px;  ink: root.moss; o
                 Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "26 / Advertencia"; color: root.selected == 1 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 1 ? root.acid : root.line; }
                 Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
-Path { x: 2px; y: 5px; width: 29px; height: 28px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 50 0 L 100 100 L 0 100 Z"; fill: transparent; stroke: root.amber; stroke-width: 2px; }Text { x: 2px; y: 9px; width: 29px; height: 22px; text: "!"; color: root.amber; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }Text { x: 41px; y: 3px; width: parent.width - 41px; height: 34px; text: "ATENCIÓN"; color: root.amber; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+WarningTriangle { x: 2px; y: 5px; width: 29px; height: 28px; ink: root.amber; }Text { x: 2px; y: 9px; width: 29px; height: 22px; text: "!"; color: root.amber; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }Text { x: 41px; y: 3px; width: parent.width - 41px; height: 34px; text: "ATENCIÓN"; color: root.amber; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 }
             }
             // specimen 27 — Fallo
@@ -412,7 +413,7 @@ Path { x: 2px; y: 5px; width: 29px; height: 28px; viewbox-width: 100; viewbox-he
                 Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "27 / Fallo"; color: root.selected == 2 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 2 ? root.acid : root.line; }
                 Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
-CutFrame { x: 0px; y: 5px; width: parent.width; height: 32px;  ink: root.oxide; outline: transparent; thickness: 0px; }Text { x: 9px; y: 5px; width: parent.width - 18px; height: 32px; text: "×  FALLO"; color: root.on-failure; font-family: "Cascadia Mono"; font-size: 14px; font-weight: 800; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+StateBadge { x: 0px; y: 5px; width: parent.width; height: 32px; ink: root.oxide; outline: transparent; }Text { x: 9px; y: 5px; width: parent.width - 18px; height: 32px; text: "×  FALLO"; color: root.on-failure; font-family: "Cascadia Mono"; font-size: 14px; font-weight: 800; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 }
             }
             // specimen 28 — Sin datos
@@ -425,7 +426,7 @@ CutFrame { x: 0px; y: 5px; width: parent.width; height: 32px;  ink: root.oxide; 
                 Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "28 / Sin datos"; color: root.selected == 3 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 3 ? root.acid : root.line; }
                 Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
-CutFrame { x: 0px; y: 5px; width: parent.width; height: 32px;  ink: transparent; outline: root.line; thickness: 1px; }Text { x: 9px; y: 5px; width: parent.width - 18px; height: 32px; text: "∅  SIN DATOS"; color: root.muted; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+StateBadge { x: 0px; y: 5px; width: parent.width; height: 32px; ink: transparent; outline: root.line; }Text { x: 9px; y: 5px; width: parent.width - 18px; height: 32px; text: "∅  SIN DATOS"; color: root.muted; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 }
             }
             // specimen 29 — Evidencia

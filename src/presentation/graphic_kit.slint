@@ -172,3 +172,17 @@ export component MonitorFrame inherits Rectangle {
     Path { x: parent.width - 18px; y: parent.height - 14px; width: 18px; height: 14px; viewbox-width: 18; viewbox-height: 14; fit: fill;
         commands: "M 0 14 L 9 14 L 18 7 L 18 0"; fill: transparent; stroke: root.ink; stroke-width: 1.5px; }
 }
+
+export component WarningTriangle inherits Rectangle {
+    in property <color> ink;
+    background: transparent;
+    Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 50 0 L 100 100 L 0 100 Z"; fill: transparent; stroke: root.ink; stroke-width: 1.5px;
+    }
+}
+export component StateBadge inherits Rectangle {
+    in property <color> ink: transparent;
+    in property <color> outline: transparent;
+    background: transparent;
+    CutFrame { width: parent.width; height: parent.height; ink: root.ink; outline: root.outline; thickness: 1px; }
+}

@@ -171,6 +171,7 @@ slint::slint! {
     import { EditorialDemo } from "editorial_demo.slint";
     import { AngularMark, CutFrame, Registration, AsymmetricHeader, SignalSlashes, FieldBracket, SteppedDivider } from "graphic_kit.slint";
     import { RadialTwenty, RingEight, ActivityScale, SegmentedProgress, IndeterminateWait, HatchedTransfer, MonitorFrame } from "graphic_kit.slint";
+    import { WarningTriangle, StateBadge } from "graphic_kit.slint";
     export struct NativeGraphic { x: float, y: float, w: float, h: float, kind: int, ratio: float, tone: int }
     // Rendered vector outlines, never made of VT100/ASCII characters.
     // Transparent interiors preserve the user's terminal artwork and logo.
@@ -184,6 +185,7 @@ slint::slint! {
         in property <color> muted;
         in property <color> track;
         in property <color> success;
+        in property <color> success-surface;
         in property <color> warning;
         in property <color> failure;
     }
@@ -304,6 +306,11 @@ slint::slint! {
         in property <color> demo-on-success;
         in property <color> demo-accent-detail;
         in property <bool> caret-visible;
+        in property <bool> input-focused;
+        in property <float> input-x;
+        in property <float> input-y;
+        in property <float> input-width;
+        in property <float> input-height;
         in property <float> caret-x;
         in property <float> caret-y;
         in property <float> caret-height;
@@ -405,6 +412,13 @@ slint::slint! {
                 background: root.caret-tone;
             }
 
+            if root.input-focused && !root.keygen-visible && root.demo-page == 0 : Rectangle {
+                x: root.input-x * 1px; y: root.input-y * 1px;
+                width: root.input-width * 1px; height: root.input-height * 1px;
+                background: transparent;
+                CutFrame { width: parent.width; height: parent.height; outline: OutputTheme.rule; thickness: 1px; }
+                Registration { width: min(24px,parent.width); height: parent.height; outline: OutputTheme.accent; thickness: 1px; }
+            }
             for mark in root.report-graphics : Rectangle {
                 x: mark.x * 1px; y: mark.y * 1px;
                 width: mark.w * 1px; height: mark.h * 1px;
@@ -417,6 +431,16 @@ slint::slint! {
                     track: OutputTheme.track;
                 }
                 if mark.kind == 3 : SteppedDivider { width: parent.width; height: parent.height; ink: OutputTheme.rail; thickness: 1px; }
+                if mark.kind == 4 : StateBadge {
+                    width: parent.width; height: parent.height;
+                    outline: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : mark.tone == 3 ? OutputTheme.muted : OutputTheme.success;
+                }
+                if mark.kind == 5 : WarningTriangle {
+                    width: parent.width; height: parent.height; ink: OutputTheme.warning;
+                }
+                if mark.kind == 6 : Registration {
+                    width: parent.width; height: parent.height; outline: OutputTheme.success; thickness: 1px;
+                }
             }
 
             // Explicitly structured alternate-screen monitors keep their frames.
@@ -1029,6 +1053,35 @@ fn report_graphics(screen: &vt100::Screen) -> Vec<ReportGraphic> {
         } else if let Some((begin,left))=group.take() {
             if row-begin>=2 {result.push(ReportGraphic{row:begin,rows:row-begin,start:left,end:left,kind:1,ratio:0.0,tone:0});}
         }
+        // Only actual formatter status spans are framed; incidental prose and
+        // numbers painted with warning tones are not converted into badges.
+        if let Some((a,b))=first.zip(last) {
+            let mut c=a;
+            while c<=b {
+                let Some(r)=role(row,c) else {c+=1;continue;};
+                let start=c;
+                while c<=b && role(row,c)==Some(r) {c+=1;}
+                let text=(start..c).filter_map(|i|screen.cell(row,i)).map(|v|v.contents()).collect::<String>();
+                let clean=text.trim();
+                let tone=match (r,crate::presentation::formatter::status_color(clean)) {
+                    (Role::Success,Some(crate::presentation::formatter::GOOD))=>Some(0),
+                    (Role::Warning,Some(crate::presentation::formatter::CAUTION))=>Some(1),
+                    (Role::Failure,Some(crate::presentation::formatter::BAD))=>Some(2),
+                    (Role::Label|Role::Value|Role::Detail,_) if matches!(clean.to_uppercase().as_str(),"SIN DATOS"|"NO HAY DATOS"|"N/D")=>Some(3),
+                    _=>None,
+                };
+                if let Some(tone)=tone {
+                    result.push(ReportGraphic{row,rows:1,start,end:c,kind:4,ratio:0.0,tone});
+                    if tone==1 && c.saturating_add(2)<cols && (c..c+2).all(|i|!has_text(row,i)) {
+                        result.push(ReportGraphic{row,rows:1,start:c+1,end:c+2,kind:5,ratio:0.0,tone});
+                    }
+                }
+            }
+            let line=(a..=b).filter_map(|i|screen.cell(row,i)).map(|v|v.contents()).collect::<String>();
+            if line.trim_start().to_lowercase().starts_with("evidencia:") && b.saturating_add(2)<cols {
+                result.push(ReportGraphic{row,rows:1,start:b+1,end:b+3,kind:6,ratio:0.0,tone:0});
+            }
+        }
         let is_meter=|c| bg(row,c).is_some_and(|color|[(60,56,55),METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB].contains(&color)) && !has_text(row,c);
         let mut col=0;
         while col<cols {
@@ -1067,6 +1120,8 @@ impl ReportGraphic {
             0=>((x-2.*scale).max(0.),y+scale,width+2.*scale,(height-2.*scale).max(1.)),
             1=>((x-6.*scale).max(0.),y+scale,5.*scale,(height-2.*scale).max(1.)),
             2=>(x,y+h*0.25,width,(h*0.5).max(2.)),
+            4=>((x-scale).max(0.),y+scale,width+2.*scale,(h-2.*scale).max(1.)),
+            5|6=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             _=>(x,y+h-2.*scale,width,2.*scale),
         }
     }
@@ -1892,6 +1947,7 @@ fn apply_terminal_palette(ui:&SstBlueWindow,palette:&str) {
     theme.set_muted(color(p.muted));
     theme.set_track(color(p.rail));
     theme.set_success(color(p.mint));
+    theme.set_success_surface(color(p.moss));
     theme.set_warning(color(p.amber));
     theme.set_failure(color(p.oxide));
 }
@@ -2810,10 +2866,15 @@ pub fn run() -> Result<()> {
                 let screen = model.parser.screen();
                 let show_caret = drawable && screen.scrollback() == 0 && !screen.hide_cursor();
                 ui.set_caret_visible(show_caret);
+                ui.set_input_focused(show_caret && model.focused && model.session.editable());
                 if show_caret {
                     let (row,col) = screen.cursor_position();
                     let (left,top,w,h) = model.geometry();
                     let factor = model.scale.max(0.5);
+                    ui.set_input_x((left-2.*factor).max(0.)/factor);
+                    ui.set_input_y((top+f32::from(row)*h)/factor);
+                    ui.set_input_width((f32::from(screen.size().1)*w+2.*factor)/factor);
+                    ui.set_input_height(h/factor);
                     ui.set_caret_x((left+f32::from(col)*w)/factor);
                     ui.set_caret_y((top+f32::from(row)*h)/factor);
                     ui.set_caret_height((h/factor-1.0).max(1.0));

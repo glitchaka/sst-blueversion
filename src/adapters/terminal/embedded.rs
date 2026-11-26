@@ -262,6 +262,7 @@ impl EmbeddedSession {
         self.config_reload_requested.swap(false, Ordering::SeqCst)
     }
     pub fn raw_mode(&self) -> bool { self.raw.load(Ordering::SeqCst) }
+    pub fn editable(&self) -> bool { !self.raw_mode() && !self.busy.load(Ordering::SeqCst) && !self.exited() }
 
     /// Semantic frames from the current alternate-screen TUI, if any.
     pub fn panels_snapshot(&self) -> Vec<TerminalPanel> {

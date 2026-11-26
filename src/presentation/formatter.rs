@@ -388,7 +388,7 @@ fn looks_like_tabular_header(line: &str) -> bool {
         && !text.contains("://")
 }
 
-fn status_color(value: &str) -> Option<&'static str> {
+pub(super) fn status_color(value: &str) -> Option<&'static str> {
     // Never infer a status from incidental words in help descriptions,
     // hostnames, commands, process names or arbitrary prose.
     let value = value.trim().trim_end_matches(['.', ';']);
