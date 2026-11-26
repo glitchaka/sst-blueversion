@@ -30,8 +30,6 @@ pub const REPORT_HEADER_RGB: (u8,u8,u8) = (63,52,38);
 // Separate semantic surfaces identify the reserved display-size value region.
 pub const FEATURE_RGB: (u8,u8,u8) = (31,34,32);
 pub const FEATURE_ALT_RGB: (u8,u8,u8) = (35,38,35);
-pub const SECTION_RAIL: (u8, u8, u8) = COMMAND_RGB;
-pub const SECTION_RULE: (u8, u8, u8) = (117,86,45);
 
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 pub enum Role { Title, Command, Label, Detail, Value, Success, Warning, Failure, Optimal }
