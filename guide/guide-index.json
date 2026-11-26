@@ -1680,7 +1680,7 @@
       "name": "demo graficos",
       "aliases": [],
       "area": "config",
-      "summary": "Muestrario experimental de identidad editorial aplicado a información ficticia.",
+      "summary": "Laboratorio de identidad: 20 láminas nativas sin imágenes, con interacción y datos simulados.",
       "manual": {
         "file": "demo",
         "extension": "txt",
