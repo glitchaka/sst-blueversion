@@ -1,10 +1,4 @@
-//! Built-in SST visual component. Geometry is expressed in device pixels so
-//! the same marks work on the window chrome and on scrolling terminal rows.
-pub type Ink = (u8, u8, u8);
-pub const OXIDE: Ink = (225, 94, 52);
-pub const CONCRETE: Ink = (201, 199, 172);
-pub const GRAPHITE: Ink = (32, 39, 36);
-pub const PATINA: Ink = (91, 125, 117);
+//! Isolated SST editorial identity preview and specimen data.
 use std::sync::atomic::{AtomicU8, Ordering};
 
 // Zero is the ordinary terminal. The command owns this transient preview.
