@@ -403,6 +403,12 @@ slint::slint! {
             }
 
             // Native paths are behind the actual glyph buffer, never over the text.
+            for mark in root.report-graphics : StateBadge {
+                visible: !root.keygen-visible && root.demo-page == 0 && mark.kind == 4 && (mark.tone == 0 || mark.tone == 2);
+                x: mark.x * 1px; y: mark.y * 1px;
+                width: mark.w * 1px; height: mark.h * 1px;
+                ink: mark.tone == 2 ? OutputTheme.failure : OutputTheme.success-surface;
+            }
             for mark in root.report-graphics : ReportHeadingBand {
                 visible: !root.keygen-visible && root.demo-page == 0 && mark.kind == 0;
                 x: mark.x * 1px; y: mark.y * 1px;
@@ -447,7 +453,7 @@ slint::slint! {
                     track: OutputTheme.track;
                 }
                 if mark.kind == 3 : SteppedDivider { width: parent.width; height: parent.height; ink: OutputTheme.rail; thickness: 1px; }
-                if mark.kind == 4 : StateBadge {
+                if mark.kind == 4 && (mark.tone == 1 || mark.tone == 3) : StateBadge {
                     width: parent.width; height: parent.height;
                     outline: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : mark.tone == 3 ? OutputTheme.muted : OutputTheme.success;
                 }
@@ -1765,7 +1771,7 @@ impl TerminalModel {
 
             // The Slint header is behind the glyph surface. Open only its
             // allocated rectangle, preserving every other pixel of the background.
-            for graphic in graphics.iter().filter(|g|g.kind==0) {
+            for graphic in graphics.iter().filter(|g|g.kind==0 || (g.kind==4 && (g.tone==0 || g.tone==2))) {
                 let (x,y,w,h)=graphic.pixels((left_pad,top_pad,cell_width,cell_height),self.scale);
                 let x0=x.floor().max(0.) as u32;
                 let y0=y.floor().max(0.) as u32;
@@ -1851,6 +1857,8 @@ impl TerminalModel {
                     let w = (cell_width * wide).ceil() as i32;
                     let h = cell_height.ceil() as i32;
 
+                    let filled_badge=graphics.iter().find(|g|g.kind==4 && (g.tone==0 || g.tone==2) && row==g.row && col>=g.start && col<g.end);
+                    if filled_badge.is_some() && selection.is_none() && !cell.inverse() {paint_background=false;}
                     if paint_background {
                         // Meter cells form compact native strips instead of full-height blocks.
                         if selection.is_none() && !cell.inverse() && is_meter_surface(cell.bgcolor()) {
@@ -1875,6 +1883,7 @@ impl TerminalModel {
 
                     let role=match cell.fgcolor(){vt100::Color::Rgb(r,g,b)=>Role::from_rgb((r,g,b)),_=>None};
                     if native_heading && role==Some(Role::Title) {fg=readable_ink(kit.cream);}
+                    if let Some(badge)=filled_badge {fg=if badge.tone==2 {kit.on_failure}else{kit.on_success};}
                     let font_px=if role.is_some(){font_pixels(role,font_px,cell_width,cell_height)}else{font_px};
                     let font_key=font_px.round().max(1.0) as u16;
                     let font_px=font_key as f32;
@@ -3075,8 +3084,8 @@ pub fn run() -> Result<()> {
 
                 let screen = model.parser.screen();
                 let show_caret = drawable && screen.scrollback() == 0 && !screen.hide_cursor();
-                ui.set_caret_visible(show_caret);
-                ui.set_input_focused(show_caret && model.focused && model.session.editable());
+                ui.set_caret_visible(show_caret && model.session.completion_view().is_none());
+                ui.set_input_focused(show_caret && model.focused && model.session.editable() && model.session.completion_view().is_none());
                 if show_caret {
                     let (row,col) = screen.cursor_position();
                     let (left,top,w,h) = model.geometry();
@@ -3107,7 +3116,7 @@ pub fn run() -> Result<()> {
                     let (left,top,w,h)=model.geometry();
                     let factor=model.scale.max(0.5);
                     ui.set_completion_x(left/factor);
-                    ui.set_completion_y((top+f32::from(cursor_row-5)*h)/factor);
+                    ui.set_completion_y((top+f32::from(cursor_row-4)*h)/factor);
                     ui.set_completion_width((f32::from(model.parser.screen().size().1)*w/factor).min(560.0));
                     ui.set_completion_row_height(h/factor);
                     ui.set_completion_first(first as i32);
@@ -3426,6 +3435,30 @@ mod live_graphic_integration {
         assert!(marks.iter().any(|g|g.kind==1 && g.row==1 && g.rows==2));
         assert!(parser.screen().contents().contains("tiempo=2ms"));
         assert!(parser.screen().contents().contains("perdidos = 0"));
+    }
+    #[test]
+    fn explicit_status_surfaces_and_real_observations_reach_the_viewport() {
+        let mut parser=vt100::Parser::new(24,140,100);
+        for line in ["Estado: OPERATIVO","Estado: ERROR","Estado: ADVERTENCIA","Estado: SIN DATOS","Evidencia: lectura nativa"] {
+            parser.process(format!("{}\r\n",Formatter::live(line)).as_bytes());
+        }
+        let marks=report_graphics(parser.screen());
+        for tone in [0,1,2,3] {assert!(marks.iter().any(|g|g.kind==4 && g.tone==tone),"missing status {tone}");}
+        assert!(marks.iter().any(|g|g.kind==5));
+        assert!(marks.iter().any(|g|g.kind==6));
+        for line in ["Haciendo ping a 127.0.0.1 con 32 bytes de datos:",
+            "Respuesta desde 127.0.0.1: bytes=32 tiempo=1ms TTL=128",
+            "Tiempo de espera agotado para esta solicitud.",
+            "Estadísticas de ping para 127.0.0.1:",
+            "DESTINATION GATEWAY IFINDEX METRIC",
+            "0.0.0.0/0 192.0.2.1 5 10",
+            "192.0.2.0/24 192.0.2.1 5 10"] {
+            parser.process(format!("{}\r\n",Formatter::live(line)).as_bytes());
+        }
+        let marks=report_graphics(parser.screen());
+        assert!(marks.iter().any(|g|g.kind==10 && g.tone==0));
+        assert!(marks.iter().any(|g|g.kind==10 && g.tone==2));
+        assert!(marks.iter().any(|g|g.kind==11 && g.tone==2));
     }
     #[test]
     fn every_visible_heading_is_rendered_and_plain_lines_are_not_marked() {

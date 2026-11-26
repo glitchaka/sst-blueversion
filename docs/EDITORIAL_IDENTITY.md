@@ -85,10 +85,12 @@ Oxidize y ronin-sunset: colores muestreados de las imágenes JPEG, no códigos p
 
 Dentro de `demo graficos`, pulsa P para la paleta siguiente y O para la anterior. El nombre del esquema aparece en la cabecera. Las 18 paletas se recorren circularmente; el cambio conserva la familia, foco y animación. Al salir se conserva la configuración original de `config palette`. Para fijar un esquema de forma permanente, usa `config palette NOMBRE` fuera de la demo.
 
-La identidad gráfica se aplica ahora también a la terminal habitual: los trazados compartidos del catálogo se usan en marcos y transferencias; las cabeceras, tablas, selección, cursor e indicadores de métricas utilizan los roles de la paleta activa. La salida de máquina y los datos de los comandos se conservan. Las muestras que no tienen una función aplicable al contexto siguen disponibles en `demo graficos`.
+La identidad gráfica se aplica ahora también a la terminal habitual: los trazados compartidos del catálogo se usan en marcos y transferencias; las cabeceras, tablas, selección, cursor e indicadores de métricas utilizan los roles de la paleta activa. La salida de máquina y los datos de los comandos se conservan. Los 36 elementos tienen que estar vinculados a una función de la terminal habitual; la demo se conserva exclusivamente como catálogo de referencia.
 
 ## Integración en curso (release bloqueada)
 
 La revisión .9 no es una entrega aprobada. Las primitivas compartidas de instrumentación y transferencia utilizan CPU, RAM y bytes reales. Los marcos de monitor mantienen esquinas de tamaño fijo. Los estados explícitos y la entrada editable reciben geometría en el viewport. La cobertura funcional de las 36 muestras y su fidelidad visual todavía deben completarse y verificarse antes de retirar el bloqueo.
 
 La selección nativa de Tab usa los candidatos que entrega el motor, con aceptar/cancelar, expansión y navegación. Las escalas reciben los porcentajes del formatter; la continuidad utiliza respuestas y pérdidas observadas y las bifurcaciones representan destinos que comparten next hop e interfaz en la tabla visible. Los folios de monitores corresponden a su índice real. Se mantiene el bloqueo de distribución hasta verificar la compilación y la fidelidad de los 36 elementos.
+
+La validación de Windows incluye capturas de la ventana del ejecutable real, no composiciones generadas ni imágenes sustitutas. Las capturas son evidencia de revisión, no una aprobación automática de la fidelidad artística.

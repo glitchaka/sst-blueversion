@@ -1,1 +1,1 @@
-Retry validation after restoring specimen 16 container; publication hold remains.
+Validate shared graphical controls and capture actual Windows terminal screenshots. Keep distribution hold until review.

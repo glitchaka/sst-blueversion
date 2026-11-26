@@ -122,3 +122,15 @@ jobs:
       - name: Verify GUI software renderer launch
         shell: pwsh
         run: ./scripts/test-software-renderer.ps1 -Exe ./target/release/sst.exe
+
+      - name: Capture real SST terminal integration on Windows
+        shell: pwsh
+        run: ./scripts/capture-native-catalogue.ps1 -Exe ./target/release/sst.exe
+
+      - name: Retain actual terminal screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sst-native-catalogue-evidence
+          path: qa-visual/*.png
+          if-no-files-found: warn

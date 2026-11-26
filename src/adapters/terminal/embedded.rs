@@ -450,6 +450,7 @@ impl EmbeddedSession {
     }
 
     fn redraw(&self) {
+        if self.completion.is_some() { return; }
         let prompt = if self.pending.is_empty() {
             crate::presentation::shell::prompt::input_marker()
         } else {
@@ -851,7 +852,8 @@ impl EmbeddedSession {
                 if rows>=8 && cols>=40 && self.line.len()+3<usize::from(cols) {
                     let begin=prefix[..start].chars().count();
                     self.completion=Some(CompletionState{items:matches,selected:0,begin,end:self.cursor,expanded:true});
-                    self.emit("\r\x1b[2K\r\n\r\n\r\n\r\n\r\n");
+                    // Keep the original editable line; reserve the five following rows.
+                    self.emit("\r\n\r\n\r\n\r\n\r\n");
                 } else {
                     self.emit(&crate::presentation::formatter::completion_catalogue(&matches,cols));
                 }
