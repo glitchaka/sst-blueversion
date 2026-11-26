@@ -223,7 +223,7 @@ impl BuiltinCommand for ConfigBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "sst-config path|edit|bg|palette — configuración portable de SST"
+        "config — configuración portable de SST\n  config path\n  config edit\n  config reload\n  config bg [list|NOMBRE|off]\n  config palette [list|gruvbox|sunset|golden]"
     }
 
     fn execute(
@@ -233,6 +233,7 @@ impl BuiltinCommand for ConfigBuiltin {
         context: CommandContext<'_>,
     ) -> Result<CommandOutput> {
         match args.first().map(String::as_str).unwrap_or("path") {
+            "help" | "--help" | "-h" => Ok(CommandOutput::ok(format!("{}\n", self.help()))),
             "path" => Ok(CommandOutput::ok(format!("{}\n", self.config_file.display()))),
             "edit" => {
                 let args = vec![self.config_file.to_string_lossy().into_owned()];
