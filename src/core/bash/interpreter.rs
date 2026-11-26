@@ -781,7 +781,7 @@ impl Interpreter {
         let wordbreaks = self.env.get("COMP_WORDBREAKS");
         let start = before.rfind(|ch: char| {
             ch.is_whitespace() || wordbreaks.contains(ch)
-        }).map_or(0, |index| index + 1);
+        }).map_or(0, |index| index + before[index..].chars().next().unwrap().len_utf8());
         let prefix = &before[start..];
         let words = completion_words(before, &wordbreaks);
         let command = words.first().map(String::as_str).unwrap_or(prefix);
@@ -10700,6 +10700,23 @@ mod tests {
                 ));
             }
             Ok(ExecutionResult::from_parts(format!("external:{program}\n"), String::new(), 0))
+        }
+    }
+
+    #[test]
+    fn actual_interpreter_completes_sst_subcommands_and_options_at_each_level() {
+        let mut shell=Interpreter::new(Box::new(NullHost));
+        for (input,expected) in [
+            ("sys ser","services"),("sys services --r","--running"),
+            ("notsh lan ","show"),("notsh lan show int","interfaces"),
+            ("tools office auth r","repair"),("tools office diagnose --d","--detail"),
+            ("instp upgrade s","sst"),("config palette sun","sunset"),
+            ("triage 123 --p","--plan"),("guide tools office d","diagnose"),
+            ("echo hola; notsh interface ipv4 show int","interfaces"),
+            ("sys\u{2003}ser","services"),
+        ] {
+            let values=shell.complete_line(input,input.chars().count()).unwrap();
+            assert!(values.contains(&expected.to_owned()),"{input}: {values:?}");
         }
     }
 
