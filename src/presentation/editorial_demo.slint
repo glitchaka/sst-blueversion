@@ -124,8 +124,11 @@ export component EditorialDemo inherits Rectangle {
             Head { x: 12px; y: 0; width: plate.w - 24px; height: plate.h * 0.22; text: "Diagnóstico dirigido"; color: root.paper; font-size: min(plate.w * 0.070,plate.h * 0.22); }
             for item[i] in ["Procesos","Servicios","Conexiones"] : Rectangle {
                 x: 12px; y: plate.h * (0.27 + i * 0.19); width: plate.w * 0.58 - 16px; height: plate.h * 0.17;
-                background: i == root.selected ? root.paper : transparent;
-                Rectangle { x: 0; width: 4px; height: parent.height; background: i == root.selected ? root.amber : rgb(81, 92, 84); }
+                background: transparent;
+                Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+                    commands: "M 0 0 L 92 0 L 100 40 L 100 100 L 0 100 Z"; fill: i == root.selected ? root.paper : transparent; stroke: root.steel; stroke-width: 1px; }
+                Path { x: 0; width: 7px; height: parent.height; viewbox-width: 10; viewbox-height: 100; fit: fill;
+                    commands: "M 0 0 L 10 15 L 10 85 L 0 100 Z"; fill: i == root.selected ? root.acid : root.steel; }
                 Data { x: 12px; width: parent.width - 24px; height: parent.height; text: "0" + (i+1) + "  " + item; font-size: root.normal; color: i == root.selected ? root.ink : root.paper; }
             }
             Rectangle { x: plate.w * 0.60; y: plate.h * 0.28; width: 1px; height: plate.h * 0.52; background: root.mint; }
@@ -203,7 +206,9 @@ export component EditorialDemo inherits Rectangle {
             background: root.graphite;
             Head { x: 12px; width: plate.w - 24px; height: plate.h * 0.25; text: "Entrada de comando"; color: root.paper; font-size: min(plate.w * 0.077,plate.h * 0.24); }
             Data { x: 12px; y: plate.h * 0.31; width: plate.w - 24px; height: plate.h * 0.12; text: "SST / LOCAL / USUARIO"; color: root.mint; font-size: root.small; }
-            Rectangle { x: 12px; y: plate.h * 0.47; width: plate.w - 24px; height: plate.h * 0.22; background: rgb(52, 60, 54);
+            Rectangle { x: 12px; y: plate.h * 0.47; width: plate.w - 24px; height: plate.h * 0.22; background: transparent;
+                Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+                    commands: "M 0 0 L 96 0 L 100 30 L 100 100 L 4 100 L 0 70 Z"; fill: root.steel; stroke: root.mint; stroke-width: 1px; }
                 Data { x: 8px; width: parent.width * 0.11; height: parent.height; text: ">"; color: root.amber; font-size: root.normal; }
                 for token[i] in ["sys","services","--running"] : Rectangle {
                     x: parent.width * (0.11 + i * 0.29); width: parent.width * 0.28; height: parent.height;
@@ -220,8 +225,13 @@ export component EditorialDemo inherits Rectangle {
             Data { x: plate.w * 0.73; width: plate.w * 0.27; height: plate.h * 0.24; text: "PKGX / 100 MiB"; horizontal-alignment: right; color: root.muted; font-size: root.small; }
             Head { x: 0; y: plate.h * 0.25; width: plate.w * 0.66; height: plate.h * 0.32; text: root.progress + "%"; color: root.ink; font-size: min(plate.w * 0.19,plate.h * 0.31); }
             Data { x: plate.w * 0.68; y: plate.h * 0.39; width: plate.w * 0.32; height: plate.h * 0.16; text: root.progress == 100 ? "COMPLETO" : root.paused ? "EN PAUSA" : "RECIBIENDO"; color: root.moss; font-size: root.small; }
-            Rectangle { y: plate.h * 0.62; width: plate.w; height: plate.h * 0.11; background: rgb(194, 196, 183);
-                Rectangle { width: parent.width * root.progress / 100; height: parent.height; background: root.progress == 100 ? root.moss : root.ink; }
+            Rectangle { y: plate.h * 0.62; width: plate.w; height: plate.h * 0.13; background: transparent;
+                Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+                    commands: "M 0 0 L 97 0 L 100 50 L 97 100 L 0 100 Z"; fill: root.rule; }
+                Path { visible: root.progress > 0; width: max(1px,parent.width * root.progress / 100); height: parent.height;
+                    viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 97 0 L 100 50 L 97 100 L 0 100 Z";
+                    fill: root.progress == 100 ? root.moss : root.ink; }
+                for i in 9 : Rectangle { x: parent.width * (i+1)/10; y: parent.height - 5px; width: 1px; height: 5px; background: root.paper; }
             }
             Data { x: 0; y: plate.h * 0.78; width: plate.w * 0.65; height: plate.h * 0.17; text: root.progress + " / 100 MiB   ·   datos ficticios"; color: root.ink; font-size: root.small; }
             Data { x: plate.w * 0.65; y: plate.h * 0.78; width: plate.w * 0.35; height: plate.h * 0.17; text: "Espacio / R"; horizontal-alignment: right; color: root.muted; font-size: root.small; }
@@ -249,7 +259,7 @@ export component EditorialDemo inherits Rectangle {
             Head { x: plate.w * 0.73; y: plate.h * 0.08; width: plate.w * 0.27; height: plate.h * 0.26; text: "16.7%"; horizontal-alignment: right; color: root.oxide; font-size: min(plate.w * 0.075,plate.h * 0.22); }
             Rectangle { x: 0; y: plate.h * 0.42; width: plate.w; height: plate.h * 0.34; background: transparent;
                 Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 8 L 0 0 L 8 0 M 92 0 L 100 0 L 100 8 M 100 92 L 100 100 L 92 100 M 8 100 L 0 100 L 0 92"; fill: transparent; stroke: root.rule; stroke-width: 1px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 50 C 8 10 12 90 20 50 S 32 10 40 50 S 52 90 60 50 S 72 10 80 50 S 92 90 100 50"; fill: transparent; stroke: root.rule; stroke-width: 1px; }
+                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 90 L 100 90 M 0 50 L 100 50 M 0 10 L 100 10"; fill: transparent; stroke: root.rule; stroke-width: 1px; }
                 Path { x: parent.width * 0.05; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 0 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
                 Path { x: parent.width * 0.132; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 1 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
                 Path { x: parent.width * 0.214; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 2 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
@@ -321,16 +331,16 @@ export component EditorialDemo inherits Rectangle {
             Data { x: 12px; width: plate.w - 24px; height: plate.h * 0.11; text: "NOTSH / RUTA / CORTE DE COMUNICACIÓN"; color: root.mint; font-size: root.small; }
             Head { x: 12px; y: plate.h * 0.12; width: plate.w - 24px; height: plate.h * 0.22; text: "Ruta de diagnóstico"; color: root.paper; font-size: min(plate.w * 0.078,plate.h * 0.22); }
             Rectangle { x: plate.w * 0.04; y: plate.h * 0.37; width: plate.w * 0.92; height: plate.h * 0.35; background: transparent;
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 10 50 C 18 50 19 14 30 14 S 42 50 50 50 M 10 50 C 18 50 19 86 30 86 S 42 50 50 50 M 50 50 C 56 50 58 14 64 14 M 50 50 C 56 50 58 86 64 86"; fill: transparent; stroke: root.mint; stroke-width: 1.4px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 64 14 L 66 14 L 68 24 L 70 4 L 72 14 L 76 14 M 64 86 L 66 86 L 68 96 L 70 76 L 72 86 L 76 86"; fill: transparent; stroke: root.amber; stroke-width: 1.5px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 76 14 C 83 14 84 50 90 50 M 76 86 C 83 86 84 50 90 50"; fill: transparent; stroke: root.steel; stroke-width: 1px; }
-                for i in 4 : Rectangle { x: parent.width * ([10,30,70,90][i] / 100) - 7px; y: parent.height * 0.5 - 7px; width: 14px; height: 14px;
+                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 12.5 50 C 18 50 22 14 25 14 S 32 50 37.5 50 C 43 50 47 14 50 14 S 57 50 62.5 50 M 12.5 50 C 18 50 22 86 25 86 S 32 50 37.5 50 C 43 50 47 86 50 86 S 57 50 62.5 50 M 12.5 50 L 62.5 50"; fill: transparent; stroke: root.mint; stroke-width: 1.4px; }
+                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 65 30 L 68 30 L 70 45 L 73 15 L 75 30 L 78 30 M 65 70 L 68 70 L 70 85 L 73 55 L 75 70 L 78 70"; fill: transparent; stroke: root.amber; stroke-width: 1.5px; }
+                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 78 30 C 82 30 83 50 87.5 50 M 78 70 C 82 70 83 50 87.5 50"; fill: transparent; stroke: root.steel; stroke-width: 1px; }
+                for i in 4 : Rectangle { x: parent.width * (0.125 + i * 0.25) - 7px; y: parent.height * 0.5 - 7px; width: 14px; height: 14px;
                     border-radius: 7px; background: i == 2 ? root.amber : i == 3 ? root.steel : root.acid; border-width: 2px; border-color: root.graphite; }
             }
             for name[i] in ["Equipo","Gateway","DNS","Destino"] : Rectangle {
-                x: plate.w * 0.025 + i * plate.w * 0.245; y: plate.h * 0.73; width: plate.w * 0.22; height: plate.h * 0.13;
-                Data { width: parent.width; height: parent.height * 0.53; text: name; font-size: root.normal; color: root.paper; }
-                Data { y: parent.height * 0.55; width: parent.width; height: parent.height * 0.45; text: ["OK","1 ms","FALLO","No probado"][i]; font-size: root.small; color: i == 2 ? root.amber : root.mint; }
+                x: plate.w * 0.04 + i * plate.w * 0.23; y: plate.h * 0.73; width: plate.w * 0.23; height: plate.h * 0.13;
+                Data { width: parent.width; height: parent.height * 0.53; text: name; horizontal-alignment: center; font-size: root.normal; color: root.paper; }
+                Data { y: parent.height * 0.55; width: parent.width; height: parent.height * 0.45; text: ["OK","1 ms","FALLO","No probado"][i]; horizontal-alignment: center; font-size: root.small; color: i == 2 ? root.amber : root.mint; }
             }
             Data { x: 12px; y: plate.h * 0.90; width: plate.w - 24px; height: plate.h * 0.10; text: "Siguiente: comprobar DNS antes de inferir caída del destino."; color: root.paper; font-size: root.small; }
         }
