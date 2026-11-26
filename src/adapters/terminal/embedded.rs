@@ -190,6 +190,8 @@ impl EmbeddedSession {
                                         if normalized == "reload"
                                             || normalized == "config reload"
                                             || bg_change
+                                            || normalized.starts_with("config palette ")
+                                            || normalized.starts_with("sst-config palette ")
                                         {
                                             worker_config_reload_requested.store(true, Ordering::SeqCst);
                                         }
