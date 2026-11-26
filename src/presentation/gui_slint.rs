@@ -1168,7 +1168,7 @@ impl TerminalModel {
             match packet {
                 DisplayPacket::Report(bytes)=>{
                     // Do not steal a view the user is already inspecting.
-                    if self.parser.screen().scrollback()==0 && !self.session.raw_mode(){
+                    if self.parser.screen().scrollback()==0 {
                         self.reading_anchor=Some(ReadingAnchor::begin(&mut self.parser));
                     }
                     let cols=self.parser.screen().size().1;
@@ -1486,7 +1486,7 @@ impl TerminalModel {
                         fill_rect(pixels, width, height, x, y, w, h, bg);
                     }
 
-                    if selection.is_none() && !cell.inverse() { fg = font_palette_color(fg,palette); }
+                    if !selection.is_some_and(|(a,b)| index >= a.min(b) && index < a.max(b)) && !cell.inverse() { fg = font_palette_color(fg,palette); }
                     let content = cell.contents();
                     if content.is_empty() || card_title || (feature_row && feature_color(row,col).is_some()) {
                         continue;
@@ -1626,10 +1626,13 @@ fn font_palette_color(color: Rgb, palette: &str) -> Rgb {
     let rgb = match (palette,role) {
         ("sunset", Role::Title | Role::Command) => (254,128,5),
         ("sunset", Role::Value | Role::Detail) => (251,186,118),
-        ("sunset", Role::Label) => (251,186,118),
+        // Contrast-safe tint of Stone Blue; never use Downriver as small text.
+        ("sunset", Role::Label) => (157,167,181),
         ("sunset", Role::Warning) => (249,76,31),
         ("sunset", Role::Failure) => (206,47,37),
-        ("golden", Role::Title | Role::Command | Role::Value | Role::Detail | Role::Label) => (227,212,115),
+        ("golden", Role::Title | Role::Command | Role::Value | Role::Detail) => (227,212,115),
+        // Contrast-safe tint of Pine Teal for the secondary typographic role.
+        ("golden", Role::Label) => (139,180,172),
         ("golden", Role::Failure) => (215,46,46),
         ("golden", Role::Warning) => (227,212,115),
         _ => return color,
@@ -2693,5 +2696,24 @@ mod reading_viewport_tests{
         anchor.observe(b"ok\r\n",40);parser.process(b"ok\r\n$ ");
         anchor.finish(&mut parser);
         assert_eq!(parser.screen().scrollback(),0);
+    }
+}
+
+#[cfg(test)]
+mod font_palette_regressions {
+    use super::*;
+    use crate::presentation::formatter::Role;
+    fn role(r:Role)->Rgb { let (r,g,b)=r.style().rgb; Rgb(r,g,b) }
+    #[test]
+    fn palettes_change_foregrounds_without_reinterpreting_brand_colors(){
+        let base=role(Role::Value);
+        let s=font_palette_color(base,"sunset");
+        let g=font_palette_color(base,"golden");
+        assert_eq!((s.0,s.1,s.2),(251,186,118));
+        assert_eq!((g.0,g.1,g.2),(227,212,115));
+        let brand=font_palette_color(Rgb(35,52,106),"sunset");
+        assert_eq!((brand.0,brand.1,brand.2),(35,52,106));
+        let original=font_palette_color(base,"gruvbox");
+        assert_eq!((original.0,original.1,original.2),(base.0,base.1,base.2));
     }
 }
