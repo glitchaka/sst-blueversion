@@ -40,6 +40,7 @@ fn merge_guide_indexes(local: &str, remote: &str) -> Option<String> {
         if let Some(extra) = remote.get(section).and_then(|v| v.as_array()) {
             for entry in extra {
                 let Some(name) = entry.get(key).and_then(|v| v.as_str()) else { continue; };
+                if section == "entries" && matches!(name, "diag" | "tools office verify") { continue; }
                 if !entries.iter().any(|old| old.get(key).and_then(|v| v.as_str()) == Some(name)) {
                     entries.push(entry.clone());
                 }
@@ -297,11 +298,10 @@ fn read_local_or_bundled(filename: &str, max_bytes: usize) -> Option<String> {
         return None;
     }
     let file = AppPaths::detect().root_dir().join("guide").join(filename);
-    read_text(&file, max_bytes).or_else(|| {
-        crate::adapters::persistence::bundled_guide_asset(filename)
-            .filter(|bytes| !bytes.is_empty() && bytes.len() <= max_bytes)
-            .and_then(|bytes| String::from_utf8(bytes.to_vec()).ok())
-    })
+    crate::adapters::persistence::bundled_guide_asset(filename)
+        .filter(|bytes| !bytes.is_empty() && bytes.len() <= max_bytes)
+        .and_then(|bytes| String::from_utf8(bytes.to_vec()).ok())
+        .or_else(|| read_text(&file, max_bytes))
 }
 
 fn valid_component(value: &str) -> bool {
