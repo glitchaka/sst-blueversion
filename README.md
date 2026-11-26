@@ -1998,7 +1998,7 @@ Recuperación de aplicaciones: `triage PID --plan` y `triage PID --close FILETIM
 
 ### Muestrario de identidad gráfica
 
-`demo graficos` permite recorrer ocho ejemplos de composición editorial con datos ficticios. Las flechas y las teclas 1–8 cambian de muestra; Esc regresa a la consola. No cambia el formatter ni el logotipo de la interfaz normal.
+`demo graficos` abre un laboratorio de 20 láminas nativas sin imágenes, con datos y comportamientos ficticios. Incluye composición editorial, inventarios, estados, magnitudes, cursor, foco por teclado, transferencia, filas que cambian de estado por consumo, continuidad de red, confirmación, expansión y sugerencias. Las flechas izquierda/derecha recorren las láminas; PgUp/PgDn saltan cinco; Inicio/Fin acceden a los extremos; 1–9 son accesos directos. Tab y arriba/abajo cambian el foco, Enter actúa en la simulación, Espacio pausa, R reinicia y Esc sale. Consulta `guide demo graficos`. No cambia el formatter, la identidad normal, ni los ajustes de apariencia. No ejecuta operaciones reales.
 
 ## Autocompletado por niveles (Tab)
 
