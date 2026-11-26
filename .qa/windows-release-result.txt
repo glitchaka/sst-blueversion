@@ -1,40 +1,31 @@
 SST Windows release CI report
-Source commit: eb02aef2bc59c353e97468e67b200f4dafd70c5a
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45901394291
-Recorded UTC: 2026-11-26 21:57:37Z
+Source commit: a7ba518aa21c596506fdeca76bf81a4a53eb4d4e
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45902613912
+Recorded UTC: 2026-11-26 22:08:56Z
 Compile: failure
 Rust tests: skipped
 Software GUI startup: skipped
 Packaging: skipped
 Compiler log tail:
     Updating crates.io index
-   Compiling sst v0.1.15-blue.1 (D:\a\sst-blueversion\sst-blueversion)
-error: Element 'Rectangle' does not have a property 'height-6px'. Use space before the '-' if you meant a subtraction
-   --> src\presentation\gui_slint.rs:188:72
-    |
-188 |         Rectangle { x: 1px; y: 3px; width: 3px; height: max(1px,parent.height-6px); background: OutputTheme.rail; }
-    |                                                                        ^^^^^^
-
-error: Invalid argument type
-   --> src\presentation\gui_slint.rs:188:57
-    |
-188 |         Rectangle { x: 1px; y: 3px; width: 3px; height: max(1px,parent.height-6px); background: OutputTheme.rail; }
-    |                                                         ^^^
-
-error: value assigned to `fg` is never read
-    --> src\presentation\gui_slint.rs:1497:29
-     |
-1497 | ...                   fg = BG;
-     |                       ^^^^^^^ this value is reassigned later and never used
-1498 | ...                   bg = kit.acid;
-1499 | ...                   fg = readable_ink(bg);
-     |                       --------------------- `fg` is overwritten here before the previous value is read
-     |
+   Compiling sst v0.1.14-blue.8 (D:\a\sst-blueversion\sst-blueversion)
+error: constant `SECTION_RAIL` is never used
+  --> src\presentation\formatter.rs:33:11
+   |
+33 | pub const SECTION_RAIL: (u8, u8, u8) = COMMAND_RGB;
+   |           ^^^^^^^^^^^^
+   |
 note: the lint level is defined here
-    --> src\main.rs:2:9
-     |
-   2 | #![deny(warnings)]
-     |         ^^^^^^^^
-     = note: `#[deny(unused_assignments)]` implied by `#[deny(warnings)]`
+  --> src\main.rs:2:9
+   |
+ 2 | #![deny(warnings)]
+   |         ^^^^^^^^
+   = note: `#[deny(dead_code)]` implied by `#[deny(warnings)]`
 
-error: could not compile `sst` (bin "sst") due to 3 previous errors
+error: constant `SECTION_RULE` is never used
+  --> src\presentation\formatter.rs:34:11
+   |
+34 | pub const SECTION_RULE: (u8, u8, u8) = (117,86,45);
+   |           ^^^^^^^^^^^^
+
+error: could not compile `sst` (bin "sst") due to 2 previous errors
