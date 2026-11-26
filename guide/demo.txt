@@ -1,0 +1,16 @@
+SST — Muestrario de identidad editorial
+
+Uso: demo graficos
+
+Flechas: recorrer los ocho ejemplos. 1–8: elegir. Esc: volver a la consola.
+
+01 Portada: titular, código de sección y contexto.
+02 Cabecera: jerarquía de sección y remate industrial.
+03 Lectura: cifra, unidad y contexto.
+04 Inventario: reglas y filas de lectura.
+05 Selección: foco localizado en una fila.
+06 Advertencia: gravedad, evidencia y acción.
+07 Fallo: incidencia, causa observada y verificación.
+08 Escala: lectura numérica y divisiones graduadas.
+
+Los datos son ficticios. El muestrario es experimental y no modifica la identidad normal de SST ni el formatter hasta su aprobación visual.
