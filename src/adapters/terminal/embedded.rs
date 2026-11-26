@@ -24,6 +24,15 @@ enum WorkerRequest {
     },
 }
 
+// Inline completion state is local to the editable input, never to the command worker.
+struct CompletionState {
+    items: Vec<String>,
+    selected: usize,
+    begin: usize,
+    end: usize,
+    expanded: bool,
+}
+
 pub struct EmbeddedSession {
     commands: mpsc::Sender<WorkerRequest>, keys: mpsc::Sender<Event>, display: DisplaySender,
     pub output: mpsc::Receiver<DisplayPacket>,
@@ -31,6 +40,7 @@ pub struct EmbeddedSession {
     interrupt: Arc<AtomicBool>, force_abort: Arc<AtomicBool>, exited: Arc<AtomicBool>,
     config_reload_requested: Arc<AtomicBool>,
     line: Vec<char>, cursor: usize, selection_anchor: Option<usize>, history: Vec<String>, history_index: usize,
+    completion: Option<CompletionState>,
     pending: String, bindings: Arc<Mutex<HashMap<String, String>>>,
     secondary_prompt: Arc<Mutex<String>>,
     timeout: Arc<Mutex<Option<Duration>>>,
@@ -250,10 +260,11 @@ impl EmbeddedSession {
             .map(str::to_owned).collect::<Vec<_>>();
         let history_index = history.len();
         Ok(Self { commands, keys, display, output, size, panels, raw, busy, interrupt, force_abort, exited,
-            line: Vec::new(), cursor: 0, selection_anchor: None, history, history_index, pending: String::new(), bindings,
+            line: Vec::new(), cursor: 0, selection_anchor: None, history, history_index, completion: None, pending: String::new(), bindings,
             secondary_prompt, timeout, last_activity, config_reload_requested })
     }
-    pub fn resize(&self, cols: u16, rows: u16) {
+    pub fn resize(&mut self, cols: u16, rows: u16) {
+        if *self.size.lock().unwrap_or_else(|e|e.into_inner()) != (cols,rows) {self.finish_completion(false);}
         *self.size.lock().unwrap_or_else(|e| e.into_inner()) = (cols, rows);
         if self.raw.load(Ordering::SeqCst) { let _ = self.keys.send(Event::Resize(cols, rows)); }
     }
@@ -262,6 +273,32 @@ impl EmbeddedSession {
         self.config_reload_requested.swap(false, Ordering::SeqCst)
     }
     pub fn raw_mode(&self) -> bool { self.raw.load(Ordering::SeqCst) }
+    pub fn completion_view(&self) -> Option<(&[String],usize,bool)> {
+        self.completion.as_ref().map(|s|(s.items.as_slice(),s.selected,s.expanded))
+    }
+    pub fn completion_action(&mut self, action: i32) {
+        if self.completion.is_none() {return;}
+        match action {
+            -1=>self.finish_completion(false),
+            -2=>self.finish_completion(true),
+            -3=>{if let Some(s)=self.completion.as_mut(){s.expanded=!s.expanded;}},
+            i if i>=0=>{if let Some(s)=self.completion.as_mut(){if (i as usize)<s.items.len(){s.selected=i as usize;}}},
+            _=>{},
+        }
+    }
+    fn finish_completion(&mut self, accept: bool) {
+        let Some(s)=self.completion.take() else{return;};
+        self.emit("\\r\\x1b[5A\\x1b[J");
+        if accept {
+            let mut value=s.items[s.selected].clone();
+            if !value.ends_with(['/', '\\\\', ' ']) && s.end==self.line.len(){value.push(' ');}
+            let chars=value.chars().collect::<Vec<_>>();
+            self.line.splice(s.begin..s.end,chars.iter().copied());
+            self.cursor=s.begin+chars.len();
+            self.clear_selection();
+        }
+        self.redraw();
+    }
     pub fn editable(&self) -> bool { !self.raw_mode() && !self.busy.load(Ordering::SeqCst) && !self.exited() }
 
     /// Semantic frames from the current alternate-screen TUI, if any.
@@ -304,6 +341,7 @@ impl EmbeddedSession {
     }
 
     pub fn paste(&mut self, text: &str) -> Result<()> {
+        self.finish_completion(false);
         if self.raw_mode() {
             self.keys.send(Event::Paste(text.replace("\r\n", "\n")))?;
             Ok(())
@@ -469,6 +507,22 @@ impl EmbeddedSession {
             if self.raw.load(Ordering::SeqCst) {
                 self.keys.send(Event::Key(event))?;
                 return Ok(());
+            }
+            if self.completion.is_some() {
+                match event.code {
+                    KeyCode::Tab | KeyCode::BackTab | KeyCode::Down | KeyCode::Up => {
+                        if let Some(s)=self.completion.as_mut() {
+                            let backward=matches!(event.code,KeyCode::BackTab|KeyCode::Up)||event.modifiers.contains(KeyModifiers::SHIFT);
+                            let count=s.items.len();
+                            s.selected=if backward {(s.selected+count-1)%count}else{(s.selected+1)%count};
+                        }
+                        return Ok(());
+                    }
+                    KeyCode::Enter => { self.finish_completion(true); return Ok(()); }
+                    KeyCode::Esc => { self.finish_completion(false); return Ok(()); }
+                    KeyCode::F(2) => { self.completion_action(-3); return Ok(()); }
+                    _=>self.finish_completion(false),
+                }
             }
             if event.modifiers.contains(KeyModifiers::CONTROL) && event.code == KeyCode::Char('c') {
                 self.interrupt.store(true, Ordering::SeqCst);
@@ -791,8 +845,16 @@ impl EmbeddedSession {
             }
             if common.len()>typed.len() && common.starts_with(typed) { common }
             else {
-                let cols=self.size.lock().unwrap_or_else(|e|e.into_inner()).0;
-                self.emit(&crate::presentation::formatter::completion_catalogue(&matches,cols));
+                let (cols,rows)=*self.size.lock().unwrap_or_else(|e|e.into_inner());
+                // Reserve five real rows, with a plain VT fallback for a tiny viewport.
+                // A wrapped edit line cannot safely be moved by relative cursor addressing.
+                if rows>=8 && cols>=40 && self.line.len()+3<usize::from(cols) {
+                    let begin=prefix[..start].chars().count();
+                    self.completion=Some(CompletionState{items:matches,selected:0,begin,end:self.cursor,expanded:true});
+                    self.emit("\r\x1b[2K\r\n\r\n\r\n\r\n\r\n");
+                } else {
+                    self.emit(&crate::presentation::formatter::completion_catalogue(&matches,cols));
+                }
                 return;
             }
         };

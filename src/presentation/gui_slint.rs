@@ -318,6 +318,17 @@ slint::slint! {
         in property <image> keygen-image;
         in property <bool> keygen-visible;
         in property <[NativeGraphic]> report-graphics;
+        in property <bool> completion-visible;
+        in property <bool> completion-expanded;
+        in property <[string]> completion-items;
+        in property <int> completion-first;
+        in property <int> completion-selected;
+        in property <int> completion-count;
+        in property <float> completion-x;
+        in property <float> completion-y;
+        in property <float> completion-width;
+        in property <float> completion-row-height;
+        callback completion-action(int);
 
         in property <int> monitor-panel-count: 0;
         in property <float> monitor-grid-left: 0.0;
@@ -555,6 +566,52 @@ slint::slint! {
                     root.pointer-scroll(event.delta-y / 1px);
                     accept
                 }
+            }
+        }
+
+        // This control occupies five rows reserved by the editable session, never output rows.
+        if root.completion-visible && !root.keygen-visible && root.demo-page == 0 : Rectangle {
+            x: root.completion-x * 1px; y: root.completion-y * 1px;
+            width: root.completion-width * 1px; height: root.completion-row-height * 5px;
+            background: transparent; clip: true;
+            property <length> line-height: root.completion-row-height * 1px;
+            CutFrame { width: parent.width; height: parent.height; ink: OutputTheme.track; outline: OutputTheme.rule; thickness: 1px; }
+            Text {
+                x: 8px; width: parent.width - 100px; height: parent.line-height;
+                text: "SUGERENCIAS / " + (root.completion-selected + 1) + " de " + root.completion-count;
+                color: OutputTheme.text; font-family: "Cascadia Mono"; font-size: min(13px,parent.line-height * 0.72); font-weight: 700;
+                vertical-alignment: center; overflow: elide;
+            }
+            Rectangle {
+                x: parent.width - 95px; width: 95px; height: parent.line-height; background: transparent;
+                Text { text: root.completion-expanded ? "− DETALLE" : "+ DETALLE"; color: OutputTheme.accent; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                TouchArea { clicked => { root.completion-action(-3); terminal-focus.focus(); } }
+            }
+            for item[i] in root.completion-items : Rectangle {
+                x: 4px; y: (i+1) * parent.line-height; width: parent.width - 8px; height: parent.line-height;
+                background: transparent;
+                AngularMark { visible: root.completion-selected == root.completion-first + i; width: parent.width; height: parent.height; ink: OutputTheme.rail; }
+                Registration { visible: root.completion-selected == root.completion-first + i; width: parent.width; height: parent.height; outline: OutputTheme.accent; thickness: 1px; }
+                Text {
+                    x: 8px; width: parent.width - 16px; height: parent.height;
+                    text: item; color: OutputTheme.text; font-family: "Cascadia Mono";
+                    font-size: min(13px,parent.height * 0.72); vertical-alignment: center; overflow: elide;
+                }
+                TouchArea { clicked => { root.completion-action(root.completion-first + i); terminal-focus.focus(); } }
+            }
+            Rectangle {
+                x: 5px; y: parent.line-height * 4; width: min(150px,parent.width * 0.48); height: parent.line-height - 1px;
+                background: transparent;
+                CutFrame { width: parent.width; height: parent.height; ink: OutputTheme.rail; outline: OutputTheme.accent; thickness: 1px; }
+                Text { text: "ENTER / ACEPTAR"; color: OutputTheme.text; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                TouchArea { clicked => { root.completion-action(-2); terminal-focus.focus(); } }
+            }
+            Rectangle {
+                x: min(162px,parent.width * 0.50); y: parent.line-height * 4; width: min(130px,parent.width * 0.45); height: parent.line-height - 1px;
+                background: transparent;
+                CutFrame { width: parent.width; height: parent.height; outline: OutputTheme.rule; thickness: 1px; }
+                Text { text: "ESC / CANCELAR"; color: OutputTheme.text; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                TouchArea { clicked => { root.completion-action(-1); terminal-focus.focus(); } }
             }
         }
 
@@ -2171,6 +2228,17 @@ fn handle_key(
         return;
     }
 
+    if !model.session.raw_mode() && model.session.completion_view().is_some() {
+        let special=if key_is(text,Key::Tab) {Some(if shift {CtKeyCode::BackTab}else{CtKeyCode::Tab})}
+            else if key_is(text,Key::Backtab){Some(CtKeyCode::BackTab)}
+            else if key_is(text,Key::UpArrow){Some(CtKeyCode::Up)}
+            else if key_is(text,Key::DownArrow){Some(CtKeyCode::Down)}
+            else if key_is(text,Key::Return){Some(CtKeyCode::Enter)}
+            else if key_is(text,Key::Escape){Some(CtKeyCode::Esc)}
+            else {None};
+        if let Some(code)=special {model.key_event(code,CtKeyModifiers::NONE);return;}
+        model.session.completion_action(-1);
+    }
     if ctrl && text.eq_ignore_ascii_case("q") {
         model.session.force_abort();
         model.dirty = true;
@@ -2619,6 +2687,13 @@ pub fn run() -> Result<()> {
         });
     }
     {
+        let model=model.clone();
+        ui.on_completion_action(move |action| {
+            let mut m=model.borrow_mut();
+            m.session.completion_action(action); m.dirty=true;
+        });
+    }
+    {
         let model = model.clone();
         ui.on_pointer_down(move |x, y| {
             model.borrow_mut().pointer_down(x, y);
@@ -2885,6 +2960,26 @@ pub fn run() -> Result<()> {
                         mix_rgb(p.accent_detail,p.acid,u16::from(8-(phase%16).abs_diff(8))*100/8)
                     };
                     ui.set_caret_tone(slint::Color::from_rgb_u8(tone.0,tone.1,tone.2));
+                }
+                let completion=model.session.completion_view();
+                let (cursor_row,_)=model.parser.screen().cursor_position();
+                let show_completion=completion.is_some() && model.parser.screen().scrollback()==0 && cursor_row>=5;
+                ui.set_completion_visible(show_completion);
+                if let Some((items,selected,expanded))=completion.filter(|_|show_completion) {
+                    let count=if expanded {3}else{1};
+                    let first=if expanded {selected.saturating_sub(1).min(items.len().saturating_sub(count))}else{selected};
+                    let shown=items.iter().skip(first).take(count).map(|s|slint::SharedString::from(s.chars().map(|c|if c.is_control(){'�'}else{c}).collect::<String>())).collect::<Vec<_>>();
+                    let (left,top,w,h)=model.geometry();
+                    let factor=model.scale.max(0.5);
+                    ui.set_completion_x(left/factor);
+                    ui.set_completion_y((top+f32::from(cursor_row-5)*h)/factor);
+                    ui.set_completion_width((f32::from(model.parser.screen().size().1)*w/factor).min(560.0));
+                    ui.set_completion_row_height(h/factor);
+                    ui.set_completion_first(first as i32);
+                    ui.set_completion_count(items.len() as i32);
+                    ui.set_completion_selected(selected as i32);
+                    ui.set_completion_expanded(expanded);
+                    ui.set_completion_items(ModelRc::new(VecModel::from(shown)));
                 }
                 let panels = model.session.panels_snapshot();
                 // Dedicated live monitors retain their explicit section frames.
