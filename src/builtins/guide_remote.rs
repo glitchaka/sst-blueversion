@@ -22,9 +22,31 @@ static TOPIC_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLoc
 /// El catálogo completo procede del repositorio original, incluido Arch.
 /// Si no hay red, se reutiliza la última copia válida y, finalmente, el catálogo SST integrado.
 pub(super) fn load_index() -> Option<String> {
-    fetch_upstream(INDEX_FILE, MAX_INDEX_BYTES, true)
-        .or_else(|| read_upstream_cache(INDEX_FILE, MAX_INDEX_BYTES))
-        .or_else(|| read_local_or_bundled(INDEX_FILE, MAX_INDEX_BYTES))
+    let local = read_local_or_bundled(INDEX_FILE, MAX_INDEX_BYTES);
+    let remote = fetch_upstream(INDEX_FILE, MAX_INDEX_BYTES, true)
+        .or_else(|| read_upstream_cache(INDEX_FILE, MAX_INDEX_BYTES));
+    match (local, remote) {
+        (Some(local), Some(remote)) => Some(merge_guide_indexes(&local, &remote).unwrap_or(local)),
+        (local, remote) => local.or(remote),
+    }
+}
+
+// SST owns its command documentation; upstream contributes additional topics.
+fn merge_guide_indexes(local: &str, remote: &str) -> Option<String> {
+    let mut local: serde_json::Value = serde_json::from_str(local).ok()?;
+    let remote: serde_json::Value = serde_json::from_str(remote).ok()?;
+    for (section, key) in [("areas", "id"), ("entries", "name")] {
+        let entries = local.get_mut(section)?.as_array_mut()?;
+        if let Some(extra) = remote.get(section).and_then(|v| v.as_array()) {
+            for entry in extra {
+                let Some(name) = entry.get(key).and_then(|v| v.as_str()) else { continue; };
+                if !entries.iter().any(|old| old.get(key).and_then(|v| v.as_str()) == Some(name)) {
+                    entries.push(entry.clone());
+                }
+            }
+        }
+    }
+    serde_json::to_string(&local).ok()
 }
 
 pub(super) fn load_manual(
@@ -88,9 +110,9 @@ fn fetch_cached(file: &str, extension: &str) -> Option<Arc<str>> {
 fn fetch_repo_file(filename: &str, max_bytes: usize) -> Option<String> {
     // Los manuales se obtienen bajo demanda del origen y se conservan para uso sin red.
     // No descargar otra vez si ya se recuperó el mismo fichero.
-    read_upstream_cache(filename, max_bytes)
+    read_local_or_bundled(filename, max_bytes)
+        .or_else(|| read_upstream_cache(filename, max_bytes))
         .or_else(|| fetch_upstream(filename, max_bytes, false))
-        .or_else(|| read_local_or_bundled(filename, max_bytes))
 }
 
 /// Official Arch repository metadata for choosing functionality to adapt.
