@@ -1,22 +1,5 @@
-// Native editorial specimens. No Image, SVG assets, screenshots or terminal skins.
-// The graphics carry information: alignment, magnitude, state, sequence, focus.
-component Head inherits Text {
-    font-family: "Segoe UI Variable Display";
-    font-weight: 800;
-    vertical-alignment: center;
-    overflow: elide;
-}
-component Label inherits Text {
-    font-family: "Segoe UI Variable";
-    font-weight: 600;
-    vertical-alignment: center;
-    overflow: elide;
-}
-component Data inherits Text {
-    font-family: "Cascadia Mono";
-    vertical-alignment: center;
-    overflow: elide;
-}
+// SST native component catalogue. Each specimen is an isolated graphic at control scale.
+// No pictures, report covers, or changes to normal terminal rendering.
 export component EditorialDemo inherits Rectangle {
     in property <int> page;
     in property <int> count;
@@ -28,363 +11,549 @@ export component EditorialDemo inherits Rectangle {
     in property <bool> blink;
     in property <bool> paused;
     in property <bool> action;
-
-    property <color> paper: rgb(235, 231, 219);
-    property <color> ink: rgb(24, 25, 23);
-    property <color> muted: rgb(102, 107, 100);
-    property <color> rule: rgb(165, 165, 154);
-    property <color> acid: rgb(217, 232, 45);
-    property <color> steel: rgb(73, 86, 82);
-    property <color> white-ink: rgb(233, 229, 215);
-    property <color> graphite: rgb(25, 30, 29);
+    property <color> graphite: rgb(30, 32, 30);
+    property <color> ink: rgb(25, 26, 23);
+    property <color> cream: rgb(235, 229, 211);
+    property <color> muted: rgb(172, 177, 165);
+    property <color> line: rgb(99, 108, 100);
+    property <color> rail: rgb(57, 65, 59);
     property <color> oxide: rgb(176, 53, 38);
-    property <color> alert: rgb(168, 46, 36);
+    property <color> acid: rgb(217, 232, 45);
     property <color> amber: rgb(239, 181, 103);
     property <color> mint: rgb(167, 189, 166);
     property <color> moss: rgb(38, 91, 76);
-    property <length> pad: min(32px, max(10px, self.width * 0.035));
-    property <length> small: min(14px, max(10px,self.height * 0.033));
-    property <length> normal: min(19px, max(12px,self.height * 0.045));
-    background: root.paper;
-    clip: true;
-
-    Rectangle { x: 0; y: 0; width: parent.width; height: 30px; background: root.paper;
-        Rectangle { x: root.pad; y: 29px; width: parent.width - 2 * root.pad; height: 1px; background: root.ink; }
-        Data { x: root.pad; width: parent.width * 0.69; height: parent.height; text: "SST   /   SISTEMAS     —     " + root.title; color: root.ink; font-size: root.small; }
-        Data { x: parent.width * 0.70; width: parent.width * 0.30 - root.pad; height: parent.height; horizontal-alignment: right;
-            text: "PRUEBA   " + root.page + " / " + root.count; color: root.muted; font-size: root.small; }
-    }
-    plate := Rectangle {
-        x: root.pad; y: 36px; width: root.width - 2 * root.pad; height: max(1px,root.height - 87px);
-        background: root.paper; clip: true;
-        property <length> w: self.width;
-        property <length> h: self.height;
-
-        // 01 — a typographic cover with asymmetric columns; the datum is the image.
+    property <length> gap: 18px;
+    property <length> pad: 16px;
+    property <bool> wide: self.width >= 1000px;
+    background: root.graphite; clip: true;
+    Text { x: root.pad; y: 0px; width: parent.width * 0.78 - root.pad; height: 30px; text:  "ELEMENTOS GRÁFICOS / " + root.title; color: root.cream; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+    Text { x: parent.width * 0.80; y: 0px; width: parent.width * 0.20 - root.pad; height: 30px; text: root.page + " / " + root.count; color: root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 500; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+    Rectangle { x: root.pad; y: 30px; width: parent.width - 2 * root.pad; height: 1px; background: root.line; }
+    Rectangle {
+        x: root.pad; y: 39px; width: parent.width - 2 * root.pad; height: max(1px, parent.height - 73px); background: transparent;
         if root.page == 1 : Rectangle {
-            // Editorial architecture: the cutout is the section index, not wallpaper.
-            Path { x: plate.w * 0.67; y: plate.h * 0.035; width: plate.w * 0.33; height: plate.h * 0.94; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 77 70 L 77 100 L 0 100 L 0 79 L 58 79 L 58 23 L 0 23 Z"; fill: root.ink; stroke: transparent; stroke-width: 0px; }
-            Path { x: plate.w * 0.70; y: plate.h * 0.07; width: plate.w * 0.27; height: plate.h * 0.86; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 70 70 L 70 100 M 6 8 L 92 8 L 92 63 L 62 63 L 62 92"; fill: transparent; stroke: root.rule; stroke-width: 1px; }
-            Data { x: 0; y: plate.h * 0.02; width: plate.w * 0.65; height: plate.h * 0.10; text: "SST / SISTEMAS LOCALES     VOL. 01"; color: root.muted; font-size: root.small; }
-            Head { x: 0; y: plate.h * 0.12; width: plate.w * 0.68; height: plate.h * 0.34; text: "ESTADO"; color: root.ink; font-size: min(plate.w * 0.143,plate.h * 0.34); }
-            Head { x: 0; y: plate.h * 0.44; width: plate.w * 0.67; height: plate.h * 0.24; text: "DEL EQUIPO"; color: root.ink; font-size: min(plate.w * 0.077,plate.h * 0.24); }
-            Path { x: 0; y: plate.h * 0.71; width: plate.w * 0.64; height: plate.h * 0.025; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 88 0 L 100 100 L 0 100 Z"; fill: root.oxide; stroke: transparent; stroke-width: 0px; }
-            Data { x: 0; y: plate.h * 0.76; width: plate.w * 0.66; height: plate.h * 0.11; text: "Windows 11 / 16 GiB / x86-64"; color: root.ink; font-size: root.normal; }
-            Data { x: 0; y: plate.h * 0.88; width: plate.w * 0.66; height: plate.h * 0.10; text: "INVENTARIO LOCAL · MUESTRA DE COMPOSICIÓN"; color: root.muted; font-size: root.small; }
-            Head { x: plate.w * 0.685; y: plate.h * 0.28; width: plate.w * 0.175; height: plate.h * 0.30; text: "08"; color: root.oxide; font-size: min(plate.w * 0.115,plate.h * 0.31); }
-            Data { x: plate.w * 0.685; y: plate.h * 0.59; width: plate.w * 0.18; height: plate.h * 0.12; text: "RECURSOS"; color: root.ink; font-size: root.small; }
-            Data { x: plate.w * 0.72; y: plate.h * 0.82; width: plate.w * 0.19; height: plate.h * 0.11; text: "SYS / 01"; color: root.paper; font-size: root.small; }
+            width: parent.width; height: parent.height; background: transparent;
+            // specimen 01 — Cabecera asimétrica
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "01 / Cabecera asimétrica"; color: root.selected == 0 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 0 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 8px; width: parent.width; height: 32px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 72 0 L 79 21 L 100 21 L 100 100 L 0 100 Z"; fill: root.cream; stroke: transparent; stroke-width: 0px; }Text { x: 10px; y: 8px; width: parent.width - 65px; height: 32px; text: "SECCIÓN / 01"; color: root.ink; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 800; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Path { x: parent.width - 44px; y: 10px; width: 34px; height: 14px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 25 0 L 43 0 L 18 100 Z M 28 100 L 53 0 L 71 0 L 46 100 Z M 56 100 L 81 0 L 99 0 L 74 100 Z"; fill: root.oxide; stroke: transparent; stroke-width: 0px; }
+                }
+            }
+            // specimen 02 — Divisor escalonado
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "02 / Divisor escalonado"; color: root.selected == 1 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 1 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 10px; width: parent.width; height: 23px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 65 L 52 65 L 59 25 L 100 25"; fill: transparent; stroke: root.cream; stroke-width: 2px; }Path { x: 0px; y: 10px; width: parent.width; height: 23px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 85 L 100 85"; fill: transparent; stroke: root.line; stroke-width: 1px; }Path { x: parent.width - 44px; y: 10px; width: 34px; height: 14px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 25 0 L 43 0 L 18 100 Z M 28 100 L 53 0 L 71 0 L 46 100 Z M 56 100 L 81 0 L 99 0 L 74 100 Z"; fill: root.oxide; stroke: transparent; stroke-width: 0px; }
+                }
+            }
+            // specimen 03 — Marco recortado
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "03 / Marco recortado"; color: root.selected == 2 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 2 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 3px; width: parent.width; height: min(64px, parent.height - 5px); viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 18 L 8 0 L 88 0 L 100 22 L 100 82 L 92 100 L 12 100 L 0 78 Z"; fill: transparent; stroke: root.cream; stroke-width: 1.5px; }Path { x: 0px; y: 3px; width: 26px; height: 8px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 0 0 L 28 0 L 22 100 L 0 100 Z"; fill: root.oxide; stroke: transparent; stroke-width: 0px; }
+                }
+            }
+            // specimen 04 — Pórtico escalonado
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "04 / Pórtico escalonado"; color: root.selected == 3 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 3 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 1px; width: 70px; height: min(58px, parent.height); viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 0 30 L 12 30 L 12 14 L 25 14 L 25 0 L 75 0 L 75 14 L 88 14 L 88 30 L 100 30 L 100 100 L 78 100 L 78 48 L 65 48 L 65 30 L 35 30 L 35 48 L 22 48 L 22 100 Z"; fill: root.cream; stroke: transparent; stroke-width: 0px; }Text { x: 80px; y: 5px; width: parent.width - 80px; height: 32px; text: "Vacío estructural"; color: root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 05 — Pestaña de metadatos
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "05 / Pestaña de metadatos"; color: root.selected == 4 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 4 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 8px; width: parent.width; height: 37px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 30 L 100 100 L 8 100 L 0 70 Z"; fill: root.rail; stroke: root.line; stroke-width: 1px; }Rectangle { x: 0px; y: 8px; width: 4px; height: 37px; background: root.acid; }Text { x: 12px; y: 8px; width: parent.width - 56px; height: 37px; text: "INFO / LOCAL"; color: root.cream; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Path { x: parent.width - 44px; y: 10px; width: 34px; height: 14px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 25 0 L 43 0 L 18 100 Z M 28 100 L 53 0 L 71 0 L 46 100 Z M 56 100 L 81 0 L 99 0 L 74 100 Z"; fill: root.oxide; stroke: transparent; stroke-width: 0px; }
+                }
+            }
+            // specimen 06 — Riel y folio
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "06 / Riel y folio"; color: root.selected == 5 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 5 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 0px; width: 24px; height: min(64px, parent.height); viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 75 L 70 100 L 0 100 Z"; fill: root.cream; stroke: transparent; stroke-width: 0px; }Path { x: 4px; y: 6px; width: 16px; height: 40px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 10 20 L 90 5 M 10 45 L 90 30 M 10 70 L 90 55"; fill: transparent; stroke: root.ink; stroke-width: 2px; }Text { x: 36px; y: 0px; width: parent.width - 36px; height: 38px; text: "01 / SYS"; color: root.cream; font-family: "Cascadia Mono"; font-size: 22px; font-weight: 800; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
         }
-        // 02 — index-led network section, not a card.
         if root.page == 2 : Rectangle {
-            background: root.graphite;
-            Path { x: 0; y: 0; width: plate.w * 0.27; height: plate.h; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 20 L 78 20 L 78 82 L 100 82 L 100 100 L 0 100 L 0 82 L 24 82 L 24 20 L 0 20 Z"; fill: root.steel; stroke: transparent; stroke-width: 0px; }
-            Path { x: plate.w * 0.023; y: plate.h * 0.045; width: plate.w * 0.215; height: plate.h * 0.91; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 14 L 75 14 L 75 86 L 100 86 L 100 100 L 0 100 M 12 0 L 12 100"; fill: transparent; stroke: root.mint; stroke-width: 1px; }
-            Head { x: plate.w * 0.035; y: plate.h * 0.29; width: plate.w * 0.20; height: plate.h * 0.28; text: "02"; color: root.paper; font-size: min(plate.w * 0.128,plate.h * 0.29); }
-            Data { x: plate.w * 0.035; y: plate.h * 0.61; width: plate.w * 0.20; height: plate.h * 0.11; text: "NODOS"; color: root.mint; font-size: root.small; }
-            Data { x: plate.w * 0.30; y: plate.h * 0.03; width: plate.w * 0.66; height: plate.h * 0.10; text: "NET / INTERFACES / 01 ACTIVA"; color: root.mint; font-size: root.small; }
-            Head { x: plate.w * 0.30; y: plate.h * 0.12; width: plate.w * 0.67; height: plate.h * 0.25; text: "RED LOCAL"; color: root.paper; font-size: min(plate.w * 0.087,plate.h * 0.25); }
-            for item[i] in ["Ethernet","Wi-Fi"] : Rectangle {
-                x: plate.w * 0.30; y: plate.h * (0.42 + i * 0.235); width: plate.w * 0.67; height: plate.h * 0.22;
-                Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
-                    commands: "M 0 0 L 93 0 L 100 34 M 100 100 L 7 100 L 0 66"; stroke: root.steel; stroke-width: 1px; }
-                Label { x: 8px; width: parent.width * 0.56; height: parent.height; text: item; color: root.paper; font-size: root.normal; }
-                Data { x: parent.width * 0.57; width: parent.width * 0.40; height: parent.height; horizontal-alignment: right; text: i == 0 ? "ACTIVO" : "INACTIVO"; color: i == 0 ? root.acid : root.mint; font-size: root.small; }
+            width: parent.width; height: parent.height; background: transparent;
+            // specimen 07 — Marcas de registro
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "07 / Marcas de registro"; color: root.selected == 0 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 0 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 4px; width: 80px; height: 42px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 25 L 0 0 L 12 0 M 88 0 L 100 0 L 100 25 M 100 75 L 100 100 L 88 100 M 12 100 L 0 100 L 0 75"; fill: transparent; stroke: root.cream; stroke-width: 2px; }Path { x: 34px; y: 17px; width: 12px; height: 14px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 50 L 100 50 M 50 0 L 50 100"; fill: transparent; stroke: root.muted; stroke-width: 1px; }Text { x: 92px; y: 4px; width: parent.width - 92px; height: 36px; text: "Contorno de registro"; color: root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
             }
-            Data { x: plate.w * 0.30; y: plate.h * 0.90; width: plate.w * 0.67; height: plate.h * 0.09; text: "Estado físico e IP / no certifica NAC"; color: root.mint; font-size: root.small; }
+            // specimen 08 — Foco de teclado
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "08 / Foco de teclado"; color: root.selected == 1 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 1 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 5px; width: parent.width; height: 38px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 25 L 0 0 L 12 0 M 88 0 L 100 0 L 100 25 M 100 75 L 100 100 L 88 100 M 12 100 L 0 100 L 0 75"; fill: transparent; stroke: root.selected == 1 ? root.acid : root.line; stroke-width: 2.5px; }Text { x: 10px; y: 5px; width: parent.width - 20px; height: 38px; text: "Tab → foco"; color: root.cream; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 09 — Fila activa
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "09 / Fila activa"; color: root.selected == 2 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 2 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 7px; width: parent.width; height: 31px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 50 L 92 100 L 0 100 Z"; fill: root.selected == 2 ? root.acid : root.cream; stroke: transparent; stroke-width: 0px; }Text { x: 9px; y: 7px; width: parent.width - 18px; height: 31px; text: "›  ELEMENTO ACTIVO"; color: root.ink; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 10 — Selector angular
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "10 / Selector angular"; color: root.selected == 3 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 3 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 6px; width: min(145px, parent.width * 0.68); height: 30px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 30 L 100 100 L 8 100 L 0 70 Z"; fill: root.selected == 3 && root.action ? root.acid : root.rail; stroke: root.line; stroke-width: 1px; }Text { x: 8px; y: 6px; width: min(137px, parent.width * 0.65); height: 30px; text: root.selected == 3 && root.action ? "✓ ACTIVADO" : "› OPCIÓN"; color: root.selected == 3 && root.action ? root.ink : root.cream; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 11 — Acciones
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "11 / Acciones"; color: root.selected == 4 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 4 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 6px; width: parent.width * 0.48; height: 30px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 30 L 100 100 L 8 100 L 0 70 Z"; fill: root.selected == 4 && root.action ? root.moss : root.acid; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 0.51; y: 6px; width: parent.width * 0.49; height: 30px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 30 L 100 100 L 8 100 L 0 70 Z"; fill: transparent; stroke: root.line; stroke-width: 1px; }Text { x: 4px; y: 6px; width: parent.width * 0.46; height: 30px; text: root.selected == 4 && root.action ? "✓ HECHO" : "CONFIRMAR"; color: root.ink; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }Text { x: parent.width * 0.51; y: 6px; width: parent.width * 0.49; height: 30px; text: "CANCELAR"; color: root.cream; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 12 — Expansión
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "12 / Expansión"; color: root.selected == 5 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 5 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Text { x: 0px; y: 0px; width: parent.width; height: 24px; text: root.selected == 5 && root.action ? "−  DETALLE" : "+  DETALLE"; color: root.cream; font-family: "Cascadia Mono"; font-size: 14px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Rectangle { x: 0px; y: 25px; width: parent.width; height: 1px; background: root.line; }Text { x: 10px; y: 28px; width: parent.width - 10px; height: 22px; text: root.selected == 5 && root.action ? "Contenido expandido" : "Enter para probar"; color: root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
         }
-        // 03 — memory as an area-proportional horizontal cut.
         if root.page == 3 : Rectangle {
-            background: root.graphite;
-            Data { x: 12px; y: 0; width: plate.w - 24px; height: plate.h * 0.15; text: "MEMORIA FÍSICA / 16 GiB"; color: root.mint; font-size: root.small; }
-            Rectangle { x: 12px; y: plate.h * 0.19; width: plate.w - 24px; height: plate.h * 0.58; background: rgb(127, 140, 131);
-                Rectangle { width: parent.width * 0.65; height: parent.height; background: root.paper;
-                    Head { x: 8px; width: parent.width - 16px; height: parent.height * 0.75; text: "65%"; color: root.ink; font-size: min(parent.width * 0.43,parent.height * 0.70); }
-                    Data { x: 12px; y: parent.height * 0.78; width: parent.width - 24px; height: parent.height * 0.20; text: "10.4 GiB usados"; font-size: root.small; color: root.ink; }
+            width: parent.width; height: parent.height; background: transparent;
+            // specimen 13 — Indicador radial / 20
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "13 / Indicador radial / 20"; color: root.selected == 0 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 0 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Rectangle { x: 0px; y: 0px; width: min(82px, parent.height); height: self.width; background: transparent;
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 51.64 3.029 A 47 47 0 0 1 62.955 4.821 L 59.923 15.395 A 36 36 0 0 0 51.256 14.022 Z"; fill: root.cpu >= 5 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 66.075 5.834 A 47 47 0 0 1 76.282 11.035 L 70.131 20.155 A 36 36 0 0 0 62.313 16.171 Z"; fill: root.cpu >= 10 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 78.936 12.963 A 47 47 0 0 1 87.037 21.064 L 78.368 27.836 A 36 36 0 0 0 72.164 21.632 Z"; fill: root.cpu >= 15 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 88.965 23.718 A 47 47 0 0 1 94.166 33.925 L 83.829 37.687 A 36 36 0 0 0 79.845 29.869 Z"; fill: root.cpu >= 20 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 95.179 37.045 A 47 47 0 0 1 96.971 48.36 L 85.978 48.744 A 36 36 0 0 0 84.605 40.077 Z"; fill: root.cpu >= 25 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 96.971 51.64 A 47 47 0 0 1 95.179 62.955 L 84.605 59.923 A 36 36 0 0 0 85.978 51.256 Z"; fill: root.cpu >= 30 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 94.166 66.075 A 47 47 0 0 1 88.965 76.282 L 79.845 70.131 A 36 36 0 0 0 83.829 62.313 Z"; fill: root.cpu >= 35 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 87.037 78.936 A 47 47 0 0 1 78.936 87.037 L 72.164 78.368 A 36 36 0 0 0 78.368 72.164 Z"; fill: root.cpu >= 40 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 76.282 88.965 A 47 47 0 0 1 66.075 94.166 L 62.313 83.829 A 36 36 0 0 0 70.131 79.845 Z"; fill: root.cpu >= 45 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 62.955 95.179 A 47 47 0 0 1 51.64 96.971 L 51.256 85.978 A 36 36 0 0 0 59.923 84.605 Z"; fill: root.cpu >= 50 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 48.36 96.971 A 47 47 0 0 1 37.045 95.179 L 40.077 84.605 A 36 36 0 0 0 48.744 85.978 Z"; fill: root.cpu >= 55 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 33.925 94.166 A 47 47 0 0 1 23.718 88.965 L 29.869 79.845 A 36 36 0 0 0 37.687 83.829 Z"; fill: root.cpu >= 60 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 21.064 87.037 A 47 47 0 0 1 12.963 78.936 L 21.632 72.164 A 36 36 0 0 0 27.836 78.368 Z"; fill: root.cpu >= 65 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 11.035 76.282 A 47 47 0 0 1 5.834 66.075 L 16.171 62.313 A 36 36 0 0 0 20.155 70.131 Z"; fill: root.cpu >= 70 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 4.821 62.955 A 47 47 0 0 1 3.029 51.64 L 14.022 51.256 A 36 36 0 0 0 15.395 59.923 Z"; fill: root.cpu >= 75 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 3.029 48.36 A 47 47 0 0 1 4.821 37.045 L 15.395 40.077 A 36 36 0 0 0 14.022 48.744 Z"; fill: root.cpu >= 80 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 5.834 33.925 A 47 47 0 0 1 11.035 23.718 L 20.155 29.869 A 36 36 0 0 0 16.171 37.687 Z"; fill: root.cpu >= 85 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 12.963 21.064 A 47 47 0 0 1 21.064 12.963 L 27.836 21.632 A 36 36 0 0 0 21.632 27.836 Z"; fill: root.cpu >= 90 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 23.718 11.035 A 47 47 0 0 1 33.925 5.834 L 37.687 16.171 A 36 36 0 0 0 29.869 20.155 Z"; fill: root.cpu >= 95 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 37.045 4.821 A 47 47 0 0 1 48.36 3.029 L 48.744 14.022 A 36 36 0 0 0 40.077 15.395 Z"; fill: root.cpu >= 100 ? root.acid : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Text { x: 8px; y: 8px; width: parent.width - 16px; height: parent.height - 16px; text: root.cpu + "%"; color: root.cream; font-family: "Cascadia Mono"; font-size: 14px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+}
+Text { x: 94px; y: 0px; width: parent.width - 94px; height: 25px; text: "20 divisiones"; color: root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 }
-                Data { x: parent.width * 0.68; width: parent.width * 0.30; height: parent.height; text: "5.6 GiB libres"; color: root.ink; font-size: root.small; }
             }
-            Data { x: 12px; y: plate.h * 0.82; width: plate.w - 24px; height: plate.h * 0.14; text: "Capacidad y proporción, no velocidad de memoria."; color: root.white-ink; font-size: root.small; }
+            // specimen 14 — Anillo segmentado / 8
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "14 / Anillo segmentado / 8"; color: root.selected == 1 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 1 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Rectangle { x: 0px; y: 0px; width: min(82px, parent.height); height: self.width; background: transparent;
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 51.64 3.029 A 47 47 0 0 1 82.054 15.626 L 74.552 23.671 A 36 36 0 0 0 51.256 14.022 Z"; fill: root.progress >= 13 ? root.mint : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 84.374 17.946 A 47 47 0 0 1 96.971 48.36 L 85.978 48.744 A 36 36 0 0 0 76.329 25.448 Z"; fill: root.progress >= 25 ? root.mint : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 96.971 51.64 A 47 47 0 0 1 84.374 82.054 L 76.329 74.552 A 36 36 0 0 0 85.978 51.256 Z"; fill: root.progress >= 38 ? root.mint : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 82.054 84.374 A 47 47 0 0 1 51.64 96.971 L 51.256 85.978 A 36 36 0 0 0 74.552 76.329 Z"; fill: root.progress >= 50 ? root.mint : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 48.36 96.971 A 47 47 0 0 1 17.946 84.374 L 25.448 76.329 A 36 36 0 0 0 48.744 85.978 Z"; fill: root.progress >= 63 ? root.mint : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 15.626 82.054 A 47 47 0 0 1 3.029 51.64 L 14.022 51.256 A 36 36 0 0 0 23.671 74.552 Z"; fill: root.progress >= 75 ? root.mint : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 3.029 48.36 A 47 47 0 0 1 15.626 17.946 L 23.671 25.448 A 36 36 0 0 0 14.022 48.744 Z"; fill: root.progress >= 88 ? root.mint : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 17.946 15.626 A 47 47 0 0 1 48.36 3.029 L 48.744 14.022 A 36 36 0 0 0 25.448 23.671 Z"; fill: root.progress >= 100 ? root.mint : root.rail; stroke: root.line; stroke-width: 0.6px; }
+Text { x: 8px; y: 8px; width: parent.width - 16px; height: parent.height - 16px; text: root.progress + "%"; color: root.cream; font-family: "Cascadia Mono"; font-size: 14px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+}
+Text { x: 94px; y: 0px; width: parent.width - 94px; height: 25px; text: "8 divisiones"; color: root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 15 — Escala lineal
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "15 / Escala lineal"; color: root.selected == 2 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 2 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Rectangle { x: 0px; y: 14px; width: parent.width - 38px; height: 13px; background: root.rail; }Rectangle { x: 0px; y: 14px; width: (parent.width - 38px) * root.cpu / 100; height: 13px; background: root.acid; }Rectangle { x: (parent.width - 38px) * 0/10; y: 29px; width: 1px; height: 7px; background: root.muted; }Rectangle { x: (parent.width - 38px) * 1/10; y: 29px; width: 1px; height: 3px; background: root.muted; }Rectangle { x: (parent.width - 38px) * 2/10; y: 29px; width: 1px; height: 3px; background: root.muted; }Rectangle { x: (parent.width - 38px) * 3/10; y: 29px; width: 1px; height: 3px; background: root.muted; }Rectangle { x: (parent.width - 38px) * 4/10; y: 29px; width: 1px; height: 3px; background: root.muted; }Rectangle { x: (parent.width - 38px) * 5/10; y: 29px; width: 1px; height: 7px; background: root.muted; }Rectangle { x: (parent.width - 38px) * 6/10; y: 29px; width: 1px; height: 3px; background: root.muted; }Rectangle { x: (parent.width - 38px) * 7/10; y: 29px; width: 1px; height: 3px; background: root.muted; }Rectangle { x: (parent.width - 38px) * 8/10; y: 29px; width: 1px; height: 3px; background: root.muted; }Rectangle { x: (parent.width - 38px) * 9/10; y: 29px; width: 1px; height: 3px; background: root.muted; }Rectangle { x: (parent.width - 38px) * 10/10; y: 29px; width: 1px; height: 7px; background: root.muted; }Text { x: parent.width - 38px; y: 5px; width: 38px; height: 34px; text: root.cpu + "%"; color: root.cream; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 700; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 16 — Umbral y desviación
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "16 / Umbral y desviación"; color: root.selected == 3 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 3 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Rectangle { x: 0px; y: 21px; width: parent.width; height: 10px; background: root.rail; }Rectangle { x: 0px; y: 21px; width: parent.width * root.cpu / 100; height: 10px; background: root.cpu >= 85 ? root.oxide : root.mint; }Rectangle { x: parent.width * 0.85; y: 8px; width: 2px; height: 27px; background: root.amber; }Text { x: parent.width * 0.85 - 27px; y: 0px; width: 44px; height: 14px; text: "85%"; color: root.amber; font-family: "Cascadia Mono"; font-size: 10px; font-weight: 500; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 17 — Lectura proporcional
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "17 / Lectura proporcional"; color: root.selected == 4 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 4 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Rectangle { x: 0px; y: 4px; width: parent.width; height: 37px; background: root.rail; }Rectangle { x: 0px; y: 4px; width: parent.width * root.cpu / 100; height: 37px; background: root.cream; }Text { x: 8px; y: 4px; width: parent.width * 0.6; height: 37px; text: root.cpu + "%"; color: root.cpu >= 40 ? root.ink : root.acid; font-family: "Cascadia Mono"; font-size: 20px; font-weight: 800; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 18 — Escala de actividad
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "18 / Escala de actividad"; color: root.selected == 5 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 5 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Rectangle { x: parent.width * 0/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 7 ? root.mint : root.rail; }Rectangle { x: parent.width * 1/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 13 ? root.mint : root.rail; }Rectangle { x: parent.width * 2/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 19 ? root.mint : root.rail; }Rectangle { x: parent.width * 3/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 25 ? root.mint : root.rail; }Rectangle { x: parent.width * 4/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 32 ? root.mint : root.rail; }Rectangle { x: parent.width * 5/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 38 ? root.mint : root.rail; }Rectangle { x: parent.width * 6/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 44 ? root.mint : root.rail; }Rectangle { x: parent.width * 7/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 50 ? root.mint : root.rail; }Rectangle { x: parent.width * 8/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 57 ? root.mint : root.rail; }Rectangle { x: parent.width * 9/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 63 ? root.mint : root.rail; }Rectangle { x: parent.width * 10/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 69 ? root.mint : root.rail; }Rectangle { x: parent.width * 11/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 75 ? root.mint : root.rail; }Rectangle { x: parent.width * 12/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 82 ? root.mint : root.rail; }Rectangle { x: parent.width * 13/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 88 ? root.mint : root.rail; }Rectangle { x: parent.width * 14/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 94 ? root.mint : root.rail; }Rectangle { x: parent.width * 15/16; y: 9px; width: max(1px, parent.width / 16 - 3px); height: 26px; background: root.cpu >= 100 ? root.mint : root.rail; }
+                }
+            }
         }
-        // 04 — native aligned service register with sparse rules.
         if root.page == 4 : Rectangle {
-            Head { x: 0; y: 0; width: plate.w * 0.76; height: plate.h * 0.30; text: "Servicios"; color: root.ink; font-size: min(plate.w * 0.13,plate.h * 0.30); }
-            Data { x: plate.w * 0.76; width: plate.w * 0.24; height: plate.h * 0.30; horizontal-alignment: right; text: "03 / REGISTROS"; font-size: root.small; color: root.muted; }
-            for name[i] in ["Servicio","W32Time","Spooler","BITS"] : Rectangle {
-                y: plate.h * (0.34 + i * 0.16); width: plate.w; height: plate.h * 0.16; background: i == 0 ? root.ink : transparent;
-                Rectangle { y: 0; width: parent.width; height: 1px; background: root.rule; }
-                Data { x: 8px; width: parent.width * 0.46; height: parent.height; text: name; font-size: root.normal; color: i == 0 ? root.paper : root.ink; }
-                Data { x: parent.width * 0.49; width: parent.width * 0.30; height: parent.height; text: ["Estado","Activo","Activo","Detenido"][i]; font-size: root.normal; color: i == 0 ? root.paper : i == 3 ? root.muted : root.moss; }
-                Data { x: parent.width * 0.83; width: parent.width * 0.15; height: parent.height; horizontal-alignment: right; text: ["PID","804","1220","—"][i]; color: i == 0 ? root.paper : root.ink; font-size: root.small; }
+            width: parent.width; height: parent.height; background: transparent;
+            // specimen 19 — Transferencia angular
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "19 / Transferencia angular"; color: root.selected == 0 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 0 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 12px; width: parent.width - 42px; height: 18px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 50 L 92 100 L 0 100 Z"; fill: root.rail; stroke: root.line; stroke-width: 1px; }
+Path { x: 0px; y: 12px; width: max(1px, (parent.width - 42px) * root.progress / 100); height: 18px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 50 L 92 100 L 0 100 Z"; fill: root.acid; stroke: transparent; stroke-width: 0px; }
+Text { x: parent.width - 42px; y: 2px; width: 42px; height: 38px; text: root.progress + "%"; color: root.cream; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 20 — Progreso segmentado
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "20 / Progreso segmentado"; color: root.selected == 1 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 1 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: (parent.width - 40px) * 0/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 9 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 1/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 17 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 2/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 25 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 3/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 34 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 4/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 42 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 5/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 50 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 6/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 59 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 7/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 67 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 8/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 75 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 9/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 84 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 10/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 92 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Path { x: (parent.width - 40px) * 11/12; y: 9px; width: max(1px, (parent.width - 40px) / 12 - 2px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z"; fill: root.progress >= 100 ? root.mint : root.rail; stroke: transparent; stroke-width: 0px; }Text { x: parent.width - 40px; y: 5px; width: 40px; height: 32px; text: root.progress + "%"; color: root.cream; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 700; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 21 — Espera indeterminada
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "21 / Espera indeterminada"; color: root.selected == 2 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 2 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Rectangle { x: 0px; y: 10px; width: parent.width; height: 24px; background: root.rail; }Path { x: parent.width * 0/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 0 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 1/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 1 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 2/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 2 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 3/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 3 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 4/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 4 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 5/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 5 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 6/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 6 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 7/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 7 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 8/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 8 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 9/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 9 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 10/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 10 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 11/12; y: 10px; width: max(1px, parent.width / 12 - 3px); height: 24px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z"; fill: root.selected == 2 && root.action ? root.moss : root.phase == 11 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }
+                }
+            }
+            // specimen 22 — Continuidad y pérdidas
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "22 / Continuidad y pérdidas"; color: root.selected == 3 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 3 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Rectangle { x: parent.width * 0/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 0 ? root.acid : root.mint; }Rectangle { x: parent.width * 1/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 1 ? root.acid : root.mint; }Rectangle { x: parent.width * 2/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 2 ? root.acid : root.mint; }Rectangle { x: parent.width * 3/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 3 ? root.acid : root.mint; }Rectangle { x: parent.width * 4/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 4 ? root.acid : root.mint; }Rectangle { x: parent.width * 5/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 5 ? root.acid : root.mint; }Rectangle { x: parent.width * 6/24; y: 19px; width: max(1px, parent.width / 24 - 2px); height: 10px; background: root.oxide; }Rectangle { x: parent.width * 7/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 7 ? root.acid : root.mint; }Rectangle { x: parent.width * 8/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 8 ? root.acid : root.mint; }Rectangle { x: parent.width * 9/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 9 ? root.acid : root.mint; }Rectangle { x: parent.width * 10/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 10 ? root.acid : root.mint; }Rectangle { x: parent.width * 11/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 11 ? root.acid : root.mint; }Rectangle { x: parent.width * 12/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 0 ? root.acid : root.mint; }Rectangle { x: parent.width * 13/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 1 ? root.acid : root.mint; }Rectangle { x: parent.width * 14/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 2 ? root.acid : root.mint; }Rectangle { x: parent.width * 15/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 3 ? root.acid : root.mint; }Rectangle { x: parent.width * 16/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 4 ? root.acid : root.mint; }Rectangle { x: parent.width * 17/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 5 ? root.acid : root.mint; }Rectangle { x: parent.width * 18/24; y: 19px; width: max(1px, parent.width / 24 - 2px); height: 10px; background: root.oxide; }Rectangle { x: parent.width * 19/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 7 ? root.acid : root.mint; }Rectangle { x: parent.width * 20/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 8 ? root.acid : root.mint; }Rectangle { x: parent.width * 21/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 9 ? root.acid : root.mint; }Rectangle { x: parent.width * 22/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 10 ? root.acid : root.mint; }Rectangle { x: parent.width * 23/24; y: 8px; width: max(1px, parent.width / 24 - 2px); height: 32px; background: root.phase == 11 ? root.acid : root.mint; }
+                }
+            }
+            // specimen 23 — Ruta / bifurcación
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "23 / Ruta / bifurcación"; color: root.selected == 4 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 4 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 3px; y: 3px; width: parent.width - 6px; height: 42px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 50 L 20 50 L 32 12 L 49 12 M 20 50 L 32 88 L 49 88 M 20 50 L 65 50 L 77 12 L 100 12 M 65 50 L 77 88 L 100 88"; fill: transparent; stroke: root.mint; stroke-width: 1.5px; }Path { x: 3px; y: 3px; width: parent.width - 6px; height: 42px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 50 L 20 50 L 65 50"; fill: transparent; stroke: root.acid; stroke-width: 2px; }Rectangle { x: parent.width * 0.02; y: 20px; width: 8px; height: 8px; border-radius: 4px; background: root.graphite; border-width: 2px; border-color: root.acid; }Rectangle { x: parent.width * 0.2; y: 20px; width: 8px; height: 8px; border-radius: 4px; background: root.graphite; border-width: 2px; border-color: root.acid; }Rectangle { x: parent.width * 0.65; y: 20px; width: 8px; height: 8px; border-radius: 4px; background: root.graphite; border-width: 2px; border-color: root.acid; }
+                }
+            }
+            // specimen 24 — Trama / transferencia
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "24 / Trama / transferencia"; color: root.selected == 5 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 5 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 9px; width: parent.width; height: 27px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 30 L 100 100 L 8 100 L 0 70 Z"; fill: root.rail; stroke: root.line; stroke-width: 1px; }Path { x: parent.width * 0/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 6 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 1/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 12 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 2/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 17 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 3/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 23 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 4/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 28 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 5/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 34 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 6/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 39 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 7/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 45 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 8/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 50 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 9/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 56 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 10/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 62 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 11/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 67 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 12/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 73 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 13/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 78 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 14/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 84 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 15/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 89 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 16/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 95 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }Path { x: parent.width * 17/18; y: 12px; width: max(1px, parent.width / 18 - 2px); height: 20px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z"; fill: root.progress >= 100 ? root.acid : root.line; stroke: transparent; stroke-width: 0px; }
+                }
             }
         }
-        // 05 — keyboard focus, distinct from activation.
         if root.page == 5 : Rectangle {
-            background: root.graphite;
-            Head { x: 12px; y: 0; width: plate.w - 24px; height: plate.h * 0.22; text: "Diagnóstico dirigido"; color: root.paper; font-size: min(plate.w * 0.070,plate.h * 0.22); }
-            for item[i] in ["Procesos","Servicios","Conexiones"] : Rectangle {
-                x: 12px; y: plate.h * (0.27 + i * 0.19); width: plate.w * 0.58 - 16px; height: plate.h * 0.17;
-                background: transparent;
-                Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
-                    commands: "M 0 0 L 92 0 L 100 40 L 100 100 L 0 100 Z"; fill: i == root.selected ? root.paper : transparent; stroke: root.steel; stroke-width: 1px; }
-                Path { x: 0; width: 7px; height: parent.height; viewbox-width: 10; viewbox-height: 100; fit: fill;
-                    commands: "M 0 0 L 10 15 L 10 85 L 0 100 Z"; fill: i == root.selected ? root.acid : root.steel; }
-                Data { x: 12px; width: parent.width - 24px; height: parent.height; text: "0" + (i+1) + "  " + item; font-size: root.normal; color: i == root.selected ? root.ink : root.paper; }
+            width: parent.width; height: parent.height; background: transparent;
+            // specimen 25 — Correcto
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "25 / Correcto"; color: root.selected == 0 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 0 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 5px; width: parent.width; height: 32px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 30 L 100 100 L 8 100 L 0 70 Z"; fill: root.moss; stroke: transparent; stroke-width: 0px; }Text { x: 9px; y: 5px; width: parent.width - 18px; height: 32px; text: "✓  CORRECTO"; color: root.cream; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
             }
-            Rectangle { x: plate.w * 0.60; y: plate.h * 0.28; width: 1px; height: plate.h * 0.52; background: root.mint; }
-            Head { x: plate.w * 0.63; y: plate.h * 0.29; width: plate.w * 0.34; height: plate.h * 0.21; text: "0" + (root.selected+1); font-size: min(plate.w * 0.12,plate.h * 0.22); color: root.amber; }
-            Label { x: plate.w * 0.63; y: plate.h * 0.54; width: plate.w * 0.34; height: plate.h * 0.14; text: root.action ? "Activado (demo)" : "Solo foco"; color: root.paper; font-size: root.normal; }
-            Data { x: 12px; y: plate.h * 0.88; width: plate.w - 24px; height: plate.h * 0.10; text: "Tab / ↑ ↓: foco     Enter: activar o volver"; font-size: root.small; color: root.mint; }
+            // specimen 26 — Advertencia
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "26 / Advertencia"; color: root.selected == 1 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 1 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 2px; y: 5px; width: 29px; height: 28px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 50 0 L 100 100 L 0 100 Z"; fill: transparent; stroke: root.amber; stroke-width: 2px; }Text { x: 2px; y: 9px; width: 29px; height: 22px; text: "!"; color: root.amber; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 800; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }Text { x: 41px; y: 3px; width: parent.width - 41px; height: 34px; text: "ATENCIÓN"; color: root.amber; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 27 — Fallo
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "27 / Fallo"; color: root.selected == 2 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 2 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 5px; width: parent.width; height: 32px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 30 L 100 100 L 8 100 L 0 70 Z"; fill: root.oxide; stroke: transparent; stroke-width: 0px; }Text { x: 9px; y: 5px; width: parent.width - 18px; height: 32px; text: "×  FALLO"; color: root.cream; font-family: "Cascadia Mono"; font-size: 14px; font-weight: 800; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 28 — Sin datos
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "28 / Sin datos"; color: root.selected == 3 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 3 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 5px; width: parent.width; height: 32px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 30 L 100 100 L 8 100 L 0 70 Z"; fill: transparent; stroke: root.line; stroke-width: 1px; }Text { x: 9px; y: 5px; width: parent.width - 18px; height: 32px; text: "∅  SIN DATOS"; color: root.muted; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 29 — Evidencia
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "29 / Evidencia"; color: root.selected == 4 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 4 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 9px; width: 27px; height: 25px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 25 L 0 0 L 12 0 M 88 0 L 100 0 L 100 25 M 100 75 L 100 100 L 88 100 M 12 100 L 0 100 L 0 75"; fill: transparent; stroke: root.mint; stroke-width: 2px; }Text { x: 39px; y: 5px; width: parent.width - 39px; height: 33px; text: "REGISTRO DISPONIBLE"; color: root.cream; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
+            // specimen 30 — Estado dinámico
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "30 / Estado dinámico"; color: root.selected == 5 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 5 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 5px; width: parent.width; height: 32px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 50 L 92 100 L 0 100 Z"; fill: root.cpu >= 85 ? root.oxide : root.moss; stroke: transparent; stroke-width: 0px; }Text { x: 9px; y: 5px; width: parent.width - 18px; height: 32px; text: root.cpu >= 85 ? "ALERTA / " + root.cpu + "%" : "NORMAL / " + root.cpu + "%"; color: root.cream; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
+            }
         }
-        // 06 — threshold delta and a scale with the reference line.
         if root.page == 6 : Rectangle {
-            background: rgb(232, 200, 163);
-            Data { x: 12px; y: 0; width: plate.w - 24px; height: plate.h * 0.15; text: "ATENCIÓN / PRESIÓN DE MEMORIA"; color: root.ink; font-size: root.small; }
-            Head { x: 12px; y: plate.h * 0.14; width: plate.w * 0.56; height: plate.h * 0.43; text: "89%"; color: root.ink; font-size: min(plate.w * 0.21,plate.h * 0.43); }
-            Head { x: plate.w * 0.63; y: plate.h * 0.18; width: plate.w * 0.34; height: plate.h * 0.30; text: "+4"; color: root.oxide; font-size: min(plate.w * 0.13,plate.h * 0.29); }
-            Data { x: plate.w * 0.63; y: plate.h * 0.48; width: plate.w * 0.34; height: plate.h * 0.09; text: "puntos sobre umbral"; color: root.ink; font-size: root.small; }
-            Rectangle { x: 12px; y: plate.h * 0.65; width: plate.w - 24px; height: plate.h * 0.10; background: rgb(183, 163, 142);
-                Rectangle { width: parent.width * 0.89; height: parent.height; background: root.ink; }
-                Rectangle { x: parent.width * 0.85; y: -5px; width: 3px; height: parent.height + 10px; background: root.oxide; }
-            }
-            Data { x: 12px; y: plate.h * 0.80; width: plate.w * 0.6; height: plate.h * 0.14; text: "ACCIÓN: revisar procesos"; color: root.ink; font-size: root.small; }
-            Data { x: plate.w * 0.63; y: plate.h * 0.80; width: plate.w * 0.34; height: plate.h * 0.14; text: "UMBRAL 85%"; horizontal-alignment: right; color: root.oxide; font-size: root.small; }
-        }
-        // 07 — recovery bulletin, explicit evidence and next action.
-        if root.page == 7 : Rectangle {
-            background: root.oxide;
-            Data { x: 12px; width: plate.w - 24px; height: plate.h * 0.13; text: "INCIDENCIA 01 / VENTANA"; color: root.paper; font-size: root.small; }
-            Head { x: 12px; y: plate.h * 0.13; width: plate.w - 24px; height: plate.h * 0.32; text: "SIN RESPUESTA"; color: root.paper; font-size: min(plate.w * 0.104,plate.h * 0.30); }
-            Label { x: 12px; y: plate.h * 0.48; width: plate.w - 24px; height: plate.h * 0.13; text: "Evidencia: la ventana no responde a la consulta."; color: root.paper; font-size: root.normal; }
-            Rectangle { y: plate.h * 0.67; width: plate.w; height: plate.h * 0.33; background: root.ink;
-                Data { x: 12px; y: 0; width: parent.width - 24px; height: parent.height * 0.48; text: "01  Solicitar cierre normal"; font-size: root.normal; color: root.paper; }
-                Data { x: 12px; y: parent.height * 0.48; width: parent.width - 24px; height: parent.height * 0.48; text: "02  Verificar instancia"; font-size: root.small; color: root.mint; }
-            }
-        }
-        // 08 — twenty calibrated divisions; dynamic reading.
-        if root.page == 8 : Rectangle {
-            background: root.graphite;
-            dial := Rectangle { x: 0; y: 0; width: plate.w * 0.62; height: plate.h; background: transparent;
-                property <length> diameter: min(self.width,self.height);
-                Rectangle { x: (dial.width-dial.diameter)/2; y: (dial.height-dial.diameter)/2; width: dial.diameter; height: dial.diameter; background: transparent;
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 14 100 A 86 86 0 1 1 186 100 A 86 86 0 1 1 14 100"; fill: transparent; stroke: root.steel; stroke-width: 1px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 34.54 163.214 A 91 91 0 0 1 23.251 148.894 L 33.372 142.447 A 79 79 0 0 0 43.172 154.878 Z"; fill: root.cpu >= 5 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 21.592 146.186 A 91 91 0 0 1 13.958 129.627 L 25.304 125.72 A 79 79 0 0 0 31.931 140.096 Z"; fill: root.cpu >= 10 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 12.976 126.606 A 91 91 0 0 1 9.419 108.722 L 21.364 107.572 A 79 79 0 0 0 24.452 123.097 Z"; fill: root.cpu >= 15 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 9.17 105.555 A 91 91 0 0 1 9.886 87.335 L 21.769 89.005 A 79 79 0 0 0 21.147 104.823 Z"; fill: root.cpu >= 20 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 10.382 84.198 A 91 91 0 0 1 15.332 66.648 L 26.497 71.046 A 79 79 0 0 0 22.2 86.282 Z"; fill: root.cpu >= 25 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 16.548 63.714 A 91 91 0 0 1 25.457 47.805 L 35.287 54.687 A 79 79 0 0 0 27.552 68.499 Z"; fill: root.cpu >= 30 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 27.324 45.235 A 91 91 0 0 1 39.702 31.845 L 47.653 40.832 A 79 79 0 0 0 36.908 52.457 Z"; fill: root.cpu >= 35 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 42.117 29.782 A 91 91 0 0 1 57.278 19.652 L 62.912 30.247 A 79 79 0 0 0 49.75 39.042 Z"; fill: root.cpu >= 40 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 60.108 18.21 A 91 91 0 0 1 77.215 11.899 L 80.22 23.516 A 79 79 0 0 0 65.369 28.995 Z"; fill: root.cpu >= 45 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 80.304 11.157 A 91 91 0 0 1 98.412 9.014 L 98.621 21.012 A 79 79 0 0 0 82.901 22.873 Z"; fill: root.cpu >= 50 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 101.588 9.014 A 91 91 0 0 1 119.696 11.157 L 117.099 22.873 A 79 79 0 0 0 101.379 21.012 Z"; fill: root.cpu >= 55 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 122.785 11.899 A 91 91 0 0 1 139.892 18.21 L 134.631 28.995 A 79 79 0 0 0 119.78 23.516 Z"; fill: root.cpu >= 60 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 142.722 19.652 A 91 91 0 0 1 157.883 29.782 L 150.25 39.042 A 79 79 0 0 0 137.088 30.247 Z"; fill: root.cpu >= 65 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 160.298 31.845 A 91 91 0 0 1 172.676 45.235 L 163.092 52.457 A 79 79 0 0 0 152.347 40.832 Z"; fill: root.cpu >= 70 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 174.543 47.805 A 91 91 0 0 1 183.452 63.714 L 172.448 68.499 A 79 79 0 0 0 164.713 54.687 Z"; fill: root.cpu >= 75 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 184.668 66.648 A 91 91 0 0 1 189.618 84.198 L 177.8 86.282 A 79 79 0 0 0 173.503 71.046 Z"; fill: root.cpu >= 80 ? (root.acid) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 190.114 87.335 A 91 91 0 0 1 190.83 105.555 L 178.853 104.823 A 79 79 0 0 0 178.231 89.005 Z"; fill: root.cpu >= 85 ? (root.oxide) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 190.581 108.722 A 91 91 0 0 1 187.024 126.606 L 175.548 123.097 A 79 79 0 0 0 178.636 107.572 Z"; fill: root.cpu >= 90 ? (root.oxide) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 186.042 129.627 A 91 91 0 0 1 178.408 146.186 L 168.069 140.096 A 79 79 0 0 0 174.696 125.72 Z"; fill: root.cpu >= 95 ? (root.oxide) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 176.749 148.894 A 91 91 0 0 1 165.46 163.214 L 156.828 154.878 A 79 79 0 0 0 166.628 142.447 Z"; fill: root.cpu >= 100 ? (root.oxide) : root.steel; stroke: transparent; stroke-width: 0px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 52.624 147.376 L 46.26 153.74 M 39.463 137.097 L 35.199 139.71 M 32.475 121.94 L 27.72 123.485 M 29.219 105.571 L 24.234 105.963 M 29.874 88.893 L 24.936 88.111 M 38.1 74.36 L 29.785 70.916 M 42.56 58.267 L 38.515 55.328 M 53.889 46.011 L 50.642 42.209 M 67.767 36.739 L 65.497 32.284 M 83.425 30.962 L 82.258 26.1 M 100 33 L 100 24 M 116.575 30.962 L 117.742 26.1 M 132.233 36.739 L 134.503 32.284 M 146.111 46.011 L 149.358 42.209 M 157.44 58.267 L 161.485 55.328 M 161.9 74.36 L 170.215 70.916 M 170.126 88.893 L 175.064 88.111 M 170.781 105.571 L 175.766 105.963 M 167.525 121.94 L 172.28 123.485 M 160.537 137.097 L 164.801 139.71 M 147.376 147.376 L 153.74 153.74"; fill: transparent; stroke: root.mint; stroke-width: 1px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 200; viewbox-height: 200; fit: fill; commands: "M 100 32 L 100 49 M 100 151 L 100 168 M 32 100 L 49 100 M 151 100 L 168 100"; fill: transparent; stroke: root.steel; stroke-width: 1px; }
-                Head { x: parent.width * 0.20; y: parent.height * 0.36; width: parent.width * 0.60; height: parent.height * 0.25; text: root.cpu + "%"; horizontal-alignment: center; color: root.paper; font-size: parent.height * 0.20; }
-                Data { x: parent.width * 0.20; y: parent.height * 0.60; width: parent.width * 0.60; height: parent.height * 0.11; text: "CPU / CARGA"; horizontal-alignment: center; color: root.mint; font-size: root.small; }
+            width: parent.width; height: parent.height; background: transparent;
+            // specimen 31 — Título compacto
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "31 / Título compacto"; color: root.selected == 0 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 0 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Text { x: 0px; y: 0px; width: parent.width; height: 32px; text: "DIAGNÓSTICO"; color: root.cream; font-family: "Cascadia Mono"; font-size: 23px; font-weight: 800; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Rectangle { x: 0px; y: 34px; width: 36px; height: 3px; background: root.oxide; }
                 }
             }
-            Path { x: plate.w * 0.64; y: plate.h * 0.04; width: plate.w * 0.34; height: plate.h * 0.91; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 16 L 0 0 L 75 0 L 100 16 L 100 100 L 0 100 L 0 82"; fill: transparent; stroke: root.steel; stroke-width: 1px; }
-            Data { x: plate.w * 0.66; y: plate.h * 0.08; width: plate.w * 0.31; height: plate.h * 0.11; text: "INSTRUMENTO / 08"; color: root.mint; font-size: root.small; }
-            Head { x: plate.w * 0.66; y: plate.h * 0.23; width: plate.w * 0.31; height: plate.h * 0.20; text: root.cpu >= 85 ? "ALERTA" : "NORMAL"; color: root.cpu >= 85 ? root.amber : root.acid; font-size: min(plate.w * 0.055,plate.h * 0.16); }
-            Data { x: plate.w * 0.66; y: plate.h * 0.48; width: plate.w * 0.31; height: plate.h * 0.12; text: "UMBRAL 85%"; color: root.paper; font-size: root.normal; }
-            Data { x: plate.w * 0.66; y: plate.h * 0.64; width: plate.w * 0.31; height: plate.h * 0.11; text: "20 DIVISIONES / 5%"; color: root.mint; font-size: root.small; }
-            Data { x: plate.w * 0.66; y: plate.h * 0.81; width: plate.w * 0.31; height: plate.h * 0.11; text: root.paused ? "MUESTRA CONGELADA" : "MUESTRA EN CURSO"; color: root.paper; font-size: root.small; }
-        }
-        // 09 — native input treatment with three working caret positions.
-        if root.page == 9 : Rectangle {
-            background: root.graphite;
-            Head { x: 12px; width: plate.w - 24px; height: plate.h * 0.25; text: "Entrada de comando"; color: root.paper; font-size: min(plate.w * 0.077,plate.h * 0.24); }
-            Data { x: 12px; y: plate.h * 0.31; width: plate.w - 24px; height: plate.h * 0.12; text: "SST / LOCAL / USUARIO"; color: root.mint; font-size: root.small; }
-            Rectangle { x: 12px; y: plate.h * 0.47; width: plate.w - 24px; height: plate.h * 0.22; background: transparent;
-                Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
-                    commands: "M 0 0 L 96 0 L 100 30 L 100 100 L 4 100 L 0 70 Z"; fill: root.steel; stroke: root.mint; stroke-width: 1px; }
-                Data { x: 8px; width: parent.width * 0.11; height: parent.height; text: ">"; color: root.amber; font-size: root.normal; }
-                for token[i] in ["sys","services","--running"] : Rectangle {
-                    x: parent.width * (0.11 + i * 0.29); width: parent.width * 0.28; height: parent.height;
-                    background: root.selected == i ? rgb(75, 85, 77) : transparent;
-                    Data { x: 6px; width: parent.width - 12px; height: parent.height; text: token; color: root.paper; font-size: root.normal; }
-                    Rectangle { visible: root.selected == i && root.blink; x: parent.width - 3px; y: parent.height * 0.19; width: 2px; height: parent.height * 0.62; background: root.amber; }
+            // specimen 32 — Folio numérico
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 0;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "32 / Folio numérico"; color: root.selected == 1 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 1 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Text { x: 0px; y: 0px; width: 62px; height: 45px; text: "04"; color: root.acid; font-family: "Cascadia Mono"; font-size: 35px; font-weight: 800; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Rectangle { x: 65px; y: 4px; width: 1px; height: 37px; background: root.line; }Text { x: 76px; y: 0px; width: parent.width - 76px; height: 40px; text: "SST / ÍNDICE"; color: root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 }
             }
-            Data { x: 12px; y: plate.h * 0.78; width: plate.w - 24px; height: plate.h * 0.15; text: root.paused ? "Cursor fijo / Espacio reanuda" : "Tab cambia el foco / cursor intermitente"; color: root.mint; font-size: root.small; }
-        }
-        // 10 — determinate transfer; reaches a stable completed state.
-        if root.page == 10 : Rectangle {
-            Head { x: 0; width: plate.w * 0.72; height: plate.h * 0.24; text: "Transferencia"; color: root.ink; font-size: min(plate.w * 0.085,plate.h * 0.23); }
-            Data { x: plate.w * 0.73; width: plate.w * 0.27; height: plate.h * 0.24; text: "PKGX / 100 MiB"; horizontal-alignment: right; color: root.muted; font-size: root.small; }
-            Head { x: 0; y: plate.h * 0.25; width: plate.w * 0.66; height: plate.h * 0.32; text: root.progress + "%"; color: root.ink; font-size: min(plate.w * 0.19,plate.h * 0.31); }
-            Data { x: plate.w * 0.68; y: plate.h * 0.39; width: plate.w * 0.32; height: plate.h * 0.16; text: root.progress == 100 ? "COMPLETO" : root.paused ? "EN PAUSA" : "RECIBIENDO"; color: root.moss; font-size: root.small; }
-            Rectangle { y: plate.h * 0.62; width: plate.w; height: plate.h * 0.13; background: transparent;
-                Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
-                    commands: "M 0 0 L 97 0 L 100 50 L 97 100 L 0 100 Z"; fill: root.rule; }
-                Path { visible: root.progress > 0; width: max(1px,parent.width * root.progress / 100); height: parent.height;
-                    viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 97 0 L 100 50 L 97 100 L 0 100 Z";
-                    fill: root.progress == 100 ? root.moss : root.ink; }
-                for i in 9 : Rectangle { x: parent.width * (i+1)/10; y: parent.height - 5px; width: 1px; height: 5px; background: root.paper; }
+            // specimen 33 — Microtipografía
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 0 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "33 / Microtipografía"; color: root.selected == 2 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 2 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Text { x: 0px; y: 0px; width: parent.width; height: 18px; text: "SST / MÓDULO 01"; color: root.cream; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Rectangle { x: 0px; y: 19px; width: parent.width; height: 1px; background: root.line; }Text { x: 0px; y: 22px; width: parent.width; height: 19px; text: "REV. A   /   LOCAL"; color: root.muted; font-family: "Cascadia Mono"; font-size: 11px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
             }
-            Data { x: 0; y: plate.h * 0.78; width: plate.w * 0.65; height: plate.h * 0.17; text: root.progress + " / 100 MiB   ·   datos ficticios"; color: root.ink; font-size: root.small; }
-            Data { x: plate.w * 0.65; y: plate.h * 0.78; width: plate.w * 0.35; height: plate.h * 0.17; text: "Espacio / R"; horizontal-alignment: right; color: root.muted; font-size: root.small; }
-        }
-        // 11 — the row itself changes state when synthetic load crosses 85%.
-        if root.page == 11 : Rectangle {
-            background: root.graphite;
-            Head { x: 8px; width: plate.w * 0.7; height: plate.h * 0.20; text: "Procesos activos"; color: root.paper; font-size: min(plate.w * 0.075,plate.h * 0.20); }
-            Data { x: plate.w * 0.70; width: plate.w * 0.28; height: plate.h * 0.20; text: "CPU / UMBRAL 85%"; horizontal-alignment: right; color: root.mint; font-size: root.small; }
-            for name[i] in ["olk.exe","explorer.exe","Teams.exe","sst.exe","System"] : Rectangle {
-                x: 8px; y: plate.h * (0.24 + i * 0.14); width: plate.w - 16px; height: plate.h * 0.13;
-                background: (i == 0 ? root.cpu : [0,9,12,3,2][i]) >= 85 ? root.alert : root.selected == i ? rgb(65, 77, 67) : transparent;
-                Rectangle { x: 0; y: 0; width: 3px; height: parent.height; background: root.selected == i ? root.amber : transparent; }
-                Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: rgb(87, 97, 88); }
-                Data { x: 8px; width: parent.width * 0.42; height: parent.height; text: name; font-size: root.small; color: root.paper; }
-                Rectangle { x: parent.width * 0.46; y: parent.height * 0.28; width: parent.width * 0.30; height: parent.height * 0.44; background: rgb(98, 110, 101);
-                    Rectangle { width: parent.width * (i == 0 ? root.cpu : [0,9,12,3,2][i]) / 100; height: parent.height; background: root.paper; } }
-                Data { x: parent.width * 0.79; width: parent.width * 0.19; height: parent.height; horizontal-alignment: right; text: (i == 0 ? root.cpu : [0,9,12,3,2][i]) + "%"; color: root.paper; font-size: root.normal; }
+            // specimen 34 — Entrada y cursor
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 0 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 1;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "34 / Entrada y cursor"; color: root.selected == 3 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 3 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Path { x: 0px; y: 5px; width: parent.width; height: 32px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 92 0 L 100 30 L 100 100 L 8 100 L 0 70 Z"; fill: root.rail; stroke: root.line; stroke-width: 1px; }Text { x: 8px; y: 5px; width: parent.width - 16px; height: 32px; text: "> sys services"; color: root.cream; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Rectangle { x: min(128px, parent.width - 4px); y: 12px; width: 2px; height: 17px; background: root.blink ? root.acid : transparent; }
+                }
             }
-        }
-        // 12 — network continuity; individual sample slots and loss count.
-        if root.page == 12 : Rectangle {
-            Data { x: 0; width: plate.w; height: plate.h * 0.10; text: "NOTSH / SECUENCIA DE RESPUESTAS ICMP"; color: root.muted; font-size: root.small; }
-            Head { x: 0; y: plate.h * 0.11; width: plate.w * 0.73; height: plate.h * 0.25; text: "Continuidad"; color: root.ink; font-size: min(plate.w * 0.094,plate.h * 0.25); }
-            Head { x: plate.w * 0.73; y: plate.h * 0.08; width: plate.w * 0.27; height: plate.h * 0.26; text: "16.7%"; horizontal-alignment: right; color: root.oxide; font-size: min(plate.w * 0.075,plate.h * 0.22); }
-            Rectangle { x: 0; y: plate.h * 0.42; width: plate.w; height: plate.h * 0.34; background: transparent;
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 8 L 0 0 L 8 0 M 92 0 L 100 0 L 100 8 M 100 92 L 100 100 L 92 100 M 8 100 L 0 100 L 0 92"; fill: transparent; stroke: root.rule; stroke-width: 1px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 90 L 100 90 M 0 50 L 100 50 M 0 10 L 100 10"; fill: transparent; stroke: root.rule; stroke-width: 1px; }
-                Path { x: parent.width * 0.05; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 0 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
-                Path { x: parent.width * 0.132; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 1 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
-                Path { x: parent.width * 0.214; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 2 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
-                Path { x: parent.width * 0.296; y: parent.height * 0.39; width: parent.width * 0.065; height: parent.height * 0.5; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 0 L 10 100 M 10 0 L 0 100"; fill: transparent; stroke: root.oxide; stroke-width: 1px; }
-                Path { x: parent.width * 0.37799999999999995; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 4 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
-                Path { x: parent.width * 0.46; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 5 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
-                Path { x: parent.width * 0.5419999999999999; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 6 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
-                Path { x: parent.width * 0.6239999999999999; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 7 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
-                Path { x: parent.width * 0.706; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 8 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
-                Path { x: parent.width * 0.7879999999999999; y: parent.height * 0.39; width: parent.width * 0.065; height: parent.height * 0.5; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 0 L 10 100 M 10 0 L 0 100"; fill: transparent; stroke: root.oxide; stroke-width: 1px; }
-                Path { x: parent.width * 0.87; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 10 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
-                Path { x: parent.width * 0.9519999999999998; y: parent.height * 0.15; width: parent.width * 0.065; height: parent.height * 0.74; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 90 L 0 20 L 5 0 L 10 20 L 10 90 L 5 100 Z"; fill: root.phase == 11 ? root.acid : root.moss; stroke: root.moss; stroke-width: 1px; }
+            // specimen 35 — Sugerencias
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 1 : (parent.width + root.gap) / 2 * 0;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "35 / Sugerencias"; color: root.selected == 4 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 4 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Rectangle { x: 0px; y: 0px; width: parent.width; height: 17px; background: root.selected == 4 && root.action && 0 == 1 ? root.acid : 0 == 0 ? root.rail : transparent; }Text { x: 5px; y: 0px; width: parent.width - 10px; height: 17px; text: "› interfaces"; color: root.cream; font-family: "Cascadia Mono"; font-size: 11px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Rectangle { x: 0px; y: 18px; width: parent.width; height: 17px; background: root.selected == 4 && root.action && 1 == 1 ? root.acid : 1 == 0 ? root.rail : transparent; }Text { x: 5px; y: 18px; width: parent.width - 10px; height: 17px; text: "  profiles"; color: root.selected == 4 && root.action ? root.ink : root.cream; font-family: "Cascadia Mono"; font-size: 11px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Rectangle { x: 0px; y: 36px; width: parent.width; height: 17px; background: root.selected == 4 && root.action && 2 == 1 ? root.acid : 2 == 0 ? root.rail : transparent; }Text { x: 5px; y: 36px; width: parent.width - 10px; height: 17px; text: "  networks"; color: root.cream; font-family: "Cascadia Mono"; font-size: 11px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
             }
-            Data { x: 0; y: plate.h * 0.79; width: plate.w * 0.65; height: plate.h * 0.16; text: "10 RESPUESTAS / 02 PÉRDIDAS / 12 MUESTRAS"; color: root.ink; font-size: root.small; }
-            Data { x: plate.w * 0.67; y: plate.h * 0.79; width: plate.w * 0.33; height: plate.h * 0.16; text: root.paused ? "PAUSA" : "SECUENCIA ACTIVA"; horizontal-alignment: right; color: root.muted; font-size: root.small; }
-        }
-        // 13 — semantically different severity signals, without tinting every line.
-        if root.page == 13 : Rectangle {
-            Head { x: 0; width: plate.w; height: plate.h * 0.20; text: "Estado de comprobación"; color: root.ink; font-size: min(plate.w * 0.071,plate.h * 0.19); }
-            for item[i] in ["Correcto","Atención","Fallo","Sin evidencia"] : Rectangle {
-                x: 0; y: plate.h * (0.23 + i * 0.18); width: plate.w; height: plate.h * 0.17;
-                background: root.selected == i ? rgb(218, 216, 202) : transparent;
-                Rectangle { x: 0; y: 0; width: 4px; height: parent.height; background: [root.moss,root.amber,root.alert,root.muted][i]; }
-                Label { x: 12px; width: parent.width * 0.37; height: parent.height; text: item; font-size: root.normal; color: root.ink; }
-                Data { x: parent.width * 0.40; width: parent.width * 0.58; height: parent.height; text: ["Enlace activo","RAM sobre umbral","DNS sin respuesta","Permiso insuficiente"][i]; color: root.muted; font-size: root.small; }
-                Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: root.rule; }
-            }
-        }
-        // 14 — high-density inventory. Narrow widths hide secondary columns only.
-        if root.page == 14 : Rectangle {
-            Data { x: 0; width: plate.w; height: plate.h * 0.12; text: "INVENTARIO / CONTROLADORES / " + (plate.w >= 570px ? "VISTA AMPLIA" : "VISTA COMPACTA"); color: root.muted; font-size: root.small; }
-            for item[i] in ["Driver","Wdf01000","tcpip","ndis","Wof","WUDFRd"] : Rectangle {
-                y: plate.h * (0.15 + i * 0.14); width: plate.w; height: plate.h * 0.14;
-                background: i == 0 ? root.ink : i == root.selected+1 ? rgb(216, 218, 204) : transparent;
-                Data { x: 6px; width: parent.width * 0.38; height: parent.height; text: item; color: i == 0 ? root.paper : root.ink; font-size: root.small; }
-                Data { x: parent.width * 0.40; width: parent.width * 0.32; height: parent.height; text: ["Tipo","Kernel","Kernel","Kernel","Sistema de archivos","Kernel"][i]; color: i == 0 ? root.paper : root.ink; font-size: root.small; }
-                Data { visible: plate.w >= 570px; x: parent.width * 0.73; width: parent.width * 0.25; height: parent.height; text: ["Estado","Cargado","Cargado","Cargado","Cargado","Cargado"][i]; color: i == 0 ? root.paper : root.muted; font-size: root.small; }
-                Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: root.rule; }
-            }
-        }
-        // 15 — disclosure without changing the report's position.
-        if root.page == 15 : Rectangle {
-            Head { x: 0; width: plate.w; height: plate.h * 0.25; text: "Evidencia del proceso"; color: root.ink; font-size: min(plate.w * 0.075,plate.h * 0.24); }
-            for item[i] in ["Identidad","Conexiones","Persistencia"] : Rectangle {
-                x: 0; y: plate.h * (0.29 + i * 0.19); width: plate.w * 0.44; height: plate.h * 0.17;
-                background: root.selected == i ? root.ink : transparent;
-                Data { x: 8px; width: parent.width - 16px; height: parent.height; text: (root.selected == i && root.action ? "− " : "+ ") + item; color: root.selected == i ? root.paper : root.ink; font-size: root.small; }
-                Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: root.rule; }
-            }
-            Rectangle { x: plate.w * 0.48; y: plate.h * 0.29; width: 1px; height: plate.h * 0.56; background: root.ink; }
-            Label { x: plate.w * 0.51; y: plate.h * 0.29; width: plate.w * 0.49; height: plate.h * 0.19; text: root.action ? ["PID 4321 / olk.exe","TCP 443 / 2 destinos","Inicio: usuario"][root.selected] : "Detalle bajo demanda"; color: root.ink; font-size: root.normal; }
-            Data { x: plate.w * 0.51; y: plate.h * 0.50; width: plate.w * 0.49; height: plate.h * 0.19; text: root.action ? ["Firma: válida (demo)","TLS: contenido no observado","Sin cambio en esta muestra"][root.selected] : "Enter para expandir"; color: root.muted; font-size: root.small; }
-        }
-        // 16 — safe confirmation: a real state transition, no host mutation.
-        if root.page == 16 : Rectangle {
-            background: root.graphite;
-            Data { x: 12px; width: plate.w - 24px; height: plate.h * 0.14; text: "SIMULACIÓN / RECUPERACIÓN"; color: root.mint; font-size: root.small; }
-            Head { x: 12px; y: plate.h * 0.14; width: plate.w - 24px; height: plate.h * 0.26; text: root.action ? "Decisión registrada" : "¿Cerrar la instancia?"; color: root.paper; font-size: min(plate.w * 0.076,plate.h * 0.25); }
-            Label { x: 12px; y: plate.h * 0.43; width: plate.w - 24px; height: plate.h * 0.13; text: root.action ? ["Cancelado","Solo cierre normal simulado","Detalles consultados"][root.selected] : "PID 4321 · no se modifica el equipo"; color: root.paper; font-size: root.normal; }
-            for item[i] in ["Cancelar","Cerrar","Detalles"] : Rectangle {
-                x: 12px + i * (plate.w - 24px) / 3; y: plate.h * 0.67; width: (plate.w - 24px) / 3 - 4px; height: plate.h * 0.22;
-                background: root.selected == i ? root.paper : transparent; border-width: 1px; border-color: root.paper;
-                Label { x: 6px; width: parent.width - 12px; height: parent.height; horizontal-alignment: center; text: item; font-size: root.normal; color: root.selected == i ? root.ink : root.paper; }
-            }
-        }
-        // 17 — a route, not decorative geometry; each segment has meaning.
-        if root.page == 17 : Rectangle {
-            background: root.graphite;
-            Data { x: 12px; width: plate.w - 24px; height: plate.h * 0.11; text: "NOTSH / RUTA / CORTE DE COMUNICACIÓN"; color: root.mint; font-size: root.small; }
-            Head { x: 12px; y: plate.h * 0.12; width: plate.w - 24px; height: plate.h * 0.22; text: "Ruta de diagnóstico"; color: root.paper; font-size: min(plate.w * 0.078,plate.h * 0.22); }
-            Rectangle { x: plate.w * 0.04; y: plate.h * 0.37; width: plate.w * 0.92; height: plate.h * 0.35; background: transparent;
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 12.5 50 C 18 50 22 14 25 14 S 32 50 37.5 50 C 43 50 47 14 50 14 S 57 50 62.5 50 M 12.5 50 C 18 50 22 86 25 86 S 32 50 37.5 50 C 43 50 47 86 50 86 S 57 50 62.5 50 M 12.5 50 L 62.5 50"; fill: transparent; stroke: root.mint; stroke-width: 1.4px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 65 30 L 68 30 L 70 45 L 73 15 L 75 30 L 78 30 M 65 70 L 68 70 L 70 85 L 73 55 L 75 70 L 78 70"; fill: transparent; stroke: root.amber; stroke-width: 1.5px; }
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 78 30 C 82 30 83 50 87.5 50 M 78 70 C 82 70 83 50 87.5 50"; fill: transparent; stroke: root.steel; stroke-width: 1px; }
-                for i in 4 : Rectangle { x: parent.width * (0.125 + i * 0.25) - 7px; y: parent.height * 0.5 - 7px; width: 14px; height: 14px;
-                    border-radius: 7px; background: i == 2 ? root.amber : i == 3 ? root.steel : root.acid; border-width: 2px; border-color: root.graphite; }
-            }
-            for name[i] in ["Equipo","Gateway","DNS","Destino"] : Rectangle {
-                x: plate.w * 0.04 + i * plate.w * 0.23; y: plate.h * 0.73; width: plate.w * 0.23; height: plate.h * 0.13;
-                Data { width: parent.width; height: parent.height * 0.53; text: name; horizontal-alignment: center; font-size: root.normal; color: root.paper; }
-                Data { y: parent.height * 0.55; width: parent.width; height: parent.height * 0.45; text: ["OK","1 ms","FALLO","No probado"][i]; horizontal-alignment: center; font-size: root.small; color: i == 2 ? root.amber : root.mint; }
-            }
-            Data { x: 12px; y: plate.h * 0.90; width: plate.w - 24px; height: plate.h * 0.10; text: "Siguiente: comprobar DNS antes de inferir caída del destino."; color: root.paper; font-size: root.small; }
-        }
-        // 18 — partial evidence: absence of telemetry is not a failure.
-        if root.page == 18 : Rectangle {
-            Rectangle { x: 0; y: 0; width: 5px; height: plate.h * 0.82; background: root.muted; }
-            Data { x: 14px; width: plate.w - 14px; height: plate.h * 0.13; text: "COBERTURA PARCIAL / ETW"; color: root.muted; font-size: root.small; }
-            Head { x: 14px; y: plate.h * 0.13; width: plate.w - 14px; height: plate.h * 0.32; text: "Dato no disponible"; color: root.ink; font-size: min(plate.w * 0.080,plate.h * 0.30); }
-            Label { x: 14px; y: plate.h * 0.48; width: plate.w - 14px; height: plate.h * 0.14; text: "No se pudo iniciar la sesión de telemetría."; color: root.ink; font-size: root.normal; }
-            Data { x: 14px; y: plate.h * 0.66; width: plate.w - 14px; height: plate.h * 0.11; text: "Disponible: conexiones y PID / No medido: bytes por proceso"; color: root.muted; font-size: root.small; }
-            Data { x: 14px; y: plate.h * 0.86; width: plate.w - 14px; height: plate.h * 0.11; text: "No equivale a 0 B/s ni demuestra ausencia de tráfico."; color: root.ink; font-size: root.small; }
-        }
-        // 19 — indeterminate progress, not a fictitious percentage.
-        if root.page == 19 : Rectangle {
-            background: root.graphite;
-            Path { x: plate.w * 0.64; y: plate.h * 0.05; width: plate.w * 0.34; height: plate.h * 0.76; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 20 L 20 0 L 100 0 L 100 80 L 80 100 L 0 100 Z"; fill: transparent; stroke: root.steel; stroke-width: 1px; }
-            Data { x: 12px; y: 0; width: plate.w * 0.60; height: plate.h * 0.12; text: "OPERACIÓN / INVENTARIO"; color: root.mint; font-size: root.small; }
-            Head { x: 12px; y: plate.h * 0.16; width: plate.w * 0.60; height: plate.h * 0.28; text: root.action ? "RECIBIDO" : "CONSULTA"; color: root.paper; font-size: min(plate.w * 0.095,plate.h * 0.29); }
-            Label { x: 12px; y: plate.h * 0.48; width: plate.w * 0.60; height: plate.h * 0.12; text: root.action ? "Resultado disponible" : "Total aún desconocido"; color: root.mint; font-size: root.normal; }
-            Rectangle { x: plate.w * 0.66; y: plate.h * 0.12; width: plate.w * 0.30; height: plate.h * 0.58; background: transparent;
-                Path { x: 0; y: 0; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 6 0 L 16 100 M 14 0 L 24 100 M 22 0 L 32 100 M 30 0 L 40 100 M 38 0 L 48 100 M 46 0 L 56 100 M 54 0 L 64 100 M 62 0 L 72 100 M 70 0 L 80 100 M 78 0 L 88 100 M 86 0 L 96 100 M 94 0 L 104 100"; fill: transparent; stroke: root.steel; stroke-width: 1.5px; }
-                for i in 12 : Rectangle { x: i * parent.width / 12; width: parent.width / 12; height: parent.height; background: transparent;
-                    Path { width: parent.width; height: parent.height; viewbox-width: 10; viewbox-height: 100; fit: fill; commands: "M 0 10 L 10 0 L 10 90 L 0 100 Z"; fill: root.action ? root.moss : i == root.phase ? root.acid : transparent; } }
-            }
-            Path { x: 12px; y: plate.h * 0.72; width: plate.w * 0.57; height: plate.h * 0.06; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 95 0 L 100 100 L 0 100 Z"; fill: root.steel; stroke: transparent; stroke-width: 0px; }
-            Data { x: 12px; y: plate.h * 0.83; width: plate.w - 24px; height: plate.h * 0.13; text: root.action ? "COMPLETO / ENTER REINICIA" : "SIN PORCENTAJE FICTICIO / ENTER SIMULA RESPUESTA"; color: root.paper; font-size: root.small; }
-        }
-        // 20 — suggestions anchored to a command, with live keyboard selection.
-        if root.page == 20 : Rectangle {
-            Head { x: 0; width: plate.w; height: plate.h * 0.22; text: "Sugerencias contextuales"; color: root.ink; font-size: min(plate.w * 0.070,plate.h * 0.21); }
-            Rectangle { y: plate.h * 0.25; width: plate.w; height: plate.h * 0.17; background: root.ink;
-                Data { x: 8px; width: parent.width - 16px; height: parent.height; text: root.action ? "> notsh wlan show " + ["interfaces","profiles","networks"][root.selected] : "> notsh wlan show"; color: root.paper; font-size: root.normal; }
-            }
-            for name[i] in ["interfaces","profiles","help"] : Rectangle {
-                x: plate.w * 0.17; y: plate.h * (0.46 + i * 0.15); width: plate.w * 0.83; height: plate.h * 0.14; background: root.selected == i ? rgb(210, 215, 200) : transparent;
-                Rectangle { x: 0; width: 3px; height: parent.height; background: root.selected == i ? root.moss : root.rule; }
-                Data { x: 8px; width: parent.width * 0.37; height: parent.height; text: name; color: root.ink; font-size: root.normal; }
-                Label { x: parent.width * 0.40; width: parent.width * 0.58; height: parent.height; text: ["Enlace e IP","Perfiles WLAN","Redes visibles"][i]; color: root.muted; font-size: root.small; }
+            // specimen 36 — Jerarquía de dato
+            Rectangle {
+                x: root.wide ? (parent.width + root.gap) / 3 * 2 : (parent.width + root.gap) / 2 * 1;
+                y: root.wide ? (parent.height + root.gap) / 2 * 1 : (parent.height + root.gap) / 3 * 2;
+                width: root.wide ? (parent.width - 2 * root.gap) / 3 : (parent.width - root.gap) / 2;
+                height: root.wide ? (parent.height - root.gap) / 2 : (parent.height - 2 * root.gap) / 3;
+                background: transparent; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "36 / Jerarquía de dato"; color: root.selected == 5 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 5 ? root.acid : root.line; }
+                Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
+Text { x: 0px; y: 0px; width: parent.width * 0.35; height: 19px; text: "PID"; color: root.muted; font-family: "Cascadia Mono"; font-size: 11px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Text { x: 0px; y: 19px; width: parent.width * 0.45; height: 28px; text: "4321"; color: root.cream; font-family: "Cascadia Mono"; font-size: 19px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Rectangle { x: parent.width * 0.49; y: 2px; width: 1px; height: 42px; background: root.line; }Text { x: parent.width * 0.54; y: 0px; width: parent.width * 0.46; height: 19px; text: "ESTADO"; color: root.muted; font-family: "Cascadia Mono"; font-size: 11px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Text { x: parent.width * 0.54; y: 19px; width: parent.width * 0.46; height: 28px; text: "ACTIVO"; color: root.mint; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+                }
             }
         }
     }
-    Rectangle { x: root.pad; y: root.height - 46px; width: root.width - 2 * root.pad; height: 1px; background: root.ink; }
-    Data { x: root.pad; y: root.height - 43px; width: root.width - 2 * root.pad; height: 19px;
-        text: "← → Lámina · 1–9 Acceso · PgUp/PgDn ±5 · Inicio/Fin · Esc salir"; color: root.ink; font-size: root.small; }
-    Data { x: root.pad; y: root.height - 22px; width: root.width - 2 * root.pad; height: 19px;
-        text: "Tab / ↑ ↓ foco  ·  Enter acción  ·  Espacio " + (root.paused ? "reanudar" : "pausa") + "  ·  R reiniciar"; color: root.muted; font-size: root.small; }
+    Rectangle { x: root.pad; y: parent.height - 28px; width: parent.width - 2 * root.pad; height: 1px; background: root.line; }
+    Text { x: root.pad; y: parent.height - 26px; width: parent.width - 2 * root.pad; height: 24px; text: "← → familia · 1–6 acceso · Tab foco · Enter prueba · Espacio " + (root.paused ? "reanudar" : "pausa") + " · R reiniciar · Esc salir"; color: root.muted; font-family: "Cascadia Mono"; font-size: 11px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
 }

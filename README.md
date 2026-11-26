@@ -1998,7 +1998,7 @@ Recuperación de aplicaciones: `triage PID --plan` y `triage PID --close FILETIM
 
 ### Muestrario de identidad gráfica
 
-`demo graficos` abre un laboratorio de 20 láminas nativas sin imágenes, con datos y comportamientos ficticios. Incluye composición editorial brutalista, geometría arquitectónica de vacíos, instrumentación orbital, ramificaciones biomecánicas de señal, inventarios, estados, magnitudes, cursor, foco por teclado, transferencia, filas que cambian de estado por consumo, continuidad de red, confirmación, expansión y sugerencias. Las flechas izquierda/derecha recorren las láminas; PgUp/PgDn saltan cinco; Inicio/Fin acceden a los extremos; 1–9 son accesos directos. Tab y arriba/abajo cambian el foco, Enter actúa en la simulación, Espacio pausa, R reinicia y Esc sale. Consulta `guide demo graficos`. No cambia el formatter, la identidad normal, ni los ajustes de apariencia. No ejecuta operaciones reales.
+`demo graficos` abre el catálogo nativo de 36 elementos gráficos en seis familias: estructura, foco, instrumentación, transferencia, estados y tipografía. Muestra seis elementos aislados por vista, a escala de uso, con dos o tres columnas según el ancho. Flechas o 1–6 para cambiar de familia; Tab para foco, Enter para probar, Espacio para pausar y Esc para salir. Sin imágenes, informes ficticios ni cambios de la consola normal. `guide demo graficos` documenta los componentes.
 
 ## Autocompletado por niveles (Tab)
 
@@ -2021,4 +2021,4 @@ También se conserva la búsqueda de archivos cuando no hay una opción SST apli
 
 `unban USUARIO` desbloquea una cuenta AD por LDAP con credenciales autorizadas solicitadas dentro de SST; no necesita elevación local. `sigsour` abre el catálogo PKGX. `notsh test` concentra las mediciones de red; no hay un comando independiente `netcheck` ni `netprobe`.
 
-La dirección gráfica del muestrario se documenta en [Identidad editorial de SST](docs/EDITORIAL_IDENTITY.md). La revisión experimental usa trazados vectoriales nativos de Slint; no contiene ilustraciones ni modifica la consola normal.
+La dirección gráfica del catálogo se documenta en [Identidad editorial de SST](docs/EDITORIAL_IDENTITY.md). Los componentes se dibujan directamente en Slint.

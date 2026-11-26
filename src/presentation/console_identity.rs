@@ -1,7 +1,7 @@
 //! Isolated native SST editorial component laboratory. No host operations.
 use std::sync::Mutex;
 
-pub const COUNT: u8 = 20;
+pub const COUNT: u8 = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DemoState {
@@ -19,7 +19,7 @@ impl DemoState {
         self.select_page((i16::from(self.page)-1+delta).rem_euclid(i16::from(COUNT)) as u8+1);
     }
     fn focus(&mut self,delta:i16) {
-        let count=match self.page { 5|9|15|16|20=>3, 11|14=>5, 13=>4, _=>3 };
+        let count=6;
         self.selected=(i16::from(self.selected)+delta).rem_euclid(count) as u8;
         self.action=false;
     }
@@ -65,25 +65,27 @@ impl Drop for Preview {fn drop(&mut self){*locked()=DemoState::CLOSED;}}
 
 #[cfg(windows)]
 pub const TITLES: [&str;COUNT as usize]=[
-    "Composición / inventario", "Cabecera / red", "Magnitud / memoria", "Registro / servicios",
-    "Foco / teclado", "Advertencia / umbral", "Incidencia / acción", "Instrumento / escala",
-    "Entrada / cursor", "Transferencia / progreso", "Procesos / consumo", "Red / continuidad",
-    "Semántica / estados", "Densidad / inventario", "Detalle / expansión", "Decisión / confirmación",
-    "Ruta / topología", "Evidencia / datos parciales", "Espera / indeterminada", "Comando / sugerencias",
+    "Estructura y recortes",
+    "Foco y controles",
+    "Instrumentación",
+    "Transferencia y señal",
+    "Estados y evidencia",
+    "Tipografía y navegación",
 ];
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn editorial_lab_has_native_geometry_and_one_plate_per_index(){
+    fn catalogue_has_native_geometry_and_36_isolated_specimens(){
         let source=include_str!("editorial_demo.slint");
         assert!(!source.contains("@image-url("));
         assert!(!source.contains("Image {"));
         for page in 1..=COUNT {
             let marker=format!("if root.page == {page} : Rectangle");
-            assert_eq!(source.matches(&marker).count(),1,"plate {page}");
+            assert_eq!(source.matches(&marker).count(),1,"family {page}");
         }
+        assert_eq!(source.matches("// specimen ").count(),36);
         assert!(source.matches("Path {").count()>=40);
     }
     #[test]
@@ -96,7 +98,7 @@ mod tests {
     }
     #[test]
     fn simulated_motion_is_bounded_and_pause_freezes(){
-        let mut s=DemoState::new(10);
+        let mut s=DemoState::new(4);
         assert_eq!(s.progress(),0);
         for _ in 0..50{s.advance();}
         assert_eq!(s.progress(),100);
@@ -108,8 +110,8 @@ mod tests {
     }
     #[test]
     fn keyboard_focus_wraps_in_each_control(){
-        let mut s=DemoState::new(5);s.focus(-1);assert_eq!(s.selected,2);
+        let mut s=DemoState::new(2);s.focus(-1);assert_eq!(s.selected,5);
         s.focus(1);assert_eq!(s.selected,0);
-        s.select_page(11);s.focus(-1);assert_eq!(s.selected,4);
+        s.select_page(6);s.focus(-1);assert_eq!(s.selected,5);
     }
 }

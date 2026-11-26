@@ -1,47 +1,56 @@
-SST — Laboratorio de identidad editorial
+SST — Catálogo nativo de elementos gráficos
 
 Uso: demo graficos
 
-20 láminas nativas con datos ficticios; no se ejecutan diagnósticos, transferencias,
-cierres ni modificaciones reales. No hay ilustraciones, imágenes ni skins.
+36 muestras aisladas en seis familias, visibles simultáneamente por grupos de seis. No son informes, portadas ni imágenes. Cada elemento tiene una etiqueta y se dibuja a escala de control dentro de la ventana SST. La cuadrícula se adapta a dos o tres columnas.
 
-NAVEGACIÓN
-  ← / →             lámina anterior / siguiente, con retorno circular
-  PgUp / PgDn       retroceder / avanzar cinco láminas
-  Inicio / Fin      primera / última lámina
-  1–9              acceso directo a las primeras nueve
-  Tab / ↑ / ↓       foco en el componente de la lámina (cuando corresponda)
-  Mayús+Tab         foco anterior
-  Enter            activar, expandir, confirmar o simular respuesta
-  Espacio          pausar / reanudar animación
-  R                reiniciar el estado de la lámina
-  Esc / q          volver a la consola
+1. Estructura y recortes
+  01 Cabecera asimétrica
+  02 Divisor escalonado
+  03 Marco recortado
+  04 Pórtico escalonado
+  05 Pestaña de metadatos
+  06 Riel y folio
 
-COMPOSICIÓN Y JERARQUÍA
-01 Inventario asimétrico: titular monumental y estructura arquitectónica con vacío funcional.
-02 Cabecera de red: pórtico industrial, dos interfaces y estados.
-03 Memoria: superficie proporcional y unidades.
-04 Servicios: columnas alineadas y reglas.
-05 Foco por teclado: foco distinto de activación.
-06 Advertencia: magnitud, umbral y desviación.
-07 Incidencia: evidencia, acción y verificación.
-08 Instrumento orbital: escala radial de veinte divisiones de 5%, lectura de CPU variable y umbral.
+2. Foco y controles
+  07 Marcas de registro
+  08 Foco de teclado
+  09 Fila activa
+  10 Selector angular
+  11 Acciones
+  12 Expansión
 
-COMPORTAMIENTOS
-09 Cursor: intermitencia y cambio de foco entre tokens.
-10 Transferencia: progreso 0–100%, pausa y fin estable.
-11 Procesos: carga ficticia variable; fila roja desde 85%.
-12 Continuidad: secuencia de doce señales ICMP, dos interrupciones y foco temporal.
-13 Estados: correcto, atención, fallo y sin evidencia.
-14 Densidad: registro adaptativo; columnas secundarias en ancho amplio.
-15 Expansión: detalle bajo demanda y selección por teclado.
-16 Confirmación: cancelar, cerrar o detalles; solo simulación.
-17 Topología: ramificaciones de señal y localización de fallo DNS.
-18 Evidencia parcial: dato ausente no equivale a cero.
-19 Espera: costillas oblicuas animadas, sin inventar porcentaje.
-20 Sugerencias: opciones contextualizadas de NOTSH, selección y aceptación ficticia.
+3. Instrumentación
+  13 Indicador radial / 20
+  14 Anillo segmentado / 8
+  15 Escala lineal
+  16 Umbral y desviación
+  17 Lectura proporcional
+  18 Escala de actividad
 
-La demo no cambia el formatter, las paletas de usuario, el fondo, ni el logotipo.
-Su identidad queda aislada hasta aprobación visual.
+4. Transferencia y señal
+  19 Transferencia angular
+  20 Progreso segmentado
+  21 Espera indeterminada
+  22 Continuidad y pérdidas
+  23 Ruta / bifurcación
+  24 Trama / transferencia
 
-Dirección artística: consulta docs/EDITORIAL_IDENTITY.md en el repositorio. Los elementos vectoriales se dibujan mediante Path nativo de Slint, sin archivos de imagen.
+5. Estados y evidencia
+  25 Correcto
+  26 Advertencia
+  27 Fallo
+  28 Sin datos
+  29 Evidencia
+  30 Estado dinámico
+
+6. Tipografía y navegación
+  31 Título compacto
+  32 Folio numérico
+  33 Microtipografía
+  34 Entrada y cursor
+  35 Sugerencias
+  36 Jerarquía de dato
+
+Controles: ←/→ familia, 1–6 acceso directo, PgUp/PgDn ±3, Inicio/Fin extremos, Tab/↑/↓ foco, Mayús+Tab anterior, Enter prueba interacción, Espacio pausa/reanuda, R reinicia, Esc/q sale.
+Los datos y acciones son simulados. No se modifica el equipo, el formatter, el logo ni las paletas de la consola habitual. No se cargan ilustraciones o archivos de imagen.

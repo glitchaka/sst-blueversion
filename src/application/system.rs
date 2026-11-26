@@ -133,7 +133,7 @@ impl SystemService {
         use crate::adapters::terminal::io;
         use std::sync::atomic::Ordering;
         if args.len()!=1 || args[0]!="graficos" {
-            let help="demo graficos — laboratorio de identidad SST; 20 muestras nativas. Izq/Der: lámina, Tab/Arriba/Abajo: foco, Enter: acción ficticia, Espacio: pausa, R: reiniciar, Esc: salir.";
+            let help="demo graficos — laboratorio de identidad SST; 36 elementos nativos en 6 familias. Izq/Der: familia, Tab/Arriba/Abajo: foco, Enter: acción ficticia, Espacio: pausa, R: reiniciar, Esc: salir.";
             return Ok(if args.is_empty() || args.iter().any(|a|matches!(a.as_str(),"--help"|"-h")) {
                 CommandOutput::ok(help)
             } else { CommandOutput::error(help,2) });
@@ -151,8 +151,8 @@ impl SystemService {
                 Some(TerminalKey::Escape | TerminalKey::Char('q')) => break,
                 Some(TerminalKey::Right) => preview.step(1),
                 Some(TerminalKey::Left) => preview.step(-1),
-                Some(TerminalKey::PageDown) => preview.step(5),
-                Some(TerminalKey::PageUp) => preview.step(-5),
+                Some(TerminalKey::PageDown) => preview.step(3),
+                Some(TerminalKey::PageUp) => preview.step(-3),
                 Some(TerminalKey::Home) => preview.show(1),
                 Some(TerminalKey::End) => preview.show(COUNT),
                 Some(TerminalKey::Down | TerminalKey::Char('\t')) => preview.focus(1),
@@ -160,7 +160,7 @@ impl SystemService {
                 Some(TerminalKey::Space) => preview.pause(),
                 Some(TerminalKey::Enter) => preview.action(),
                 Some(TerminalKey::Char('r' | 'R')) => preview.reset(),
-                Some(TerminalKey::Char(ch @ '1'..='9')) => preview.show(ch as u8-b'0'),
+                Some(TerminalKey::Char(ch @ '1'..='6')) => preview.show(ch as u8-b'0'),
                 None => preview.advance(),
                 _ => {},
             }

@@ -1680,7 +1680,7 @@
       "name": "demo graficos",
       "aliases": [],
       "area": "config",
-      "summary": "Laboratorio de identidad: 20 láminas nativas sin imágenes, con interacción y datos simulados.",
+      "summary": "Catálogo de 36 elementos gráficos nativos aislados, con seis familias y controles interactivos.",
       "manual": {
         "file": "demo",
         "extension": "txt",

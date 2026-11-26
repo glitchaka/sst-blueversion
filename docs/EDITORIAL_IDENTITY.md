@@ -1,31 +1,59 @@
-# SST / Identidad editorial experimental
+# SST / Catálogo de elementos gráficos
 
-Dirección extraída de las referencias del autor, no una copia de sus imágenes.
+El catálogo existe dentro de SST (`demo graficos`), no en ilustraciones ni informes ficticios. Se prueban componentes aislados a escala de interfaz. La referencia brutalista y retrofuturista se traduce a recortes angulares, vacíos arquitectónicos, señales, escalas y jerarquía de texto. El logo original permanece intacto.
 
-## Gramática visual
+## 1. Estructura y recortes
 
-| Referencia | Traducción funcional | Evitar |
-|---|---|---|
-| Editorial japonés y portadas industriales | Titular dominante, folio técnico, composición asimétrica, microtipografía de lectura | Repetir una tarjeta con el mismo encabezado |
-| Brutalismo lunar y arquitectura monumental | Pórtico, masa y vacío; perfiles escalonados; una pieza gráfica que organiza la lectura | Formas flotantes gigantes sin significado |
-| Biomecánica y estructuras radiales | Ramificaciones de señal, nervaduras, anillos graduados, continuidad e interrupción | Ilustraciones de personajes, monstruos o paisajes |
-| Señalética técnica retrofuturista | Marcadores de foco, cortes oblicuos, escala y colores de estado | Colorizar todas las letras o añadir ornamento indiscriminado |
+- Cabecera asimétrica
+- Divisor escalonado
+- Marco recortado
+- Pórtico escalonado
+- Pestaña de metadatos
+- Riel y folio
 
-## Familia de componentes
+## 2. Foco y controles
 
-- Portada (01): bloque arquitectónico recortado por el índice; título y metadatos en columnas asimétricas.
-- Red (02): sección sobre fondo grafito, columna-pórtico y dos carriles de estado con cortes.
-- Instrumentación (08): corona orbital calibrada, segmento por 5%, centro de lectura, umbral y estado.
-- Señal (12, 17): continuidad ICMP y recorrido de diagnóstico; interrupciones y ramificaciones son evidencia representada, no imágenes.
-- Foco, entrada y transferencia (05, 09, 10): perfiles angulares, cursor, progreso y estados localizados.
-- Espera (19): costillas de señal en movimiento, sin porcentaje falso.
-- Las demás láminas conservan la retícula editorial, contraste de escala y densidad según el tipo de información.
+- Marcas de registro
+- Foco de teclado
+- Fila activa
+- Selector angular
+- Acciones
+- Expansión
 
-## Límites
+## 3. Instrumentación
 
-Las láminas son un laboratorio separado de la consola habitual, no un tema aplicado.
-Ningún dato ni operación es real. Los trazados son Path de Slint, dibujados en el motor software de la aplicación. No se cargan imágenes ni se utilizan letras como sustitutos de geometría. El papel mineral y grafito estructuran la composición, el óxido y el amarillo ácido señalan la información; esta paleta experimental no modifica las paletas configurables.
+- Indicador radial / 20
+- Anillo segmentado / 8
+- Escala lineal
+- Umbral y desviación
+- Lectura proporcional
+- Escala de actividad
 
-## Criterio de aceptación visual
+## 4. Transferencia y señal
 
-Revisar el muestrario en la ventana real, tanto ancha como compacta. Debe distinguirse la jerarquía de información sin depender del color, los títulos deben permanecer legibles, los indicadores conservar significado y las formas no ocultar texto. Las pruebas automatizadas de compilación y estado no certifican por sí solas la fidelidad estética.
+- Transferencia angular
+- Progreso segmentado
+- Espera indeterminada
+- Continuidad y pérdidas
+- Ruta / bifurcación
+- Trama / transferencia
+
+## 5. Estados y evidencia
+
+- Correcto
+- Advertencia
+- Fallo
+- Sin datos
+- Evidencia
+- Estado dinámico
+
+## 6. Tipografía y navegación
+
+- Título compacto
+- Folio numérico
+- Microtipografía
+- Entrada y cursor
+- Sugerencias
+- Jerarquía de dato
+
+La consola normal no adopta estas muestras automáticamente. Los estados y acciones son simulados. La fidelidad artística debe verificarse en la ventana real.
