@@ -1,12 +1,18 @@
 SST Windows release CI report
-Source commit: 441ea23740a2d4169aa10d981ee5c78b17e30ac2
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45860684857
-Recorded UTC: 2026-11-26 16:47:54Z
-Compile: success
-Rust tests: success
-Software GUI startup: success
-Packaging: success
+Source commit: 6feea27cb4723a0beb459a4ca94373acfca0d307
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45866760937
+Recorded UTC: 2026-11-26 17:21:57Z
+Compile: failure
+Rust tests: skipped
+Software GUI startup: skipped
+Packaging: skipped
 Compiler log tail:
     Updating crates.io index
-   Compiling sst v0.1.14-blue.2 (D:\a\sst-blueversion\sst-blueversion)
-    Finished `release` profile [optimized] target(s) in 4m 55s
+   Compiling sst v0.1.14-blue.3 (D:\a\sst-blueversion\sst-blueversion)
+error: expected at least one digit in exponent
+   --> src\presentation\gui_slint.rs:623:34
+    |
+623 |                     background: #29332e;
+    |                                  ^^^^^^
+
+error: could not compile `sst` (bin "sst") due to 1 previous error
