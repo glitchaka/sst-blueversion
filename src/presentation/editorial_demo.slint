@@ -1,0 +1,135 @@
+// The specimen is mounted by the native terminal only while the demo is open.
+component DisplayType inherits Text {
+    font-family: "Segoe UI Variable Display";
+    font-weight: 900;
+    vertical-alignment: center;
+}
+component TechnicalType inherits Text {
+    font-family: "Cascadia Mono";
+    vertical-alignment: center;
+}
+component Station inherits Image {
+    source: @image-url("../../assets/demo/station.png");
+    image-fit: cover;
+}
+export component EditorialDemo inherits Rectangle {
+    in property <int> page;
+    in property <string> folio;
+    in property <string> title;
+    in property <string> metric;
+    in property <string> context;
+    in property <string> caption;
+    in property <[string]> rows;
+    property <bool> compact: self.height < 350px;
+    property <length> gutter: compact ? 12px : min(32px,self.width * 0.035);
+    property <length> small: compact ? 11px : 14px;
+    property <color> ink: #20231e;
+    property <color> paper: #ebe6d5;
+    property <color> oxide: #d95530;
+    property <color> lime: #d8ed29;
+    background: paper;
+    clip: true;
+    // The folio and navigation are the common furniture of the eight plates.
+    TechnicalType { x: root.gutter; y: 0; width: parent.width * 0.72; height: root.compact ? 22px : 32px;
+        text: "SST   /   " + root.title + "   ·   Muestra"; color: root.ink; font-size: root.small; }
+    TechnicalType { x: parent.width * 0.73; y: 0; width: parent.width * 0.27 - root.gutter; height: root.compact ? 22px : 32px;
+        text: root.folio; color: root.ink; font-size: root.small; horizontal-alignment: right; }
+    plate := Rectangle {
+        y: root.compact ? 22px : 32px; width: parent.width; height: parent.height - self.y - (root.compact ? 24px : 32px);
+        clip: true; background: root.paper;
+        property <length> w: self.width;
+        property <length> h: self.height;
+        // Cover: a full-bleed field illustration and overlapping printer's slips.
+        if root.page == 1 : Rectangle {
+            Station { width: parent.width; height: parent.height; }
+            Rectangle { x: root.gutter; y: plate.h * 0.055; width: plate.w * 0.58; height: plate.h * 0.20; background: root.paper;
+                DisplayType { x: 8px; text: "ESTADO DEL"; color: root.ink; height: parent.height; font-size: min(plate.w * 0.085, parent.height * 0.97); } }
+            Rectangle { x: root.gutter; y: plate.h * 0.255; width: plate.w * 0.46; height: plate.h * 0.21; background: root.oxide;
+                DisplayType { x: 8px; text: "EQUIPO"; height: parent.height; color: root.ink; font-size: min(plate.w * 0.105,parent.height * 0.97); } }
+            Rectangle { x: root.gutter; y: parent.height - self.height; width: plate.w * 0.40; height: plate.h * 0.27; background: root.ink;
+                for item[i] in root.rows : TechnicalType { x: 8px; y: i * parent.height / 3; height: parent.height / 3;
+                    text: item; color: root.paper; font-size: root.small; } }
+        }
+        // Network section: a tall printed spine carries the interface count.
+        if root.page == 2 : Rectangle {
+            Rectangle { x: 0; y: 0; width: plate.w * 0.27; height: plate.h; background: root.oxide;
+                DisplayType { x: root.gutter; y: plate.h * 0.04; text: root.metric; color: root.ink; font-size: min(parent.width * 0.66,plate.h * 0.47); }
+                TechnicalType { x: root.gutter; y: plate.h * 0.80; text: "INTERFACES"; font-size: root.small; color: root.ink; } }
+            DisplayType { x: plate.w * 0.31; y: plate.h * 0.03; text: "RED LOCAL"; color: root.ink; font-size: min(plate.w * 0.089, plate.h * 0.27); }
+            for item[i] in root.rows : Rectangle { x: plate.w * 0.32; y: plate.h * (0.37 + i * 0.18); width: plate.w * 0.64; height: plate.h * 0.18;
+                Rectangle { x: 0; y: 0; width: parent.width; height: i == 0 ? 4px : 1px; background: root.ink; }
+                TechnicalType { x: 4px; height: parent.height; text: item; font-size: root.compact ? 13px : 21px; color: root.ink; } }
+        }
+        // A memory map, with area proportional to occupied capacity.
+        if root.page == 3 : Rectangle {
+            background: #233e37;
+            DisplayType { x: root.gutter; y: plate.h * 0.03; text: "MEMORIA FÍSICA"; font-size: min(plate.w * 0.065,plate.h * 0.18); color: root.paper; }
+            Rectangle { x: root.gutter; y: plate.h * 0.34; width: plate.w - 2 * root.gutter; height: plate.h * 0.47; background: #bac4ae;
+                Rectangle { x: 0; y: 0; width: parent.width * 0.65; height: parent.height; background: root.lime;
+                    DisplayType { x: 8px; height: parent.height; text: root.metric + "%"; font-size: min(parent.width * 0.39,parent.height * 0.86); color: root.ink; } }
+                TechnicalType { x: parent.width * 0.68; height: parent.height; text: "5.6 GiB libres"; font-size: root.small; color: root.ink; } }
+            TechnicalType { x: root.gutter; y: plate.h * 0.84; text: root.caption; font-size: root.small; color: root.paper; }
+        }
+        // Service register: a newspaper masthead and aligned typeset columns.
+        if root.page == 4 : Rectangle {
+            DisplayType { x: root.gutter; y: 0; text: "Servicios"; font-size: min(plate.w * 0.13,plate.h * 0.28); color: root.ink; }
+            TechnicalType { x: plate.w * 0.72; y: plate.h * 0.15; text: "03 REGISTROS"; font-size: root.small; color: root.ink; }
+            for name[i] in ["Servicio","W32Time","Spooler","BITS"] : Rectangle {
+                x: root.gutter; y: plate.h * (0.34 + i * 0.15); width: plate.w - 2 * root.gutter; height: plate.h * 0.15;
+                background: i == 0 ? root.ink : transparent;
+                Rectangle { x: 0; y: 0; width: parent.width; height: 1px; background: root.ink; }
+                TechnicalType { x: 6px; height: parent.height; text: name; font-size: root.small; color: i == 0 ? root.paper : root.ink; }
+                TechnicalType { x: parent.width * 0.48; height: parent.height; text: ["Estado","Activo","Activo","Detenido"][i]; font-size: root.small; color: i == 0 ? root.paper : root.ink; }
+                TechnicalType { x: parent.width * 0.83; height: parent.height; text: ["PID","804","1220","—"][i]; font-size: root.small; color: i == 0 ? root.paper : root.ink; } }
+        }
+        // Index: the selected entry becomes the caption of the illustration.
+        if root.page == 5 : index := Rectangle {
+            property <int> selected: 1;
+            background: root.ink;
+            Station { x: plate.w * 0.59; width: plate.w * 0.41; height: plate.h; }
+            DisplayType { x: root.gutter; y: plate.h * 0.04; text: "Diagnóstico"; font-size: min(plate.w * 0.073,plate.h * 0.23); color: root.paper; }
+            for item[i] in root.rows : Rectangle { x: root.gutter; y: plate.h * (0.35 + i * 0.18); width: plate.w * 0.56 - root.gutter; height: plate.h * 0.16;
+                background: index.selected == i ? root.lime : transparent;
+                TechnicalType { x: 8px; height: parent.height; text: item; color: index.selected == i ? root.ink : root.paper; font-size: root.compact ? 13px : 21px; }
+                TouchArea { mouse-cursor: pointer; clicked => { index.selected = i; } } }
+        }
+        // Threshold report: the pointer and the threshold share the same scale.
+        if root.page == 6 : Rectangle {
+            background: #e6884b;
+            TechnicalType { x: root.gutter; y: plate.h * 0.04; text: "ADVERTENCIA   /   MEMORIA"; font-size: root.small; color: root.ink; }
+            DisplayType { x: root.gutter; y: plate.h * 0.13; height: plate.h * 0.42; text: root.metric + "%"; font-size: min(plate.w * 0.21, plate.h * 0.43); color: root.ink; }
+            TechnicalType { x: plate.w * 0.59; y: plate.h * 0.41; text: "+4 puntos sobre el umbral"; font-size: root.small; color: root.ink; }
+            Rectangle { x: root.gutter; y: plate.h * 0.60; width: plate.w - 2 * root.gutter; height: plate.h * 0.11; background: #f4c69d;
+                Rectangle { x: 0; y: 0; width: parent.width * 0.89; height: parent.height; background: root.ink; }
+                Rectangle { x: parent.width * 0.85; y: -5px; width: 3px; height: parent.height + 10px; background: root.paper; } }
+            TechnicalType { x: root.gutter; y: plate.h * 0.77; text: "Revisar procesos"; color: root.ink; font-size: root.small; }
+            TechnicalType { x: plate.w * 0.72; y: plate.h * 0.77; text: "Umbral   85 %"; color: root.ink; font-size: root.small; }
+        }
+        // Incident bulletin: diagnosis first, followed by the recovery action.
+        if root.page == 7 : Rectangle {
+            background: #ad3227;
+            Rectangle { x: plate.w * 0.69; y: 0; width: plate.w * 0.31; height: plate.h * 0.72; clip: true;
+                Station { width: parent.width; height: parent.height; } }
+            TechnicalType { x: root.gutter; y: plate.h * 0.04; text: "FALLO    /    APLICACIÓN"; font-size: root.small; color: root.paper; }
+            DisplayType { x: root.gutter; y: plate.h * 0.16; height: plate.h * 0.52; text: "Sin\nrespuesta"; font-size: min(plate.w * 0.102,plate.h * 0.22); color: root.paper; }
+            Rectangle { y: plate.h * 0.72; width: parent.width; height: plate.h * 0.28; background: root.ink;
+                TechnicalType { x: root.gutter; height: parent.height; text: "01   Solicitar cierre normal"; font-size: root.small; color: root.paper; }
+                TechnicalType { x: plate.w * 0.60; height: parent.height; text: "02   Verificar instancia"; font-size: root.small; color: root.paper; } }
+        }
+        // CPU instrument: twenty divisions; the last filled mark is the reading.
+        if root.page == 8 : Rectangle {
+            background: root.lime;
+            TechnicalType { x: root.gutter; y: plate.h * 0.03; text: "CPU   /   CARGA DEL PROCESADOR"; font-size: root.small; color: root.ink; }
+            DisplayType { x: root.gutter; y: plate.h * 0.11; height: plate.h * 0.47; text: root.metric + "%"; font-size: min(plate.w * 0.21,plate.h * 0.46); color: root.ink; }
+            Rectangle { x: root.gutter; y: plate.h * 0.57; width: plate.w - 2 * root.gutter; height: plate.h * 0.26;
+                for tick[i] in 20 : Rectangle { x: i * parent.width / 20; width: parent.width / 20 - 3px; height: parent.height;
+                    background: i < 13 ? root.ink : transparent; border-color: root.ink; border-width: 1px; } }
+            TechnicalType { x: root.gutter; y: plate.h * 0.85; text: "0 %"; font-size: root.small; color: root.ink; }
+            TechnicalType { x: plate.w * 0.63; y: plate.h * 0.85; text: "65"; font-size: root.small; color: root.ink; }
+            TechnicalType { x: plate.w - root.gutter - self.width; y: plate.h * 0.85; text: "100 %"; font-size: root.small; color: root.ink; }
+        }
+    }
+    Rectangle { y: plate.y + plate.height; width: parent.width; height: 1px; background: root.ink; }
+    TechnicalType { x: root.gutter; y: plate.y + plate.height; height: parent.height - self.y;
+        text: "← →   Recorrer      1–8   Elegir      Esc   Salir"; font-size: root.small; color: root.ink; }
+}
