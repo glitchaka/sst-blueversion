@@ -45,7 +45,7 @@ Variables gestionadas:
   SST_BACKGROUND_CAROUSEL_MINUTES
 
 Reload:
-  sst-config reload           deliberadamente devuelve error indicando que reload debe ejecutarse mediante la función Bash `config`/`reload`, porque recargar el entorno pertenece a la shell.
+  config reload               recarga el entorno desde la interfaz pública. El backend directo sst-config reload no recarga la shell.
 
 Rutas:
   sst-path PATH
