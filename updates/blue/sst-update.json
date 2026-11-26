@@ -1,24 +1,27 @@
 {
   "schema": 1,
-  "version": "0.1.14-blue.2",
+  "version": "0.1.14-blue.3",
   "channel": "blue",
-  "published_at": "2026-11-26T16:56:13.6308441+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.2/sst.exe",
-  "sha256": "ab1e4382c13c99b88d36c3ec791b6bc8eb71239be9033c2362c42f2c06010344",
-  "size": 60483584,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.2/sst-updater.exe",
-  "updater_sha256": "9f1d2bca12cdb3e8c56690bb753b3ea9a68797549e2873dfb2da5d4fe558dd97",
+  "published_at": "2026-11-26T17:49:09.6594176+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.3/sst.exe",
+  "sha256": "125802c8231cf526faaef24afaecf64ff98d37c51dbf63eb5b33ff11e390eba5",
+  "size": 63700992,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.3/sst-updater.exe",
+  "updater_sha256": "e5072d3126eedbefa6b6ddc91eeef3e7c331db94c6c498a7501b3387284cb0b3",
   "updater_size": 433664,
   "changes": [
-    "La identidad experimental se muestra exclusivamente en la demo interactiva `demo graficos`. Recorre ocho elementos con las flechas, elige uno con 1–8 y vuelve al prompt con Esc.",
-    "Corrección de `config palette`: la interfaz pública reenvía los subcomandos de apariencia al backend nativo; autocompletado de Sunset, Golden y Gruvbox, ayuda y prueba de regresión de la ruta real del intérprete."
+    "Sustituye la demo de formas aisladas por un muestrario editorial nativo de ocho componentes en contexto: portada, cabecera, lectura, inventario, selección, advertencia, fallo y escala.",
+    "Jerarquía tipográfica, información ficticia explícita, geometría contenida y composiciones diferenciadas para inventario, lectura y estados.",
+    "La demo permanece aislada de la consola normal; no reemplaza el logotipo ni aplica la identidad experimental al formatter.",
+    "Documentación actualizada en README y guide.",
+    "Incluye la corrección de enrutamiento público de config palette de blue.2."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.14-blue.2.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.2/SST-Setup-0.1.14-blue.2.exe",
-    "sha256": "1cbb9d9c9384ab62456304c5bc263ccb1a476dbb11e8aa998fa3f623d12872d3",
-    "size": 69647724,
+    "name": "SST-Setup-0.1.14-blue.3.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.3/SST-Setup-0.1.14-blue.3.exe",
+    "sha256": "42dd08c7d877a2d6015e902ea384e9463b0b738d8055f74b7cbf8e81fc76b8df",
+    "size": 72881298,
     "single_use": true,
-    "package_id": "d877356e640838ce774763d5997cd908"
+    "package_id": "6c9b488a12ba715825607f86504fe644"
   }
 }
