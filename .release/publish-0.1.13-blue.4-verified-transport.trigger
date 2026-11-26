@@ -1,0 +1,1 @@
+Rebuild main following the Windows regression test compilation fix E0308 in Helix, native SCM services, driver CSV inventory, localized output, startup, triage and guide fixes. Keep release gates enabled.
