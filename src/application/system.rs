@@ -929,14 +929,76 @@ fn drivers(args: &[String]) -> anyhow::Result<CommandOutput> {
     if options::has(args, "--signed") {
         native.push("/SI".to_owned());
     }
-    native.push("/FO".to_owned());
-    native.push(if options::has(args, "--csv") {
-        "CSV".to_owned()
-    } else {
-        "TABLE".to_owned()
-    });
+    // TABLE truncates long driver names in driverquery itself, before SST
+    // receives the result. Always collect the full CSV representation.
+    native.extend(["/FO".to_owned(), "CSV".to_owned()]);
+    let mut result = run_windows_tool("driverquery.exe", &native)?;
+    if result.status != 0 || options::has(args, "--csv") {
+        return Ok(result);
+    }
+    let rows = parse_driver_csv(&result.stdout);
+    if let Some((headers, data)) = rows.split_first() {
+        if !headers.is_empty() && data.iter().all(|row| row.len() == headers.len()) {
+            let mut report = format!("SST drivers — inventario de controladores\n------------------------------------------------------------\nTotal: {}\n\n", data.len());
+            // Detailed inventories retain every field rather than forcing
+            // many wide columns into a fixed terminal width.
+            if headers.len() > 5 {
+                for row in data {
+                    report.push_str(&format!("\n{}\n", row[0]));
+                    for (header, value) in headers.iter().zip(row) {
+                        report.push_str(&format!("{header}: {}\n", if value.is_empty() { "—" } else { value.as_str() }));
+                    }
+                }
+            } else {
+                report.push_str(&headers.iter().map(|v| v.to_uppercase()).collect::<Vec<_>>().join("  "));
+                report.push('\n');
+                for row in data {
+                    report.push_str(&row.iter().map(|v| if v.trim().is_empty() { "—".to_owned() } else { v.split_whitespace().collect::<Vec<_>>().join(" ") }).collect::<Vec<_>>().join("  "));
+                    report.push('\n');
+                }
+            }
+            result.stdout = report;
+        }
+    }
+    Ok(result)
+}
 
-    run_windows_tool("driverquery.exe", &native)
+fn parse_driver_csv(text: &str) -> Vec<Vec<String>> {
+    let mut rows = Vec::new();
+    let mut row = Vec::new();
+    let mut field = String::new();
+    let mut quoted = false;
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' if quoted && chars.peek() == Some(&'"') => { chars.next(); field.push('"'); }
+            '"' => quoted = !quoted,
+            ',' if !quoted => row.push(std::mem::take(&mut field)),
+            '\r' if !quoted && chars.peek() == Some(&'\n') => {},
+            '\n' if !quoted => {
+                row.push(std::mem::take(&mut field));
+                if row.iter().any(|v| !v.is_empty()) { rows.push(std::mem::take(&mut row)); }
+                else { row.clear(); }
+            }
+            _ => field.push(ch),
+        }
+    }
+    if quoted { return Vec::new(); }
+    if !row.is_empty() || !field.is_empty() {
+        row.push(field);
+        rows.push(row);
+    }
+    rows
+}
+
+#[cfg(test)]
+mod driver_csv_regression {
+    use super::parse_driver_csv;
+    #[test]
+    fn preserves_untruncated_names_and_quoted_fields() {
+        let rows = parse_driver_csv("\"Name\",\"Display Name\",\"Date\"\r\n\"driver\",\"Controlador largo, con \"\"comillas\"\"\",\"\"\r\n");
+        assert_eq!(rows[1], vec!["driver", "Controlador largo, con \"comillas\"", ""]);
+    }
 }
 
 fn events(args: &[String]) -> anyhow::Result<CommandOutput> {
@@ -1126,8 +1188,8 @@ fn run_windows_tool(program: &str, args: &[String]) -> anyhow::Result<CommandOut
     })?;
 
     Ok(CommandOutput {
-        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        stdout: crate::support::windows::decode_console_output(&output.stdout),
+        stderr: crate::support::windows::decode_console_output(&output.stderr),
         status: output.status.code().unwrap_or(1),
     })
 }
