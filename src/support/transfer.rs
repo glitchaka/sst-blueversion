@@ -91,8 +91,7 @@ fn transfer_state() -> &'static Mutex<Option<TransferSnapshot>> {
     GUI_TRANSFER.get_or_init(|| Mutex::new(None))
 }
 
-/// A completed transfer remains visible briefly so even fast downloads can be
-/// observed, then the native overlay disappears without altering the terminal.
+/// Read the current transfer without accessing the worker or terminal buffer.
 pub fn snapshot() -> Option<TransferSnapshot> {
     let mut state = transfer_state().lock().unwrap_or_else(|e| e.into_inner());
     if state.as_ref().is_some_and(|s| s.finished && s.updated_at.elapsed() >= Duration::from_secs(2)) {

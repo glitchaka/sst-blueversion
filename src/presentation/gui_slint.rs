@@ -170,7 +170,7 @@ const NERD_FONT_BYTES: &[u8] = crate::application::system::SST_TERMINAL_FONT_BYT
 slint::slint! {
     import { EditorialDemo } from "editorial_demo.slint";
     import { AngularMark, CutFrame, Registration, AsymmetricHeader, SignalSlashes, FieldBracket, SteppedDivider } from "graphic_kit.slint";
-    import { RadialTwenty, RingEight, ActivityScale, SegmentedProgress, IndeterminateWait, HatchedTransfer } from "graphic_kit.slint";
+    import { RadialTwenty, RingEight, ActivityScale, SegmentedProgress, IndeterminateWait, HatchedTransfer, MonitorFrame } from "graphic_kit.slint";
     export struct NativeGraphic { x: float, y: float, w: float, h: float, kind: int, ratio: float, tone: int }
     // Rendered vector outlines, never made of VT100/ASCII characters.
     // Transparent interiors preserve the user's terminal artwork and logo.
@@ -198,8 +198,7 @@ slint::slint! {
     }
     component TerminalSectionFrame inherits Rectangle {
         background: transparent;
-        CutFrame { width: parent.width; height: parent.height; outline: OutputTheme.rule; thickness: 1px; }
-        Registration { width: parent.width; height: parent.height; outline: OutputTheme.rail; thickness: 2px; }
+        MonitorFrame { width: parent.width; height: parent.height; ink: OutputTheme.rail; line: OutputTheme.rule; }
     }
 
     // The download panel is independent of the VT100 pixel surface.
@@ -426,7 +425,7 @@ slint::slint! {
                 x: root.monitor-grid-left * 1px;
                 y: (root.monitor-grid-top + root.monitor-a-row * root.monitor-line-height) * 1px;
                 width: root.monitor-grid-width * 1px;
-                height: (root.monitor-a-rows * root.monitor-line-height) * 1px;
+                height: (root.monitor-a-rows * root.monitor-line-height + 0.22 * root.monitor-line-height) * 1px;
             }
 
             TerminalSectionFrame {
@@ -434,7 +433,7 @@ slint::slint! {
                 x: root.monitor-grid-left * 1px;
                 y: (root.monitor-grid-top + root.monitor-b-row * root.monitor-line-height) * 1px;
                 width: root.monitor-grid-width * 1px;
-                height: (root.monitor-b-rows * root.monitor-line-height) * 1px;
+                height: (root.monitor-b-rows * root.monitor-line-height + 0.22 * root.monitor-line-height) * 1px;
             }
 
             TerminalSectionFrame {
@@ -442,7 +441,7 @@ slint::slint! {
                 x: root.monitor-grid-left * 1px;
                 y: (root.monitor-grid-top + root.monitor-c-row * root.monitor-line-height) * 1px;
                 width: root.monitor-grid-width * 1px;
-                height: (root.monitor-c-rows * root.monitor-line-height) * 1px;
+                height: (root.monitor-c-rows * root.monitor-line-height + 0.22 * root.monitor-line-height) * 1px;
             }
 
             TerminalSectionFrame {
@@ -450,7 +449,7 @@ slint::slint! {
                 x: root.monitor-grid-left * 1px;
                 y: (root.monitor-grid-top + root.monitor-d-row * root.monitor-line-height) * 1px;
                 width: root.monitor-grid-width * 1px;
-                height: (root.monitor-d-rows * root.monitor-line-height) * 1px;
+                height: (root.monitor-d-rows * root.monitor-line-height + 0.22 * root.monitor-line-height) * 1px;
             }
 
             if root.keygen-visible : Rectangle {
@@ -2834,7 +2833,7 @@ pub fn run() -> Result<()> {
                     let factor = model.scale.max(0.5);
                     let (_, cols) = model.parser.screen().size();
                     ui.set_monitor_grid_left((left + 0.35 * cell_width) / factor);
-                    ui.set_monitor_grid_top((top - 0.05 * cell_height) / factor);
+                    ui.set_monitor_grid_top((top - 0.16 * cell_height) / factor);
                     ui.set_monitor_grid_width(
                         (cols.saturating_sub(1) as f32 * cell_width) / factor,
                     );

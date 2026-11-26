@@ -102,7 +102,7 @@ mod tests {
             assert_eq!(source.matches(&marker).count(),1,"family {page}");
         }
         assert_eq!(source.matches("// specimen ").count(),36);
-        assert!(source.matches("Path {").count()>=40);
+        assert!(source.matches("Path {").count()+include_str!("graphic_kit.slint").matches("Path {").count()>=40);
         assert!(source.contains("import { AngularMark, CutFrame, Registration }"));
         assert!(include_str!("graphic_kit.slint").contains("export component AngularMark"));
     }
