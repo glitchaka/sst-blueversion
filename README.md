@@ -15,7 +15,7 @@ SST está pensado para poder llevarse como herramienta portable y trabajar desde
 
 ### Guía de comandos SST
 
-`guide` consulta el catálogo completo de `glitchaka/adm-toolbox/tutorials`, incluida la sección Arch. Los manuales se descargan bajo demanda y quedan guardados en `guide/upstream/` para futuras consultas sin red. Si el origen no está disponible, SST utiliza la última copia válida y la documentación local integrada. No se sobrescriben las fichas del usuario.
+`guide` da prioridad al índice y los manuales de SST integrados en el ejecutable. Incorpora temas complementarios de `glitchaka/adm-toolbox/tutorials`, incluida la referencia Arch; las descargas se conservan en `guide/upstream/`. La documentación propia funciona sin conexión y se actualiza con cada versión. Para conocer el autocompletado por niveles, consulta `guide guide`.
 
 La baliza de presencia LAN entre instancias SST está desactivada en esta edición: no se abre UDP/43838 ni se realiza un broadcast para localizar otras SST. Los comandos habituales de red permanecen disponibles.
 
