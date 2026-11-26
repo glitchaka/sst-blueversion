@@ -13,7 +13,7 @@ sst.exe
 
 SST está pensado para poder llevarse como herramienta portable y trabajar desde una única consola sin depender de PowerShell para las tareas que ya incorpora de forma nativa.
 
-### Guía de comandos vinculada al repositorio original
+### Guía de comandos SST
 
 `guide` consulta el catálogo completo de `glitchaka/adm-toolbox/tutorials`, incluida la sección Arch. Los manuales se descargan bajo demanda y quedan guardados en `guide/upstream/` para futuras consultas sin red. Si el origen no está disponible, SST utiliza la última copia válida y la documentación local integrada. No se sobrescriben las fichas del usuario.
 
@@ -1999,3 +1999,24 @@ Recuperación de aplicaciones: `triage PID --plan` y `triage PID --close FILETIM
 ### Muestrario de identidad gráfica
 
 `demo graficos` permite recorrer ocho ejemplos de composición editorial con datos ficticios. Las flechas y las teclas 1–8 cambian de muestra; Esc regresa a la consola. No cambia el formatter ni el logotipo de la interfaz normal.
+
+## Autocompletado por niveles (Tab)
+
+El catálogo local de SST se comparte entre la terminal nativa y la sesión de consola. Tab completa el comando, los subcomandos y las opciones contextuales; una coincidencia única completa el token y, en la ventana nativa, añade un espacio para continuar. Con varias coincidencias, la ventana nativa amplía el prefijo común o muestra las alternativas. No ejecuta el comando.
+
+| Escribir y pulsar Tab | Resultado esperado |
+|---|---|
+| `sys serv` | `sys services` |
+| `sys services --r` | `--running` |
+| `notsh lan sh` | `show` |
+| `notsh interface ipv4 show int` | `interfaces` |
+| `tools office auth r` | `repair` |
+| `tools office diagnose --d` | `--detail` |
+| `instp upgrade s` | `sst` |
+| `config palette sun` | `sunset` |
+| `triage 123 --p` | `--plan` |
+| `guide tools office d` | `diagnose` |
+
+También se conserva la búsqueda de archivos cuando no hay una opción SST aplicable. No se consultan credenciales ni se enumeran automáticamente cuentas AD, hosts o PID mediante Tab. `guide` incorpora la referencia local de SST y temas complementarios de upstream; los comandos retirados no se anuncian como herramientas actuales.
+
+`unban USUARIO` desbloquea una cuenta AD por LDAP con credenciales autorizadas solicitadas dentro de SST; no necesita elevación local. `sigsour` abre el catálogo PKGX. `notsh test` concentra las mediciones de red; no hay un comando independiente `netcheck` ni `netprobe`.
