@@ -5,11 +5,29 @@ pub const OXIDE: Ink = (225, 94, 52);
 pub const CONCRETE: Ink = (201, 199, 172);
 pub const GRAPHITE: Ink = (32, 39, 36);
 pub const PATINA: Ink = (91, 125, 117);
-pub const TITLE_SCALE: f32 = 1.78;
-pub const METER_DIVISION: usize = 5;
+use std::sync::atomic::{AtomicU8, Ordering};
+
+// Zero is the ordinary terminal. The command owns this transient preview.
+static PAGE: AtomicU8 = AtomicU8::new(0);
+pub const COUNT: u8 = 8;
+pub struct Preview;
+impl Preview {
+    pub fn open() -> anyhow::Result<Self> {
+        PAGE.compare_exchange(0,1,Ordering::AcqRel,Ordering::Acquire)
+            .map_err(|_|anyhow::anyhow!("La demo ya está abierta."))?;
+        Ok(Self)
+    }
+    pub fn show(&self, index:u8) { PAGE.store(index+1, Ordering::Release); }
+}
+impl Drop for Preview {
+    fn drop(&mut self) { PAGE.store(0, Ordering::Release); }
+}
+#[cfg(windows)]
+pub fn page() -> u8 { PAGE.load(Ordering::Acquire) }
+
 
 #[cfg(windows)]
-pub enum Mark { Portal, Masthead, Readout, Rail, Selected, Warning, Failure }
+pub enum Mark { Portal, Masthead, Readout, Rail, Selected, Warning, Failure, Meter }
 
 #[cfg(windows)]
 pub fn draw(mark: Mark, width: i32, height: i32, mut rect: impl FnMut(i32,i32,i32,i32,Ink)) {
@@ -51,6 +69,17 @@ pub fn draw(mark: Mark, width: i32, height: i32, mut rect: impl FnMut(i32,i32,i3
             rect(0,height-unit,width,unit,PATINA);
             rect(0,height-2*unit,(width/8).min(height),unit,OXIDE);
             rect(width-unit,0,unit,unit*3,CONCRETE);
+        }
+        Mark::Meter => {
+            // Graduated scale with a sample reading of 65 percent.
+            let divisions=20;
+            for i in 0..divisions {
+                let x=i*width/divisions;
+                let next=(i+1)*width/divisions;
+                let ink=if i<13 { OXIDE } else { PATINA };
+                rect(x,height/3,(next-x-2).max(1),height/3,ink);
+                rect(x,height*2/3+2,1,if i%5==0 {height/5}else{height/10},CONCRETE);
+            }
         }
         Mark::Rail => rect(width-1,0,1,height,PATINA),
         Mark::Selected => {

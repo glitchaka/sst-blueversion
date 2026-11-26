@@ -120,11 +120,43 @@ impl SystemService {
             "uptime" => uptime(),
             "fetch" | "neofetch" | "fastfetch" => fetch(args),
             "keygen" => self.keygen(args),
+            "demo" => self.graphics_demo(args),
             _ => Ok(CommandOutput::error(
                 format!("comando de sistema desconocido: {name}"),
                 127,
             )),
         }
+    }
+
+    fn graphics_demo(&self,args:&[String])->anyhow::Result<CommandOutput> {
+        use crate::presentation::console_identity::{Preview, COUNT};
+        use crate::adapters::terminal::io;
+        use std::sync::atomic::Ordering;
+        if args.len()!=1 || args[0]!="graficos" {
+            let help="demo graficos — muestra interactiva de la identidad visual de SST";
+            return Ok(if args.is_empty() || args.iter().any(|a|matches!(a.as_str(),"--help"|"-h")) {
+                CommandOutput::ok(help)
+            } else { CommandOutput::error(help,2) });
+        }
+        if io::output_sender().is_none() {
+            return Ok(CommandOutput::error("demo graficos requiere la ventana nativa de SST.",2));
+        }
+        let interrupt=io::interrupt_flag();
+        let abort=io::force_abort_flag();
+        let mut terminal=self.terminal.alternate_screen()?;
+        let preview=Preview::open()?;
+        let mut index=0;
+        while !interrupt.load(Ordering::Acquire) && !abort.load(Ordering::Acquire) {
+            match terminal.poll_key(Duration::from_millis(100))? {
+                Some(TerminalKey::Escape | TerminalKey::Char('q')) => break,
+                Some(TerminalKey::Right | TerminalKey::Down | TerminalKey::Space) => index=(index+1)%COUNT,
+                Some(TerminalKey::Left | TerminalKey::Up) => index=(index+COUNT-1)%COUNT,
+                Some(TerminalKey::Char(ch @ '1'..='8')) => index=ch as u8-b'1',
+                _ => continue,
+            }
+            preview.show(index);
+        }
+        Ok(CommandOutput::ok(""))
     }
 
     fn keygen(&self, args: &[String]) -> anyhow::Result<CommandOutput> {

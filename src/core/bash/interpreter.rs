@@ -2190,7 +2190,7 @@ impl Interpreter {
         // Full-screen tools have no stable tabular stdout; do not enter their
         // interactive loop when asked for a CSV export.
         if csv_output && (
-            matches!(name.as_str(), "keygen" | "top" | "guide" | "helix" | "edit")
+            matches!(name.as_str(), "demo" | "keygen" | "top" | "guide" | "helix" | "edit")
             || (name == "sys" && args.first().is_some_and(|arg| arg == "top"))
             || (matches!(name.as_str(), "net" | "notsh")
                 && args.first().is_some_and(|arg| arg == "monitor"))

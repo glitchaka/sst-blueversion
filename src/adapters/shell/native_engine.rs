@@ -543,7 +543,7 @@ impl ShellCommandHost for WindowsShellHost {
         }
 
         // TUI commands cannot be captured as a static CSV report.
-        if csv && (name == "keygen" || name == "top"
+        if csv && (name == "demo" || name == "keygen" || name == "top"
             || (name == "sys" && effective_args.first().is_some_and(|arg| arg == "top")))
         {
             return Ok(Some(ExecutionResult::from_parts(

@@ -3,7 +3,6 @@
 //! The terminal owns the whole client area. The top status island is an overlay:
 //! there is deliberately no full-width title bar behind it.
 
-use crate::presentation::console_identity::{self as identity, Mark};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -182,15 +181,14 @@ slint::slint! {
         background: transparent;
         border-width: 1px;
         border-color: OutputTheme.rule;
-        border-radius: 0px;
+        border-radius: 6px;
 
-        Rectangle { x: 0; y: 0; width: min(34px, parent.width / 4); height: 2px; background: OutputTheme.rail; }
         Rectangle {
             x: 1px;
             y: 3px;
             width: 3px;
             height: max(4px, parent.height - 6px);
-            border-radius: 0px;
+            border-radius: 2px;
             background: OutputTheme.rail;
         }
     }
@@ -199,14 +197,14 @@ slint::slint! {
         background: transparent;
         border-width: 1px;
         border-color: OutputTheme.rule;
-        border-radius: 0px;
+        border-radius: 9px;
 
         Rectangle {
             x: 1px;
             y: 7px;
             width: 3px;
             height: min(24px, parent.height - 14px);
-            border-radius: 0px;
+            border-radius: 2px;
             background: OutputTheme.rail;
         }
     }
@@ -293,7 +291,10 @@ slint::slint! {
         background: transparent;
 
         in property <image> terminal-image;
-        in property <image> identity-mark;
+        in property <int> demo-page;
+        in property <image> demo-shape;
+        in property <string> demo-title;
+        in property <string> demo-caption;
         in property <bool> caret-visible;
         in property <float> caret-x;
         in property <float> caret-y;
@@ -392,7 +393,7 @@ slint::slint! {
                 image-fit: fill;
             }
 
-            if root.caret-visible && !root.keygen-visible: Rectangle {
+            if root.caret-visible && !root.keygen-visible && root.demo-page == 0: Rectangle {
                 x: root.caret-x * 1px;
                 y: root.caret-y * 1px;
                 width: 2px;
@@ -582,18 +583,34 @@ slint::slint! {
             transfer-known-total: root.transfer-known-total;
         }
 
+        if root.demo-page > 0 : Rectangle {
+            x: 0; y: 45px; width: root.width; height: root.height - 45px;
+            background: #202724;
+            Rectangle { x: 0; y: 0; width: 100%; height: 3px; background: #e15e34; }
+            Text { x: 22px; y: 12px; width: parent.width - 44px; height: 23px;
+                text: "SST  /  DEMO GRÁFICA"; color: #c9c7ac; font-size: 13px; font-weight: 700; }
+            Text { x: 22px; y: 36px; width: parent.width - 44px; height: 48px;
+                text: root.demo-title; color: #f0e7d4; font-size: 33px; font-weight: 800; }
+            Image { x: 22px; y: 90px; width: parent.width - 44px;
+                height: max(20px,parent.height - 181px); source: root.demo-shape; image-fit: contain; }
+            Text { x: 22px; y: parent.height - 83px; width: parent.width - 44px; height: 40px;
+                text: root.demo-caption; color: #c9c7ac; font-size: 15px; wrap: word-wrap; }
+            Rectangle { x: 22px; y: parent.height - 40px; width: parent.width - 44px; height: 1px; background: #5b7d75; }
+            Text { x: 22px; y: parent.height - 34px; width: parent.width - 44px; height: 27px;
+                text: root.demo-page + "/8    ← → recorrer    1–8 elegir    Esc salir";
+                color: #e5b489; font-size: 13px; }
+        }
+
         island := Rectangle {
             width: min(720px, root.width - 20px);
             height: 34px;
             x: (root.width - self.width) / 2;
             y: 6px;
-            border-radius: 1px;
-            background: #202724;
+            border-radius: 13px;
+            background: rgba(40, 40, 40, 0.93);
             border-width: 1px;
             border-color: #504945;
 
-            Rectangle { x: 0; y: parent.height - 2px; width: parent.width; height: 2px; background: OutputTheme.rule; }
-            Image { x: 3px; y: 3px; width: 31px; height: 27px; source: root.identity-mark; image-fit: fill; }
             WindowMoveArea {
                 x: 0;
                 y: 0;
@@ -601,9 +618,9 @@ slint::slint! {
                 height: parent.height;
 
                 Text {
-                    x: 37px;
+                    x: 17px;
                     y: 0;
-                    width: 33px;
+                    width: 70px;
                     height: parent.height;
                     text: "SST";
                     color: #ebdbb2;
@@ -621,7 +638,7 @@ slint::slint! {
                     y: 5px;
                     width: 96px;
                     height: 24px;
-                    border-radius: 1px;
+                    border-radius: 7px;
                     background: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
                         ? #3c3836 : #504030;
                     border-width: 1px;
@@ -1099,7 +1116,7 @@ impl TerminalModel {
 
     fn geometry(&self) -> (f32, f32, f32, f32) {
         let scale = self.scale.max(0.5);
-        let pad_x = (self.appearance.terminal_padding_x.max(10) as f32 * scale).round();
+        let pad_x = (self.appearance.terminal_padding_x as f32 * scale).round();
         let pad_y = (self.appearance.terminal_padding_y as f32 * scale).round();
         let top_pad = ((ISLAND_TOP
             + ISLAND_HEIGHT
@@ -1440,7 +1457,6 @@ impl TerminalModel {
                     && (0..cols).any(|col|feature_color(row,col).is_some()
                         && feature_color(row-1,col)==feature_color(row,col))
                     && (0..cols).all(|col|screen.cell(row-1,col).is_none_or(|c|c.contents().trim().is_empty()));
-                let mut row_mark = None;
                 for col in 0..cols {
                     let Some(cell) = screen.cell(row, col) else {
                         continue;
@@ -1449,18 +1465,6 @@ impl TerminalModel {
                         continue;
                     }
 
-                    if !cell.contents().trim().is_empty() {
-                        let role = match cell.fgcolor() {
-                            vt100::Color::Rgb(r,g,b) => Role::from_rgb((r,g,b)),
-                            _ => None,
-                        };
-                        match role {
-                            Some(Role::Failure) => row_mark=Some(Mark::Failure),
-                            Some(Role::Warning) if !matches!(row_mark,Some(Mark::Failure)) => row_mark=Some(Mark::Warning),
-                            _ if row_mark.is_none() => row_mark=Some(Mark::Rail),
-                            _ => {}
-                        }
-                    }
                     let mut fg = terminal_color(cell.fgcolor(), default_fg);
                     let mut bg = terminal_color(cell.bgcolor(), BG);
                     let layout_marker=matches!(cell.bgcolor(),vt100::Color::Rgb(r,g,b) if
@@ -1560,13 +1564,6 @@ impl TerminalModel {
                         if text.is_empty(){continue;}
                         let color=(start..end).filter_map(|c|screen.cell(row,c)).find(|c|!c.contents().trim().is_empty())
                             .map(|c|font_palette_color(terminal_color(c.fgcolor(),default_fg),palette)).unwrap_or(default_fg);
-                        let fw=(f32::from(end-start)*cell_width).floor() as i32;
-                        let fh=(cell_height*2.).floor() as i32;
-                        let fx=(left_pad+f32::from(start)*cell_width).round() as i32;
-                        let fy=(top_pad+f32::from(row-1)*cell_height).round() as i32;
-                        identity::draw(Mark::Readout,fw,fh,|x,y,w,h,(r,g,b)|{
-                            fill_rect(pixels,width,height,fx+x,fy+y,w,h,Rgb(r,g,b));
-                        });
                         let available=(f32::from(end-start)-3.).max(1.)*cell_width;
                         let size=(font_px*1.65).min(available/(0.62*text.chars().count().max(1) as f32))
                             .min(cell_height*1.6).round().max(1.) as u16;
@@ -1581,25 +1578,12 @@ impl TerminalModel {
                         }
                     }
                 }
-                if selected_row==Some(usize::from(row)) { row_mark=Some(Mark::Selected); }
-                let mut paint_mark = |mark,x:i32,y:i32,w:i32,h:i32| {
-                    identity::draw(mark,w,h,|dx,dy,rw,rh,(r,g,b)|{
-                        fill_rect(pixels,width,height,x+dx,y+dy,rw,rh,Rgb(r,g,b));
-                    });
-                };
-                let row_y=(top_pad+f32::from(row)*cell_height).round() as i32;
-                if let Some(mark)=row_mark {
-                    let gutter=(left_pad*0.55).round() as i32;
-                    paint_mark(mark,1,row_y,gutter,cell_height.ceil() as i32);
-                }
                 if card_title {
-                    let span=(f32::from(cols)*cell_width).round() as i32;
-                    paint_mark(Mark::Masthead,left_pad.round() as i32,row_y-cell_height.round() as i32,span,(2.*cell_height).round() as i32);
                     let heading = (0..cols).filter_map(|col|screen.cell(row,col))
                         .map(|cell|cell.contents()).collect::<String>();
                     let heading = heading.trim();
                     let available = (f32::from(cols)-4.).max(1.)*cell_width;
-                    let size = (font_px*identity::TITLE_SCALE).min(available/(0.62*heading.chars().count().max(1) as f32))
+                    let size = (font_px*1.7).min(available/(0.62*heading.chars().count().max(1) as f32))
                         .min(cell_height*1.6).round().max(1.) as u16;
                     let mut x = (left_pad+2.*cell_width).round() as i32;
                     let baseline = (top_pad+(f32::from(row)+0.48)*cell_height).round() as i32;
@@ -2298,11 +2282,6 @@ pub fn run() -> Result<()> {
     let metrics = Rc::new(RefCell::new(System::new()));
     let ui = SstBlueWindow::new()?;
     let color = |(r,g,b)| slint::Color::from_rgb_u8(r,g,b);
-    let mut emblem = SharedPixelBuffer::<Rgba8Pixel>::new(96,80);
-    identity::draw(Mark::Portal,96,80,|x,y,w,h,(r,g,b)| {
-        fill_rect(emblem.make_mut_slice(),96,80,x,y,w,h,Rgb(r,g,b));
-    });
-    ui.set_identity_mark(Image::from_rgba8_premultiplied(emblem));
     let theme = ui.global::<OutputTheme>();
     theme.set_rail(color(crate::presentation::formatter::SECTION_RAIL));
     theme.set_rule(color(crate::presentation::formatter::SECTION_RULE));
@@ -2688,6 +2667,35 @@ pub fn run() -> Result<()> {
 
     // Keygen frames are independent of the 33 ms terminal-maintenance timer.
     // The GUI receives the latest frame at 60 Hz with no queued stale frames.
+    let demo_timer=Timer::default();
+    let demo_weak=ui.as_weak();
+    demo_timer.start(TimerMode::Repeated, Duration::from_millis(50),move||{
+        use crate::presentation::console_identity::{self as identity,Mark};
+        let Some(ui)=demo_weak.upgrade() else{return;};
+        let page=identity::page();
+        if ui.get_demo_page()==i32::from(page) {return;}
+        if page!=0 {
+            let (mark,title,caption,w,h)=match page {
+                1=>(Mark::Portal,"Pórtico","Emblema de SST. Dos voladizos rodean una abertura circular.",320,220),
+                2=>(Mark::Masthead,"Cabecera","Perfil escalonado que abre una sección del informe.",640,95),
+                3=>(Mark::Readout,"Lectura","Marco de instrumento para una cifra destacada.",420,130),
+                4=>(Mark::Rail,"Guía de lectura","Filete lateral que acompaña una fila de datos.",10,65),
+                5=>(Mark::Selected,"Selección","Marca lateral del elemento que tiene el foco.",18,65),
+                6=>(Mark::Warning,"Advertencia","Señal ámbar para una condición que requiere atención.",58,52),
+                7=>(Mark::Failure,"Fallo","Señal roja para un estado crítico.",58,52),
+                _=>(Mark::Meter,"Escala graduada","Lectura de ejemplo: 65 %. Cada división representa cinco puntos.",480,96),
+            };
+            let mut bitmap=SharedPixelBuffer::<Rgba8Pixel>::new(w,h);
+            identity::draw(mark,w as i32,h as i32,|x,y,rw,rh,(r,g,b)|{
+                fill_rect(bitmap.make_mut_slice(),w,h,x,y,rw,rh,Rgb(r,g,b));
+            });
+            ui.set_demo_shape(Image::from_rgba8(bitmap));
+            ui.set_demo_title(title.into());
+            ui.set_demo_caption(caption.into());
+        } else { ui.set_demo_shape(Image::default()); }
+        ui.set_demo_page(i32::from(page));
+    });
+
     let keygen_timer=Timer::default();
     let keygen_weak=ui.as_weak();
     keygen_timer.start(TimerMode::Repeated,Duration::from_millis(16),move||{

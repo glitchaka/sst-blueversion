@@ -30,8 +30,8 @@ pub const REPORT_HEADER_RGB: (u8,u8,u8) = (63,52,38);
 // Separate semantic surfaces identify the reserved display-size value region.
 pub const FEATURE_RGB: (u8,u8,u8) = (31,34,32);
 pub const FEATURE_ALT_RGB: (u8,u8,u8) = (35,38,35);
-pub const SECTION_RAIL: (u8, u8, u8) = super::console_identity::OXIDE;
-pub const SECTION_RULE: (u8, u8, u8) = super::console_identity::PATINA;
+pub const SECTION_RAIL: (u8, u8, u8) = COMMAND_RGB;
+pub const SECTION_RULE: (u8, u8, u8) = (117,86,45);
 
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 pub enum Role { Title, Command, Label, Detail, Value, Success, Warning, Failure, Optimal }
@@ -636,18 +636,8 @@ fn meter(metric:Metric,value:f32,width:usize)->String{
     let rgb=match metric.role(value,None){
         Role::Failure=>METER_BAD_RGB,Role::Warning=>METER_WARN_RGB,_=>METER_OK_RGB,
     };
-    let fill = background(rgb);
-    let mut bar = String::with_capacity(width*16);
-    for i in 0..width {
-        bar.push_str(if i<filled { &fill } else { METER_TRACK });
-        // A narrow calibrated division stays legible in both VT and the native viewport.
-        if i>0 && i%super::console_identity::METER_DIVISION==0 {
-            bar.push_str(LABEL);
-            bar.push('│');
-        } else { bar.push(' '); }
-    }
-    bar.push_str(RESET);
-    bar
+    format!("{}{}{RESET}{METER_TRACK}{}{RESET}",background(rgb),
+        " ".repeat(filled)," ".repeat(width-filled))
 }
 fn render_field_group(lines:&[&str],width:usize)->String {
     let styles:Vec<_>=lines.iter().map(|s|style_line(s)).collect();
