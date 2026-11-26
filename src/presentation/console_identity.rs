@@ -21,6 +21,7 @@ impl DemoState {
     fn focus(&mut self,delta:i16) {
         let count=match self.page { 5|9|15|16|20=>3, 11|14=>5, 13=>4, _=>3 };
         self.selected=(i16::from(self.selected)+delta).rem_euclid(count) as u8;
+        self.action=false;
     }
     fn advance(&mut self) { if !self.paused {self.tick=self.tick.wrapping_add(1);} }
     #[cfg(any(windows,test))]
