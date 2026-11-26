@@ -145,16 +145,25 @@ impl SystemService {
         let abort=io::force_abort_flag();
         let mut terminal=self.terminal.alternate_screen()?;
         let preview=Preview::open()?;
-        let mut index=0;
+        // Navigation and interaction are separate: no key executes real operations.
         while !interrupt.load(Ordering::Acquire) && !abort.load(Ordering::Acquire) {
             match terminal.poll_key(Duration::from_millis(100))? {
                 Some(TerminalKey::Escape | TerminalKey::Char('q')) => break,
-                Some(TerminalKey::Right | TerminalKey::Down | TerminalKey::Space) => index=(index+1)%COUNT,
-                Some(TerminalKey::Left | TerminalKey::Up) => index=(index+COUNT-1)%COUNT,
-                Some(TerminalKey::Char(ch @ '1'..='8')) => index=ch as u8-b'1',
-                _ => continue,
+                Some(TerminalKey::Right) => preview.step(1),
+                Some(TerminalKey::Left) => preview.step(-1),
+                Some(TerminalKey::PageDown) => preview.step(5),
+                Some(TerminalKey::PageUp) => preview.step(-5),
+                Some(TerminalKey::Home) => preview.show(1),
+                Some(TerminalKey::End) => preview.show(COUNT),
+                Some(TerminalKey::Down | TerminalKey::Char('\t')) => preview.focus(1),
+                Some(TerminalKey::Up | TerminalKey::Char('\u{19}')) => preview.focus(-1),
+                Some(TerminalKey::Space) => preview.pause(),
+                Some(TerminalKey::Enter) => preview.action(),
+                Some(TerminalKey::Char('r' | 'R')) => preview.reset(),
+                Some(TerminalKey::Char(ch @ '1'..='9')) => preview.show(ch as u8-b'0'),
+                None => preview.advance(),
+                _ => {},
             }
-            preview.show(index);
         }
         Ok(CommandOutput::ok(""))
     }
