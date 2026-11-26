@@ -1,0 +1,30 @@
+// Shared native graphic primitives; catalogue and live terminal use these exact paths.
+export component AngularMark inherits Rectangle {
+    in property <color> ink: transparent;
+    in property <color> outline: transparent;
+    in property <length> thickness: 0px;
+    background: transparent;
+    Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 0 L 92 0 L 100 50 L 92 100 L 0 100 Z"; fill: root.ink; stroke: root.outline; stroke-width: root.thickness;
+    }
+}
+
+export component CutFrame inherits Rectangle {
+    in property <color> ink: transparent;
+    in property <color> outline: transparent;
+    in property <length> thickness: 0px;
+    background: transparent;
+    Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 0 L 92 0 L 100 30 L 100 100 L 8 100 L 0 70 Z"; fill: root.ink; stroke: root.outline; stroke-width: root.thickness;
+    }
+}
+
+export component Registration inherits Rectangle {
+    in property <color> ink: transparent;
+    in property <color> outline: transparent;
+    in property <length> thickness: 0px;
+    background: transparent;
+    Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 25 L 0 0 L 12 0 M 88 0 L 100 0 L 100 25 M 100 75 L 100 100 L 88 100 M 12 100 L 0 100 L 0 75"; fill: root.ink; stroke: root.outline; stroke-width: root.thickness;
+    }
+}

@@ -163,12 +163,13 @@ mod viewport_regression_tests {
 
 const FG: Rgb = Rgb(crate::presentation::formatter::DEFAULT_FOREGROUND.0,crate::presentation::formatter::DEFAULT_FOREGROUND.1,crate::presentation::formatter::DEFAULT_FOREGROUND.2);
 const BG: Rgb = Rgb(0x28, 0x28, 0x28);
-use crate::presentation::formatter::{caret_color, SELECTED_RGB};
+use crate::presentation::formatter::caret_color;
 
 const NERD_FONT_BYTES: &[u8] = crate::application::system::SST_TERMINAL_FONT_BYTES;
 
 slint::slint! {
     import { EditorialDemo } from "editorial_demo.slint";
+    import { AngularMark, CutFrame, Registration } from "graphic_kit.slint";
     // Rendered vector outlines, never made of VT100/ASCII characters.
     // Transparent interiors preserve the user's terminal artwork and logo.
     // Text-report section headings are individual native vector outlines,
@@ -176,38 +177,20 @@ slint::slint! {
     export global OutputTheme {
         in property <color> rail;
         in property <color> rule;
+        in property <color> accent;
+        in property <color> text;
+        in property <color> muted;
+        in property <color> track;
     }
     component ReportHeadingBand inherits Rectangle {
-        // Restrained semantic outline: no cyan wash, no opaque overlay.
         background: transparent;
-        border-width: 1px;
-        border-color: OutputTheme.rule;
-        border-radius: 6px;
-
-        Rectangle {
-            x: 1px;
-            y: 3px;
-            width: 3px;
-            height: max(4px, parent.height - 6px);
-            border-radius: 2px;
-            background: OutputTheme.rail;
-        }
+        CutFrame { width: parent.width; height: parent.height; outline: OutputTheme.rule; thickness: 1px; }
+        Rectangle { x: 1px; y: 3px; width: 3px; height: max(1px,parent.height-6px); background: OutputTheme.rail; }
     }
-
     component TerminalSectionFrame inherits Rectangle {
         background: transparent;
-        border-width: 1px;
-        border-color: OutputTheme.rule;
-        border-radius: 9px;
-
-        Rectangle {
-            x: 1px;
-            y: 7px;
-            width: 3px;
-            height: min(24px, parent.height - 14px);
-            border-radius: 2px;
-            background: OutputTheme.rail;
-        }
+        CutFrame { width: parent.width; height: parent.height; outline: OutputTheme.rule; thickness: 1px; }
+        Registration { width: parent.width; height: parent.height; outline: OutputTheme.rail; thickness: 2px; }
     }
 
     // The download panel is independent of the VT100 pixel surface.
@@ -223,34 +206,24 @@ slint::slint! {
         in property <string> transfer-eta;
         in property <float> transfer-ratio: 0.0;
         in property <bool> transfer-known-total: false;
+        in property <int> transfer-phase;
 
         background: transparent;
         border-width: 0px;
 
         track := Rectangle {
-            x: 4px;
-            y: 6px;
-            width: parent.width - 144px;
-            height: 10px;
-            background: #3c3836;
-            border-radius: 5px;
-            clip: true;
-
-            Rectangle {
-                x: 0px;
-                y: 0px;
-                width: root.transfer-known-total ? parent.width * root.transfer-ratio : 0px;
-                height: parent.height;
-                background: #d79921;
-                border-radius: 5px;
-
-                Rectangle {
-                    x: 1px;
-                    y: 1px;
-                    width: parent.width - 2px;
-                    height: 3px;
-                    background: #fabd2f;
-                    border-radius: 2px;
+            x: 4px; y: 5px; width: max(1px,parent.width - 144px); height: 13px;
+            background: transparent; clip: true;
+            AngularMark { width: parent.width; height: parent.height; ink: OutputTheme.track; outline: OutputTheme.rule; thickness: 1px; }
+            if root.transfer-known-total && root.transfer-ratio > 0 : AngularMark {
+                width: max(1px,parent.width * min(1.0,max(0.0,root.transfer-ratio)));
+                height: parent.height; ink: OutputTheme.accent;
+            }
+            if !root.transfer-known-total : Rectangle {
+                width: parent.width; height: parent.height; background: transparent;
+                for i in 12 : AngularMark {
+                    x: i * parent.width / 12; width: max(1px,parent.width / 12 - 2px); height: parent.height;
+                    ink: root.transfer-phase == i ? OutputTheme.accent : OutputTheme.track;
                 }
             }
         }
@@ -261,7 +234,7 @@ slint::slint! {
             width: 126px;
             height: 22px;
             text: root.transfer-percent;
-            color: #fabd2f;
+            color: OutputTheme.accent;
             font-family: "Segoe UI Variable";
             font-size: 16px;
             font-weight: 700;
@@ -274,7 +247,7 @@ slint::slint! {
             width: parent.width - 9px;
             height: 19px;
             text: root.transfer-amount + "   ·   " + root.transfer-speed + "   ·   ETA " + root.transfer-eta;
-            color: #d5c4a1;
+            color: OutputTheme.text;
             font-family: "Segoe UI Variable";
             font-size: 12px;
             overflow: elide;
@@ -369,6 +342,7 @@ slint::slint! {
         in property <bool> transfer-visible: false;
         in property <bool> transfer-known-total: false;
         in property <float> transfer-ratio: 0.0;
+        in property <int> transfer-phase;
         in property <string> transfer-percent: "";
         in property <string> transfer-amount: "";
         in property <string> transfer-speed: "";
@@ -603,6 +577,7 @@ slint::slint! {
             transfer-eta: root.transfer-eta;
             transfer-ratio: root.transfer-ratio;
             transfer-known-total: root.transfer-known-total;
+            transfer-phase: root.transfer-phase;
         }
 
         if root.demo-page > 0 : EditorialDemo {
@@ -1459,6 +1434,7 @@ impl TerminalModel {
             let (left_pad, top_pad, cell_width, cell_height) = self.geometry();
             let font_px = (self.appearance.font_size as f32 * self.scale).round().max(8.0);
             let palette = self.appearance.font_palette.as_str();
+            let kit=demo_colors(palette);
             let default_fg = parse_rgb(&self.appearance.font_color).unwrap_or(FG);
             let default_fg = if palette == "gruvbox" { default_fg } else { font_palette_color(FG,palette) };
 
@@ -1494,6 +1470,8 @@ impl TerminalModel {
 
                     let mut fg = terminal_color(cell.fgcolor(), default_fg);
                     let mut bg = terminal_color(cell.bgcolor(), BG);
+                    let semantic_surface=match cell.bgcolor(){vt100::Color::Rgb(r,g,b)=>kit_surface((r,g,b),kit),_=>None};
+                    if let Some(surface)=semantic_surface {bg=surface;}
                     let layout_marker=matches!(cell.bgcolor(),vt100::Color::Rgb(r,g,b) if
                         (r,g,b)==crate::presentation::formatter::REPORT_HEADER_RGB
                         || (r,g,b)==crate::presentation::formatter::FEATURE_RGB
@@ -1507,7 +1485,7 @@ impl TerminalModel {
 
                     let index = row as usize * cols as usize + col as usize;
                     if selected_row == Some(usize::from(row)) {
-                        bg = Rgb(SELECTED_RGB.0,SELECTED_RGB.1,SELECTED_RGB.2);
+                        bg = kit.rail;
                         paint_background = true;
                     }
                     if selection
@@ -1517,8 +1495,8 @@ impl TerminalModel {
                         let alert = matches!(tone,Some(Role::Failure | Role::Warning));
                         if !alert {
                             fg = BG;
-                            let (r,g,b) = Role::Label.style().rgb;
-                            bg = Rgb(r,g,b);
+                            bg = kit.acid;
+                            fg = readable_ink(bg);
                         } else {
                             bg = BG;
                         }
@@ -1532,7 +1510,12 @@ impl TerminalModel {
                     let h = cell_height.ceil() as i32;
 
                     if paint_background {
-                        fill_rect(pixels, width, height, x, y, w, h, bg);
+                        // Meter cells form compact native strips instead of full-height blocks.
+                        if selection.is_none() && !cell.inverse() && is_meter_surface(cell.bgcolor()) {
+                            fill_rect(pixels,width,height,x,y+h/3,w,(h/3).max(2),bg);
+                        } else {
+                            fill_rect(pixels, width, height, x, y, w, h, bg);
+                        }
                     }
 
                     if !selection.is_some_and(|(a,b)| index >= a.min(b) && index < a.max(b)) && !cell.inverse() { fg = font_palette_color(fg,palette); }
@@ -1577,6 +1560,20 @@ impl TerminalModel {
                             }
                             pen_x += glyph.metrics.advance_width.round() as i32;
                         }
+                    }
+                }
+                if selection.is_none() && !screen.alternate_screen() {
+                    let y=(top_pad+f32::from(row)*cell_height).round() as i32;
+                    let x=left_pad.round() as i32;
+                    let h=cell_height.round().max(1.) as i32;
+                    let w=(f32::from(cols)*cell_width).round() as i32;
+                    if card_title {
+                        // Shared stepped-divider language, in the two-cell heading gutter.
+                        fill_rect(pixels,width,height,x,y-h/2,2,h,kit.accent_detail);
+                        fill_rect(pixels,width,height,x,y+h/2,(cell_width*1.5) as i32,2,kit.accent_detail);
+                    }
+                    if (0..cols).any(|c|screen.cell(row,c).is_some_and(|v|matches!(v.bgcolor(),vt100::Color::Rgb(56,54,46)))) {
+                        fill_rect(pixels,width,height,x,y+h-1,w,1,kit.line);
                     }
                 }
                 if feature_row {
@@ -1758,6 +1755,35 @@ fn demo_colors(palette:&str)->DemoColors {
         on_failure:readable_ink(oxide), on_success:readable_ink(moss),
         accent_detail:role(Role::Command),
     }
+}
+fn kit_surface(rgb:(u8,u8,u8),p:DemoColors)->Option<Rgb>{
+    use crate::presentation::formatter::{METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB,SELECTED_RGB};
+    Some(match rgb {
+        (56,54,46)=>p.rail, // table head
+        (36,39,38)=>mix_rgb(p.graphite,p.muted,12), // alternating table row
+        SELECTED_RGB=>p.rail,
+        METER_OK_RGB=>p.mint,
+        METER_WARN_RGB=>p.amber,
+        METER_BAD_RGB=>p.oxide,
+        (60,56,54)=>p.rail, // explicit monitor heading
+        (60,56,55)=>p.rail, // meter track
+        _=>return None,
+    })
+}
+fn is_meter_surface(color:vt100::Color)->bool {
+    use crate::presentation::formatter::{METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB};
+    matches!(color,vt100::Color::Rgb(r,g,b) if [(60,56,55),METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB].contains(&(r,g,b)))
+}
+fn apply_terminal_palette(ui:&SstBlueWindow,palette:&str) {
+    let p=demo_colors(palette);
+    let theme=ui.global::<OutputTheme>();
+    let color=|c:Rgb|slint::Color::from_rgb_u8(c.0,c.1,c.2);
+    theme.set_rail(color(p.accent_detail));
+    theme.set_rule(color(p.line));
+    theme.set_accent(color(p.acid));
+    theme.set_text(color(p.cream));
+    theme.set_muted(color(p.muted));
+    theme.set_track(color(p.rail));
 }
 fn apply_demo_palette(ui:&SstBlueWindow, palette:&str) {
     let p=demo_colors(palette);
@@ -2399,10 +2425,7 @@ pub fn run() -> Result<()> {
     let metrics = Rc::new(RefCell::new(System::new()));
     let ui = SstBlueWindow::new()?;
     apply_demo_palette(&ui, &appearance.font_palette);
-    let color = |(r,g,b)| slint::Color::from_rgb_u8(r,g,b);
-    let theme = ui.global::<OutputTheme>();
-    theme.set_rail(color(crate::presentation::formatter::SECTION_RAIL));
-    theme.set_rule(color(crate::presentation::formatter::SECTION_RULE));
+    apply_terminal_palette(&ui,&appearance.font_palette);
 
     // The sudo command starts a NEW Windows process for each privilege
     // escalation. Its token is immutable during this GUI session. Query that
@@ -2569,6 +2592,7 @@ pub fn run() -> Result<()> {
                         );
                         ui.set_background_image_fit_mode(next.background_image_fit.clone().into());
 
+                        apply_terminal_palette(&ui, &next.font_palette);
                         apply_demo_palette(&ui, &next.font_palette);
                         model.borrow_mut().set_appearance(next.clone());
                         *appearance_state.borrow_mut() = next.clone();
@@ -2685,7 +2709,11 @@ pub fn run() -> Result<()> {
                     ui.set_caret_height((h/factor-1.0).max(1.0));
                     let phase = if model.focused { ((model.blink.elapsed().as_millis()/100)%16) as u8 } else { 0 };
                     let (r,g,b) = caret_color(phase);
-                    ui.set_caret_tone(slint::Color::from_rgb_u8(r,g,b));
+                    let tone=if model.appearance.font_palette=="gruvbox" {Rgb(r,g,b)} else {
+                        let p=demo_colors(&model.appearance.font_palette);
+                        mix_rgb(p.accent_detail,p.acid,u16::from(8-(phase%16).abs_diff(8))*100/8)
+                    };
+                    ui.set_caret_tone(slint::Color::from_rgb_u8(tone.0,tone.1,tone.2));
                 }
                 let panels = model.session.panels_snapshot();
                 // Reports use typography, not arbitrary per-line vector boxes.
@@ -2739,6 +2767,7 @@ pub fn run() -> Result<()> {
                         ui.set_transfer_y((top + f32::from(graphic_row) * line_height) / factor);
                         ui.set_transfer_visible(true);
                         ui.set_transfer_ratio(progress.fraction());
+                        ui.set_transfer_phase(((model.blink.elapsed().as_millis()/100)%12) as i32);
                         ui.set_transfer_known_total(progress.expected.is_some());
                         ui.set_transfer_percent(progress.percentage().into());
                         ui.set_transfer_amount(progress.amount().into());

@@ -103,6 +103,8 @@ mod tests {
         }
         assert_eq!(source.matches("// specimen ").count(),36);
         assert!(source.matches("Path {").count()>=40);
+        assert!(source.contains("import { AngularMark, CutFrame, Registration }"));
+        assert!(include_str!("graphic_kit.slint").contains("export component AngularMark"));
     }
     #[test]
     fn preview_palettes_wrap_without_resetting_focus_or_motion(){

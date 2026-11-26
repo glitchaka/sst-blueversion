@@ -602,7 +602,7 @@ fn wrap_line(line: &str, width: usize) -> Vec<String> {
 // styling, so both native and console frontends receive identical content.
 const TABLE_BAND: &str = "\x1b[48;2;36;39;38m";
 const TABLE_HEADER: &str = "\x1b[48;2;56;54;46m";
-const METER_TRACK: &str = "\x1b[48;2;60;56;54m";
+const METER_TRACK: &str = "\x1b[48;2;60;56;55m";
 pub const METER_OK_RGB:(u8,u8,u8)=(103,145,85);
 pub const METER_WARN_RGB:(u8,u8,u8)=(184,108,35);
 pub const METER_BAD_RGB:(u8,u8,u8)=(179,57,43);
