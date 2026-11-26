@@ -223,7 +223,7 @@ impl BuiltinCommand for ConfigBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "sst-config path|edit|bg — configuración portable de SST"
+        "sst-config path|edit|bg|palette — configuración portable de SST"
     }
 
     fn execute(
@@ -240,6 +240,17 @@ impl BuiltinCommand for ConfigBuiltin {
                 Ok(CommandOutput { status, stdout: String::new(), stderr: String::new() })
             }
             "bg" => self.backgrounds(args.get(1..).unwrap_or_default()),
+            "palette" => {
+                match &args[1..] {
+                    [] => Ok(CommandOutput::ok(format!("Paleta activa: {}\nDisponibles: gruvbox, sunset, golden\nUso: config palette NOMBRE\n", self.paths.load_appearance()?.font_palette))),
+                    [name] if name == "list" => Ok(CommandOutput::ok(format!("Paleta activa: {}\nGRUVBOX  Original\nSUNSET   #3D4D65 #032451 #CE2F25 #F94C1F #FE8005 #FBBA76\nGOLDEN   #E3D473 #D72E2E #0E5047 #22153C #000F08\n", self.paths.load_appearance()?.font_palette))),
+                    [name] if matches!(name.as_str(), "gruvbox" | "sunset" | "golden") => {
+                        self.paths.set_config_values(&[("SST_FONT_PALETTE", name.as_str())])?;
+                        Ok(CommandOutput::ok(format!("Paleta activa: {name}\n")))
+                    }
+                    _ => Ok(CommandOutput::error("uso: config palette [list|gruvbox|sunset|golden]", 2)),
+                }
+            },
             "reload" => Ok(CommandOutput::error(
                 "config reload debe ejecutarse mediante la función Bash 'config'",
                 2,
