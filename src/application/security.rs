@@ -1013,10 +1013,28 @@ impl SecurityTriageService {
             r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
             r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce",
         ] {
-            out.push_str(&format!("\n[{key}]\n"));
-            out.push_str(
-                &capture("reg.exe", &["query", key]).unwrap_or_else(|error| format!("{error}\n")),
-            );
+            let scope = if key.starts_with("HKCU") { "Usuario actual" } else { "Todos los usuarios" };
+            let trigger = if key.ends_with("RunOnce") { "Una vez" } else { "Cada inicio" };
+            out.push_str(&format!("\n{scope} — {trigger}\nOrigen: {key}\n"));
+            match capture("reg.exe", &["query", key]) {
+                Ok(raw) => {
+                    let mut count = 0;
+                    for line in raw.lines() {
+                        let line = line.trim();
+                        let Some((name, rest)) = line.split_once("    REG_") else { continue; };
+                        let (kind, value) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+                        count += 1;
+                        out.push_str(&format!("\nNombre: {}\nTipo: REG_{kind}\nComando: {}\n", name.trim(), value.trim()));
+                    }
+                    if count == 0 {
+                        let evidence = raw.lines().filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with("HKEY_")).collect::<Vec<_>>();
+                        if evidence.is_empty() { out.push_str("Sin entradas visibles.\n"); }
+                        else { out.push_str(&format!("Sin entradas interpretables: {}\n", evidence.join(" "))); }
+                    }
+                    out.push_str(&format!("Entradas: {count}\n"));
+                }
+                Err(error) => out.push_str(&format!("No disponible: {error}\n")),
+            }
         }
 
         for folder in startup_folders() {
@@ -1025,8 +1043,9 @@ impl SecurityTriageService {
                 Ok(entries) => {
                     let mut any = false;
                     for entry in entries.flatten() {
+                        if entry.file_name().to_string_lossy().eq_ignore_ascii_case("desktop.ini") { continue; }
                         any = true;
-                        out.push_str(&format!("{}\n", entry.path().display()));
+                        out.push_str(&format!("\nNombre: {}\nRuta: {}\n", entry.file_name().to_string_lossy(), entry.path().display()));
                     }
                     if !any {
                         out.push_str("(vacío)\n");
