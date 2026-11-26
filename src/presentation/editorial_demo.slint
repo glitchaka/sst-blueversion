@@ -8,10 +8,6 @@ component TechnicalType inherits Text {
     font-family: "Cascadia Mono";
     vertical-alignment: center;
 }
-component Station inherits Image {
-    source: @image-url("../../assets/demo/station.png");
-    image-fit: cover;
-}
 export component EditorialDemo inherits Rectangle {
     in property <int> page;
     in property <string> folio;
@@ -39,22 +35,28 @@ export component EditorialDemo inherits Rectangle {
         clip: true; background: root.paper;
         property <length> w: self.width;
         property <length> h: self.height;
-        // Cover: a full-bleed field illustration and overlapping printer's slips.
+        // The portrait and the overprinted headline share the cover margin.
         if root.page == 1 : Rectangle {
-            Station { width: parent.width; height: parent.height; }
-            Rectangle { x: root.gutter; y: plate.h * 0.055; width: plate.w * 0.58; height: plate.h * 0.20; background: root.paper;
-                DisplayType { x: 8px; text: "ESTADO DEL"; color: root.ink; height: parent.height; font-size: min(plate.w * 0.085, parent.height * 0.97); } }
-            Rectangle { x: root.gutter; y: plate.h * 0.255; width: plate.w * 0.46; height: plate.h * 0.21; background: root.oxide;
-                DisplayType { x: 8px; text: "EQUIPO"; height: parent.height; color: root.ink; font-size: min(plate.w * 0.105,parent.height * 0.97); } }
-            Rectangle { x: root.gutter; y: parent.height - self.height; width: plate.w * 0.40; height: plate.h * 0.27; background: root.ink;
-                for item[i] in root.rows : TechnicalType { x: 8px; y: i * parent.height / 3; height: parent.height / 3;
-                    text: item; color: root.paper; font-size: root.small; } }
+            background: #f3e8d4;
+            Image { x: plate.w * 0.46; y: 0; width: plate.w * 0.54; height: plate.h;
+                source: @image-url("../../assets/demo/operadora.png"); image-fit: cover; }
+            DisplayType { x: root.gutter; y: plate.h * 0.05; height: plate.h * 0.23;
+                text: "ESTADO"; color: root.ink; font-size: min(plate.w * 0.116,plate.h * 0.23); }
+            Rectangle { x: 0; y: plate.h * 0.29; width: plate.w * 0.53; height: plate.h * 0.17; background: #f0959a;
+                DisplayType { x: root.gutter; height: parent.height; text: "DEL EQUIPO"; color: root.ink;
+                    font-size: min(plate.w * 0.081,plate.h * 0.16); } }
+            TechnicalType { x: root.gutter; y: plate.h * 0.51; text: root.context; font-size: root.small; color: root.ink; }
+            for item[i] in root.rows : Rectangle { x: root.gutter; y: plate.h * (0.65 + i * 0.105);
+                width: plate.w * 0.44 - root.gutter; height: plate.h * 0.105;
+                Rectangle { y: 0; height: 1px; width: parent.width; background: #756c60; }
+                TechnicalType { x: 0; height: parent.height; text: item; color: root.ink; font-size: root.small; } }
         }
-        // Network section: a tall printed spine carries the interface count.
+        // The narrow landscape forms the spine of the network register.
         if root.page == 2 : Rectangle {
-            Rectangle { x: 0; y: 0; width: plate.w * 0.27; height: plate.h; background: root.oxide;
-                DisplayType { x: root.gutter; y: plate.h * 0.04; text: root.metric; color: root.ink; font-size: min(parent.width * 0.66,plate.h * 0.47); }
-                TechnicalType { x: root.gutter; y: plate.h * 0.80; text: "INTERFACES"; font-size: root.small; color: root.ink; } }
+            Image { x: 0; y: 0; width: plate.w * 0.28; height: plate.h; source: @image-url("../../assets/demo/umbral.png"); image-fit: cover; }
+            Rectangle { x: 0; y: plate.h * 0.73; width: plate.w * 0.28; height: plate.h * 0.27; background: #213847;
+                DisplayType { x: root.gutter; height: parent.height; text: root.metric; color: root.paper;
+                    font-size: min(parent.width * 0.55, parent.height * 0.88); } }
             DisplayType { x: plate.w * 0.31; y: plate.h * 0.03; text: "RED LOCAL"; color: root.ink; font-size: min(plate.w * 0.089, plate.h * 0.27); }
             for item[i] in root.rows : Rectangle { x: plate.w * 0.32; y: plate.h * (0.37 + i * 0.18); width: plate.w * 0.64; height: plate.h * 0.18;
                 Rectangle { x: 0; y: 0; width: parent.width; height: i == 0 ? 4px : 1px; background: root.ink; }
@@ -86,7 +88,9 @@ export component EditorialDemo inherits Rectangle {
         if root.page == 5 : index := Rectangle {
             property <int> selected: 1;
             background: root.ink;
-            Station { x: plate.w * 0.59; width: plate.w * 0.41; height: plate.h; }
+            Image { source: index.selected == 0 ? @image-url("../../assets/demo/radial.png")
+                    : index.selected == 1 ? @image-url("../../assets/demo/station.png") : @image-url("../../assets/demo/antena.png");
+                image-fit: cover; x: plate.w * 0.59; width: plate.w * 0.41; height: plate.h; }
             DisplayType { x: root.gutter; y: plate.h * 0.04; text: "Diagnóstico"; font-size: min(plate.w * 0.073,plate.h * 0.23); color: root.paper; }
             for item[i] in root.rows : Rectangle { x: root.gutter; y: plate.h * (0.35 + i * 0.18); width: plate.w * 0.56 - root.gutter; height: plate.h * 0.16;
                 background: index.selected == i ? root.lime : transparent;
@@ -107,18 +111,20 @@ export component EditorialDemo inherits Rectangle {
         }
         // Incident bulletin: diagnosis first, followed by the recovery action.
         if root.page == 7 : Rectangle {
-            background: #ad3227;
+            background: #862b22;
             Rectangle { x: plate.w * 0.69; y: 0; width: plate.w * 0.31; height: plate.h * 0.72; clip: true;
-                Station { width: parent.width; height: parent.height; } }
+                Image { source: @image-url("../../assets/demo/radial.png"); image-fit: cover; width: parent.width; height: parent.height; } }
             TechnicalType { x: root.gutter; y: plate.h * 0.04; text: "FALLO    /    APLICACIÓN"; font-size: root.small; color: root.paper; }
-            DisplayType { x: root.gutter; y: plate.h * 0.16; height: plate.h * 0.52; text: "Sin\nrespuesta"; font-size: min(plate.w * 0.102,plate.h * 0.22); color: root.paper; }
+            DisplayType { x: root.gutter; y: plate.h * 0.16; height: plate.h * 0.52; text: "SIN\nRESPUESTA"; font-size: min(plate.w * 0.093,plate.h * 0.22); color: root.paper; }
             Rectangle { y: plate.h * 0.72; width: parent.width; height: plate.h * 0.28; background: root.ink;
                 TechnicalType { x: root.gutter; height: parent.height; text: "01   Solicitar cierre normal"; font-size: root.small; color: root.paper; }
                 TechnicalType { x: plate.w * 0.60; height: parent.height; text: "02   Verificar instancia"; font-size: root.small; color: root.paper; } }
         }
         // CPU instrument: twenty divisions; the last filled mark is the reading.
         if root.page == 8 : Rectangle {
-            background: root.lime;
+            background: #d6d6c9;
+            Image { x: plate.w * 0.63; y: 0; width: plate.w * 0.37; height: plate.h * 0.54;
+                source: @image-url("../../assets/demo/antena.png"); image-fit: cover; }
             TechnicalType { x: root.gutter; y: plate.h * 0.03; text: "CPU   /   CARGA DEL PROCESADOR"; font-size: root.small; color: root.ink; }
             DisplayType { x: root.gutter; y: plate.h * 0.11; height: plate.h * 0.47; text: root.metric + "%"; font-size: min(plate.w * 0.21,plate.h * 0.46); color: root.ink; }
             Rectangle { x: root.gutter; y: plate.h * 0.57; width: plate.w - 2 * root.gutter; height: plate.h * 0.26;
