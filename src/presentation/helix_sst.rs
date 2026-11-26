@@ -822,11 +822,11 @@ mod tests {
     #[ignore = "starts the bundled Helix process and writes isolated editor fixtures"]
     fn helix_live_edit_paste_help_resize_and_exit() -> Result<()> {
         use std::{sync::atomic::AtomicBool, time::{Instant, SystemTime, UNIX_EPOCH}};
-        use crate::adapters::terminal::io::WindowIo;
+        use crate::adapters::terminal::io::{WindowIo, DisplayPacket, DisplaySender};
 
         struct EditorSession {
             input: mpsc::Sender<Event>,
-            output: mpsc::Receiver<Vec<u8>>,
+            output: mpsc::Receiver<DisplayPacket>,
             finished: mpsc::Receiver<Result<i32>>,
             parser: vt100::Parser,
             abort: Arc<AtomicBool>,
@@ -853,13 +853,13 @@ mod tests {
             fn until(&mut self, label: &str, ready: impl Fn(&vt100::Screen) -> bool) -> Result<()> {
                 let deadline = Instant::now() + Duration::from_secs(20);
                 loop {
-                    while let Ok(bytes) = self.output.try_recv() { self.parser.process(&bytes); }
+                    while let Ok(bytes) = self.output.try_recv() { self.parser.process(bytes.bytes()); }
                     if ready(self.parser.screen()) { println!("PASS: {label}"); return Ok(()); }
                     if Instant::now() >= deadline {
                         anyhow::bail!("{label}: tiempo agotado. Pantalla:\n{}", self.parser.screen().contents());
                     }
                     match self.output.recv_timeout(Duration::from_millis(50)) {
-                        Ok(bytes) => self.parser.process(&bytes),
+                        Ok(bytes) => self.parser.process(bytes.bytes()),
                         Err(mpsc::RecvTimeoutError::Timeout) => {},
                         Err(error) => anyhow::bail!("{label}: {error}. Pantalla:\n{}", self.parser.screen().contents()),
                     }
@@ -888,7 +888,7 @@ mod tests {
         let raw = Arc::new(AtomicBool::new(false));
         let abort = Arc::new(AtomicBool::new(false));
         let size = Arc::new(Mutex::new((120, 36)));
-        let io = WindowIo::new(display, events, size.clone(), Arc::new(Mutex::new(Vec::new())), raw.clone(), Arc::new(AtomicBool::new(false)), abort.clone());
+        let io = WindowIo::new(DisplaySender::new(display), events, size.clone(), Arc::new(Mutex::new(Vec::new())), raw.clone(), Arc::new(AtomicBool::new(false)), abort.clone());
         let cwd = directory.clone();
         let worker = thread::spawn(move || {
             terminal_io::install(io);
@@ -927,7 +927,7 @@ mod tests {
         let status = session.finished.recv_timeout(Duration::from_secs(10))??;
         assert_eq!(status, 0);
         worker.join().expect("hilo de Helix");
-        while let Ok(bytes) = session.output.try_recv() { session.parser.process(&bytes); }
+        while let Ok(bytes) = session.output.try_recv() { session.parser.process(bytes.bytes()); }
         assert!(!session.raw.load(Ordering::SeqCst), "modo raw restaurado");
         assert!(!session.parser.screen().alternate_screen(), "pantalla principal restaurada");
         println!("PASS: salida limpia y restauración del terminal. Archivos: {}", directory.display());
