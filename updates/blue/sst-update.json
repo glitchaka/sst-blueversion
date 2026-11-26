@@ -1,27 +1,27 @@
 {
   "schema": 1,
-  "version": "0.1.14-blue.3",
+  "version": "0.1.14-blue.4",
   "channel": "blue",
-  "published_at": "2026-11-26T17:49:09.6594176+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.3/sst.exe",
-  "sha256": "125802c8231cf526faaef24afaecf64ff98d37c51dbf63eb5b33ff11e390eba5",
-  "size": 63700992,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.3/sst-updater.exe",
-  "updater_sha256": "e5072d3126eedbefa6b6ddc91eeef3e7c331db94c6c498a7501b3387284cb0b3",
+  "published_at": "2026-11-26T18:34:03.8196318+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.4/sst.exe",
+  "sha256": "308a2d1977a37f4ccf0c1f306b6ccb301ef9a4468bf3c0e7e33b9ac69386cff4",
+  "size": 63728640,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.4/sst-updater.exe",
+  "updater_sha256": "66ae8e3d58c9fb8ba59e64aa8e124b65fa4019c650207d533822201f31b2c7bf",
   "updater_size": 433664,
   "changes": [
-    "Sustituye la demo de formas aisladas por un muestrario editorial nativo de ocho componentes en contexto: portada, cabecera, lectura, inventario, selección, advertencia, fallo y escala.",
-    "Jerarquía tipográfica, información ficticia explícita, geometría contenida y composiciones diferenciadas para inventario, lectura y estados.",
-    "La demo permanece aislada de la consola normal; no reemplaza el logotipo ni aplica la identidad experimental al formatter.",
-    "Documentación actualizada en README y guide.",
-    "Incluye la corrección de enrutamiento público de config palette de blue.2."
+    "Autocompletado jerárquico compartido por la ventana nativa y la sesión de consola: subcomandos, opciones contextuales y navegación de varios niveles.",
+    "Tab en la ventana nativa completa el token único, añade espacio para continuar, o amplía el prefijo común y muestra alternativas.",
+    "Pruebas de regresión del catálogo y del intérprete para sys, notsh, tools, instp, config, triage y guide.",
+    "Guide y README actualizados: NOTSH nativo, diagnóstico Office consolidado, recuperación triage, unban LDAP, sigsour, paletas y demo gráfica. El catálogo local excluye los nombres retirados.",
+    "Conserva la demo de identidad de blue.3; no modifica su diseño ni aplica la identidad experimental a la consola normal."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.14-blue.3.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.3/SST-Setup-0.1.14-blue.3.exe",
-    "sha256": "42dd08c7d877a2d6015e902ea384e9463b0b738d8055f74b7cbf8e81fc76b8df",
-    "size": 72881298,
+    "name": "SST-Setup-0.1.14-blue.4.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.4/SST-Setup-0.1.14-blue.4.exe",
+    "sha256": "1c015fda1e211a8c2b6ed7202567a71993efca0ebdb2352479787f25679ff2e3",
+    "size": 72912134,
     "single_use": true,
-    "package_id": "6c9b488a12ba715825607f86504fe644"
+    "package_id": "494f6ca81258d1aa18832ceeaa9526a0"
   }
 }
