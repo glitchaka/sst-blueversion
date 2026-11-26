@@ -65,3 +65,5 @@ Errores comunes:
   - variable de comunidad ausente -> define la variable de entorno requerida
   - MAC no vista -> puede no estar en la FDB, estar detrás de otro equipo, VLAN incorrecta o switch no consultado
   - --switch apunta a perfil inexistente -> corrige el nombre
+
+Estado operativo: herramienta fuera de prioridad en el entorno actual por falta de permisos SNMP; se conserva para redes autorizadas.
