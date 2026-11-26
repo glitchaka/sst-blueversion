@@ -33,7 +33,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("firewall", "status rules rule enable disable"), ("firewall enable", "domain private public all"), ("firewall disable", "domain private public all"),
     ("power", "shutdown restart logoff hibernate"), ("autologon", "enable disable --help"),
     ("sudo", "--status --system --trustedinstaller --help"),
-    ("guide", "search"), ("triage", "help --find --history --deep --memory --ram --scan --refresh --help"),
+    ("guide", "search"), ("unban", "--help"), ("triage", "help --find --history --deep --memory --ram --scan --refresh --status --thermal --csv --json --help"),
 ];
 const OPTIONS: &[(&str, &str)] = &[
     ("sys uname", "-a"), ("sys services", "--running --stopped --impact"), ("sys users", "--domain --profiles"),
@@ -82,13 +82,20 @@ pub(crate) fn segment_start(line: &str) -> usize {
 fn normalized(words: &[&str]) -> Vec<String> {
     let mut parts: Vec<String> = words.iter().map(|w| w.to_ascii_lowercase()).collect();
     if let Some(first)=parts.first_mut() {
-        *first=match first.as_str() {
+        let name=match first.as_str() {
             "net" => "notsh", "tool" | "utils" => "tools", "sst-config" => "config", "runas" => "sudo", _ => first.as_str()
         }.to_owned();
+        *first=name;
     }
     if parts.first().is_some_and(|p| matches!(p.as_str(), "uname" | "fetch" | "neofetch" | "fastfetch")) {
         if parts[0]!="uname" { parts[0]="fetch".into(); }
         parts.insert(0,"sys".into());
+    }
+    if parts.first().is_some_and(|p|p=="sudo") && parts.len()>1 {
+        let skip=if matches!(parts[1].as_str(),"--system"|"--trustedinstaller"){2}else{1};
+        if parts.len()>skip {
+            return normalized(&words[skip..]);
+        }
     }
     if parts.first().is_some_and(|p|p=="notsh") && parts.len()>1 {
         parts[1]=match parts[1].as_str() { "wifi" | "wireless" => "wlan", "ethernet"=>"lan", "traceroute"=>"trace", _=>parts[1].as_str() }.to_owned();
@@ -110,10 +117,9 @@ pub(crate) fn candidates(before: &str) -> Option<(usize, Vec<String>)> {
     let mut values=Vec::new();
     for &(route, choices) in ROUTES { if path==route { values.extend(choices.split_whitespace()); } }
     let mut option_depth=0;
-    for &(route, choices) in OPTIONS {
+    for &(route, _) in OPTIONS {
         if path==route || path.strip_prefix(route).is_some_and(|s|s.starts_with(' ')) {
             if route.len()>option_depth { option_depth=route.len(); }
-            let _=choices;
         }
     }
     // Do not propose another flag as the value of a flag taking an argument.
@@ -133,7 +139,7 @@ pub(crate) fn candidates(before: &str) -> Option<(usize, Vec<String>)> {
             values.extend(["--plan","--close","--deep"]);
         }
     }
-    let mut out:Vec<String>=values.into_iter().filter(|v|!parts.iter().any(|p|p==v)&&v.starts_with(&prefix.to_ascii_lowercase())).map(str::to_owned).collect();
+    let mut out:Vec<String>=values.into_iter().filter(|v|!parts.iter().any(|p|p.as_str()==*v)&&v.starts_with(&prefix.to_ascii_lowercase())).map(str::to_owned).collect();
     if path=="guide" || path.starts_with("guide ") && !path.starts_with("guide search") {
         let index:serde_json::Value=serde_json::from_str(include_str!("../../../guide/guide-index.json")).ok()?;
         let topic=parts[1..].join(" ");
@@ -157,7 +163,7 @@ mod tests {
             ("notsh interface ipv4 show int","interfaces"),("tools office auth r","repair"),
             ("tools office diagnose --d","--detail"),("instp upgrade s","sst"),
             ("config palette sun","sunset"),("triage 123 --p","--plan"),("guide tools office d","diagnose"),
-            ("echo hi; notsh wlan show p","profiles"),("sys domain join -d example -u user -","-p"),
+            ("echo hi; notsh wlan show p","profiles"),("sudo sys services --r","--running"),("sys domain join -d example -u user -","-p"),
         ] {
             let (start,choices)=candidates(input).unwrap_or_else(||panic!("No candidates for {input}"));
             assert!(choices.contains(&expected.to_owned()),"{input}: {choices:?}");
