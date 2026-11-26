@@ -40,7 +40,7 @@ fn merge_guide_indexes(local: &str, remote: &str) -> Option<String> {
         if let Some(extra) = remote.get(section).and_then(|v| v.as_array()) {
             for entry in extra {
                 let Some(name) = entry.get(key).and_then(|v| v.as_str()) else { continue; };
-                if section == "entries" && matches!(name, "diag" | "tools office verify") { continue; }
+                if section == "entries" && matches!(name, "diag" | "netcheck" | "netprobe" | "tools office verify") { continue; }
                 if !entries.iter().any(|old| old.get(key).and_then(|v| v.as_str()) == Some(name)) {
                     entries.push(entry.clone());
                 }
