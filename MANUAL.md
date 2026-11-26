@@ -205,13 +205,7 @@ sys uname
 sys uname -a
 ```
 
-Sin opciones devuelve el identificador SST:
-
-```text
-SST-Windows
-```
-
-Con `-a` añade hostname, kernel, arquitectura y sistema operativo.
+Sin opciones, la implementación de main muestra sistema operativo, equipo, kernel y arquitectura del ejecutable. Con `-a` ofrece una línea compacta. La versión publicada puede diferir.
 
 Alias:
 
