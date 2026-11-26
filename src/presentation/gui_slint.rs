@@ -2235,6 +2235,7 @@ fn handle_key(
             else if key_is(text,Key::DownArrow){Some(CtKeyCode::Down)}
             else if key_is(text,Key::Return){Some(CtKeyCode::Enter)}
             else if key_is(text,Key::Escape){Some(CtKeyCode::Esc)}
+            else if key_is(text,Key::F2){Some(CtKeyCode::F(2))}
             else {None};
         if let Some(code)=special {model.key_event(code,CtKeyModifiers::NONE);return;}
         model.session.completion_action(-1);

@@ -288,10 +288,10 @@ impl EmbeddedSession {
     }
     fn finish_completion(&mut self, accept: bool) {
         let Some(s)=self.completion.take() else{return;};
-        self.emit("\\r\\x1b[5A\\x1b[J");
+        self.emit("\r\x1b[5A\x1b[J");
         if accept {
             let mut value=s.items[s.selected].clone();
-            if !value.ends_with(['/', '\\\\', ' ']) && s.end==self.line.len(){value.push(' ');}
+            if !value.ends_with(['/', '\\', ' ']) && s.end==self.line.len(){value.push(' ');}
             let chars=value.chars().collect::<Vec<_>>();
             self.line.splice(s.begin..s.end,chars.iter().copied());
             self.cursor=s.begin+chars.len();
@@ -309,7 +309,7 @@ impl EmbeddedSession {
     /// Present an asynchronous notice without losing the user's current
     /// editable command line. Defer while another command or TUI is running.
     pub fn show_notification(&mut self, message: &str) -> bool {
-        if self.busy.load(Ordering::SeqCst) || self.raw_mode() || self.exited() {
+        if self.busy.load(Ordering::SeqCst) || self.raw_mode() || self.exited() || self.completion.is_some() {
             return false;
         }
         self.emit("\r\x1b[2K");
