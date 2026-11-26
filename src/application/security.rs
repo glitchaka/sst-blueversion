@@ -2571,9 +2571,9 @@ fn capture(program: &str, args: &[&str]) -> Result<String> {
     }
 
     let output = command.output()?;
-    let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+    let mut text = crate::support::windows::decode_console_output(&output.stdout);
     if !output.stderr.is_empty() {
-        text.push_str(&String::from_utf8_lossy(&output.stderr));
+        text.push_str(&crate::support::windows::decode_console_output(&output.stderr));
     }
     Ok(text)
 }
