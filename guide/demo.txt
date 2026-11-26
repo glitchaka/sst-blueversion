@@ -13,4 +13,4 @@ Flechas: recorrer los ocho ejemplos. 1–8: elegir. Esc: volver a la consola.
 07 Fallo: incidencia, causa observada y verificación.
 08 Escala: lectura numérica y divisiones graduadas.
 
-Los datos son ficticios. El muestrario es experimental y no modifica la identidad normal de SST ni el formatter hasta su aprobación visual.
+Las láminas incluyen ilustraciones de dirección gráfica orbital y biomecánica; los datos son ficticios. El muestrario es experimental y no modifica la identidad normal de SST ni el formatter hasta su aprobación visual.
