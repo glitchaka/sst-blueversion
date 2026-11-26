@@ -1,12 +1,24 @@
 SST Windows release CI report
-Source commit: 92d89a141ebefdbe57f36cae2a38c8d44b93e9ea
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45856734535
-Recorded UTC: 2026-11-26 16:20:02Z
+Source commit: 7d8ef351f24be85b4d5f270edd9fe5dec180a2ed
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45857953863
+Recorded UTC: 2026-11-26 16:29:49Z
 Compile: success
-Rust tests: failure
-Software GUI startup: skipped
-Packaging: skipped
+Rust tests: success
+Software GUI startup: success
+Packaging: success
 Compiler log tail:
     Updating crates.io index
+ Downloading crates ...
+  Downloaded allocator-api2 v0.2.22
+   Compiling allocator-api2 v0.2.22
    Compiling sst v0.1.14-blue.1 (D:\a\sst-blueversion\sst-blueversion)
-    Finished `release` profile [optimized] target(s) in 4m 23s
+   Compiling hashbrown v0.16.1
+   Compiling hashbrown v0.15.5
+   Compiling clru v0.6.3
+   Compiling fontdue v0.9.5
+   Compiling i-slint-core v1.18.1
+   Compiling i-slint-renderer-software v1.18.1
+   Compiling i-slint-backend-winit v1.18.1
+   Compiling i-slint-backend-selector v1.18.1
+   Compiling slint v1.18.1
+    Finished `release` profile [optimized] target(s) in 4m 58s
