@@ -778,3 +778,23 @@ fn set_assignment(text: &mut String, key: &str, value: &str) {
     }
     *text = format!("{}\n", lines.join("\n"));
 }
+
+#[cfg(test)]
+mod font_palette_persistence_tests {
+    use super::*;
+    #[test]
+    fn font_palette_round_trip_keeps_background_and_original_font_setting() {
+        let root=std::env::temp_dir().join(format!("sst-palette-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let paths=AppPaths{root:root.clone()};
+        fs::create_dir_all(paths.config_dir()).unwrap();
+        fs::write(paths.config_file(),"SST_BACKGROUND_COLOR='#282828'\nSST_FONT_COLOR='#ABCDEF'\n").unwrap();
+        for name in ["sunset","golden","gruvbox"] {
+            paths.set_config_values(&[("SST_FONT_PALETTE",name)]).unwrap();
+            let appearance=paths.load_appearance().unwrap();
+            assert_eq!(appearance.font_palette,name);
+            assert_eq!(appearance.font_color,"#ABCDEF");
+            assert_eq!(appearance.background_color,"#282828");
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+}
