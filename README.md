@@ -1995,3 +1995,7 @@ La rama main no equivale a una versión publicada. La auditoría funcional exclu
 `config palette list` muestra las opciones. `config palette sunset`, `config palette golden` y `config palette gruvbox` seleccionan la paleta persistente en `SST_FONT_PALETTE`. El fondo y el logotipo no cambian. Los colores de estado conservan su distinción semántica.
 
 Recuperación de aplicaciones: `triage PID --plan` y `triage PID --close FILETIME`. Consultar primero el plan; el cierre no fuerza la terminación y puede solicitar guardar cambios.
+
+### Muestrario de identidad gráfica
+
+`demo graficos` permite recorrer ocho ejemplos de composición editorial con datos ficticios. Las flechas y las teclas 1–8 cambian de muestra; Esc regresa a la consola. No cambia el formatter ni el logotipo de la interfaz normal.
