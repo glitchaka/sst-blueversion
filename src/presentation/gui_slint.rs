@@ -294,15 +294,14 @@ slint::slint! {
         in property <image> terminal-image;
         in property <int> demo-page;
         in property <string> demo-title;
-        in property <string> demo-caption;
-        in property <string> demo-index;
-        in property <string> demo-headline;
-        in property <string> demo-metric;
-        in property <string> demo-unit;
-        in property <string> demo-context;
-        in property <string> demo-row-a;
-        in property <string> demo-row-b;
-        in property <string> demo-row-c;
+        in property <int> demo-count;
+        in property <int> demo-selected;
+        in property <int> demo-progress;
+        in property <int> demo-cpu;
+        in property <int> demo-phase;
+        in property <bool> demo-blink;
+        in property <bool> demo-paused;
+        in property <bool> demo-action;
         in property <bool> caret-visible;
         in property <float> caret-x;
         in property <float> caret-y;
@@ -593,9 +592,10 @@ slint::slint! {
 
         if root.demo-page > 0 : EditorialDemo {
             x: 0; y: 45px; width: root.width; height: root.height - 45px;
-            page: root.demo-page; title: root.demo-title; folio: root.demo-index;
-            metric: root.demo-metric; caption: root.demo-caption; context: root.demo-context;
-            rows: [root.demo-row-a, root.demo-row-b, root.demo-row-c];
+            page: root.demo-page; title: root.demo-title; count: root.demo-count;
+            selected: root.demo-selected; progress: root.demo-progress; cpu: root.demo-cpu;
+            phase: root.demo-phase; blink: root.demo-blink; paused: root.demo-paused;
+            action: root.demo-action;
         }
 
         island := Rectangle {
@@ -2669,22 +2669,23 @@ pub fn run() -> Result<()> {
     demo_timer.start(TimerMode::Repeated, Duration::from_millis(50),move||{
         use crate::presentation::console_identity as identity;
         let Some(ui)=demo_weak.upgrade() else{return;};
-        let page=identity::page();
-        if ui.get_demo_page()==i32::from(page) {return;}
-        if page!=0 {
-            let example=identity::specimen(page);
-            ui.set_demo_title(example.title.into());
-            ui.set_demo_caption(example.caption.into());
-            ui.set_demo_index(example.index.into());
-            ui.set_demo_headline(example.headline.into());
-            ui.set_demo_metric(example.metric.into());
-            ui.set_demo_unit(example.unit.into());
-            ui.set_demo_context(example.context.into());
-            ui.set_demo_row_a(example.rows[0].into());
-            ui.set_demo_row_b(example.rows[1].into());
-            ui.set_demo_row_c(example.rows[2].into());
+        let frame=identity::snapshot();
+        if frame.page==0 {
+            if ui.get_demo_page()!=0 {ui.set_demo_page(0);}
+            return;
         }
-        ui.set_demo_page(i32::from(page));
+        if ui.get_demo_page()!=i32::from(frame.page) {
+            ui.set_demo_title(identity::TITLES[usize::from(frame.page-1)].into());
+            ui.set_demo_count(i32::from(identity::COUNT));
+            ui.set_demo_page(i32::from(frame.page));
+        }
+        ui.set_demo_selected(i32::from(frame.selected));
+        ui.set_demo_progress(frame.progress());
+        ui.set_demo_cpu(frame.cpu());
+        ui.set_demo_phase(frame.phase());
+        ui.set_demo_blink(frame.blink());
+        ui.set_demo_paused(frame.paused);
+        ui.set_demo_action(frame.action);
     });
 
     let keygen_timer=Timer::default();
