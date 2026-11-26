@@ -97,7 +97,9 @@
         "uptime",
         "fetch",
         "neofetch",
-        "fastfetch"
+        "fastfetch",
+        "keygen",
+        "autologon"
       ],
       "area": "system",
       "summary": "Información y administración local del equipo.",
@@ -326,10 +328,7 @@
     },
     {
       "name": "triage",
-      "aliases": [
-        "triage --plan",
-        "triage --close"
-      ],
+      "aliases": [],
       "area": "security",
       "summary": "Diagnóstico, investigación y recuperación de aplicaciones por PID.",
       "manual": {
@@ -443,6 +442,7 @@
     {
       "name": "config",
       "aliases": [
+        "sst-config",
         "config palette"
       ],
       "area": "config",
@@ -1677,10 +1677,21 @@
       }
     },
     {
-      "name": "netcheck",
+      "name": "demo graficos",
+      "aliases": [],
+      "area": "config",
+      "summary": "Muestrario experimental de identidad editorial aplicado a información ficticia.",
+      "manual": {
+        "file": "demo",
+        "extension": "txt",
+        "section": "whole"
+      }
+    },
+    {
+      "name": "notsh test",
       "aliases": [],
       "area": "diagnostics",
-      "summary": "Diagnostica problemas de enlace, IP/DHCP, ruta, DNS, ICMP y TCP con evidencia y acciones recomendadas.",
+      "summary": "Diagnóstico integral y mediciones de red; speed, loss, stability, traffic, packets y capture.",
       "manual": {
         "file": "network",
         "extension": "txt",
@@ -1688,12 +1699,45 @@
       }
     },
     {
-      "name": "demo graficos",
+      "name": "unban",
+      "aliases": [],
+      "area": "windows",
+      "summary": "Desbloqueo AD por LDAP nativo con credenciales autorizadas.",
+      "manual": {
+        "file": "unban",
+        "extension": "txt",
+        "section": "whole"
+      }
+    },
+    {
+      "name": "sigsour",
+      "aliases": [],
+      "area": "packages",
+      "summary": "Catálogo interactivo de paquetes PKGX.",
+      "manual": {
+        "file": "instp",
+        "extension": "txt",
+        "section": "whole"
+      }
+    },
+    {
+      "name": "keygen",
+      "aliases": [],
+      "area": "system",
+      "summary": "Demostración audiovisual integrada en SST.",
+      "manual": {
+        "file": "system",
+        "extension": "txt",
+        "section": "whole"
+      }
+    },
+    {
+      "name": "guide",
       "aliases": [],
       "area": "config",
-      "summary": "Muestrario experimental de identidad editorial aplicado a información ficticia.",
+      "summary": "Ayuda local y búsqueda de comandos; autocompletado por niveles.",
       "manual": {
-        "file": "demo",
+        "file": "completion",
         "extension": "txt",
         "section": "whole"
       }
