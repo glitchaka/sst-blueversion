@@ -520,6 +520,48 @@ fn stream_line(line:&str)->String{
     style_line(line)
 }
 
+/// Display completion alternatives on a measured grid, without editing
+/// the input or interpreting file-name control characters as terminal commands.
+pub fn completion_catalogue(matches:&[String],cols:u16)->String {
+    let width=usize::from(cols.saturating_sub(3)).max(8);
+    let items:Vec<String>=matches.iter().map(|s|s.chars().map(|c|if c.is_control(){'�'}else{c}).collect()).collect();
+    let cell=items.iter().map(|s|display_width(s)).max().unwrap_or(1).saturating_add(3);
+    let columns=(width/cell.max(1)).clamp(1,4);
+    let mut out=format!("\r\n{}\r\n",Role::Label.paint("SUGERENCIAS"));
+    for row in items.chunks(columns) {
+        if columns==1 {
+            for item in row {
+                for part in wrap_line(item,width) {
+                    out.push_str(&Role::Command.paint(&part));out.push_str("\r\n");
+                }
+            }
+        } else {
+            for (i,item) in row.iter().enumerate() {
+                if i>0 {out.push_str("  ");}
+                out.push_str(&Role::Command.paint(item));
+                if i+1<row.len(){out.push_str(&" ".repeat(cell.saturating_sub(2+display_width(item))));}
+            }
+            out.push_str("\r\n");
+        }
+    }
+    out
+}
+#[cfg(test)]
+mod completion_catalogue_tests {
+    use super::*;
+    #[test]
+    fn candidates_remain_readable_and_control_bytes_do_not_escape(){
+        let items=vec!["interfaces".into(),"profiles".into(),"networks".into(),"unsafe\x1bname".into()];
+        for cols in [20,80,120] {
+            let out=completion_catalogue(&items,cols);
+            let clean=report_text(&out);
+            assert!(clean.contains("interfaces")&&clean.contains("profiles")&&clean.contains("networks"));
+            assert!(!clean.contains('\x1b'));
+            assert!(clean.lines().all(|line|display_width(line.trim_end_matches('\r'))<=usize::from(cols)));
+        }
+    }
+}
+
 fn display_width(s: &str) -> usize {
     // SST's embedded terminal primarily uses monospace Latin text and box
     // drawing. Estimate display columns to prevent viewport overflow.

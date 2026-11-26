@@ -2051,3 +2051,5 @@ Oxidize y ronin-sunset: colores muestreados de las imágenes JPEG, no códigos p
 Dentro de `demo graficos`, pulsa P para la paleta siguiente y O para la anterior. El nombre del esquema aparece en la cabecera. Las 18 paletas se recorren circularmente; el cambio conserva la familia, foco y animación. Al salir se conserva la configuración original de `config palette`. Para fijar un esquema de forma permanente, usa `config palette NOMBRE` fuera de la demo.
 
 La identidad gráfica se aplica ahora también a la terminal habitual: los trazados compartidos del catálogo se usan en marcos y transferencias; las cabeceras, tablas, selección, cursor e indicadores de métricas utilizan los roles de la paleta activa. La salida de máquina y los datos de los comandos se conservan. Las muestras que no tienen una función aplicable al contexto siguen disponibles en `demo graficos`.
+
+El prompt inicial y el de edición comparten los roles de la paleta. Las alternativas de Tab se muestran en una retícula medida, sin ejecutar ni alterar los candidatos. La isla superior conserva sus dimensiones y usa el marco recortado del catálogo para el token de privilegios.

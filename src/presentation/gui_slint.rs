@@ -181,6 +181,8 @@ slint::slint! {
         in property <color> text;
         in property <color> muted;
         in property <color> track;
+        in property <color> warning;
+        in property <color> failure;
     }
     component ReportHeadingBand inherits Rectangle {
         background: transparent;
@@ -640,12 +642,13 @@ slint::slint! {
                     y: 5px;
                     width: 96px;
                     height: 24px;
-                    border-radius: 7px;
-                    background: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
-                        ? #3c3836 : #504030;
-                    border-width: 1px;
-                    border-color: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
-                        ? #665c54 : #d79921;
+                    background: transparent;
+                    CutFrame {
+                        width: parent.width; height: parent.height;
+                        ink: OutputTheme.track;
+                        outline: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO") ? OutputTheme.rule : OutputTheme.warning;
+                        thickness: 1px;
+                    }
 
                     Text {
                         x: 2px;
@@ -654,7 +657,7 @@ slint::slint! {
                         height: parent.height;
                         text: root.privilege-label;
                         color: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
-                            ? #ebdbb2 : #fabd2f;
+                            ? OutputTheme.text : OutputTheme.warning;
                         font-family: "Segoe UI Variable";
                         font-size: 11px;
                         font-weight: 700;
@@ -670,7 +673,7 @@ slint::slint! {
                     width: 92px;
                     height: parent.height;
                     text: root.cpu-text;
-                    color: #ebdbb2;
+                    color: OutputTheme.text;
                     font-family: "Segoe UI Variable";
                     font-size: 13px;
                     vertical-alignment: center;
@@ -683,7 +686,7 @@ slint::slint! {
                     width: 128px;
                     height: parent.height;
                     text: root.ram-text;
-                    color: #ebdbb2;
+                    color: OutputTheme.text;
                     font-family: "Segoe UI Variable";
                     font-size: 13px;
                     vertical-alignment: center;
@@ -696,7 +699,7 @@ slint::slint! {
                     width: 62px;
                     height: parent.height;
                     text: root.clock-text;
-                    color: #ebdbb2;
+                    color: OutputTheme.text;
                     font-family: "Segoe UI Variable";
                     font-size: 13px;
                     vertical-alignment: center;
@@ -710,7 +713,7 @@ slint::slint! {
                     width: 86px;
                     height: parent.height;
                     text: root.date-text;
-                    color: #bdae93;
+                    color: OutputTheme.muted;
                     font-family: "Segoe UI Variable";
                     font-size: 12px;
                     vertical-alignment: center;
@@ -735,7 +738,7 @@ slint::slint! {
                         commands: root.maximized
                             ? "M 1 6 L 15 6"
                             : "M 1 1 L 8 9 L 15 1";
-                        stroke: #d5c4a1;
+                        stroke: OutputTheme.text;
                         stroke-width: 2.4px;
                         stroke-line-cap: round;
                         stroke-line-join: round;
@@ -768,7 +771,7 @@ slint::slint! {
                         commands: root.maximized
                             ? "M 1 1 L 8 9 L 15 1"
                             : "M 1 10 L 8 2 L 15 10";
-                        stroke: #d5c4a1;
+                        stroke: OutputTheme.text;
                         stroke-width: 2.4px;
                         stroke-line-cap: round;
                         stroke-line-join: round;
@@ -799,7 +802,7 @@ slint::slint! {
                         width: 18px;
                         height: 18px;
                         commands: "M 9 1 L 9 8 M 3.3 3.7 A 7 7 0 1 0 14.7 3.7";
-                        stroke: close-touch.has-hover ? #fb4934 : #fe8019;
+                        stroke: close-touch.has-hover ? OutputTheme.failure : OutputTheme.rail;
                         stroke-width: 2px;
                         stroke-line-cap: round;
                     }
@@ -1518,7 +1521,12 @@ impl TerminalModel {
                         }
                     }
 
-                    if !selection.is_some_and(|(a,b)| index >= a.min(b) && index < a.max(b)) && !cell.inverse() { fg = font_palette_color(fg,palette); }
+                    if !selection.is_some_and(|(a,b)| index >= a.min(b) && index < a.max(b)) && !cell.inverse() {
+                        fg = font_palette_color(fg,palette);
+                    }
+                    if semantic_surface.is_some() && paint_background && !cell.inverse() && !is_meter_surface(cell.bgcolor()) && contrast(fg,bg)<4.5 {
+                        fg=readable_ink(bg);
+                    }
                     let content = cell.contents();
                     if content.is_empty() || card_title || (feature_row && feature_color(row,col).is_some()) {
                         continue;
@@ -1784,6 +1792,8 @@ fn apply_terminal_palette(ui:&SstBlueWindow,palette:&str) {
     theme.set_text(color(p.cream));
     theme.set_muted(color(p.muted));
     theme.set_track(color(p.rail));
+    theme.set_warning(color(p.amber));
+    theme.set_failure(color(p.oxide));
 }
 fn apply_demo_palette(ui:&SstBlueWindow, palette:&str) {
     let p=demo_colors(palette);
@@ -2929,6 +2939,20 @@ mod font_palette_regressions {
     use super::*;
     use crate::presentation::formatter::Role;
     fn role(r:Role)->Rgb { let (r,g,b)=r.style().rgb; Rgb(r,g,b) }
+    #[test]
+    fn semantic_surfaces_follow_all_palettes_without_touching_unrelated_rgb() {
+        use crate::presentation::formatter::{METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB};
+        for name in crate::core::palettes::names() {
+            let p=demo_colors(name);
+            assert_eq!(kit_surface(METER_OK_RGB,p),Some(p.mint));
+            assert_eq!(kit_surface(METER_WARN_RGB,p),Some(p.amber));
+            assert_eq!(kit_surface(METER_BAD_RGB,p),Some(p.oxide));
+            assert_eq!(kit_surface((56,54,46),p),Some(p.rail));
+            assert_eq!(kit_surface((35,52,106),p),None);
+            assert!(is_meter_surface(vt100::Color::Rgb(60,56,55)));
+            assert!(!is_meter_surface(vt100::Color::Rgb(60,56,54)));
+        }
+    }
     #[test]
     fn catalogue_uses_shared_palette_and_readable_state_inks() {
         let original=demo_colors("gruvbox");

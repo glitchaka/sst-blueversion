@@ -412,7 +412,7 @@ impl EmbeddedSession {
 
     fn redraw(&self) {
         let prompt = if self.pending.is_empty() {
-            "$ ".to_owned()
+            crate::presentation::shell::prompt::input_marker()
         } else {
             self.secondary_prompt.lock().unwrap_or_else(|error| error.into_inner()).clone()
         };
@@ -789,7 +789,11 @@ impl EmbeddedSession {
                 }
             }
             if common.len()>typed.len() && common.starts_with(typed) { common }
-            else { self.emit(&format!("\r\n{}\r\n", matches.join("  "))); return; }
+            else {
+                let cols=self.size.lock().unwrap_or_else(|e|e.into_inner()).0;
+                self.emit(&crate::presentation::formatter::completion_catalogue(&matches,cols));
+                return;
+            }
         };
         let begin = prefix[..start].chars().count();
         let chars = replacement.chars().collect::<Vec<_>>();
