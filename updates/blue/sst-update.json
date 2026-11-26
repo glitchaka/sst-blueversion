@@ -1,26 +1,28 @@
 {
   "schema": 1,
-  "version": "0.1.14-blue.7",
+  "version": "0.1.14-blue.8",
   "channel": "blue",
-  "published_at": "2026-11-26T21:45:55.9704633+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.7/sst.exe",
-  "sha256": "5a4a70cc3ec22bd6153cc06f23929fbc0b06625818b055184df5f44253fce09d",
-  "size": 61325312,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.7/sst-updater.exe",
-  "updater_sha256": "b890c5875d9261c0f821db00c859bc78c5a0c748724b6f6d97e49f731af81f59",
+  "published_at": "2026-11-26T22:25:14.5866431+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.8/sst.exe",
+  "sha256": "af61308cac8991942d4b1aac20193ccf186cdcd8f9bd42a4db2080066d708903",
+  "size": 61406720,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.8/sst-updater.exe",
+  "updater_sha256": "450f46047870ab3f0aab165cf704176c9a16796b73ee37bba9ed850202ba05a8",
   "updater_size": 433664,
   "changes": [
-    "15 esquemas nuevos, 18 en total, compartidos por config, persistencia, Tab, formatter y catálogo gráfico.",
-    "P/O recorren todas las paletas dentro de demo graficos, con nombre visible y sin reiniciar ni cambiar la configuración guardada.",
-    "El cambio de paleta mantiene el foco, familia y estado de animación; Esc restaura el esquema configurado.",
-    "Guide, README y pruebas de navegación actualizados."
+    "Integra los trazados angulares, marcos y marcas de registro compartidos del catálogo en la terminal habitual.",
+    "Transferencias determinadas e indeterminadas, cabeceras, tablas, cursor, selección y medidores con la paleta activa.",
+    "Conserva los datos, el desplazamiento de lectura, los fondos y el logotipo; la demo sigue disponible.",
+    "Guide y README actualizados.",
+    "Prompt y sugerencias de Tab con jerarquía semántica; marco del token real en la isla superior, sin cambiar su distribución.",
+    "Corrige la expresión de geometría Slint y la asignación redundante detectadas por la compilación estricta de Windows."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.14-blue.7.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.7/SST-Setup-0.1.14-blue.7.exe",
-    "sha256": "f7cbe6a14e32b2930dd12a77afac3b0d64b28abea7245a7aa3d5ecd17817f443",
-    "size": 70512544,
+    "name": "SST-Setup-0.1.14-blue.8.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.8/SST-Setup-0.1.14-blue.8.exe",
+    "sha256": "f4ac4625233739389b1ac15b17d27806af680babfe373be6bf9d2fae333c0067",
+    "size": 70595082,
     "single_use": true,
-    "package_id": "62899f428935896ccef1d11284092cd7"
+    "package_id": "b2e2841e803b554b529fbe402c318ecf"
   }
 }
