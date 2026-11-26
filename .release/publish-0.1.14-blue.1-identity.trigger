@@ -1,0 +1,1 @@
+Publish native console identity.

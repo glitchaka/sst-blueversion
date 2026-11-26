@@ -1,3 +1,4 @@
+pub mod console_identity;
 pub mod helix_sst;
 #[cfg(windows)]
 pub mod helix_sst_spell;

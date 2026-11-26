@@ -3,6 +3,7 @@
 //! The terminal owns the whole client area. The top status island is an overlay:
 //! there is deliberately no full-width title bar behind it.
 
+use crate::presentation::console_identity::{self as identity, Mark};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -181,14 +182,15 @@ slint::slint! {
         background: transparent;
         border-width: 1px;
         border-color: OutputTheme.rule;
-        border-radius: 6px;
+        border-radius: 0px;
 
+        Rectangle { x: 0; y: 0; width: min(34px, parent.width / 4); height: 2px; background: OutputTheme.rail; }
         Rectangle {
             x: 1px;
             y: 3px;
             width: 3px;
             height: max(4px, parent.height - 6px);
-            border-radius: 2px;
+            border-radius: 0px;
             background: OutputTheme.rail;
         }
     }
@@ -197,14 +199,14 @@ slint::slint! {
         background: transparent;
         border-width: 1px;
         border-color: OutputTheme.rule;
-        border-radius: 9px;
+        border-radius: 0px;
 
         Rectangle {
             x: 1px;
             y: 7px;
             width: 3px;
             height: min(24px, parent.height - 14px);
-            border-radius: 2px;
+            border-radius: 0px;
             background: OutputTheme.rail;
         }
     }
@@ -291,6 +293,7 @@ slint::slint! {
         background: transparent;
 
         in property <image> terminal-image;
+        in property <image> identity-mark;
         in property <bool> caret-visible;
         in property <float> caret-x;
         in property <float> caret-y;
@@ -584,11 +587,13 @@ slint::slint! {
             height: 34px;
             x: (root.width - self.width) / 2;
             y: 6px;
-            border-radius: 13px;
-            background: rgba(40, 40, 40, 0.93);
+            border-radius: 1px;
+            background: #202724;
             border-width: 1px;
             border-color: #504945;
 
+            Rectangle { x: 0; y: parent.height - 2px; width: parent.width; height: 2px; background: OutputTheme.rule; }
+            Image { x: 3px; y: 3px; width: 31px; height: 27px; source: root.identity-mark; image-fit: fill; }
             WindowMoveArea {
                 x: 0;
                 y: 0;
@@ -596,9 +601,9 @@ slint::slint! {
                 height: parent.height;
 
                 Text {
-                    x: 17px;
+                    x: 37px;
                     y: 0;
-                    width: 70px;
+                    width: 33px;
                     height: parent.height;
                     text: "SST";
                     color: #ebdbb2;
@@ -616,7 +621,7 @@ slint::slint! {
                     y: 5px;
                     width: 96px;
                     height: 24px;
-                    border-radius: 7px;
+                    border-radius: 1px;
                     background: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
                         ? #3c3836 : #504030;
                     border-width: 1px;
@@ -1094,7 +1099,7 @@ impl TerminalModel {
 
     fn geometry(&self) -> (f32, f32, f32, f32) {
         let scale = self.scale.max(0.5);
-        let pad_x = (self.appearance.terminal_padding_x as f32 * scale).round();
+        let pad_x = (self.appearance.terminal_padding_x.max(10) as f32 * scale).round();
         let pad_y = (self.appearance.terminal_padding_y as f32 * scale).round();
         let top_pad = ((ISLAND_TOP
             + ISLAND_HEIGHT
@@ -1435,6 +1440,7 @@ impl TerminalModel {
                     && (0..cols).any(|col|feature_color(row,col).is_some()
                         && feature_color(row-1,col)==feature_color(row,col))
                     && (0..cols).all(|col|screen.cell(row-1,col).is_none_or(|c|c.contents().trim().is_empty()));
+                let mut row_mark = None;
                 for col in 0..cols {
                     let Some(cell) = screen.cell(row, col) else {
                         continue;
@@ -1443,6 +1449,18 @@ impl TerminalModel {
                         continue;
                     }
 
+                    if !cell.contents().trim().is_empty() {
+                        let role = match cell.fgcolor() {
+                            vt100::Color::Rgb(r,g,b) => Role::from_rgb((r,g,b)),
+                            _ => None,
+                        };
+                        match role {
+                            Some(Role::Failure) => row_mark=Some(Mark::Failure),
+                            Some(Role::Warning) if !matches!(row_mark,Some(Mark::Failure)) => row_mark=Some(Mark::Warning),
+                            _ if row_mark.is_none() => row_mark=Some(Mark::Rail),
+                            _ => {}
+                        }
+                    }
                     let mut fg = terminal_color(cell.fgcolor(), default_fg);
                     let mut bg = terminal_color(cell.bgcolor(), BG);
                     let layout_marker=matches!(cell.bgcolor(),vt100::Color::Rgb(r,g,b) if
@@ -1542,6 +1560,13 @@ impl TerminalModel {
                         if text.is_empty(){continue;}
                         let color=(start..end).filter_map(|c|screen.cell(row,c)).find(|c|!c.contents().trim().is_empty())
                             .map(|c|font_palette_color(terminal_color(c.fgcolor(),default_fg),palette)).unwrap_or(default_fg);
+                        let fw=(f32::from(end-start)*cell_width).floor() as i32;
+                        let fh=(cell_height*2.).floor() as i32;
+                        let fx=(left_pad+f32::from(start)*cell_width).round() as i32;
+                        let fy=(top_pad+f32::from(row-1)*cell_height).round() as i32;
+                        identity::draw(Mark::Readout,fw,fh,|x,y,w,h,(r,g,b)|{
+                            fill_rect(pixels,width,height,fx+x,fy+y,w,h,Rgb(r,g,b));
+                        });
                         let available=(f32::from(end-start)-3.).max(1.)*cell_width;
                         let size=(font_px*1.65).min(available/(0.62*text.chars().count().max(1) as f32))
                             .min(cell_height*1.6).round().max(1.) as u16;
@@ -1556,12 +1581,25 @@ impl TerminalModel {
                         }
                     }
                 }
+                if selected_row==Some(usize::from(row)) { row_mark=Some(Mark::Selected); }
+                let mut paint_mark = |mark,x:i32,y:i32,w:i32,h:i32| {
+                    identity::draw(mark,w,h,|dx,dy,rw,rh,(r,g,b)|{
+                        fill_rect(pixels,width,height,x+dx,y+dy,rw,rh,Rgb(r,g,b));
+                    });
+                };
+                let row_y=(top_pad+f32::from(row)*cell_height).round() as i32;
+                if let Some(mark)=row_mark {
+                    let gutter=(left_pad*0.55).round() as i32;
+                    paint_mark(mark,1,row_y,gutter,cell_height.ceil() as i32);
+                }
                 if card_title {
+                    let span=(f32::from(cols)*cell_width).round() as i32;
+                    paint_mark(Mark::Masthead,left_pad.round() as i32,row_y-cell_height.round() as i32,span,(2.*cell_height).round() as i32);
                     let heading = (0..cols).filter_map(|col|screen.cell(row,col))
                         .map(|cell|cell.contents()).collect::<String>();
                     let heading = heading.trim();
                     let available = (f32::from(cols)-4.).max(1.)*cell_width;
-                    let size = (font_px*1.7).min(available/(0.62*heading.chars().count().max(1) as f32))
+                    let size = (font_px*identity::TITLE_SCALE).min(available/(0.62*heading.chars().count().max(1) as f32))
                         .min(cell_height*1.6).round().max(1.) as u16;
                     let mut x = (left_pad+2.*cell_width).round() as i32;
                     let baseline = (top_pad+(f32::from(row)+0.48)*cell_height).round() as i32;
@@ -1686,7 +1724,7 @@ fn fill_rect(
     h: i32,
     color: Rgb,
 ) {
-    let left = x.max(0) as u32;
+    let left = (x.max(0) as u32).min(width);
     let top = y.max(0) as u32;
     let right = (x + w).max(0).min(width as i32) as u32;
     let bottom = (y + h).max(0).min(height as i32) as u32;
@@ -2260,6 +2298,11 @@ pub fn run() -> Result<()> {
     let metrics = Rc::new(RefCell::new(System::new()));
     let ui = SstBlueWindow::new()?;
     let color = |(r,g,b)| slint::Color::from_rgb_u8(r,g,b);
+    let mut emblem = SharedPixelBuffer::<Rgba8Pixel>::new(96,80);
+    identity::draw(Mark::Portal,96,80,|x,y,w,h,(r,g,b)| {
+        fill_rect(emblem.make_mut_slice(),96,80,x,y,w,h,Rgb(r,g,b));
+    });
+    ui.set_identity_mark(Image::from_rgba8_premultiplied(emblem));
     let theme = ui.global::<OutputTheme>();
     theme.set_rail(color(crate::presentation::formatter::SECTION_RAIL));
     theme.set_rule(color(crate::presentation::formatter::SECTION_RULE));
