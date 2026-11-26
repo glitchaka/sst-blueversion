@@ -58,29 +58,10 @@ impl ShellHelper {
             return Some((content_start, pairs));
         }
 
-        let command = words.first().copied().unwrap_or("");
-        let subcommands = subcommands(command);
-        let currently_second =
-            words.len() == 1 && ends_with_space || words.len() == 2 && !ends_with_space;
-
-        if currently_second && !subcommands.is_empty() {
-            let typed = if words.len() >= 2 { words[1] } else { "" };
-            let start = if words.len() >= 2 {
-                pos.saturating_sub(typed.len())
-            } else {
-                pos
-            };
-
-            let pairs = subcommands
-                .iter()
-                .filter(|candidate| candidate.starts_with(typed))
-                .map(|candidate| Pair {
-                    display: (*candidate).to_owned(),
-                    replacement: (*candidate).to_owned(),
-                })
-                .collect();
-
-            return Some((start, pairs));
+        if let Some((start, candidates)) = crate::core::bash::sst_completion::candidates(before) {
+            return Some((start,candidates.into_iter().map(|value| Pair {
+                display:value.clone(), replacement:value,
+            }).collect()));
         }
 
         None
@@ -173,22 +154,3 @@ fn completion_commands(sst_commands: impl IntoIterator<Item = String>) -> Vec<St
     commands.into_iter().collect()
 }
 
-fn subcommands(command: &str) -> &'static [&'static str] {
-    match command {
-        "net" => &[
-            "interfaces", "connections", "routes", "dns", "ping", "trace", "scan",
-            "monitor", "presence", "neighbors", "ports", "traffic", "usage", "provider",
-        ],
-        "sys" => &[
-            "info", "processes", "top", "disks", "memory", "hostname", "whoami",
-            "uname", "kill", "services",
-        ],
-        "device" => &["list", "show", "add", "remove", "unknown", "path"],
-        "domain" => &["status"],
-        "switch" => &["list", "show", "add", "remove", "locate", "capabilities", "path"],
-        "config" | "sst-config" => &["path", "edit", "bg", "palette", "reload"],
-        "triage" => &["--plan", "--close", "--deep", "--memory", "--status", "--history"],
-        "tools" | "tool" | "utils" => &["list", "office"],
-        _ => &[],
-    }
-}
