@@ -270,3 +270,48 @@ mod tests {
         assert!(system_executable(r"\\server\share\tool.exe").is_err());
     }
 }
+
+
+/// Decode captured Windows console output without discarding localized text.
+/// Unicode BOMs and valid UTF-8 take precedence; older system tools commonly
+/// write the system OEM code page to redirected handles.
+pub fn decode_console_output(bytes: &[u8]) -> String {
+    if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8_lossy(rest).into_owned();
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+        let wide: Vec<u16> = rest.chunks_exact(2)
+            .map(|b| u16::from_le_bytes([b[0], b[1]])).collect();
+        return String::from_utf16_lossy(&wide);
+    }
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return text.to_owned();
+    }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Globalization::MultiByteToWideChar;
+        if let Ok(len) = i32::try_from(bytes.len()) {
+            // CP_OEMCP = 1, used by traditional Windows console utilities.
+            let count = unsafe { MultiByteToWideChar(1, 0, bytes.as_ptr(), len, std::ptr::null_mut(), 0) };
+            if count > 0 {
+                let mut wide = vec![0u16; count as usize];
+                let written = unsafe { MultiByteToWideChar(1, 0, bytes.as_ptr(), len, wide.as_mut_ptr(), count) };
+                if written > 0 {
+                    return String::from_utf16_lossy(&wide[..written as usize]);
+                }
+            }
+        }
+    }
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+#[cfg(test)]
+mod console_decode_tests {
+    use super::decode_console_output;
+    #[test]
+    fn preserves_unicode_text_and_boms() {
+        assert_eq!(decode_console_output("Configuración".as_bytes()), "Configuración");
+        assert_eq!(decode_console_output(&[0xFF,0xFE,0xE1,0]), "á");
+        assert_eq!(decode_console_output(&[0xEF,0xBB,0xBF,b'A']), "A");
+    }
+}
