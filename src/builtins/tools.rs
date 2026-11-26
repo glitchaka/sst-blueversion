@@ -482,7 +482,7 @@ fn evaluate_office_verification(
                     format!("{outlook_webview_children} hijo(s) asociados a Outlook; no se cuentan los de Teams/Copilot."), ""));
             }
         } else {
-            checks.push(OfficeCheck::new(Unknown, "Respuesta de Outlook", "Outlook nuevo no está abierto; no se evalúa la respuesta de su ventana.", "Iniciar Outlook y repetir verify"));
+            checks.push(OfficeCheck::new(Unknown, "Respuesta de Outlook", "Outlook nuevo no está abierto; no se evalúa la respuesta de su ventana.", "Iniciar Outlook y repetir diagnose"));
         }
     }
 
@@ -606,7 +606,7 @@ fn run_office_diagnosis(detail: bool) -> Result<CommandOutput> {
                 "Ventana visible, sin bloqueo detectado en esta muestra.", "")
         } else {
             OfficeCheck::new(CheckStatus::Unknown, "Respuesta de Outlook clásico",
-                "Proceso activo sin ventana visible que permita comprobar respuesta.", "Abrir Outlook y repetir verify")
+                "Proceso activo sin ventana visible que permita comprobar respuesta.", "Abrir Outlook y repetir diagnose")
         });
     }
     let mut report = format_office_verification(&checks);
