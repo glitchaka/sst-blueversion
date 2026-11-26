@@ -302,6 +302,20 @@ slint::slint! {
         in property <bool> demo-blink;
         in property <bool> demo-paused;
         in property <bool> demo-action;
+        in property <color> demo-graphite;
+        in property <color> demo-ink;
+        in property <color> demo-cream;
+        in property <color> demo-muted;
+        in property <color> demo-line;
+        in property <color> demo-rail;
+        in property <color> demo-oxide;
+        in property <color> demo-acid;
+        in property <color> demo-amber;
+        in property <color> demo-mint;
+        in property <color> demo-moss;
+        in property <color> demo-on-failure;
+        in property <color> demo-on-success;
+        in property <color> demo-accent-detail;
         in property <bool> caret-visible;
         in property <float> caret-x;
         in property <float> caret-y;
@@ -596,6 +610,20 @@ slint::slint! {
             selected: root.demo-selected; progress: root.demo-progress; cpu: root.demo-cpu;
             phase: root.demo-phase; blink: root.demo-blink; paused: root.demo-paused;
             action: root.demo-action;
+            graphite: root.demo-graphite;
+            ink: root.demo-ink;
+            cream: root.demo-cream;
+            muted: root.demo-muted;
+            line: root.demo-line;
+            rail: root.demo-rail;
+            oxide: root.demo-oxide;
+            acid: root.demo-acid;
+            amber: root.demo-amber;
+            mint: root.demo-mint;
+            moss: root.demo-moss;
+            on-failure: root.demo-on-failure;
+            on-success: root.demo-on-success;
+            accent-detail: root.demo-accent-detail;
         }
 
         island := Rectangle {
@@ -1659,6 +1687,78 @@ fn font_palette_color(color: Rgb, palette: &str) -> Rgb {
     Rgb(rgb.0,rgb.1,rgb.2)
 }
 
+// The native catalogue consumes the same semantic palette mapper as text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DemoColors {
+    graphite: Rgb,
+    ink: Rgb,
+    cream: Rgb,
+    muted: Rgb,
+    line: Rgb,
+    rail: Rgb,
+    oxide: Rgb,
+    acid: Rgb,
+    amber: Rgb,
+    mint: Rgb,
+    moss: Rgb,
+    on_failure: Rgb,
+    on_success: Rgb,
+    accent_detail: Rgb,
+}
+fn mix_rgb(a: Rgb, b: Rgb, weight: u16) -> Rgb {
+    let channel = |x:u8,y:u8| ((u16::from(x)*(100-weight)+u16::from(y)*weight)/100) as u8;
+    Rgb(channel(a.0,b.0),channel(a.1,b.1),channel(a.2,b.2))
+}
+fn rgb_luminance(c:Rgb)->f64 {
+    let channel=|v:u8| { let s=f64::from(v)/255.; if s<=0.04045 {s/12.92} else {((s+0.055)/1.055).powf(2.4)} };
+    0.2126*channel(c.0)+0.7152*channel(c.1)+0.0722*channel(c.2)
+}
+fn contrast(a:Rgb,b:Rgb)->f64 {
+    let (a,b)=(rgb_luminance(a),rgb_luminance(b));
+    (a.max(b)+0.05)/(a.min(b)+0.05)
+}
+fn readable_ink(bg:Rgb)->Rgb {
+    let (dark,light)=(Rgb(0,0,0),Rgb(255,255,255));
+    if contrast(dark,bg)>=contrast(light,bg) {dark} else {light}
+}
+fn demo_colors(palette:&str)->DemoColors {
+    use crate::presentation::formatter::Role;
+    let role=|r:Role| {let (r,g,b)=r.style().rgb; font_palette_color(Rgb(r,g,b),palette)};
+    // Keep an opaque, neutral preview canvas; palette changes affect its marks,
+    // text, and derived rails, never the user's background or logo.
+    let graphite=Rgb(30,32,30);
+    let cream=role(Role::Detail);
+    let muted=role(Role::Label);
+    let acid=role(Role::Title);
+    let oxide=role(Role::Failure);
+    let moss=mix_rgb(graphite,role(Role::Success),45);
+    DemoColors {
+        graphite, ink:readable_ink(acid), cream, muted,
+        line:mix_rgb(graphite,muted,70), rail:mix_rgb(graphite,muted,25),
+        oxide, acid, amber:role(Role::Warning), mint:role(Role::Success), moss,
+        on_failure:readable_ink(oxide), on_success:readable_ink(moss),
+        accent_detail:role(Role::Command),
+    }
+}
+fn apply_demo_palette(ui:&SstBlueWindow, appearance:&TerminalAppearance) {
+    let p=demo_colors(&appearance.font_palette);
+    let color=|c:Rgb|slint::Color::from_rgb_u8(c.0,c.1,c.2);
+    ui.set_demo_graphite(color(p.graphite));
+    ui.set_demo_ink(color(p.ink));
+    ui.set_demo_cream(color(p.cream));
+    ui.set_demo_muted(color(p.muted));
+    ui.set_demo_line(color(p.line));
+    ui.set_demo_rail(color(p.rail));
+    ui.set_demo_oxide(color(p.oxide));
+    ui.set_demo_acid(color(p.acid));
+    ui.set_demo_amber(color(p.amber));
+    ui.set_demo_mint(color(p.mint));
+    ui.set_demo_moss(color(p.moss));
+    ui.set_demo_on_failure(color(p.on_failure));
+    ui.set_demo_on_success(color(p.on_success));
+    ui.set_demo_accent_detail(color(p.accent_detail));
+}
+
 fn terminal_color(value: vt100::Color, default: Rgb) -> Rgb {
     const COLORS: [Rgb; 16] = [
         Rgb(0x28, 0x28, 0x28),
@@ -2278,6 +2378,7 @@ pub fn run() -> Result<()> {
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new()));
     let ui = SstBlueWindow::new()?;
+    apply_demo_palette(&ui, &appearance);
     let color = |(r,g,b)| slint::Color::from_rgb_u8(r,g,b);
     let theme = ui.global::<OutputTheme>();
     theme.set_rail(color(crate::presentation::formatter::SECTION_RAIL));
@@ -2448,6 +2549,7 @@ pub fn run() -> Result<()> {
                         );
                         ui.set_background_image_fit_mode(next.background_image_fit.clone().into());
 
+                        apply_demo_palette(&ui, &next);
                         model.borrow_mut().set_appearance(next.clone());
                         *appearance_state.borrow_mut() = next.clone();
                         *carousel_state.borrow_mut() = carousel;
@@ -2770,6 +2872,26 @@ mod font_palette_regressions {
     use super::*;
     use crate::presentation::formatter::Role;
     fn role(r:Role)->Rgb { let (r,g,b)=r.style().rgb; Rgb(r,g,b) }
+    #[test]
+    fn catalogue_uses_shared_palette_and_readable_state_inks() {
+        let original=demo_colors("gruvbox");
+        let sunset=demo_colors("sunset");
+        let golden=demo_colors("golden");
+        assert_ne!(original,sunset);
+        assert_ne!(sunset,golden);
+        assert_ne!(original,golden);
+        for (name,p) in [("gruvbox",original),("sunset",sunset),("golden",golden)] {
+            assert_eq!(p.cream,font_palette_color(role(Role::Detail),name));
+            assert_eq!(p.acid,font_palette_color(role(Role::Title),name));
+            assert_eq!(p.oxide,font_palette_color(role(Role::Failure),name));
+            assert!(contrast(p.on_failure,p.oxide)>=4.5);
+            assert!(contrast(p.on_success,p.moss)>=4.5);
+            assert!(contrast(p.ink,p.acid)>=4.5);
+        }
+        let source=include_str!("editorial_demo.slint");
+        assert!(!source.contains("rgb("));
+        assert!(!source.contains("Pórtico escalonado"));
+    }
     #[test]
     fn palettes_change_foregrounds_without_reinterpreting_brand_colors(){
         let base=role(Role::Value);

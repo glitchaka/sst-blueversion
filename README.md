@@ -2022,3 +2022,5 @@ También se conserva la búsqueda de archivos cuando no hay una opción SST apli
 `unban USUARIO` desbloquea una cuenta AD por LDAP con credenciales autorizadas solicitadas dentro de SST; no necesita elevación local. `sigsour` abre el catálogo PKGX. `notsh test` concentra las mediciones de red; no hay un comando independiente `netcheck` ni `netprobe`.
 
 La dirección gráfica del catálogo se documenta en [Identidad editorial de SST](docs/EDITORIAL_IDENTITY.md). Los componentes se dibujan directamente en Slint.
+
+El catálogo `demo graficos` usa la paleta activa de `config palette` (gruvbox, sunset o golden); sus colores se actualizan con la configuración sin reiniciar. Conserva la geometría, las interacciones y la separación de la consola habitual.

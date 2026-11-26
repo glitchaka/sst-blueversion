@@ -61,3 +61,5 @@ Rutas:
 Para listar las paletas: config palette list
 Para consultar la activa: config palette
 Autocompletado: config palette <TAB>
+
+Las paletas también se aplican a los elementos gráficos de `demo graficos`. Cambia el esquema con `config palette sunset`, `config palette golden` o `config palette gruvbox` antes de entrar al catálogo. No es necesario reiniciar SST.

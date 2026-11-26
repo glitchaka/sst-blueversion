@@ -8,7 +8,7 @@ Uso: demo graficos
   01 Cabecera asimétrica
   02 Divisor escalonado
   03 Marco recortado
-  04 Pórtico escalonado
+  04 Agrupador de campos
   05 Pestaña de metadatos
   06 Riel y folio
 
@@ -54,3 +54,5 @@ Uso: demo graficos
 
 Controles: ←/→ familia, 1–6 acceso directo, PgUp/PgDn ±3, Inicio/Fin extremos, Tab/↑/↓ foco, Mayús+Tab anterior, Enter prueba interacción, Espacio pausa/reanuda, R reinicia, Esc/q sale.
 Los datos y acciones son simulados. No se modifica el equipo, el formatter, el logo ni las paletas de la consola habitual. No se cargan ilustraciones o archivos de imagen.
+
+El catálogo hereda el esquema activo de config palette (gruvbox, sunset o golden). Los colores de los componentes se derivan de los roles de texto del formatter; los fondos del usuario y el logotipo no cambian. El agrupador de campos sustituye al pórtico decorativo.

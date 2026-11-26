@@ -7,7 +7,7 @@ El catálogo existe dentro de SST (`demo graficos`), no en ilustraciones ni info
 - Cabecera asimétrica
 - Divisor escalonado
 - Marco recortado
-- Pórtico escalonado
+- Agrupador de campos
 - Pestaña de metadatos
 - Riel y folio
 
@@ -57,3 +57,5 @@ El catálogo existe dentro de SST (`demo graficos`), no en ilustraciones ni info
 - Jerarquía de dato
 
 La consola normal no adopta estas muestras automáticamente. Los estados y acciones son simulados. La fidelidad artística debe verificarse en la ventana real.
+
+El catálogo hereda el esquema activo de config palette (gruvbox, sunset o golden). Los colores de los componentes se derivan de los roles de texto del formatter; los fondos del usuario y el logotipo no cambian. El agrupador de campos sustituye al pórtico decorativo.
