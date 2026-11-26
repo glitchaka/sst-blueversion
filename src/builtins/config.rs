@@ -289,3 +289,61 @@ impl BuiltinCommand for PathBuiltin {
         Ok(CommandOutput::ok(format!("{}\n", path.display())))
     }
 }
+
+
+#[cfg(test)]
+mod public_config_palette_tests {
+    use super::*;
+    use crate::{adapters::shell::NativeShellEngine, builtins::CommandRegistry, core::ports::ShellEngine};
+
+    struct UnusedEditor;
+    impl TextEditor for UnusedEditor {
+        fn edit(&self, _args: &[String], _cwd: &std::path::Path) -> Result<i32> {
+            anyhow::bail!("editor must not be invoked by palette settings")
+        }
+    }
+
+    #[test]
+    fn public_config_palette_uses_native_builtin_and_persists_all_themes() -> Result<()> {
+        let root = std::env::temp_dir().join(format!(
+            "sst-config-palette-public-{}-{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos()
+        ));
+        let paths = AppPaths::for_test_root(root.clone());
+        std::fs::create_dir_all(paths.config_dir())?;
+        std::fs::write(paths.config_file(), "SST_FONT_PALETTE='gruvbox'\nSST_BACKGROUND_COLOR='#282828'\n")?;
+        let result = (|| -> Result<()> {
+            let mut registry = CommandRegistry::new();
+            registry.register(Arc::new(ConfigBuiltin::new(paths.clone(), Arc::new(UnusedEditor))))?;
+            let mut shell = NativeShellEngine::new(Arc::new(registry), paths.config_file())?;
+            let list = shell.execute("config palette list")?;
+            assert_eq!(list.status, 0, "{}", list.stderr);
+            assert!(list.stdout.contains("SUNSET") && list.stdout.contains("GOLDEN"));
+            for palette in ["sunset", "golden", "gruvbox"] {
+                let command = format!("config palette {palette}");
+                let execution = shell.execute(&command)?;
+                assert_eq!(execution.status, 0, "{command}: {}", execution.stderr);
+                assert_eq!(paths.load_appearance()?.font_palette, palette);
+                let query = shell.execute("config palette")?;
+                assert_eq!(query.status, 0, "{}", query.stderr);
+                assert!(query.stdout.contains(&format!("Paleta activa: {palette}")));
+            }
+            let invalid = shell.execute("config palette invalid")?;
+            assert_eq!(invalid.status, 2);
+            assert_eq!(paths.load_appearance()?.font_palette, "gruvbox");
+            let help = shell.execute("config help")?;
+            assert_eq!(help.status, 0, "{}", help.stderr);
+            assert!(help.stdout.contains("config palette"));
+            let typo = shell.execute("config plette sunset")?;
+            assert_eq!(typo.status, 2);
+            assert!(!typo.stderr.contains("program not found"));
+            let direct = shell.execute("sst-config palette sunset")?;
+            assert_eq!(direct.status, 0, "{}", direct.stderr);
+            assert_eq!(paths.load_appearance()?.font_palette, "sunset");
+            assert_eq!(paths.load_appearance()?.background_color, "#282828");
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(root);
+        result
+    }
+}
