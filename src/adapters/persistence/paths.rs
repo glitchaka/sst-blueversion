@@ -185,6 +185,9 @@ pub struct AppPaths {
 }
 
 impl AppPaths {
+    #[cfg(test)]
+    pub(crate) fn for_test_root(root: PathBuf) -> Self { Self { root } }
+
     pub fn detect() -> Self {
         let root = env::current_exe()
             .ok()
