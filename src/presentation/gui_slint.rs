@@ -620,7 +620,7 @@ slint::slint! {
                     x: 0; y: parent.detail-top; width: parent.width * 0.35;
                     visible: !specimen.list-only;
                     height: min(184px, max(65px, parent.height - parent.detail-top - 76px));
-                    background: #29332e;
+                    background: rgb(41, 51, 46);
                     Rectangle { x: 0; y: 0; width: 3px; height: parent.height; background: specimen.accent; }
                     Rectangle { x: parent.width - 18px; y: 0; width: 18px; height: 4px; background: #c9c7ac; }
                     Text { x: 12px; y: 2px; width: parent.width - 24px; height: parent.height * 0.64;
