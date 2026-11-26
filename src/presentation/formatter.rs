@@ -156,11 +156,16 @@ impl Formatter {
         }
         let width = usize::from(cols.saturating_sub(3)).clamp(18,160);
         let clean = report_text(stdout);
+        // Native Windows tools normally emit CRLF. Normalize only line endings,
+        // never a standalone carriage return used by an interactive protocol.
+        let clean = if clean.contains(['\x1b', '\0', '\u{8}']) { clean } else if clean.contains("\r\n") {
+            std::borrow::Cow::Owned(clean.replace("\r\n", "\n"))
+        } else { clean };
         let kind=classify(&clean);
         let text = compose_text(&clean,cols,kind);
         FormattedOutput {
             stdout:if kind==LayoutKind::Reference{text}else{report_layout::render(&text,width,kind!=LayoutKind::Plain)},
-            stderr:report_layout::render(&Self::diagnostic(stderr),width,true),
+            stderr:report_layout::render(&Self::diagnostic(&stderr.replace("\r\n","\n")),width,true),
         }
     }
     /// Only completed human-readable output can acquire a reading anchor.
@@ -1373,5 +1378,18 @@ mod content_contract{
                 assert_eq!(Formatter::result(name,input,"",100,&[],OutputMode::Interactive),first);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod windows_report_regression {
+    use super::*;
+    #[test]
+    fn crlf_reports_have_same_layout_and_reading_eligibility_as_lf() {
+        let lf = "Inventario:\nNombre: Equipo\nEstado: Activo\n";
+        let a = Formatter::present(lf, "", 80, OutputMode::Interactive);
+        let b = Formatter::present(&lf.replace("\n","\r\n"), "", 80, OutputMode::Interactive);
+        assert_eq!(a,b);
+        assert!(Formatter::readable_result(&b,OutputMode::Interactive));
     }
 }
