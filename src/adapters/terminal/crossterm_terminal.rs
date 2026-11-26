@@ -77,6 +77,8 @@ fn map_key(code: KeyCode) -> TerminalKey {
         KeyCode::PageDown => TerminalKey::PageDown,
         KeyCode::Home => TerminalKey::Home,
         KeyCode::End => TerminalKey::End,
+        KeyCode::Tab if crate::presentation::console_identity::is_active() => TerminalKey::Char('\t'),
+        KeyCode::BackTab if crate::presentation::console_identity::is_active() => TerminalKey::Char('\u{19}'),
         KeyCode::Enter => TerminalKey::Enter,
         KeyCode::Backspace => TerminalKey::Backspace,
         KeyCode::Delete => TerminalKey::Delete,
