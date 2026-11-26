@@ -59,3 +59,97 @@ export component SteppedDivider inherits Rectangle {
         commands: "M 0 65 L 52 65 L 59 25 L 100 25"; fill: transparent; stroke: root.ink; stroke-width: root.thickness;
     }
 }
+
+export component RadialTwenty inherits Rectangle {
+    in property <int> value;
+    in property <color> ink;
+    in property <color> track;
+    in property <color> line;
+    background: transparent;
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 51.64 3.029 A 47 47 0 0 1 62.955 4.821 L 59.923 15.395 A 36 36 0 0 0 51.256 14.022 Z"; fill: root.value >= 5 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 66.075 5.834 A 47 47 0 0 1 76.282 11.035 L 70.131 20.155 A 36 36 0 0 0 62.313 16.171 Z"; fill: root.value >= 10 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 78.936 12.963 A 47 47 0 0 1 87.037 21.064 L 78.368 27.836 A 36 36 0 0 0 72.164 21.632 Z"; fill: root.value >= 15 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 88.965 23.718 A 47 47 0 0 1 94.166 33.925 L 83.829 37.687 A 36 36 0 0 0 79.845 29.869 Z"; fill: root.value >= 20 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 95.179 37.045 A 47 47 0 0 1 96.971 48.36 L 85.978 48.744 A 36 36 0 0 0 84.605 40.077 Z"; fill: root.value >= 25 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 96.971 51.64 A 47 47 0 0 1 95.179 62.955 L 84.605 59.923 A 36 36 0 0 0 85.978 51.256 Z"; fill: root.value >= 30 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 94.166 66.075 A 47 47 0 0 1 88.965 76.282 L 79.845 70.131 A 36 36 0 0 0 83.829 62.313 Z"; fill: root.value >= 35 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 87.037 78.936 A 47 47 0 0 1 78.936 87.037 L 72.164 78.368 A 36 36 0 0 0 78.368 72.164 Z"; fill: root.value >= 40 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 76.282 88.965 A 47 47 0 0 1 66.075 94.166 L 62.313 83.829 A 36 36 0 0 0 70.131 79.845 Z"; fill: root.value >= 45 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 62.955 95.179 A 47 47 0 0 1 51.64 96.971 L 51.256 85.978 A 36 36 0 0 0 59.923 84.605 Z"; fill: root.value >= 50 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 48.36 96.971 A 47 47 0 0 1 37.045 95.179 L 40.077 84.605 A 36 36 0 0 0 48.744 85.978 Z"; fill: root.value >= 55 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 33.925 94.166 A 47 47 0 0 1 23.718 88.965 L 29.869 79.845 A 36 36 0 0 0 37.687 83.829 Z"; fill: root.value >= 60 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 21.064 87.037 A 47 47 0 0 1 12.963 78.936 L 21.632 72.164 A 36 36 0 0 0 27.836 78.368 Z"; fill: root.value >= 65 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 11.035 76.282 A 47 47 0 0 1 5.834 66.075 L 16.171 62.313 A 36 36 0 0 0 20.155 70.131 Z"; fill: root.value >= 70 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 4.821 62.955 A 47 47 0 0 1 3.029 51.64 L 14.022 51.256 A 36 36 0 0 0 15.395 59.923 Z"; fill: root.value >= 75 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 3.029 48.36 A 47 47 0 0 1 4.821 37.045 L 15.395 40.077 A 36 36 0 0 0 14.022 48.744 Z"; fill: root.value >= 80 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 5.834 33.925 A 47 47 0 0 1 11.035 23.718 L 20.155 29.869 A 36 36 0 0 0 16.171 37.687 Z"; fill: root.value >= 85 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 12.963 21.064 A 47 47 0 0 1 21.064 12.963 L 27.836 21.632 A 36 36 0 0 0 21.632 27.836 Z"; fill: root.value >= 90 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 23.718 11.035 A 47 47 0 0 1 33.925 5.834 L 37.687 16.171 A 36 36 0 0 0 29.869 20.155 Z"; fill: root.value >= 95 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 37.045 4.821 A 47 47 0 0 1 48.36 3.029 L 48.744 14.022 A 36 36 0 0 0 40.077 15.395 Z"; fill: root.value >= 100 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+}
+
+export component RingEight inherits Rectangle {
+    in property <int> value;
+    in property <color> ink;
+    in property <color> track;
+    in property <color> line;
+    background: transparent;
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 51.64 3.029 A 47 47 0 0 1 82.054 15.626 L 74.552 23.671 A 36 36 0 0 0 51.256 14.022 Z"; fill: root.value >= 13 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 84.374 17.946 A 47 47 0 0 1 96.971 48.36 L 85.978 48.744 A 36 36 0 0 0 76.329 25.448 Z"; fill: root.value >= 25 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 96.971 51.64 A 47 47 0 0 1 84.374 82.054 L 76.329 74.552 A 36 36 0 0 0 85.978 51.256 Z"; fill: root.value >= 38 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 82.054 84.374 A 47 47 0 0 1 51.64 96.971 L 51.256 85.978 A 36 36 0 0 0 74.552 76.329 Z"; fill: root.value >= 50 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 48.36 96.971 A 47 47 0 0 1 17.946 84.374 L 25.448 76.329 A 36 36 0 0 0 48.744 85.978 Z"; fill: root.value >= 63 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 15.626 82.054 A 47 47 0 0 1 3.029 51.64 L 14.022 51.256 A 36 36 0 0 0 23.671 74.552 Z"; fill: root.value >= 75 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 3.029 48.36 A 47 47 0 0 1 15.626 17.946 L 23.671 25.448 A 36 36 0 0 0 14.022 48.744 Z"; fill: root.value >= 88 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+Path { x: 0px; y: 0px; width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 17.946 15.626 A 47 47 0 0 1 48.36 3.029 L 48.744 14.022 A 36 36 0 0 0 25.448 23.671 Z"; fill: root.value >= 100 ? root.ink : root.track; stroke: root.line; stroke-width: 0.6px; }
+}
+
+export component ActivityScale inherits Rectangle {
+    in property <float> ratio;
+    in property <color> ink;
+    in property <color> track;
+    background: transparent;
+    for i in 16 : Rectangle {
+        x: i * parent.width / 16; width: max(1px,parent.width / 16 - 1px);
+        height: parent.height; background: root.ratio * 16 >= i + 1 ? root.ink : root.track;
+    }
+}
+export component SegmentedProgress inherits Rectangle {
+    in property <float> ratio;
+    in property <color> ink;
+    in property <color> track;
+    background: transparent;
+    for i in 12 : Path {
+        x: i * parent.width / 12; width: max(1px,parent.width / 12 - 2px); height: parent.height;
+        viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 0 L 100 0 L 100 70 L 80 100 L 0 100 Z";
+        fill: root.ratio * 12 >= i + 1 ? root.ink : root.track; stroke: transparent;
+    }
+}
+export component IndeterminateWait inherits Rectangle {
+    in property <int> phase;
+    in property <color> ink;
+    in property <color> track;
+    in property <color> line;
+    background: root.track;
+    for i in 12 : Path {
+        x: i * parent.width / 12; width: max(1px,parent.width / 12 - 2px); height: parent.height;
+        viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 20 L 100 0 L 100 80 L 0 100 Z";
+        fill: root.phase == i ? root.ink : root.line; stroke: transparent;
+    }
+}
+export component HatchedTransfer inherits Rectangle {
+    in property <float> ratio;
+    in property <color> ink;
+    in property <color> track;
+    in property <color> line;
+    background: transparent;
+    CutFrame { width: parent.width; height: parent.height; ink: root.track; outline: root.line; thickness: 1px; }
+    for i in 18 : Path {
+        x: i * parent.width / 18; y: 2px; width: max(1px,parent.width / 18 - 2px); height: max(1px,parent.height - 4px);
+        viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 100 L 55 0 L 100 0 L 45 100 Z";
+        fill: root.ratio * 18 >= i + 1 ? root.ink : root.line; stroke: transparent;
+    }
+}

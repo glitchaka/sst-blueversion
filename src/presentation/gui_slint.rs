@@ -170,6 +170,7 @@ const NERD_FONT_BYTES: &[u8] = crate::application::system::SST_TERMINAL_FONT_BYT
 slint::slint! {
     import { EditorialDemo } from "editorial_demo.slint";
     import { AngularMark, CutFrame, Registration, AsymmetricHeader, SignalSlashes, FieldBracket, SteppedDivider } from "graphic_kit.slint";
+    import { RadialTwenty, RingEight, ActivityScale, SegmentedProgress, IndeterminateWait, HatchedTransfer } from "graphic_kit.slint";
     export struct NativeGraphic { x: float, y: float, w: float, h: float, kind: int, ratio: float, tone: int }
     // Rendered vector outlines, never made of VT100/ASCII characters.
     // Transparent interiors preserve the user's terminal artwork and logo.
@@ -182,6 +183,7 @@ slint::slint! {
         in property <color> text;
         in property <color> muted;
         in property <color> track;
+        in property <color> success;
         in property <color> warning;
         in property <color> failure;
     }
@@ -212,6 +214,7 @@ slint::slint! {
         in property <string> transfer-speed;
         in property <string> transfer-eta;
         in property <float> transfer-ratio: 0.0;
+        in property <bool> transfer-stalled: false;
         in property <bool> transfer-known-total: false;
         in property <int> transfer-phase;
 
@@ -221,17 +224,21 @@ slint::slint! {
         track := Rectangle {
             x: 4px; y: 5px; width: max(1px,parent.width - 144px); height: 13px;
             background: transparent; clip: true;
-            AngularMark { width: parent.width; height: parent.height; ink: OutputTheme.track; outline: OutputTheme.rule; thickness: 1px; }
-            if root.transfer-known-total && root.transfer-ratio > 0 : AngularMark {
-                width: max(1px,parent.width * min(1.0,max(0.0,root.transfer-ratio)));
-                height: parent.height; ink: OutputTheme.accent;
-            }
-            if !root.transfer-known-total : Rectangle {
+            if root.transfer-known-total && !root.transfer-stalled : Rectangle {
                 width: parent.width; height: parent.height; background: transparent;
-                for i in 12 : AngularMark {
-                    x: i * parent.width / 12; width: max(1px,parent.width / 12 - 2px); height: parent.height;
-                    ink: root.transfer-phase == i ? OutputTheme.accent : OutputTheme.track;
+                AngularMark { width: parent.width; height: parent.height; ink: OutputTheme.track; outline: OutputTheme.rule; thickness: 1px; }
+                if root.transfer-ratio > 0 : AngularMark {
+                    width: max(1px,parent.width * min(1.0,max(0.0,root.transfer-ratio)));
+                    height: parent.height; ink: OutputTheme.accent;
                 }
+            }
+            if root.transfer-known-total && root.transfer-stalled : HatchedTransfer {
+                width: parent.width; height: parent.height; ratio: root.transfer-ratio;
+                ink: OutputTheme.accent; track: OutputTheme.track; line: OutputTheme.rule;
+            }
+            if !root.transfer-known-total : IndeterminateWait {
+                width: parent.width; height: parent.height; phase: root.transfer-phase;
+                ink: OutputTheme.accent; track: OutputTheme.track; line: OutputTheme.rule;
             }
         }
 
@@ -323,6 +330,8 @@ slint::slint! {
         in property <float> background-image-opacity: 0.0;
         in property <string> background-image-fit-mode: "cover";
         in property <string> privilege-label: "TOKEN ?";
+        in property <int> cpu-value;
+        in property <int> ram-value;
         in property <string> cpu-text: "CPU 0%";
         in property <string> ram-text: "RAM 0.0 GiB";
         in property <string> clock-text: "00:00";
@@ -331,6 +340,7 @@ slint::slint! {
         in property <float> transfer-x: 22.0;
         in property <float> transfer-y: 65.0;
         in property <bool> transfer-visible: false;
+        in property <bool> transfer-stalled: false;
         in property <bool> transfer-known-total: false;
         in property <float> transfer-ratio: 0.0;
         in property <int> transfer-phase;
@@ -402,13 +412,10 @@ slint::slint! {
                 background: transparent;
                 visible: !root.keygen-visible && root.demo-page == 0 && mark.kind != 0;
                 if mark.kind == 1 : FieldBracket { width: parent.width; height: parent.height; ink: OutputTheme.rail; thickness: 1.5px; }
-                if mark.kind == 2 : Rectangle {
-                    width: parent.width; height: parent.height; background: transparent;
-                    AngularMark { width: parent.width; height: parent.height; ink: OutputTheme.track; outline: OutputTheme.rule; thickness: 1px; }
-                    if mark.ratio > 0 : AngularMark {
-                        width: max(1px, parent.width * mark.ratio); height: parent.height;
-                        ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.accent;
-                    }
+                if mark.kind == 2 : SegmentedProgress {
+                    width: parent.width; height: parent.height; ratio: mark.ratio;
+                    ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
+                    track: OutputTheme.track;
                 }
                 if mark.kind == 3 : SteppedDivider { width: parent.width; height: parent.height; ink: OutputTheme.rail; thickness: 1px; }
             }
@@ -541,6 +548,7 @@ slint::slint! {
             transfer-speed: root.transfer-speed;
             transfer-eta: root.transfer-eta;
             transfer-ratio: root.transfer-ratio;
+            transfer-stalled: root.transfer-stalled;
             transfer-known-total: root.transfer-known-total;
             transfer-phase: root.transfer-phase;
         }
@@ -629,11 +637,16 @@ slint::slint! {
                     }
                 }
 
+                RadialTwenty {
+                    visible: island.width >= 705px;
+                    x: 182px; y: 5px; width: 24px; height: 24px;
+                    value: root.cpu-value; ink: OutputTheme.accent; track: OutputTheme.track; line: OutputTheme.rule;
+                }
                 Text {
                     visible: island.width >= 705px;
-                    x: 184px;
+                    x: 209px;
                     y: 0;
-                    width: 92px;
+                    width: 72px;
                     height: parent.height;
                     text: root.cpu-text;
                     color: OutputTheme.text;
@@ -642,11 +655,16 @@ slint::slint! {
                     vertical-alignment: center;
                 }
 
+                RingEight {
+                    visible: island.width >= 705px;
+                    x: 282px; y: 5px; width: 24px; height: 24px;
+                    value: root.ram-value; ink: OutputTheme.success; track: OutputTheme.track; line: OutputTheme.rule;
+                }
                 Text {
                     visible: island.width >= 705px;
-                    x: 281px;
+                    x: 310px;
                     y: 0;
-                    width: 128px;
+                    width: 98px;
                     height: parent.height;
                     text: root.ram-text;
                     color: OutputTheme.text;
@@ -655,6 +673,11 @@ slint::slint! {
                     vertical-alignment: center;
                 }
 
+                ActivityScale {
+                    visible: island.width >= 705px;
+                    x: 210px; y: 28px; width: 63px; height: 3px;
+                    ratio: root.cpu-value / 100.0; ink: OutputTheme.success; track: OutputTheme.track;
+                }
                 Text {
                     visible: island.width >= 525px;
                     x: island.width - 296px;
@@ -1869,6 +1892,7 @@ fn apply_terminal_palette(ui:&SstBlueWindow,palette:&str) {
     theme.set_text(color(p.cream));
     theme.set_muted(color(p.muted));
     theme.set_track(color(p.rail));
+    theme.set_success(color(p.mint));
     theme.set_warning(color(p.amber));
     theme.set_failure(color(p.oxide));
 }
@@ -2850,9 +2874,10 @@ pub fn run() -> Result<()> {
                         let factor = scale.max(0.5);
                         ui.set_transfer_x((left / factor).max(8.0));
                         ui.set_transfer_y((top + f32::from(graphic_row) * line_height) / factor);
-                        ui.set_transfer_visible(true);
+                        ui.set_transfer_visible(model.parser.screen().scrollback()==0);
                         ui.set_transfer_ratio(progress.fraction());
                         ui.set_transfer_phase(((model.blink.elapsed().as_millis()/100)%12) as i32);
+                        ui.set_transfer_stalled(progress.bytes_per_second <= 0.0);
                         ui.set_transfer_known_total(progress.expected.is_some());
                         ui.set_transfer_percent(progress.percentage().into());
                         ui.set_transfer_amount(progress.amount().into());
@@ -2898,6 +2923,9 @@ pub fn run() -> Result<()> {
                 let ram_gib = system.used_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
                 let now = Local::now();
 
+                ui.set_cpu_value(cpu.round().clamp(0.0,100.0) as i32);
+                let total=system.total_memory();
+                ui.set_ram_value(if total==0 {0} else {((system.used_memory() as f64/total as f64)*100.0).round().clamp(0.0,100.0) as i32});
                 ui.set_cpu_text(format!("CPU {:.0}%", cpu).into());
                 ui.set_ram_text(format!("RAM {:.1} GiB", ram_gib).into());
                 ui.set_clock_text(now.format("%H:%M").to_string().into());

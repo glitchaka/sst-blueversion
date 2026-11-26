@@ -1,6 +1,6 @@
 //! Progress is written directly to SST's terminal output stream.
 //! Metrics come exclusively from bytes written by curl to its destination.
-//! No GUI overlay, card, popup or reserved terminal rows are involved.
+//! The GUI reserves inline terminal rows for the shared native transfer components.
 use std::{
     fs,
     io::IsTerminal,
@@ -79,6 +79,13 @@ impl TransferSnapshot {
 // The UI reads a snapshot from its own Slint event loop, never touching the
 // worker's terminal buffer or custom image/background configuration.
 static GUI_TRANSFER: OnceLock<Mutex<Option<TransferSnapshot>>> = OnceLock::new();
+
+struct GuiTransferGuard(bool);
+impl Drop for GuiTransferGuard {
+    fn drop(&mut self) {
+        if self.0 { *transfer_state().lock().unwrap_or_else(|e| e.into_inner()) = None; }
+    }
+}
 
 fn transfer_state() -> &'static Mutex<Option<TransferSnapshot>> {
     GUI_TRANSFER.get_or_init(|| Mutex::new(None))
@@ -163,18 +170,30 @@ pub fn run(
     let started = Instant::now();
     let mut last = Instant::now() - Duration::from_secs(1);
 
-    if embedded || cli_terminal {
-        // The transfer occupies one ordinary terminal line. No Slint graphic
-        // is published: updates repaint this line in-place through VT100.
+    let _gui_guard = GuiTransferGuard(embedded);
+    if embedded {
+        let label: String = label.chars().filter(|c| !c.is_control()).collect();
+        io::write_raw(format!("\x1b[?25l\r\x1b[2K{label}\r\n\r\n\r\n").as_bytes())?;
+        *transfer_state().lock().unwrap_or_else(|e| e.into_inner()) = Some(TransferSnapshot::new(&label, 0, expected, 0.0));
+    } else if cli_terminal {
         io::write_raw(b"\x1b[?25l\r\x1b[2K")?;
     }
+    let mut previous_bytes=0u64;
+    let mut previous_at=started;
     loop {
         if child.try_wait()?.is_some() { break; }
         if (embedded || cli_terminal) && last.elapsed() >= Duration::from_millis(120) {
             let current = fs::metadata(destination).map(|m| m.len()).unwrap_or(0);
-            let rate = current as f64 / started.elapsed().as_secs_f64().max(0.001);
-            let line = draw(label, current, expected, rate, cols);
-            let _ = io::write_raw(format!("\r\x1b[2K{line}").as_bytes());
+            if embedded {
+                let now=Instant::now();
+                let rate=current.saturating_sub(previous_bytes) as f64 / now.duration_since(previous_at).as_secs_f64().max(0.001);
+                *transfer_state().lock().unwrap_or_else(|e| e.into_inner()) = Some(TransferSnapshot::new(label,current,expected,rate));
+                previous_bytes=current; previous_at=now;
+            } else {
+                let rate = current as f64 / started.elapsed().as_secs_f64().max(0.001);
+                let line = draw(label, current, expected, rate, cols);
+                let _ = io::write_raw(format!("\r\x1b[2K{line}").as_bytes());
+            }
             last = Instant::now();
         }
         thread::sleep(Duration::from_millis(75));
@@ -183,7 +202,10 @@ pub fn run(
     if embedded || cli_terminal {
         let current = fs::metadata(destination).map(|m| m.len()).unwrap_or(0);
         let rate = current as f64 / started.elapsed().as_secs_f64().max(0.001);
-        let line = draw(label, current, expected, rate, cols);
+        let line = if embedded {
+            let snapshot=TransferSnapshot::new(label,current,expected,rate);
+            format!("{label}: {}  {}  {}",snapshot.percentage(),snapshot.amount(),snapshot.speed())
+        } else { draw(label, current, expected, rate, cols) };
         let suffix = if output.status.success() { "\x1b[92m✓\x1b[0m" } else { "\x1b[91m✕\x1b[0m" };
         let _ = io::write_raw(format!("\r\x1b[2K{line} {suffix}\r\n\x1b[?25h").as_bytes());
     }
