@@ -10,11 +10,26 @@ pub struct DemoState {
     pub tick: u32,
     pub paused: bool,
     pub action: bool,
+    pub palette_offset: usize,
 }
 impl DemoState {
-    const CLOSED: Self = Self { page:0, selected:0, tick:0, paused:false, action:false };
+    const CLOSED: Self = Self { page:0, selected:0, tick:0, paused:false, action:false, palette_offset:0 };
     fn new(page:u8) -> Self { Self {page, ..Self::CLOSED} }
-    fn select_page(&mut self,page:u8) { *self=Self::new(page.clamp(1,COUNT)); }
+    fn select_page(&mut self,page:u8) {
+        let offset=self.palette_offset;
+        *self=Self::new(page.clamp(1,COUNT));
+        self.palette_offset=offset;
+    }
+    fn cycle_palette(&mut self,delta:i16) {
+        let count=crate::core::palettes::PALETTES.len() as i16;
+        self.palette_offset=(self.palette_offset as i16+delta).rem_euclid(count) as usize;
+    }
+    #[cfg(any(windows,test))]
+    pub fn palette_name(self,active:&str)->&'static str {
+        let palettes=crate::core::palettes::PALETTES;
+        let base=palettes.iter().position(|p|p.name==active).unwrap_or(0);
+        palettes[(base+self.palette_offset)%palettes.len()].name
+    }
     fn step(&mut self,delta:i16) {
         self.select_page((i16::from(self.page)-1+delta).rem_euclid(i16::from(COUNT)) as u8+1);
     }
@@ -56,6 +71,7 @@ impl Preview {
     pub fn show(&self,page:u8){locked().select_page(page);}
     pub fn step(&self,delta:i16){locked().step(delta);}
     pub fn focus(&self,delta:i16){locked().focus(delta);}
+    pub fn cycle_palette(&self,delta:i16){locked().cycle_palette(delta);}
     pub fn pause(&self){let mut s=locked();s.paused=!s.paused;}
     pub fn action(&self){let mut s=locked();s.action=!s.action;}
     pub fn reset(&self){let mut s=locked();let page=s.page;s.select_page(page);}
@@ -87,6 +103,19 @@ mod tests {
         }
         assert_eq!(source.matches("// specimen ").count(),36);
         assert!(source.matches("Path {").count()>=40);
+    }
+    #[test]
+    fn preview_palettes_wrap_without_resetting_focus_or_motion(){
+        let mut s=DemoState::new(4);
+        s.focus(1);s.advance();s.action=true;
+        let initial=s;
+        s.cycle_palette(1);
+        assert_eq!(s.palette_name("gruvbox"),"sunset");
+        assert_eq!((s.page,s.selected,s.tick,s.action),(initial.page,initial.selected,initial.tick,initial.action));
+        s.step(1);assert_eq!(s.palette_name("gruvbox"),"sunset");
+        s.cycle_palette(-2);assert_eq!(s.palette_name("gruvbox"),"mondongo");
+        s.cycle_palette(1);assert_eq!(s.palette_name("golden"),"golden");
+        assert_eq!(DemoState::CLOSED.palette_name("industrial"),"industrial");
     }
     #[test]
     fn navigation_wraps_and_resets_local_interaction(){

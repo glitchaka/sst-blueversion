@@ -11,6 +11,7 @@ export component EditorialDemo inherits Rectangle {
     in property <bool> blink;
     in property <bool> paused;
     in property <bool> action;
+    in property <string> palette-name;
     in property <color> graphite;
     in property <color> ink;
     in property <color> cream;
@@ -29,8 +30,8 @@ export component EditorialDemo inherits Rectangle {
     property <length> pad: 16px;
     property <bool> wide: self.width >= 1000px;
     background: root.graphite; clip: true;
-    Text { x: root.pad; y: 0px; width: parent.width * 0.78 - root.pad; height: 30px; text:  "ELEMENTOS GRÁFICOS / " + root.title; color: root.cream; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
-    Text { x: parent.width * 0.80; y: 0px; width: parent.width * 0.20 - root.pad; height: 30px; text: root.page + " / " + root.count; color: root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 500; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+    Text { x: root.pad; y: 0px; width: parent.width * 0.62 - root.pad; height: 30px; text:  "ELEMENTOS GRÁFICOS / " + root.title; color: root.cream; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+    Text { x: parent.width * 0.62; y: 0px; width: parent.width * 0.38 - root.pad; height: 30px; text: root.palette-name + "   " + root.page + "/" + root.count; color: root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 500; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
     Rectangle { x: root.pad; y: 30px; width: parent.width - 2 * root.pad; height: 1px; background: root.line; }
     Rectangle {
         x: root.pad; y: 39px; width: parent.width - 2 * root.pad; height: max(1px, parent.height - 73px); background: transparent;
@@ -560,5 +561,5 @@ Text { x: 0px; y: 0px; width: parent.width * 0.35; height: 19px; text: "PID"; co
         }
     }
     Rectangle { x: root.pad; y: parent.height - 28px; width: parent.width - 2 * root.pad; height: 1px; background: root.line; }
-    Text { x: root.pad; y: parent.height - 26px; width: parent.width - 2 * root.pad; height: 24px; text: "← → familia · 1–6 acceso · Tab foco · Enter prueba · Espacio " + (root.paused ? "reanudar" : "pausa") + " · R reiniciar · Esc salir"; color: root.muted; font-family: "Cascadia Mono"; font-size: 11px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
+    Text { x: root.pad; y: parent.height - 26px; width: parent.width - 2 * root.pad; height: 24px; text: "P/O paleta +/− · ← → familia · Tab foco · Enter prueba · Espacio " + (root.paused ? "reanudar" : "pausa") + " · R reiniciar · Esc salir"; color: root.muted; font-family: "Cascadia Mono"; font-size: 11px; font-weight: 500; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
 }

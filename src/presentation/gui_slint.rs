@@ -302,6 +302,7 @@ slint::slint! {
         in property <bool> demo-blink;
         in property <bool> demo-paused;
         in property <bool> demo-action;
+        in property <string> demo-palette-name;
         in property <color> demo-graphite;
         in property <color> demo-ink;
         in property <color> demo-cream;
@@ -610,6 +611,7 @@ slint::slint! {
             selected: root.demo-selected; progress: root.demo-progress; cpu: root.demo-cpu;
             phase: root.demo-phase; blink: root.demo-blink; paused: root.demo-paused;
             action: root.demo-action;
+            palette-name: root.demo-palette-name;
             graphite: root.demo-graphite;
             ink: root.demo-ink;
             cream: root.demo-cream;
@@ -1757,8 +1759,9 @@ fn demo_colors(palette:&str)->DemoColors {
         accent_detail:role(Role::Command),
     }
 }
-fn apply_demo_palette(ui:&SstBlueWindow, appearance:&TerminalAppearance) {
-    let p=demo_colors(&appearance.font_palette);
+fn apply_demo_palette(ui:&SstBlueWindow, palette:&str) {
+    let p=demo_colors(palette);
+    ui.set_demo_palette_name(palette.into());
     let color=|c:Rgb|slint::Color::from_rgb_u8(c.0,c.1,c.2);
     ui.set_demo_graphite(color(p.graphite));
     ui.set_demo_ink(color(p.ink));
@@ -2395,7 +2398,7 @@ pub fn run() -> Result<()> {
     let model = Rc::new(RefCell::new(TerminalModel::new(appearance.clone())?));
     let metrics = Rc::new(RefCell::new(System::new()));
     let ui = SstBlueWindow::new()?;
-    apply_demo_palette(&ui, &appearance);
+    apply_demo_palette(&ui, &appearance.font_palette);
     let color = |(r,g,b)| slint::Color::from_rgb_u8(r,g,b);
     let theme = ui.global::<OutputTheme>();
     theme.set_rail(color(crate::presentation::formatter::SECTION_RAIL));
@@ -2566,7 +2569,7 @@ pub fn run() -> Result<()> {
                         );
                         ui.set_background_image_fit_mode(next.background_image_fit.clone().into());
 
-                        apply_demo_palette(&ui, &next);
+                        apply_demo_palette(&ui, &next.font_palette);
                         model.borrow_mut().set_appearance(next.clone());
                         *appearance_state.borrow_mut() = next.clone();
                         *carousel_state.borrow_mut() = carousel;
@@ -2785,13 +2788,21 @@ pub fn run() -> Result<()> {
     // The GUI receives the latest frame at 60 Hz with no queued stale frames.
     let demo_timer=Timer::default();
     let demo_weak=ui.as_weak();
+    let demo_appearance=appearance_state.clone();
     demo_timer.start(TimerMode::Repeated, Duration::from_millis(50),move||{
         use crate::presentation::console_identity as identity;
         let Some(ui)=demo_weak.upgrade() else{return;};
         let frame=identity::snapshot();
         if frame.page==0 {
-            if ui.get_demo_page()!=0 {ui.set_demo_page(0);}
+            if ui.get_demo_page()!=0 {
+                ui.set_demo_page(0);
+                apply_demo_palette(&ui,&demo_appearance.borrow().font_palette);
+            }
             return;
+        }
+        let palette=frame.palette_name(&demo_appearance.borrow().font_palette);
+        if ui.get_demo_palette_name().as_str()!=palette {
+            apply_demo_palette(&ui,palette);
         }
         if ui.get_demo_page()!=i32::from(frame.page) {
             ui.set_demo_title(identity::TITLES[usize::from(frame.page-1)].into());
