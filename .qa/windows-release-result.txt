@@ -1,7 +1,7 @@
 SST Windows release CI report
-Source commit: 6feea27cb4723a0beb459a4ca94373acfca0d307
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45866760937
-Recorded UTC: 2026-11-26 17:21:57Z
+Source commit: 8bba156b6baf1f5cd6b94a25c0f6009e1d186088
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45867174267
+Recorded UTC: 2026-11-26 17:24:36Z
 Compile: failure
 Rust tests: skipped
 Software GUI startup: skipped
@@ -9,10 +9,41 @@ Packaging: skipped
 Compiler log tail:
     Updating crates.io index
    Compiling sst v0.1.14-blue.3 (D:\a\sst-blueversion\sst-blueversion)
-error: expected at least one digit in exponent
-   --> src\presentation\gui_slint.rs:623:34
-    |
-623 |                     background: #29332e;
-    |                                  ^^^^^^
+error: type alias `Ink` is never used
+ --> src\presentation\console_identity.rs:3:10
+  |
+3 | pub type Ink = (u8, u8, u8);
+  |          ^^^
+  |
+note: the lint level is defined here
+ --> src\main.rs:2:9
+  |
+2 | #![deny(warnings)]
+  |         ^^^^^^^^
+  = note: `#[deny(dead_code)]` implied by `#[deny(warnings)]`
 
-error: could not compile `sst` (bin "sst") due to 1 previous error
+error: constant `OXIDE` is never used
+ --> src\presentation\console_identity.rs:4:11
+  |
+4 | pub const OXIDE: Ink = (225, 94, 52);
+  |           ^^^^^
+
+error: constant `CONCRETE` is never used
+ --> src\presentation\console_identity.rs:5:11
+  |
+5 | pub const CONCRETE: Ink = (201, 199, 172);
+  |           ^^^^^^^^
+
+error: constant `GRAPHITE` is never used
+ --> src\presentation\console_identity.rs:6:11
+  |
+6 | pub const GRAPHITE: Ink = (32, 39, 36);
+  |           ^^^^^^^^
+
+error: constant `PATINA` is never used
+ --> src\presentation\console_identity.rs:7:11
+  |
+7 | pub const PATINA: Ink = (91, 125, 117);
+  |           ^^^^^^
+
+error: could not compile `sst` (bin "sst") due to 5 previous errors
