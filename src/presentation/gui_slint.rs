@@ -594,49 +594,55 @@ slint::slint! {
         // graphic is shown in its working context; no stretched glyph images.
         if root.demo-page > 0 : Rectangle {
             x: 0; y: 45px; width: root.width; height: root.height - 45px;
-            background: #202724;
+            property <bool> paper: root.demo-page == 1 || root.demo-page == 2 || root.demo-page == 4;
+            background: self.paper ? #dedbca : #202724;
             clip: true;
             specimen := Rectangle {
                 x: 24px; y: 12px; width: parent.width - 48px; height: parent.height - 24px;
                 background: transparent;
+                property <color> ink: parent.paper ? #1c2925 : #f0e7d4;
+                property <color> secondary: parent.paper ? #414e46 : #bdc7b9;
+                property <color> caption-ink: parent.paper ? #873719 : #fbba76;
                 property <color> accent: root.demo-page == 7 ? #d72e2e : root.demo-page == 6 ? #fe8005 : #e15e34;
                 property <bool> compact: self.height < 340px;
                 property <bool> list-only: root.demo-page == 4 || root.demo-page == 5;
-                property <length> head-height: self.height < 340px ? 60px : 92px;
+                property <length> head-height: compact ? 60px : min(self.height * 0.29, root.demo-page == 1 ? 164px : 128px);
+                property <length> metric-width: self.width * (root.demo-page == 1 ? 0.43 : root.demo-page == 2 ? 0.24 : 0.35);
+                property <length> gauge-height: root.demo-page == 8 ? (compact ? 16px : 35px) : 0px;
                 property <length> detail-top: head-height + 14px;
                 // An asymmetrical editorial masthead, with a short industrial shoulder.
                 Rectangle { x: 0; y: 0; width: parent.width; height: 1px; background: #9ca59b; }
                 Rectangle { x: 0; y: 0; width: min(106px, parent.width * 0.24); height: 5px; background: parent.accent; }
                 Text { x: 0; y: 8px; width: parent.width * 0.64; height: 18px; text: "SST / MUESTRARIO  ·  DATOS FICTICIOS";
-                    color: #b5b9a8; font-family: "Segoe UI Variable"; font-size: 11px; font-weight: 600; overflow: elide; }
+                    color: specimen.secondary; font-family: "Segoe UI Variable"; font-size: 11px; font-weight: 600; overflow: elide; }
                 Text { x: parent.width * 0.64; y: 8px; width: parent.width * 0.36; height: 18px; text: root.demo-index;
-                    color: #fbba76; font-family: "Segoe UI Variable"; font-size: 12px; horizontal-alignment: right; }
+                    color: specimen.caption-ink; font-family: "Segoe UI Variable"; font-size: 12px; horizontal-alignment: right; }
                 Text { x: 0; y: 28px; width: parent.width; height: parent.head-height - 28px;
-                    text: root.demo-headline; color: #f0e7d4; font-family: "Segoe UI Variable";
-                    font-size: parent.compact ? 22px : min(40px, parent.width * 0.048); font-weight: 800; overflow: elide; vertical-alignment: center; }
+                    text: root.demo-headline; color: specimen.ink; font-family: "Segoe UI Variable";
+                    font-size: parent.compact ? 22px : min(parent.head-height - 34px, parent.width * (root.demo-page == 1 ? 0.077 : 0.057)); font-weight: 800; overflow: elide; vertical-alignment: center; }
                 Rectangle { x: 0; y: parent.head-height; width: parent.width; height: 1px; background: #708278; }
                 // The main number is the anchor. Data rows stay at reading size.
                 metric := Rectangle {
-                    x: 0; y: parent.detail-top; width: parent.width * 0.35;
+                    x: 0; y: parent.detail-top; width: parent.metric-width;
                     visible: !specimen.list-only;
-                    height: min(184px, max(65px, parent.height - parent.detail-top - 76px));
-                    background: #29332e;
+                    height: min(310px, parent.height - parent.detail-top - 68px - parent.gauge-height);
+                    background: root.demo-page == 1 ? #23332f : root.demo-page == 2 ? #b9bdad : root.demo-page == 6 ? #e58b47 : root.demo-page == 7 ? #993930 : #29332e;
                     Rectangle { x: 0; y: 0; width: 3px; height: parent.height; background: specimen.accent; }
                     Rectangle { x: parent.width - 18px; y: 0; width: 18px; height: 4px; background: #c9c7ac; }
                     Text { x: 12px; y: 2px; width: parent.width - 24px; height: parent.height * 0.64;
-                        text: root.demo-metric; color: #f0e7d4; font-family: "Segoe UI Variable";
-                        font-size: min(78px, parent.height * 0.62); font-weight: 800; vertical-alignment: center; }
+                        text: root.demo-metric; color: root.demo-page == 6 || root.demo-page == 2 ? #202724 : #f5ecda; font-family: "Segoe UI Variable";
+                        font-size: min(parent.width * 0.65, parent.height * 0.62); font-weight: 800; vertical-alignment: center; }
                     Text { x: 14px; y: parent.height * 0.65; width: parent.width - 24px; height: parent.height * 0.3;
-                        text: root.demo-unit; color: #fbba76; font-family: "Segoe UI Variable";
+                        text: root.demo-unit; color: root.demo-page == 2 || root.demo-page == 6 ? #202724 : #f5ecda; font-family: "Segoe UI Variable";
                         font-size: 12px; font-weight: 700; overflow: elide; }
                 }
                 details := Rectangle {
-                    x: specimen.list-only ? 0px : parent.width * 0.35 + 16px; y: parent.detail-top;
-                    width: specimen.list-only ? parent.width : parent.width * 0.65 - 16px; height: metric.height;
+                    x: specimen.list-only ? 0px : parent.metric-width + 16px; y: parent.detail-top;
+                    width: specimen.list-only ? parent.width : parent.width - parent.metric-width - 16px; height: metric.height;
                     background: transparent;
                     Text { x: 0; y: 0; width: parent.width; height: parent.height * 0.24; text: root.demo-context;
-                        color: root.demo-page == 7 ? #ff796f : root.demo-page == 6 ? #fbba76 : #b5b9a8;
-                        font-family: "Segoe UI Variable"; font-size: 13px; font-weight: 700; overflow: elide; vertical-alignment: center; }
+                        color: root.demo-page == 7 ? #ff796f : root.demo-page == 6 ? #fbba76 : specimen.secondary;
+                        font-family: "Segoe UI Variable"; font-size: specimen.compact ? 13px : 16px; font-weight: 700; overflow: elide; vertical-alignment: center; }
                     for row[i] in [root.demo-row-a, root.demo-row-b, root.demo-row-c] : Rectangle {
                         x: 0; y: parent.height * (0.25 + i * 0.25); width: parent.width; height: parent.height * 0.25 - 2px;
                         background: root.demo-page == 5 && i == 1 ? #39453d : transparent;
@@ -644,26 +650,26 @@ slint::slint! {
                         Rectangle { x: 0; y: 0; width: root.demo-page == 5 && i == 1 ? 4px : 1px; height: parent.height;
                             background: root.demo-page == 5 && i == 1 ? specimen.accent : #708278; }
                         Text { x: 9px; y: 0; width: parent.width - 12px; height: parent.height; text: row;
-                            color: #e3dfce; font-family: "Cascadia Mono"; font-size: 13px; overflow: elide; vertical-alignment: center; }
+                            color: specimen.ink; font-family: "Cascadia Mono"; font-size: specimen.compact ? 13px : min(19px, parent.width * 0.034); overflow: elide; vertical-alignment: center; }
                     }
                 }
                 // A graduated scale has a numeric reading and real divisions.
-                if root.demo-page == 8 && specimen.height >= 340px : Rectangle {
-                    x: 0; y: specimen.detail-top + metric.height + 14px; width: parent.width; height: 25px; background: transparent;
+                if root.demo-page == 8 : Rectangle {
+                    x: 0; y: specimen.detail-top + metric.height + 3px; width: parent.width; height: specimen.gauge-height; background: transparent;
                     for tick[i] in 20 : Rectangle {
-                        x: parent.width * i / 20; y: 0; width: max(1px,parent.width / 20 - 2px); height: 9px;
+                        x: parent.width * i / 20; y: 0; width: max(1px,parent.width / 20 - 2px); height: specimen.compact ? 5px : 12px;
                         background: i < 13 ? #e15e34 : #495a50;
-                        Rectangle { x: 0; y: 11px; width: 1px; height: i == 0 || i == 5 || i == 10 || i == 15 ? 10px : 4px; background: #b5b9a8; }
+                        Rectangle { x: 0; y: specimen.compact ? 6px : 14px; width: 1px; height: i == 0 || i == 5 || i == 10 || i == 15 ? 7px : 3px; background: specimen.secondary; }
                     }
                 }
                 Text { x: 0; y: parent.height - 60px; width: parent.width; height: 18px; text: root.demo-title;
-                    color: #fbba76; font-family: "Segoe UI Variable"; font-size: 13px; font-weight: 700; overflow: elide; }
+                    color: specimen.caption-ink; font-family: "Segoe UI Variable"; font-size: specimen.compact ? 13px : 16px; font-weight: 700; overflow: elide; }
                 Text { x: 0; y: parent.height - 41px; width: parent.width; height: 20px; text: root.demo-caption;
-                    color: #b5b9a8; font-family: "Segoe UI Variable"; font-size: 12px; overflow: elide; }
+                    color: specimen.secondary; font-family: "Segoe UI Variable"; font-size: 12px; overflow: elide; }
                 Rectangle { x: 0; y: parent.height - 20px; width: parent.width; height: 1px; background: #708278; }
                 Text { x: 0; y: parent.height - 19px; width: parent.width; height: 19px;
                     text: root.demo-page + "/8    ← → recorrer    1–8 elegir    Esc salir";
-                    color: #e5b489; font-size: 12px; }
+                    color: specimen.caption-ink; font-size: 12px; }
             }
         }
 
