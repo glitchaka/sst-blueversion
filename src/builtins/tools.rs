@@ -82,7 +82,7 @@ fn help_output() -> CommandOutput {
          Familias disponibles\n\
            Office / Microsoft 365\n\
              tools office diagnose\n\
-             tools office verify\n\
+             tools office diagnose --detail\n\
              tools office auth repair\n\
              tools office scrub [all|m365|2024|2021|2019|2016|2013|2010|2007]\n\
              tools office sara [VERSION]\n\
@@ -95,10 +95,9 @@ fn help_output() -> CommandOutput {
          oficial del fabricante. Los backends externos se descargan desde su fuente,\n\
          se validan antes de ejecutarse y permanecen aislados del código de SST.\n\n\
          Office\n\
-           diagnose inventaría y entrega evidencia detallada de instalación, Outlook,\n\
-           WebView2, WAM/AAD Broker, TokenBroker, Entra/PRT y cachés.\n\
-           verify evalúa comprobaciones de salud, prioriza fallos y recomienda pasos.\n\
-           Ninguno repara ni modifica el equipo.\n\
+           diagnose evalúa salud, prioriza fallos y recomienda pasos.\n\
+           --detail añade evidencia de instalación, Outlook, WebView2, WAM/AAD Broker,\n\
+           TokenBroker, Entra/PRT y cachés. No modifica el equipo.\n\
            auth repair vuelve a registrar AAD BrokerPlugin para el usuario actual.\n\
            scrub/sara usa SaRACmd Enterprise legacy y valida la firma Microsoft.\n\
            scrub-current conserva GetHelpCmd como backend alternativo actual.\n",
@@ -115,16 +114,11 @@ fn office_tools(args: &[String]) -> Result<CommandOutput> {
 
     match action.to_ascii_lowercase().as_str() {
         "diagnose" | "status" => {
-            if args.len() != 1 {
-                return Ok(CommandOutput::error("tools office diagnose: demasiados argumentos", 2));
+            match args.get(1).map(String::as_str) {
+                None => run_office_diagnosis(false),
+                Some("--detail") if args.len() == 2 => run_office_diagnosis(true),
+                _ => Ok(CommandOutput::error("uso: tools office diagnose [--detail]", 2)),
             }
-            run_office_diagnose()
-        }
-        "verify" => {
-            if args.len() != 1 {
-                return Ok(CommandOutput::error("tools office verify: demasiados argumentos", 2));
-            }
-            run_office_verify()
         }
         "auth" => office_auth_tools(&args[1..]),
         "scrub" | "sara" | "uninstall" | "remove" => {
@@ -477,7 +471,7 @@ fn evaluate_office_verification(
                     "{outlook_visible} proceso(s) con ventana visible sin bloqueo detectado ahora."
                 ), ""));
             } else {
-                checks.push(OfficeCheck::new(Unknown, "Respuesta de Outlook", "Proceso activo, pero sin ventana visible que permita comprobar respuesta.", "Abrir Outlook y repetir verify"));
+                checks.push(OfficeCheck::new(Unknown, "Respuesta de Outlook", "Proceso activo, pero sin ventana visible que permita comprobar respuesta.", "Abrir Outlook y repetir diagnose"));
             }
             if outlook_webview_children == 0 {
                 checks.push(OfficeCheck::new(Warning, "Procesos WebView2 de Outlook",
@@ -555,12 +549,12 @@ fn format_office_verification(checks: &[OfficeCheck]) -> String {
     report.push_str(
         "\nALCANCE: lectura local puntual; comprobar que una ventana responde no\n\
          demuestra que Outlook pueda enviar correo ni que el servidor esté disponible.\n\
-         Para el inventario y detalles de cada componente: tools office diagnose.\n"
+         Para el inventario y detalles de cada componente: tools office diagnose --detail.\n"
     );
     report
 }
 
-fn run_office_verify() -> Result<CommandOutput> {
+fn run_office_diagnosis(detail: bool) -> Result<CommandOutput> {
     // Reuse the inventory collector, never its prose report: verification adds
     // independent verdicts and native Windows responsiveness checks.
     let inventory = run_office_diagnose()?;
@@ -615,7 +609,9 @@ fn run_office_verify() -> Result<CommandOutput> {
                 "Proceso activo sin ventana visible que permita comprobar respuesta.", "Abrir Outlook y repetir verify")
         });
     }
-    Ok(CommandOutput::ok(format_office_verification(&checks)))
+    let mut report = format_office_verification(&checks);
+    if detail { report.push_str("\nEVIDENCIA DETALLADA\n"); report.push_str(&inventory.stdout); }
+    Ok(CommandOutput::ok(report))
 }
 
 #[cfg(test)]
