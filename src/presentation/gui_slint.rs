@@ -187,6 +187,7 @@ slint::slint! {
         in property <color> track;
         in property <color> success;
         in property <color> success-surface;
+        in property <color> on-accent;
         in property <color> on-success;
         in property <color> on-warning;
         in property <color> on-failure;
@@ -438,8 +439,8 @@ slint::slint! {
                 x: root.input-x * 1px; y: root.input-y * 1px;
                 width: root.input-width * 1px; height: root.input-height * 1px;
                 background: transparent;
-                CutFrame { width: parent.width; height: parent.height; outline: OutputTheme.rule; thickness: 1px; }
-                Registration { width: min(24px,parent.width); height: parent.height; outline: OutputTheme.accent; thickness: 1px; }
+                Rectangle { x: 0px; y: parent.height - 1px; width: parent.width; height: 1px; background: OutputTheme.rule; }
+                Registration { x: 0px; y: 0px; width: min(24px,parent.width); height: parent.height; outline: OutputTheme.accent; thickness: 1px; }
             }
             for mark in root.report-graphics : Rectangle {
                 x: mark.x * 1px; y: mark.y * 1px;
@@ -599,26 +600,26 @@ slint::slint! {
             background: transparent; clip: true;
             property <length> line-height: root.completion-row-height * 1px;
             CutFrame { width: parent.width; height: parent.height; ink: OutputTheme.track; outline: OutputTheme.rule; thickness: 1px; }
-            RailFolio { x: 5px; width: 14px; height: parent.line-height; ink: OutputTheme.accent; line: OutputTheme.track; }
+            RailFolio { x: 5px; y: 0px; width: 14px; height: parent.line-height; ink: OutputTheme.accent; line: OutputTheme.track; }
             Text {
-                x: 24px; width: parent.width - 120px; height: parent.line-height;
+                x: 24px; y: 0px; width: parent.width - 120px; height: parent.line-height;
                 text: "SUGERENCIAS / " + (root.completion-selected + 1) + " de " + root.completion-count;
                 color: OutputTheme.text; font-family: "Cascadia Mono"; font-size: min(13px,parent.line-height * 0.72); font-weight: 700;
                 vertical-alignment: center; overflow: elide;
             }
             Rectangle {
-                x: parent.width - 95px; width: 95px; height: parent.line-height; background: transparent;
+                x: parent.width - 95px; y: 0px; width: 95px; height: parent.line-height; background: transparent;
                 Text { text: root.completion-expanded ? "− DETALLE" : "+ DETALLE"; color: OutputTheme.accent; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
                 TouchArea { clicked => { root.completion-action(-3); terminal-focus.focus(); } }
             }
             for item[i] in root.completion-items : Rectangle {
                 x: 4px; y: (i+1) * parent.line-height; width: parent.width - 8px; height: parent.line-height;
                 background: transparent;
-                AngularMark { visible: root.completion-selected == root.completion-first + i; width: parent.width; height: parent.height; ink: OutputTheme.rail; }
+                AngularMark { visible: root.completion-selected == root.completion-first + i; width: parent.width; height: parent.height; ink: OutputTheme.accent; }
                 Registration { visible: root.completion-selected == root.completion-first + i; width: parent.width; height: parent.height; outline: OutputTheme.accent; thickness: 1px; }
                 Text {
-                    x: 8px; width: parent.width - 16px; height: parent.height;
-                    text: item; color: OutputTheme.text; font-family: "Cascadia Mono";
+                    x: 8px; y: 0px; width: parent.width - 16px; height: parent.height;
+                    text: item; color: root.completion-selected == root.completion-first + i ? OutputTheme.on-accent : OutputTheme.text; font-family: "Cascadia Mono";
                     font-size: min(13px,parent.height * 0.72); vertical-alignment: center; overflow: elide;
                 }
                 TouchArea { clicked => { root.completion-action(root.completion-first + i); terminal-focus.focus(); } }
@@ -2145,6 +2146,7 @@ fn apply_terminal_palette(ui:&SstBlueWindow,palette:&str) {
     theme.set_track(color(p.rail));
     theme.set_success(color(p.mint));
     theme.set_success_surface(color(p.moss));
+    theme.set_on_accent(color(readable_ink(p.acid)));
     theme.set_on_success(color(p.on_success));
     theme.set_on_warning(color(readable_ink(p.amber)));
     theme.set_on_failure(color(p.on_failure));
@@ -3092,7 +3094,7 @@ pub fn run() -> Result<()> {
                     let factor = model.scale.max(0.5);
                     ui.set_input_x((left-2.*factor).max(0.)/factor);
                     ui.set_input_y((top+f32::from(row)*h)/factor);
-                    ui.set_input_width((f32::from(screen.size().1)*w+2.*factor)/factor);
+                    ui.set_input_width(((f32::from(col)+12.)*w/factor).min(f32::from(screen.size().1)*w/factor));
                     ui.set_input_height(h/factor);
                     ui.set_caret_x((left+f32::from(col)*w)/factor);
                     ui.set_caret_y((top+f32::from(row)*h)/factor);
