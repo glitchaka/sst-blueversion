@@ -29,12 +29,7 @@ impl ShellHelper {
 
     fn candidates_for(&self, line: &str, pos: usize) -> Option<(usize, Vec<Pair>)> {
         let before = &line[..pos];
-        let segment_start = before
-            .char_indices()
-            .rev()
-            .find(|(_, ch)| *ch == ';' || *ch == '|' || *ch == '&')
-            .map(|(index, ch)| index + ch.len_utf8())
-            .unwrap_or(0);
+        let segment_start = crate::core::bash::sst_completion::segment_start(before);
 
         let segment = &before[segment_start..];
         let leading = segment.len() - segment.trim_start().len();
