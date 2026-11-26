@@ -2,7 +2,7 @@
 // The graphics carry information: alignment, magnitude, state, sequence, focus.
 component Head inherits Text {
     font-family: "Segoe UI Variable Display";
-    font-weight: 850;
+    font-weight: 800;
     vertical-alignment: center;
     overflow: elide;
 }
@@ -203,13 +203,14 @@ export component EditorialDemo inherits Rectangle {
             for name[i] in ["olk.exe","explorer.exe","Teams.exe","sst.exe","System"] : Rectangle {
                 x: 8px; y: plate.h * (0.24 + i * 0.14); width: plate.w - 16px; height: plate.h * 0.13;
                 property <int> load: i == 0 ? root.cpu : [0,9,12,3,2][i];
-                background: load >= 85 ? root.alert : root.selected == i ? #414d43 : transparent;
+                background: self.load >= 85 ? root.alert : root.selected == i ? #414d43 : transparent;
                 Rectangle { x: 0; y: 0; width: 3px; height: parent.height; background: root.selected == i ? root.amber : transparent; }
                 Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #576158; }
                 Data { x: 8px; width: parent.width * 0.42; height: parent.height; text: name; font-size: root.small; color: root.paper; }
                 Rectangle { x: parent.width * 0.46; y: parent.height * 0.28; width: parent.width * 0.30; height: parent.height * 0.44; background: #626e65;
-                    Rectangle { width: parent.width * load / 100; height: parent.height; background: root.paper; } }
-                Data { x: parent.width * 0.79; width: parent.width * 0.19; height: parent.height; horizontal-alignment: right; text: load + "%"; color: root.paper; font-size: root.normal; }
+                    property <int> bar-load: parent.load;
+                    Rectangle { width: parent.width * parent.bar-load / 100; height: parent.height; background: root.paper; } }
+                Data { x: parent.width * 0.79; width: parent.width * 0.19; height: parent.height; horizontal-alignment: right; text: parent.load + "%"; color: root.paper; font-size: root.normal; }
             }
         }
         // 12 — network continuity; individual sample slots and loss count.
@@ -240,14 +241,13 @@ export component EditorialDemo inherits Rectangle {
         }
         // 14 — high-density inventory. Narrow widths hide secondary columns only.
         if root.page == 14 : Rectangle {
-            property <bool> wide: plate.w >= 570px;
-            Data { x: 0; width: plate.w; height: plate.h * 0.12; text: "INVENTARIO / CONTROLADORES / " + (wide ? "VISTA AMPLIA" : "VISTA COMPACTA"); color: root.muted; font-size: root.small; }
+            Data { x: 0; width: plate.w; height: plate.h * 0.12; text: "INVENTARIO / CONTROLADORES / " + (plate.w >= 570px ? "VISTA AMPLIA" : "VISTA COMPACTA"); color: root.muted; font-size: root.small; }
             for item[i] in ["Driver","Wdf01000","WlanSvc","W32Time","Wof","WUDFRd"] : Rectangle {
                 y: plate.h * (0.15 + i * 0.14); width: plate.w; height: plate.h * 0.14;
                 background: i == 0 ? root.ink : i == root.selected+1 ? #d8dacc : transparent;
                 Data { x: 6px; width: parent.width * 0.38; height: parent.height; text: item; color: i == 0 ? root.paper : root.ink; font-size: root.small; }
                 Data { x: parent.width * 0.40; width: parent.width * 0.32; height: parent.height; text: ["Tipo","Kernel","Servicio","Servicio","Sistema","Kernel"][i]; color: i == 0 ? root.paper : root.ink; font-size: root.small; }
-                Data { visible: wide; x: parent.width * 0.73; width: parent.width * 0.25; height: parent.height; text: ["Estado","Cargado","Activo","Activo","Cargado","Cargado"][i]; color: i == 0 ? root.paper : root.muted; font-size: root.small; }
+                Data { visible: plate.w >= 570px; x: parent.width * 0.73; width: parent.width * 0.25; height: parent.height; text: ["Estado","Cargado","Activo","Activo","Cargado","Cargado"][i]; color: i == 0 ? root.paper : root.muted; font-size: root.small; }
                 Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: root.rule; }
             }
         }
@@ -310,19 +310,19 @@ export component EditorialDemo inherits Rectangle {
         if root.page == 20 : Rectangle {
             Head { x: 0; width: plate.w; height: plate.h * 0.22; text: "Sugerencias contextuales"; color: root.ink; font-size: min(plate.w * 0.070,plate.h * 0.21); }
             Rectangle { y: plate.h * 0.25; width: plate.w; height: plate.h * 0.17; background: root.ink;
-                Data { x: 8px; width: parent.width - 16px; height: parent.height; text: root.action ? "> notsh lan show " + ["interfaces","profiles","help"][root.selected] : "> notsh lan show"; color: root.paper; font-size: root.normal; }
+                Data { x: 8px; width: parent.width - 16px; height: parent.height; text: root.action ? "> notsh wlan show " + ["interfaces","profiles","networks"][root.selected] : "> notsh wlan show"; color: root.paper; font-size: root.normal; }
             }
             for name[i] in ["interfaces","profiles","help"] : Rectangle {
                 x: plate.w * 0.17; y: plate.h * (0.46 + i * 0.15); width: plate.w * 0.83; height: plate.h * 0.14; background: root.selected == i ? #d2d7c8 : transparent;
                 Rectangle { x: 0; width: 3px; height: parent.height; background: root.selected == i ? root.moss : root.rule; }
                 Data { x: 8px; width: parent.width * 0.37; height: parent.height; text: name; color: root.ink; font-size: root.normal; }
-                Label { x: parent.width * 0.40; width: parent.width * 0.58; height: parent.height; text: ["Enlace e IP","Perfil 802.1X","Consultar ayuda"][i]; color: root.muted; font-size: root.small; }
+                Label { x: parent.width * 0.40; width: parent.width * 0.58; height: parent.height; text: ["Enlace e IP","Perfiles WLAN","Redes visibles"][i]; color: root.muted; font-size: root.small; }
             }
         }
     }
     Rectangle { x: root.pad; y: root.height - 46px; width: root.width - 2 * root.pad; height: 1px; background: root.ink; }
     Data { x: root.pad; y: root.height - 43px; width: root.width - 2 * root.pad; height: 19px;
-        text: "← → Lámina  ·  PgUp/PgDn ±5  ·  Inicio/Fin extremos  ·  Esc salir"; color: root.ink; font-size: root.small; }
+        text: "← → Lámina · 1–9 Acceso · PgUp/PgDn ±5 · Inicio/Fin · Esc salir"; color: root.ink; font-size: root.small; }
     Data { x: root.pad; y: root.height - 22px; width: root.width - 2 * root.pad; height: 19px;
         text: "Tab / ↑ ↓ foco  ·  Enter acción  ·  Espacio " + (root.paused ? "reanudar" : "pausa") + "  ·  R reiniciar"; color: root.muted; font-size: root.small; }
 }
