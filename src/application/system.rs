@@ -392,21 +392,96 @@ fn services(args: &[String]) -> anyhow::Result<CommandOutput> {
         ));
     }
 
-    let mut native = vec!["query".to_owned()];
-    if let Some(name) = args.first().filter(|arg| !arg.starts_with('-')) {
-        native.push(name.clone());
-    } else if options::has(args, "--running") {
-        native.push("state=".to_owned());
-        native.push("active".to_owned());
-    } else if options::has(args, "--stopped") {
-        native.push("state=".to_owned());
-        native.push("inactive".to_owned());
-    } else {
-        native.push("state=".to_owned());
-        native.push("all".to_owned());
+    if args.len() > 1 || args.first().is_some_and(|a| a.starts_with('-') && !matches!(a.as_str(), "--running" | "--stopped")) {
+        return Ok(CommandOutput::error("uso: sys services [--running|--stopped|NOMBRE]", 2));
     }
+    #[cfg(windows)]
+    { services_native(args) }
+    #[cfg(not(windows))]
+    { Ok(CommandOutput::error("sys services requiere Windows", 3)) }
+}
 
-    run_windows_tool("sc.exe", &native)
+#[cfg(windows)]
+fn services_native(args: &[String]) -> anyhow::Result<CommandOutput> {
+    use windows_sys::Win32::System::Services::{
+        OpenSCManagerW, CloseServiceHandle, EnumServicesStatusExW,
+        SC_HANDLE, ENUM_SERVICE_STATUS_PROCESSW, SERVICE_STATUS_PROCESS,
+    };
+    struct Manager(SC_HANDLE);
+    impl Drop for Manager {
+        fn drop(&mut self) { unsafe { CloseServiceHandle(self.0); } }
+    }
+    // SC_MANAGER_ENUMERATE_SERVICE, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_STATE_ALL.
+    let manager = Manager(unsafe { OpenSCManagerW(std::ptr::null(), std::ptr::null(), 0x0004) });
+    if manager.0.is_null() { return Err(std::io::Error::last_os_error().into()); }
+    let mut rows: Vec<(String, String, SERVICE_STATUS_PROCESS)> = Vec::new();
+    // The Windows API accepts at most 256 KiB per page. Allocate aligned
+    // storage and advance its resume handle until the enumeration finishes.
+    let mut storage = vec![0usize; 262_144 / std::mem::size_of::<usize>()];
+    let mut resume = 0u32;
+    loop {
+        let previous = resume;
+        let mut needed = 0;
+        let mut returned = 0;
+        let bytes = (storage.len() * std::mem::size_of::<usize>()) as u32;
+        let ok = unsafe { EnumServicesStatusExW(
+            manager.0, 0, 0x30, 3, storage.as_mut_ptr().cast::<u8>(), bytes,
+            &mut needed, &mut returned, &mut resume, std::ptr::null(),
+        ) };
+        let error = if ok == 0 { unsafe { GetLastError() } } else { 0 };
+        if ok == 0 && error != 234 {
+            return Err(std::io::Error::from_raw_os_error(error as i32).into());
+        }
+        anyhow::ensure!(returned as usize <= bytes as usize / std::mem::size_of::<ENUM_SERVICE_STATUS_PROCESSW>(), "SCM devolvió un tamaño inválido");
+        let begin = storage.as_ptr() as usize;
+        let end = begin + bytes as usize;
+        let read_name = |ptr: *const u16| -> String {
+            let address = ptr as usize;
+            if address < begin || address >= end || address % 2 != 0 { return String::new(); }
+            let units = unsafe { std::slice::from_raw_parts(ptr, (end-address)/2) };
+            String::from_utf16_lossy(&units[..units.iter().position(|c| *c == 0).unwrap_or(units.len())])
+        };
+        let entries = unsafe { std::slice::from_raw_parts(storage.as_ptr().cast::<ENUM_SERVICE_STATUS_PROCESSW>(), returned as usize) };
+        for entry in entries {
+            rows.push((read_name(entry.lpServiceName), read_name(entry.lpDisplayName), entry.ServiceStatusProcess));
+        }
+        if ok != 0 { break; }
+        anyhow::ensure!(returned != 0 && resume != previous, "SCM no pudo continuar la enumeración");
+    }
+    rows.sort_by(|a,b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    let selector = args.first().map(String::as_str);
+    let is_named = selector.is_some_and(|a| !a.starts_with('-'));
+    rows.retain(|(name, display, status)| match selector {
+        Some("--running") => status.dwCurrentState == 4,
+        Some("--stopped") => status.dwCurrentState == 1,
+        Some(name_query) => name.eq_ignore_ascii_case(name_query) || display.eq_ignore_ascii_case(name_query),
+        None => true,
+    });
+    if is_named && rows.is_empty() {
+        return Ok(CommandOutput::error("Servicio no encontrado o no visible con los permisos actuales.", 1));
+    }
+    let state = |n: u32| match n {
+        1 => "DETENIDO", 2 => "INICIANDO", 3 => "DETENIÉNDOSE", 4 => "ACTIVO",
+        5 => "REANUDANDO", 6 => "PAUSANDO", 7 => "PAUSADO", _ => "DESCONOCIDO",
+    };
+    let mut out = format!("SST services — servicios de Windows\n------------------------------------------------------------\nTotal: {}\nActivos: {}\nDetenidos: {}\n\n",
+        rows.len(), rows.iter().filter(|r| r.2.dwCurrentState == 4).count(), rows.iter().filter(|r| r.2.dwCurrentState == 1).count());
+    if is_named {
+        for (name, display, status) in rows {
+            out.push_str(&format!("Nombre: {name}\nDescripción: {display}\nEstado: {}\nPID: {}\nTipo (máscara): 0x{:X}\nControles aceptados: 0x{:X}\nSalida Win32: {}\nSalida del servicio: {}\nPunto de control: {}\nEspera (ms): {}\n",
+                state(status.dwCurrentState), status.dwProcessId, status.dwServiceType, status.dwControlsAccepted,
+                status.dwWin32ExitCode, status.dwServiceSpecificExitCode, status.dwCheckPoint, status.dwWaitHint));
+        }
+    } else {
+        out.push_str("SERVICIO  ESTADO  PID  DESCRIPCIÓN\n");
+        for (name, display, status) in rows {
+            out.push_str(&format!("{name}  {}  {}  {}\n", state(status.dwCurrentState),
+                if status.dwProcessId == 0 { "—".to_owned() } else { status.dwProcessId.to_string() },
+                if display.is_empty() { name.clone() } else { display.split_whitespace().collect::<Vec<_>>().join(" ") }));
+        }
+    }
+    out.push_str("\nAlcance: servicios visibles con el token actual. sys services NOMBRE muestra los detalles.\n");
+    Ok(CommandOutput::ok(out))
 }
 
 fn users(args: &[String]) -> anyhow::Result<CommandOutput> {
