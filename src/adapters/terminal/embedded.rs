@@ -769,16 +769,32 @@ impl EmbeddedSession {
         let prefix: String = self.line[..self.cursor].iter().collect();
         let start = prefix.rfind(|ch: char| {
             ch.is_whitespace() || matches!(ch, ';' | '|' | '&' | '(' | ')')
-        }).map_or(0, |index| index + 1);
-
-        if matches.len() == 1 {
-            let begin = prefix[..start].chars().count();
-            let chars = matches[0].chars().collect::<Vec<_>>();
-            self.line.splice(begin..self.cursor, chars.iter().copied());
-            self.cursor = begin + chars.len();
-            self.clear_selection();
+        }).map_or(0, |index| index + prefix[index..].chars().next().unwrap().len_utf8());
+        let typed = &prefix[start..];
+        // One match completes the token and a space, allowing the next Tab
+        // to discover the next level. Multiple matches extend their common
+        // prefix before displaying the alternatives.
+        let replacement = if matches.len() == 1 {
+            let mut value=matches[0].clone();
+            if !value.ends_with(['/', '\\', ' ']) && self.line.get(self.cursor).is_none() {
+                value.push(' ');
+            }
+            value
         } else {
-            self.emit(&format!("\r\n{}\r\n", matches.join("  ")));
-        }
+            let mut common=String::new();
+            for ch in matches[0].chars() {
+                common.push(ch);
+                if !matches.iter().all(|v|v.starts_with(&common)) {
+                    common.pop(); break;
+                }
+            }
+            if common.len()>typed.len() && common.starts_with(typed) { common }
+            else { self.emit(&format!("\r\n{}\r\n", matches.join("  "))); return; }
+        };
+        let begin = prefix[..start].chars().count();
+        let chars = replacement.chars().collect::<Vec<_>>();
+        self.line.splice(begin..self.cursor, chars.iter().copied());
+        self.cursor = begin + chars.len();
+        self.clear_selection();
     }
 }
