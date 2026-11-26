@@ -31,8 +31,8 @@ Aliases públicos directos:
   sys hostname               consulta nombre actual
   hostname                   consulta nombre actual
   sys whoami                 alias global: whoami
-  sys uname
-  sys uname -a               alias global uname admite lo mismo
+  sys uname                  sistema operativo, equipo, kernel y arquitectura del ejecutable
+  sys uname -a               salida compacta; alias global uname admite lo mismo
 
 Top TUI:
   c                         ordenar todos los procesos por CPU
@@ -203,3 +203,5 @@ Véanse domain.txt, hostname.txt y autologon.txt para opciones completas y adver
   sys --help
 
 La ayuda corta del propio sys no enumera toda la semántica avanzada; este manual es la referencia extensa.
+
+Estado de validación: startup, servicios y drivers requieren revisión de estructura, codificación y legibilidad; la presencia de un comando no certifica su resultado.
