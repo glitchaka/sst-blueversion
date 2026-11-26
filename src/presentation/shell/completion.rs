@@ -186,8 +186,9 @@ fn subcommands(command: &str) -> &'static [&'static str] {
         "device" => &["list", "show", "add", "remove", "unknown", "path"],
         "domain" => &["status"],
         "switch" => &["list", "show", "add", "remove", "locate", "capabilities", "path"],
-        "diag" => &["network", "dns", "hardware", "storage", "traffic", "domain"],
-        "config" | "sst-config" => &["path", "edit", "terminal", "reload"],
+        "config" | "sst-config" => &["path", "edit", "bg", "palette", "reload"],
+        "triage" => &["--plan", "--close", "--deep", "--memory", "--status", "--history"],
+        "tools" | "tool" | "utils" => &["list", "office"],
         _ => &[],
     }
 }
