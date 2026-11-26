@@ -847,11 +847,16 @@ impl Interpreter {
         }
 
         let bg_mode = words.get(1).map(String::as_str) == Some("bg");
-        let mut values = if !bg_mode {
+        let palette_mode = words.get(1).map(String::as_str) == Some("palette");
+        let mut values = if palette_mode {
+            ["list", "gruvbox", "sunset", "golden"].into_iter().map(str::to_owned).collect()
+        } else if !bg_mode {
             let mut rows = vec![
                 "path".to_owned(),
                 "edit".to_owned(),
                 "bg".to_owned(),
+                "palette".to_owned(),
+                "help".to_owned(),
             ];
             if command == "config" {
                 rows.push("reload".to_owned());
@@ -3165,17 +3170,11 @@ impl Interpreter {
                             result
                         }
                     }
-                    "edit" => {
-                        let edit_args = vec!["edit".to_owned()];
-                        self.host.execute_builtin("sst-config", &edit_args, &self.env.cwd, stdin)?
-                            .unwrap_or_else(|| ExecutionResult::from_parts(String::new(), "config edit: builtin no disponible\n".to_owned(), 127))
-                    }
-                    "bg" => {
-                        let bg_args = args.to_vec();
-                        self.host.execute_builtin("sst-config", &bg_args, &self.env.cwd, stdin)?
-                            .unwrap_or_else(|| ExecutionResult::from_parts(String::new(), "config bg: builtin no disponible\n".to_owned(), 127))
-                    }
-                    _ => return Ok(None),
+                    // All configuration operations except the shell-owned path/reload
+                    // belong to the native ConfigBuiltin. Unknown options must
+                    // return its usage error, not fall through to external programs.
+                    _ => self.host.execute_builtin("sst-config", args, &self.env.cwd, stdin)?
+                        .unwrap_or_else(|| ExecutionResult::from_parts(String::new(), "config: builtin nativo no disponible\n".to_owned(), 127)),
                 }
             }
             _ => return Ok(None),
