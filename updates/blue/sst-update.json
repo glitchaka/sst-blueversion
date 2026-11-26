@@ -1,26 +1,26 @@
 {
   "schema": 1,
-  "version": "0.1.14-blue.6",
+  "version": "0.1.14-blue.7",
   "channel": "blue",
-  "published_at": "2026-11-26T20:39:28.1656354+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.6/sst.exe",
-  "sha256": "63cf0ff6cf7ee76a4840bae7b9c1283e57205c6d145d5bfb91e0f22715a75eb7",
-  "size": 61315584,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.6/sst-updater.exe",
-  "updater_sha256": "ffaaf40397ea7b78e74d9d9e4813f8d4e1d3495557e3399c0569ac9c00367a82",
+  "published_at": "2026-11-26T21:45:55.9704633+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.7/sst.exe",
+  "sha256": "5a4a70cc3ec22bd6153cc06f23929fbc0b06625818b055184df5f44253fce09d",
+  "size": 61325312,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.7/sst-updater.exe",
+  "updater_sha256": "b890c5875d9261c0f821db00c859bc78c5a0c748724b6f6d97e49f731af81f59",
   "updater_size": 433664,
   "changes": [
-    "Los 36 componentes nativos de demo graficos heredan los colores semánticos de la paleta activa de config, sin reiniciar.",
-    "Conserva las formas, distribución y animaciones; sustituye el pórtico decorativo por un agrupador de campos con función de lectura.",
-    "Contraste automático de texto en estados y pruebas de las tres paletas.",
-    "Guide, README y documentación de identidad actualizados."
+    "15 esquemas nuevos, 18 en total, compartidos por config, persistencia, Tab, formatter y catálogo gráfico.",
+    "P/O recorren todas las paletas dentro de demo graficos, con nombre visible y sin reiniciar ni cambiar la configuración guardada.",
+    "El cambio de paleta mantiene el foco, familia y estado de animación; Esc restaura el esquema configurado.",
+    "Guide, README y pruebas de navegación actualizados."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.14-blue.6.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.6/SST-Setup-0.1.14-blue.6.exe",
-    "sha256": "ce037b13d6e8b4d4cafeeef663a1fa6a6f31f0cd61f461863408909e290fea72",
-    "size": 70500531,
+    "name": "SST-Setup-0.1.14-blue.7.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.7/SST-Setup-0.1.14-blue.7.exe",
+    "sha256": "f7cbe6a14e32b2930dd12a77afac3b0d64b28abea7245a7aa3d5ecd17817f443",
+    "size": 70512544,
     "single_use": true,
-    "package_id": "2e797062eac2146551d773810f3bd59e"
+    "package_id": "62899f428935896ccef1d11284092cd7"
   }
 }
