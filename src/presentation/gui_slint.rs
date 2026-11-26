@@ -2689,6 +2689,29 @@ mod reading_viewport_tests{
         assert!(parser.screen().contents().contains("$ "));
     }
     #[test]
+    fn arbitrary_completed_results_open_at_top_not_tail() {
+        use crate::presentation::formatter::{Formatter, OutputMode};
+        let lines = (0..45).map(|i| format!("Elemento {i}: Dato {i}\n")).collect::<String>();
+        for source in [format!("INVENTARIO\n{lines}FIN_EXCLUSIVO\n"), format!("Lectura inicial\n{lines}FIN_EXCLUSIVO\n")] {
+            let formatted = Formatter::present(&source, "", 80, OutputMode::Interactive);
+            assert!(Formatter::readable_result(&formatted, OutputMode::Interactive));
+            let bytes = formatted.stdout.replace("\n", "\r\n");
+            let mut parser = vt100::Parser::new(12,80,HISTORY_ROWS);
+            parser.process(b"previous\r\n$ command\r\n");
+            let mut anchor = ReadingAnchor::begin(&mut parser);
+            anchor.observe(bytes.as_bytes(),80);
+            parser.process(bytes.as_bytes());
+            parser.process(b"$ ");
+            anchor.finish(&mut parser);
+            assert!(parser.screen().scrollback()>0);
+            let visible = parser.screen().contents();
+            assert!(visible.contains("Elemento 0"));
+            assert!(!visible.contains("FIN_EXCLUSIVO"));
+            parser.screen_mut().set_scrollback(0);
+            assert!(parser.screen().contents().contains("FIN_EXCLUSIVO"));
+        }
+    }
+    #[test]
     fn compact_output_does_not_jump(){
         let mut parser=vt100::Parser::new(8,40,HISTORY_ROWS);
         parser.process(b"$ sys\r\n");
