@@ -282,7 +282,7 @@ impl AppPaths {
             }
 
             for (key, value, comment) in [
-                ("SST_FONT_PALETTE", "'gruvbox'", "# Paleta de fuentes: gruvbox, sunset, golden."),
+                ("SST_FONT_PALETTE", "'gruvbox'", "# Paleta de fuentes: config palette list."),
                 ("SST_FONT_SIZE", "13", "# Tamaño de fuente de la terminal."),
                 ("SST_FONT_COLOR", "'#B8BB26'", "# Color base del texto de la terminal (#RRGGBB)."),
                 ("SST_CELL_WIDTH", "8", "# Ancho de celda de la terminal."),
@@ -428,7 +428,7 @@ impl AppPaths {
             config.font_size = value.clamp(8, 32);
         }
         if let Some(value) = assignment_value(&text, "SST_FONT_PALETTE") {
-            if matches!(value.as_str(), "gruvbox" | "sunset" | "golden") { config.font_palette = value; }
+            if crate::core::palettes::get(&value).is_some() { config.font_palette = value; }
         }
         if let Some(value) = assignment_value(&text, "SST_FONT_COLOR") {
             config.font_color = if legacy_font_default(&value) { DEFAULT_FOREGROUND_HEX.to_owned() } else { value };
@@ -791,7 +791,7 @@ mod font_palette_persistence_tests {
         let paths=AppPaths{root:root.clone()};
         fs::create_dir_all(paths.config_dir()).unwrap();
         fs::write(paths.config_file(),"SST_BACKGROUND_COLOR='#282828'\nSST_FONT_COLOR='#ABCDEF'\n").unwrap();
-        for name in ["sunset","golden","gruvbox"] {
+        for name in crate::core::palettes::names() {
             paths.set_config_values(&[("SST_FONT_PALETTE",name)]).unwrap();
             let appearance=paths.load_appearance().unwrap();
             assert_eq!(appearance.font_palette,name);

@@ -23,7 +23,7 @@ const ROUTES: &[(&str, &str)] = &[
     ("tools office auth", "repair"), ("tools office scrub", "all m365 2024 2021 2019 2016 2013 2010 2007"), ("tools office scrub-current", "all m365 2024 2021 2019 2016 2013 2010 2007"),
     ("instp", "search info install remove list update sst check upgrade which repo cache doctor help"),
     ("instp check", "sst"), ("instp upgrade", "sst"), ("instp repo", "list add remove update"), ("instp cache", "clean"),
-    ("config", "path edit reload bg palette help"), ("config palette", "list gruvbox sunset golden"), ("config bg", "list carrousel carousel next off"),
+    ("config", "path edit reload bg palette help"), ("config palette", "list"), ("config bg", "list carrousel carousel next off"),
     ("config bg carousel", "1 3 5 10"), ("config bg carrousel", "1 3 5 10"),
     ("demo", "graficos"), ("eventlog", "list publishers info read export clear"),
     ("service", "list status start stop pause resume restart"), ("registry", "get set set-default delete export import"),
@@ -115,6 +115,7 @@ pub(crate) fn candidates(before: &str) -> Option<(usize, Vec<String>)> {
     let parts=normalized(&words);
     let path=parts.join(" ");
     let mut values=Vec::new();
+    if path=="config palette" { values.extend(crate::core::palettes::names()); }
     if matches!(path.as_str(),"sudo"|"sudo --system"|"sudo --trustedinstaller") {
         values.extend(ROUTES.iter().map(|(route,_)|*route).filter(|r|!r.contains(' ')));
         values.extend(["wol","unban","whoami","neofetch","sigsour"]);
@@ -166,7 +167,7 @@ mod tests {
             ("sys ser","services"),("sys services --r","--running"),("net lan sh","show"),
             ("notsh interface ipv4 show int","interfaces"),("tools office auth r","repair"),
             ("tools office diagnose --d","--detail"),("instp upgrade s","sst"),
-            ("config palette sun","sunset"),("triage 123 --p","--plan"),("guide tools office d","diagnose"),
+            ("config palette sun","sunset"),("config palette mon","mondongo"),("config palette ind","industrial"),("triage 123 --p","--plan"),("guide tools office d","diagnose"),
             ("echo hi; notsh wlan show p","profiles"),("sudo sys services --r","--running"),("sudo --system sy","sys"),("sys domain join -d example -u user -","-p"),
         ] {
             let (start,choices)=candidates(input).unwrap_or_else(||panic!("No candidates for {input}"));

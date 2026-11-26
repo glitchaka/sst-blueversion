@@ -56,3 +56,5 @@ Controles: ←/→ familia, 1–6 acceso directo, PgUp/PgDn ±3, Inicio/Fin extr
 Los datos y acciones son simulados. No se modifica el equipo, el formatter, el logo ni las paletas de la consola habitual. No se cargan ilustraciones o archivos de imagen.
 
 El catálogo hereda el esquema activo de config palette (gruvbox, sunset o golden). Los colores de los componentes se derivan de los roles de texto del formatter; los fondos del usuario y el logotipo no cambian. El agrupador de campos sustituye al pórtico decorativo.
+
+El catálogo sigue el selector de los 18 esquemas. Consulta config palette list o guide config.

@@ -223,7 +223,7 @@ impl BuiltinCommand for ConfigBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "config — configuración portable de SST\n  config path\n  config edit\n  config reload\n  config bg [list|NOMBRE|off]\n  config palette [list|gruvbox|sunset|golden]"
+        "config — configuración portable de SST\n  config path\n  config edit\n  config reload\n  config bg [list|NOMBRE|off]\n  config palette [list|NOMBRE]"
     }
 
     fn execute(
@@ -243,13 +243,13 @@ impl BuiltinCommand for ConfigBuiltin {
             "bg" => self.backgrounds(args.get(1..).unwrap_or_default()),
             "palette" => {
                 match &args[1..] {
-                    [] => Ok(CommandOutput::ok(format!("Paleta activa: {}\nDisponibles: gruvbox, sunset, golden\nUso: config palette NOMBRE\n", self.paths.load_appearance()?.font_palette))),
-                    [name] if name == "list" => Ok(CommandOutput::ok(format!("Paleta activa: {}\nGRUVBOX  Original\nSUNSET   #3D4D65 #032451 #CE2F25 #F94C1F #FE8005 #FBBA76\nGOLDEN   #E3D473 #D72E2E #0E5047 #22153C #000F08\n", self.paths.load_appearance()?.font_palette))),
-                    [name] if matches!(name.as_str(), "gruvbox" | "sunset" | "golden") => {
+                    [] => Ok(CommandOutput::ok(format!("Paleta activa: {}\nDisponibles: {}\nUso: config palette NOMBRE\n", self.paths.load_appearance()?.font_palette, crate::core::palettes::names().collect::<Vec<_>>().join(", ")))),
+                    [name] if name == "list" => Ok(CommandOutput::ok(format!("Paleta activa: {}\n{}", self.paths.load_appearance()?.font_palette, crate::core::palettes::listing()))),
+                    [name] if crate::core::palettes::get(name).is_some() => {
                         self.paths.set_config_values(&[("SST_FONT_PALETTE", name.as_str())])?;
                         Ok(CommandOutput::ok(format!("Paleta activa: {name}\n")))
                     }
-                    _ => Ok(CommandOutput::error("uso: config palette [list|gruvbox|sunset|golden]", 2)),
+                    _ => Ok(CommandOutput::error("uso: config palette [list|NOMBRE]", 2)),
                 }
             },
             "reload" => Ok(CommandOutput::error(
@@ -319,7 +319,7 @@ mod public_config_palette_tests {
             let list = shell.execute("config palette list")?;
             assert_eq!(list.status, 0, "{}", list.stderr);
             assert!(list.stdout.contains("SUNSET") && list.stdout.contains("GOLDEN"));
-            for palette in ["sunset", "golden", "gruvbox"] {
+            for palette in crate::core::palettes::names().filter(|n|*n!="gruvbox").chain(std::iter::once("gruvbox")) {
                 let command = format!("config palette {palette}");
                 let execution = shell.execute(&command)?;
                 assert_eq!(execution.status, 0, "{command}: {}", execution.stderr);

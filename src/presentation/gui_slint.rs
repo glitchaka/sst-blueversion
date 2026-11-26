@@ -1670,6 +1670,23 @@ fn gruvbox_terminal_color(color: Rgb) -> Rgb {
 fn font_palette_color(color: Rgb, palette: &str) -> Rgb {
     use crate::presentation::formatter::Role;
     let Some(role) = Role::from_rgb((color.0,color.1,color.2)) else { return color; };
+    if let Some(p) = crate::core::palettes::get(palette) {
+        if let Some(roles)=p.roles {
+            let index=match role {Role::Title=>0,Role::Command=>1,Role::Label=>2,Role::Detail=>3,Role::Value=>4,Role::Success=>5,Role::Warning=>6,Role::Failure=>7,Role::Optimal=>8};
+            let swatch=roles[index];
+            if swatch<0 {return color;}
+            let c=p.swatches[swatch as usize];
+            let raw=Rgb((c>>16) as u8,(c>>8) as u8,c as u8);
+            // Dark reference colors need a lighter derivative for legible text.
+            // Keep source HEX intact in the registry and config listing.
+            let bg=Rgb(40,40,40);
+            for weight in (0..=100).step_by(5) {
+                let candidate=mix_rgb(raw,Rgb(255,255,255),weight);
+                if contrast(candidate,bg)>=4.5 {return candidate;}
+            }
+            return Rgb(255,255,255);
+        }
+    }
     let rgb = match (palette,role) {
         ("sunset", Role::Title | Role::Command) => (254,128,5),
         ("sunset", Role::Value | Role::Detail) => (251,186,118),
@@ -2880,7 +2897,8 @@ mod font_palette_regressions {
         assert_ne!(original,sunset);
         assert_ne!(sunset,golden);
         assert_ne!(original,golden);
-        for (name,p) in [("gruvbox",original),("sunset",sunset),("golden",golden)] {
+        for name in crate::core::palettes::names() {
+            let p=demo_colors(name);
             assert_eq!(p.cream,font_palette_color(role(Role::Detail),name));
             assert_eq!(p.acid,font_palette_color(role(Role::Title),name));
             assert_eq!(p.oxide,font_palette_color(role(Role::Failure),name));

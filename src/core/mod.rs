@@ -8,3 +8,5 @@ pub mod broker;
 
 pub use command::{CommandContext, CommandOutput};
 pub use shell::ShellExecution;
+
+pub mod palettes;

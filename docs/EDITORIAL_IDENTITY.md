@@ -59,3 +59,26 @@ El catálogo existe dentro de SST (`demo graficos`), no en ilustraciones ni info
 La consola normal no adopta estas muestras automáticamente. Los estados y acciones son simulados. La fidelidad artística debe verificarse en la ventana real.
 
 El catálogo hereda el esquema activo de config palette (gruvbox, sunset o golden). Los colores de los componentes se derivan de los roles de texto del formatter; los fondos del usuario y el logotipo no cambian. El agrupador de campos sustituye al pórtico decorativo.
+
+### Esquemas disponibles (config palette NOMBRE)
+
+- `gruvbox`: original
+- `sunset`: #3D4D65 #032451 #CE2F25 #F94C1F #FE8005 #FBBA76
+- `golden`: #E3D473 #D72E2E #0E5047 #22153C #000F08
+- `robot`: #88B8FF #213878 #C1911B #B3441A #521E1A
+- `cyberpunk`: #FD8326 #F59192 #F4545E #D32729 #6D2A4F #25091C
+- `stellar`: #142030 #E9D8C8 #732553 #FF5C8D #1E3442 #85A3B2
+- `aqua`: #78161E #EF3E18 #94EEE3 #33C6BA #2E5C58
+- `industrial`: #222A2A #4FBBBC #EC4624 #F39120 #E2DAC2
+- `oxidize`: #1D0F28 #E10109 #FF1F0D #FF8C01 #0C7473
+- `starfield`: #D5DAD7 #D3A54F #D35F3F #B72B3C #334A73 #1F2C41
+- `ronin-sunset`: #FDB563 #E67090 #B96682 #685A7D #3B5D80
+- `palm-leaf`: #364023 #6A823E #9C9F69 #C7A39B #E6B1C4 #EFD4DD
+- `brown-coffee`: #461D3A #502A50 #7E2A53 #BA71A2 #ECD0EC
+- `blaze-orange`: #F06B04 #FB8728 #F5ECD2 #269FC7 #1570AC #A10815
+- `japanese-violet`: #502A50 #7E2A53 #BA71A2 #E6B1C4 #EFD4DD
+- `curious-blue`: #269FC7 #1570AC #364023 #6A823E #C7A39B
+- `classic-rose`: #E6B1C4 #EFD4DD #BA71A2 #7E2A53 #A10815
+- `mondongo`: #7B7A7A #FFFF00 #00FFF7 #FF8B00 #8511FF #008F39
+
+Oxidize y ronin-sunset: colores muestreados de las imágenes JPEG, no códigos publicados. Las otras referencias conservan los HEX impresos o los RGB del archivo GPL. Los tonos oscuros pueden aclararse para lectura y se conservan los colores semánticos SST cuando falta un tono de estado adecuado. No cambia el fondo ni el logotipo.

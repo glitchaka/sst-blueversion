@@ -860,7 +860,7 @@ impl Interpreter {
         let bg_mode = words.get(1).map(String::as_str) == Some("bg");
         let palette_mode = words.get(1).map(String::as_str) == Some("palette");
         let mut values = if palette_mode {
-            ["list", "gruvbox", "sunset", "golden"].into_iter().map(str::to_owned).collect()
+            std::iter::once("list").chain(crate::core::palettes::names()).map(str::to_owned).collect()
         } else if !bg_mode {
             let mut rows = vec![
                 "path".to_owned(),
