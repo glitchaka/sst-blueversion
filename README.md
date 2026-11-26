@@ -1988,8 +1988,10 @@ SHELL_SHOCK_TOOL_PLAN.md
 
 ## Estado de validación de las herramientas SST
 
-La rama main no equivale a una versión publicada. La auditoría funcional excluye las primitivas Nwash y los módulos externos. `switch` queda fuera de la prioridad operativa por falta de permisos SNMP en el entorno de uso; no se ha eliminado. `triage` sigue siendo diagnóstico y orientación, no un motor de reparación verificado. Office diagnose/verify, legibilidad de servicios, drivers y startup, y anclaje inicial universal requieren validación en Windows. El formatter normaliza CRLF de informes interactivos; CSV, scripts y protocolos de terminal conservan su transporte.
+La rama main no equivale a una versión publicada. La auditoría funcional excluye las primitivas Nwash y los módulos externos. `switch` queda fuera de la prioridad operativa por falta de permisos SNMP en el entorno de uso; no se ha eliminado. `triage PID --plan` comprueba ventanas y ofrece recuperación de la instancia; `triage PID --close FILETIME` solicita el cierre normal y verifica el resultado. No fuerza la terminación. Office diagnose y su opción --detail, inventario nativo SCM de servicios, drivers sin recorte de columnas, startup por alcance y anclaje inicial requieren validación en Windows. El formatter normaliza CRLF de informes interactivos; CSV, scripts y protocolos de terminal conservan su transporte.
 
 ### Paletas de fuentes
 
 `config palette list` muestra las opciones. `config palette sunset`, `config palette golden` y `config palette gruvbox` seleccionan la paleta persistente en `SST_FONT_PALETTE`. El fondo y el logotipo no cambian. Los colores de estado conservan su distinción semántica.
+
+Recuperación de aplicaciones: `triage PID --plan` y `triage PID --close FILETIME`. Consultar primero el plan; el cierre no fuerza la terminación y puede solicitar guardar cambios.
