@@ -775,6 +775,9 @@ impl Interpreter {
             .map(|(index, _)| index)
             .unwrap_or(line.len());
         let before = &line[..cursor];
+        // Native SST hierarchy is available independently of Bash progcomp.
+        // Keep dynamic background filenames and programmable completion intact.
+        let segment = &before[super::sst_completion::segment_start(before)..];
         let wordbreaks = self.env.get("COMP_WORDBREAKS");
         let start = before.rfind(|ch: char| {
             ch.is_whitespace() || wordbreaks.contains(ch)
@@ -808,7 +811,15 @@ impl Interpreter {
             return Ok(Vec::new());
         }
 
-        if let Some(values) = self.config_command_completions(command, &words, prefix) {
+        let active_words = completion_words(segment, &wordbreaks);
+        let active_command = active_words.first().map(String::as_str).unwrap_or("");
+        let editing_argument = segment.trim_start().contains(char::is_whitespace);
+        if editing_argument && active_words.get(1).is_some_and(|w| w=="bg") {
+            if let Some(values) = self.config_command_completions(active_command, &active_words, prefix) {
+                if !values.is_empty() { return Ok(self.apply_completion_filters(values)); }
+            }
+        }
+        if let Some((_, values)) = super::sst_completion::candidates(before) {
             return Ok(self.apply_completion_filters(values));
         }
 
@@ -828,7 +839,7 @@ impl Interpreter {
                 }
             }
         }
-        if start == 0 {
+        if !editing_argument {
             let spec = CompletionSpec { action: Some("command".to_owned()), ..CompletionSpec::default() };
             return self.generate_completions(&spec, prefix, line);
         }
