@@ -90,3 +90,5 @@ La identidad gráfica se aplica ahora también a la terminal habitual: los traza
 ## Integración en curso (release bloqueada)
 
 La revisión .9 no es una entrega aprobada. Las primitivas compartidas de instrumentación y transferencia utilizan CPU, RAM y bytes reales. Los marcos de monitor mantienen esquinas de tamaño fijo. Los estados explícitos y la entrada editable reciben geometría en el viewport. La cobertura funcional de las 36 muestras y su fidelidad visual todavía deben completarse y verificarse antes de retirar el bloqueo.
+
+La selección nativa de Tab usa los candidatos que entrega el motor, con aceptar/cancelar, expansión y navegación. Las escalas reciben los porcentajes del formatter; la continuidad utiliza respuestas y pérdidas observadas y las bifurcaciones representan destinos que comparten next hop e interfaz en la tabla visible. Los folios de monitores corresponden a su índice real. Se mantiene el bloqueo de distribución hasta verificar la compilación y la fidelidad de los 36 elementos.

@@ -344,7 +344,7 @@ Rectangle { x: 0px; y: 10px; width: parent.width; height: 24px; background: root
                 Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "22 / Continuidad y pérdidas"; color: root.selected == 3 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 3 ? root.acid : root.line; }
                 Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
-for i in 24 : ContinuityCell { x: parent.width * i/24; y: 8px; width: max(1px,parent.width/24 - 2px); height: 32px; lost: i == 6 || i == 18; ink: i == 6 || i == 18 ? root.oxide : root.phase == mod(i,12) ? root.acid : root.mint; }
+for i in 24 : ContinuityCell { x: parent.width * i/24; y: 8px; width: max(1px,parent.width/24 - 2px); height: 32px; lost: i == 6 || i == 18; ink: i == 6 || i == 18 ? root.oxide : root.phase == (i < 12 ? i : i - 12) ? root.acid : root.mint; }
                 }
             }
             // specimen 23 — Ruta / bifurcación
