@@ -291,6 +291,11 @@ impl SecurityTriageService {
     }
 
     pub fn triage(&self, args: &[String]) -> Result<CommandOutput> {
+        // Explicit application recovery flow. Observation is read-only;
+        // closing requires the exact PID and creation timestamp from --plan.
+        if args.iter().any(|a| a == "--plan" || a == "--close") {
+            return triage_application_action(args);
+        }
         // A named query searches current processes, not historical lineages.
         if let Some(index) = args.iter().position(|arg| arg == "--find") {
             if index != 0 || args.len() != 2 || args[1].starts_with('-') || args[1].trim().is_empty() {
@@ -346,6 +351,8 @@ impl SecurityTriageService {
                    triage --history        incluye linajes aprendidos\n\
                    triage --deep           añade conexiones, inicio automático y servicios\n\
                    triage PID --deep       investigación profunda del PID y sus conexiones\n\
+                   triage PID --plan       respuesta real de ventanas y plan de recuperación\n\
+                   triage PID --close FILETIME   solicita cierre normal de la instancia comprobada\n\
                    triage --status         avance/resultado de colectores diferidos\n\
                    triage --thermal        sensores de temperatura disponibles\n\
                    triage --csv            exporta hallazgos en CSV sin estilos\n\
@@ -2723,4 +2730,105 @@ mod correlation_tests {
             AttentionLevel::Attention
         );
     }
+}
+
+fn triage_application_action(args: &[String]) -> Result<CommandOutput> {
+    let usage = "uso: triage PID --plan | triage PID --close FILETIME";
+    let Some(pid) = args.first().and_then(|s| s.parse::<u32>().ok()) else {
+        return Ok(CommandOutput::error(usage, 2));
+    };
+    let close = match args.get(1).map(String::as_str) {
+        Some("--plan") if args.len() == 2 => None,
+        Some("--close") if args.len() == 3 => {
+            let Ok(instance) = args[2].parse::<u64>() else { return Ok(CommandOutput::error(usage, 2)); };
+            Some(instance)
+        }
+        _ => return Ok(CommandOutput::error(usage, 2)),
+    };
+    if pid <= 4 || pid == std::process::id() {
+        return Ok(CommandOutput::error("triage: instancia protegida o SST actual", 2));
+    }
+    #[cfg(windows)]
+    { triage_application_windows(pid, close) }
+    #[cfg(not(windows))]
+    { let _ = close; Ok(CommandOutput::error("triage: recuperación de aplicaciones requiere Windows", 3)) }
+}
+
+#[cfg(windows)]
+fn triage_application_windows(pid: u32, close: Option<u64>) -> Result<CommandOutput> {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, FILETIME, HANDLE, HWND, LPARAM},
+        System::Threading::{OpenProcess, GetProcessTimes, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION},
+        UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId, IsWindowVisible, IsHungAppWindow, PostMessageW, WM_CLOSE},
+    };
+    struct ProcessHandle(HANDLE);
+    impl Drop for ProcessHandle {
+        fn drop(&mut self) { unsafe { CloseHandle(self.0); } }
+    }
+    let process = ProcessHandle(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | 0x00100000, 0, pid) });
+    if process.0.is_null() { return Err(std::io::Error::last_os_error().into()); }
+    let mut creation: FILETIME = unsafe { std::mem::zeroed() };
+    let mut exit: FILETIME = unsafe { std::mem::zeroed() };
+    let mut kernel: FILETIME = unsafe { std::mem::zeroed() };
+    let mut user: FILETIME = unsafe { std::mem::zeroed() };
+    if unsafe { GetProcessTimes(process.0, &mut creation, &mut exit, &mut kernel, &mut user) } == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let instance = (u64::from(creation.dwHighDateTime) << 32) | u64::from(creation.dwLowDateTime);
+    if close.is_some_and(|expected| expected != instance) {
+        return Ok(CommandOutput::error("triage: PID reutilizado; ejecuta --plan de nuevo", 2));
+    }
+    if unsafe { WaitForSingleObject(process.0, 0) } != 258 {
+        return Ok(CommandOutput::error("triage: la instancia ya no está activa o no se pudo consultar", 1));
+    }
+    struct Probe { pid: u32, windows: Vec<(HWND, bool)> }
+    unsafe extern "system" fn collect(hwnd: HWND, data: LPARAM) -> i32 {
+        unsafe {
+            let probe = &mut *(data as *mut Probe);
+            let mut owner = 0;
+            GetWindowThreadProcessId(hwnd, &mut owner);
+            if owner == probe.pid && IsWindowVisible(hwnd) != 0 {
+                probe.windows.push((hwnd, IsHungAppWindow(hwnd) != 0));
+            }
+        }
+        1
+    }
+    let mut probe = Probe { pid, windows: Vec::new() };
+    if unsafe { EnumWindows(Some(collect), &mut probe as *mut Probe as LPARAM) } == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if close.is_some() {
+        if probe.windows.is_empty() {
+            return Ok(CommandOutput::error("No hay ventanas visibles de esa instancia. No se fuerza la terminación.", 1));
+        }
+        let mut sent = 0;
+        for (hwnd, _) in probe.windows {
+            let mut owner = 0;
+            unsafe { GetWindowThreadProcessId(hwnd, &mut owner); }
+            if owner == pid && unsafe { WaitForSingleObject(process.0, 0) } == 258
+                && unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0) } != 0 {
+                sent += 1;
+            }
+        }
+        if sent == 0 { return Ok(CommandOutput::error("No se pudo enviar una solicitud de cierre.", 1)); }
+        let outcome = unsafe { WaitForSingleObject(process.0, 2500) };
+        let message = match outcome {
+            0 => "CERRADO: Windows confirmó el fin de la instancia.",
+            258 => "PENDIENTE: la instancia sigue activa; comprueba si solicita guardar datos o está bloqueada. No se forzó el cierre.",
+            _ => "NO VERIFICADO: no se pudo comprobar el resultado de la solicitud.",
+        };
+        return Ok(CommandOutput::ok(format!("SST TRIAGE — RECUPERACIÓN\nPID: {pid}\nSolicitudes de cierre: {sent}\nEstado: {message}\nVerificación: triage {pid} --plan\n")));
+    }
+    let system = refreshed_system();
+    let name = system.process(Pid::from_u32(pid)).map(|p| p.name().to_string_lossy().into_owned()).unwrap_or_else(|| "No disponible".into());
+    let hung = probe.windows.iter().filter(|(_, h)| *h).count();
+    let state = if probe.windows.is_empty() { "SIN VENTANA VISIBLE" } else if hung > 0 { "SIN RESPUESTA" } else { "RESPONDE EN ESTA MUESTRA" };
+    let mut out = format!("SST TRIAGE — PLAN DE RECUPERACIÓN\n------------------------------------------------------------\nAplicación: {name}\nPID: {pid}\nInstancia FILETIME: {instance}\nEstado: {state}\nVentanas visibles: {}\nVentanas sin respuesta: {hung}\n", probe.windows.len());
+    if !probe.windows.is_empty() {
+        out.push_str(&format!("\nACCIÓN DISPONIBLE\nGuardar trabajo cuando sea posible. Para solicitar un cierre normal sin terminar a la fuerza:\n  triage {pid} --close {instance}\n"));
+    } else {
+        out.push_str("\nACCIÓN DISPONIBLE\nInvestiga el proceso y sus dependencias antes de intervenir; no se puede determinar la respuesta de una ventana inexistente.\n");
+    }
+    out.push_str(&format!("Evidencia adicional: triage {pid} --deep\nLa respuesta de una ventana no certifica conectividad ni salud completa de la aplicación.\n"));
+    Ok(CommandOutput::ok(out))
 }
