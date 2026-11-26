@@ -136,7 +136,7 @@ Entre las capacidades de SST se encuentran:
 | `sys uptime` | Tiempo desde el último arranque. | `sys uptime` |
 | `sys hostname` | Nombre del equipo. | `sys hostname` |
 | `sys whoami` | Usuario actual. | `sys whoami` |
-| `sys uname [-a]` | Identificación del sistema. | `sys uname -a` |
+| `sys uname [-a]` | Sistema operativo, equipo, kernel y arquitectura del ejecutable; `-a` ofrece una línea compacta. | `sys uname` |
 | `sys kill PID [--tree]` | Termina un PID o su árbol. | `sys kill 8124 --tree` |
 | `sys fetch [--small|--full]` | Resumen visual con el logo SST coloreado; `fetch`/`neofetch`/`fastfetch` son equivalentes. | `sys fetch --full` |
 | `sys inspect PID [--deep]` | Inspección local de proceso. | `sys inspect 8124 --deep` |
@@ -1985,3 +1985,7 @@ El documento de alcance y arquitectura está en:
 ```text
 SHELL_SHOCK_TOOL_PLAN.md
 ```
+
+## Estado de validación de las herramientas SST
+
+La rama main no equivale a una versión publicada. La auditoría funcional excluye las primitivas Nwash y los módulos externos. `switch` queda fuera de la prioridad operativa por falta de permisos SNMP en el entorno de uso; no se ha eliminado. `triage` sigue siendo diagnóstico y orientación, no un motor de reparación verificado. Office diagnose/verify, legibilidad de servicios, drivers y startup, y anclaje inicial universal requieren validación en Windows. El formatter normaliza CRLF de informes interactivos; CSV, scripts y protocolos de terminal conservan su transporte.
