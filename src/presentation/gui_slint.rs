@@ -292,9 +292,16 @@ slint::slint! {
 
         in property <image> terminal-image;
         in property <int> demo-page;
-        in property <image> demo-shape;
         in property <string> demo-title;
         in property <string> demo-caption;
+        in property <string> demo-index;
+        in property <string> demo-headline;
+        in property <string> demo-metric;
+        in property <string> demo-unit;
+        in property <string> demo-context;
+        in property <string> demo-row-a;
+        in property <string> demo-row-b;
+        in property <string> demo-row-c;
         in property <bool> caret-visible;
         in property <float> caret-x;
         in property <float> caret-y;
@@ -583,22 +590,78 @@ slint::slint! {
             transfer-known-total: root.transfer-known-total;
         }
 
+        // Experimental identity only. All typography is native and every
+        // graphic is shown in its working context; no stretched glyph images.
         if root.demo-page > 0 : Rectangle {
             x: 0; y: 45px; width: root.width; height: root.height - 45px;
             background: #202724;
-            Rectangle { x: 0; y: 0; width: 100%; height: 3px; background: #e15e34; }
-            Text { x: 22px; y: 12px; width: parent.width - 44px; height: 23px;
-                text: "SST  /  DEMO GRÁFICA"; color: #c9c7ac; font-size: 13px; font-weight: 700; }
-            Text { x: 22px; y: 36px; width: parent.width - 44px; height: 48px;
-                text: root.demo-title; color: #f0e7d4; font-size: 33px; font-weight: 800; }
-            Image { x: 22px; y: 90px; width: parent.width - 44px;
-                height: max(20px,parent.height - 181px); source: root.demo-shape; image-fit: contain; }
-            Text { x: 22px; y: parent.height - 83px; width: parent.width - 44px; height: 40px;
-                text: root.demo-caption; color: #c9c7ac; font-size: 15px; wrap: word-wrap; }
-            Rectangle { x: 22px; y: parent.height - 40px; width: parent.width - 44px; height: 1px; background: #5b7d75; }
-            Text { x: 22px; y: parent.height - 34px; width: parent.width - 44px; height: 27px;
-                text: root.demo-page + "/8    ← → recorrer    1–8 elegir    Esc salir";
-                color: #e5b489; font-size: 13px; }
+            clip: true;
+            specimen := Rectangle {
+                x: 24px; y: 12px; width: parent.width - 48px; height: parent.height - 24px;
+                background: transparent;
+                property <color> accent: root.demo-page == 7 ? #d72e2e : root.demo-page == 6 ? #fe8005 : #e15e34;
+                property <length> compact: self.height < 340px ? 1px : 0px;
+                property <length> head-height: self.height < 340px ? 60px : 92px;
+                property <length> detail-top: head-height + 14px;
+                // An asymmetrical editorial masthead, with a short industrial shoulder.
+                Rectangle { x: 0; y: 0; width: parent.width; height: 1px; background: #9ca59b; }
+                Rectangle { x: 0; y: 0; width: min(106px, parent.width * 0.24); height: 5px; background: parent.accent; }
+                Text { x: 0; y: 8px; width: parent.width * 0.64; height: 18px; text: "SST / MUESTRARIO  ·  DATOS FICTICIOS";
+                    color: #b5b9a8; font-family: "Segoe UI Variable"; font-size: 11px; font-weight: 600; overflow: elide; }
+                Text { x: parent.width * 0.64; y: 8px; width: parent.width * 0.36; height: 18px; text: root.demo-index;
+                    color: #fbba76; font-family: "Segoe UI Variable"; font-size: 12px; horizontal-alignment: right; }
+                Text { x: 0; y: 28px; width: parent.width; height: parent.head-height - 28px;
+                    text: root.demo-headline; color: #f0e7d4; font-family: "Segoe UI Variable";
+                    font-size: parent.compact > 0px ? 22px : min(40px, parent.width * 0.048); font-weight: 800; overflow: elide; vertical-alignment: center; }
+                Rectangle { x: 0; y: parent.head-height; width: parent.width; height: 1px; background: #708278; }
+                // The main number is the anchor. Data rows stay at reading size.
+                metric := Rectangle {
+                    x: 0; y: parent.detail-top; width: parent.width * 0.35;
+                    height: min(184px, max(65px, parent.height - parent.detail-top - 76px));
+                    background: #29332e;
+                    Rectangle { x: 0; y: 0; width: 3px; height: parent.height; background: specimen.accent; }
+                    Rectangle { x: parent.width - 18px; y: 0; width: 18px; height: 4px; background: #c9c7ac; }
+                    Text { x: 12px; y: 2px; width: parent.width - 24px; height: parent.height * 0.64;
+                        text: root.demo-metric; color: #f0e7d4; font-family: "Segoe UI Variable";
+                        font-size: min(78px, parent.height * 0.62); font-weight: 800; vertical-alignment: center; }
+                    Text { x: 14px; y: parent.height * 0.65; width: parent.width - 24px; height: parent.height * 0.3;
+                        text: root.demo-unit; color: #fbba76; font-family: "Segoe UI Variable";
+                        font-size: 12px; font-weight: 700; overflow: elide; }
+                }
+                details := Rectangle {
+                    x: parent.width * 0.35 + 16px; y: parent.detail-top;
+                    width: parent.width * 0.65 - 16px; height: metric.height;
+                    background: transparent;
+                    Text { x: 0; y: 0; width: parent.width; height: parent.height * 0.24; text: root.demo-context;
+                        color: root.demo-page == 7 ? #ff796f : root.demo-page == 6 ? #fbba76 : #b5b9a8;
+                        font-family: "Segoe UI Variable"; font-size: 13px; font-weight: 700; overflow: elide; vertical-alignment: center; }
+                    for row[i] in [root.demo-row-a, root.demo-row-b, root.demo-row-c] : Rectangle {
+                        x: 0; y: parent.height * (0.25 + i * 0.25); width: parent.width; height: parent.height * 0.25 - 2px;
+                        background: root.demo-page == 5 && i == 1 ? #39453d : #27312c;
+                        Rectangle { x: 0; y: 0; width: root.demo-page == 5 && i == 1 ? 4px : 1px; height: parent.height;
+                            background: root.demo-page == 5 && i == 1 ? specimen.accent : #708278; }
+                        Text { x: 9px; y: 0; width: parent.width - 12px; height: parent.height; text: row;
+                            color: #e3dfce; font-family: "Cascadia Mono"; font-size: 13px; overflow: elide; vertical-alignment: center; }
+                    }
+                }
+                // A graduated scale has a numeric reading and real divisions.
+                if root.demo-page == 8 && specimen.height >= 340px : Rectangle {
+                    x: 0; y: specimen.detail-top + metric.height + 14px; width: parent.width; height: 25px; background: transparent;
+                    for tick[i] in 20 : Rectangle {
+                        x: parent.width * i / 20; y: 0; width: max(1px,parent.width / 20 - 2px); height: 9px;
+                        background: i < 13 ? #e15e34 : #495a50;
+                        Rectangle { x: 0; y: 11px; width: 1px; height: i == 0 || i == 5 || i == 10 || i == 15 ? 10px : 4px; background: #b5b9a8; }
+                    }
+                }
+                Text { x: 0; y: parent.height - 60px; width: parent.width; height: 18px; text: root.demo-title;
+                    color: #fbba76; font-family: "Segoe UI Variable"; font-size: 13px; font-weight: 700; overflow: elide; }
+                Text { x: 0; y: parent.height - 41px; width: parent.width; height: 20px; text: root.demo-caption;
+                    color: #b5b9a8; font-family: "Segoe UI Variable"; font-size: 12px; overflow: elide; }
+                Rectangle { x: 0; y: parent.height - 20px; width: parent.width; height: 1px; background: #708278; }
+                Text { x: 0; y: parent.height - 19px; width: parent.width; height: 19px;
+                    text: root.demo-page + "/8    ← → recorrer    1–8 elegir    Esc salir";
+                    color: #e5b489; font-size: 12px; }
+            }
         }
 
         island := Rectangle {
@@ -2670,29 +2733,23 @@ pub fn run() -> Result<()> {
     let demo_timer=Timer::default();
     let demo_weak=ui.as_weak();
     demo_timer.start(TimerMode::Repeated, Duration::from_millis(50),move||{
-        use crate::presentation::console_identity::{self as identity,Mark};
+        use crate::presentation::console_identity as identity;
         let Some(ui)=demo_weak.upgrade() else{return;};
         let page=identity::page();
         if ui.get_demo_page()==i32::from(page) {return;}
         if page!=0 {
-            let (mark,title,caption,w,h)=match page {
-                1=>(Mark::Portal,"Pórtico","Emblema de SST. Dos voladizos rodean una abertura circular.",320,220),
-                2=>(Mark::Masthead,"Cabecera","Perfil escalonado que abre una sección del informe.",640,95),
-                3=>(Mark::Readout,"Lectura","Marco de instrumento para una cifra destacada.",420,130),
-                4=>(Mark::Rail,"Guía de lectura","Filete lateral que acompaña una fila de datos.",10,65),
-                5=>(Mark::Selected,"Selección","Marca lateral del elemento que tiene el foco.",18,65),
-                6=>(Mark::Warning,"Advertencia","Señal ámbar para una condición que requiere atención.",58,52),
-                7=>(Mark::Failure,"Fallo","Señal roja para un estado crítico.",58,52),
-                _=>(Mark::Meter,"Escala graduada","Lectura de ejemplo: 65 %. Cada división representa cinco puntos.",480,96),
-            };
-            let mut bitmap=SharedPixelBuffer::<Rgba8Pixel>::new(w,h);
-            identity::draw(mark,w as i32,h as i32,|x,y,rw,rh,(r,g,b)|{
-                fill_rect(bitmap.make_mut_slice(),w,h,x,y,rw,rh,Rgb(r,g,b));
-            });
-            ui.set_demo_shape(Image::from_rgba8(bitmap));
-            ui.set_demo_title(title.into());
-            ui.set_demo_caption(caption.into());
-        } else { ui.set_demo_shape(Image::default()); }
+            let example=identity::specimen(page);
+            ui.set_demo_title(example.title.into());
+            ui.set_demo_caption(example.caption.into());
+            ui.set_demo_index(example.index.into());
+            ui.set_demo_headline(example.headline.into());
+            ui.set_demo_metric(example.metric.into());
+            ui.set_demo_unit(example.unit.into());
+            ui.set_demo_context(example.context.into());
+            ui.set_demo_row_a(example.rows[0].into());
+            ui.set_demo_row_b(example.rows[1].into());
+            ui.set_demo_row_c(example.rows[2].into());
+        }
         ui.set_demo_page(i32::from(page));
     });
 
