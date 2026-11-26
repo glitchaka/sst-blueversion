@@ -53,3 +53,7 @@ Rutas:
 `sst-path` traduce/resuelve rutas estilo /c/... contra el directorio de trabajo al modelo Windows.
 
 La función/builtin `config` de Nwash es la interfaz de usuario preferida cuando esté cargada por el entorno; `sst-config` es el backend explícito.
+
+### Paletas de fuentes
+
+`config palette list` muestra las opciones. `config palette sunset`, `config palette golden` y `config palette gruvbox` seleccionan la paleta persistente en `SST_FONT_PALETTE`. El fondo y el logotipo no cambian. Los colores de estado conservan su distinción semántica.
