@@ -1,16 +1,45 @@
-SST — Muestrario de identidad editorial
+SST — Laboratorio de identidad editorial
 
 Uso: demo graficos
 
-Flechas: recorrer los ocho ejemplos. 1–8: elegir. Esc: volver a la consola.
+20 láminas nativas con datos ficticios; no se ejecutan diagnósticos, transferencias,
+cierres ni modificaciones reales. No hay ilustraciones, imágenes ni skins.
 
-01 Portada: titular, código de sección y contexto.
-02 Cabecera: jerarquía de sección y remate industrial.
-03 Lectura: cifra, unidad y contexto.
-04 Inventario: reglas y filas de lectura.
-05 Selección: foco localizado en una fila.
-06 Advertencia: gravedad, evidencia y acción.
-07 Fallo: incidencia, causa observada y verificación.
-08 Escala: lectura numérica y divisiones graduadas.
+NAVEGACIÓN
+  ← / →             lámina anterior / siguiente, con retorno circular
+  PgUp / PgDn       retroceder / avanzar cinco láminas
+  Inicio / Fin      primera / última lámina
+  1–9              acceso directo a las primeras nueve
+  Tab / ↑ / ↓       foco en el componente de la lámina (cuando corresponda)
+  Mayús+Tab         foco anterior
+  Enter            activar, expandir, confirmar o simular respuesta
+  Espacio          pausar / reanudar animación
+  R                reiniciar el estado de la lámina
+  Esc / q          volver a la consola
 
-Las láminas incluyen ilustraciones de dirección gráfica orbital y biomecánica; los datos son ficticios. El muestrario es experimental y no modifica la identidad normal de SST ni el formatter hasta su aprobación visual.
+COMPOSICIÓN Y JERARQUÍA
+01 Inventario asimétrico: titular, folio, cifra y contexto.
+02 Cabecera de red: dos interfaces, estados y retícula.
+03 Memoria: superficie proporcional y unidades.
+04 Servicios: columnas alineadas y reglas.
+05 Foco por teclado: foco distinto de activación.
+06 Advertencia: magnitud, umbral y desviación.
+07 Incidencia: evidencia, acción y verificación.
+08 Escala: divisiones de 5%, lectura de CPU variable.
+
+COMPORTAMIENTOS
+09 Cursor: intermitencia y cambio de foco entre tokens.
+10 Transferencia: progreso 0–100%, pausa y fin estable.
+11 Procesos: carga ficticia variable; fila roja desde 85%.
+12 Continuidad: doce muestras ICMP ficticias, dos pérdidas.
+13 Estados: correcto, atención, fallo y sin evidencia.
+14 Densidad: registro adaptativo; columnas secundarias en ancho amplio.
+15 Expansión: detalle bajo demanda y selección por teclado.
+16 Confirmación: cancelar, cerrar o detalles; solo simulación.
+17 Topología: ruta y localización de fallo DNS.
+18 Evidencia parcial: dato ausente no equivale a cero.
+19 Espera: indicador indeterminado, sin inventar porcentaje.
+20 Sugerencias: opciones contextualizadas de NOTSH, selección y aceptación ficticia.
+
+La demo no cambia el formatter, las paletas de usuario, el fondo, ni el logotipo.
+Su identidad queda aislada hasta aprobación visual.
