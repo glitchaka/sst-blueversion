@@ -600,7 +600,8 @@ slint::slint! {
                 x: 24px; y: 12px; width: parent.width - 48px; height: parent.height - 24px;
                 background: transparent;
                 property <color> accent: root.demo-page == 7 ? #d72e2e : root.demo-page == 6 ? #fe8005 : #e15e34;
-                property <length> compact: self.height < 340px ? 1px : 0px;
+                property <bool> compact: self.height < 340px;
+                property <bool> list-only: root.demo-page == 4 || root.demo-page == 5;
                 property <length> head-height: self.height < 340px ? 60px : 92px;
                 property <length> detail-top: head-height + 14px;
                 // An asymmetrical editorial masthead, with a short industrial shoulder.
@@ -612,11 +613,12 @@ slint::slint! {
                     color: #fbba76; font-family: "Segoe UI Variable"; font-size: 12px; horizontal-alignment: right; }
                 Text { x: 0; y: 28px; width: parent.width; height: parent.head-height - 28px;
                     text: root.demo-headline; color: #f0e7d4; font-family: "Segoe UI Variable";
-                    font-size: parent.compact > 0px ? 22px : min(40px, parent.width * 0.048); font-weight: 800; overflow: elide; vertical-alignment: center; }
+                    font-size: parent.compact ? 22px : min(40px, parent.width * 0.048); font-weight: 800; overflow: elide; vertical-alignment: center; }
                 Rectangle { x: 0; y: parent.head-height; width: parent.width; height: 1px; background: #708278; }
                 // The main number is the anchor. Data rows stay at reading size.
                 metric := Rectangle {
                     x: 0; y: parent.detail-top; width: parent.width * 0.35;
+                    visible: !specimen.list-only;
                     height: min(184px, max(65px, parent.height - parent.detail-top - 76px));
                     background: #29332e;
                     Rectangle { x: 0; y: 0; width: 3px; height: parent.height; background: specimen.accent; }
@@ -629,15 +631,16 @@ slint::slint! {
                         font-size: 12px; font-weight: 700; overflow: elide; }
                 }
                 details := Rectangle {
-                    x: parent.width * 0.35 + 16px; y: parent.detail-top;
-                    width: parent.width * 0.65 - 16px; height: metric.height;
+                    x: specimen.list-only ? 0px : parent.width * 0.35 + 16px; y: parent.detail-top;
+                    width: specimen.list-only ? parent.width : parent.width * 0.65 - 16px; height: metric.height;
                     background: transparent;
                     Text { x: 0; y: 0; width: parent.width; height: parent.height * 0.24; text: root.demo-context;
                         color: root.demo-page == 7 ? #ff796f : root.demo-page == 6 ? #fbba76 : #b5b9a8;
                         font-family: "Segoe UI Variable"; font-size: 13px; font-weight: 700; overflow: elide; vertical-alignment: center; }
                     for row[i] in [root.demo-row-a, root.demo-row-b, root.demo-row-c] : Rectangle {
                         x: 0; y: parent.height * (0.25 + i * 0.25); width: parent.width; height: parent.height * 0.25 - 2px;
-                        background: root.demo-page == 5 && i == 1 ? #39453d : #27312c;
+                        background: root.demo-page == 5 && i == 1 ? #39453d : transparent;
+                        Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: #495a50; }
                         Rectangle { x: 0; y: 0; width: root.demo-page == 5 && i == 1 ? 4px : 1px; height: parent.height;
                             background: root.demo-page == 5 && i == 1 ? specimen.accent : #708278; }
                         Text { x: 9px; y: 0; width: parent.width - 12px; height: parent.height; text: row;
