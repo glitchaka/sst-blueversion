@@ -133,7 +133,7 @@ impl SystemService {
         use crate::adapters::terminal::io;
         use std::sync::atomic::Ordering;
         if args.len()!=1 || args[0]!="graficos" {
-            let help="demo graficos — muestra interactiva de la identidad visual de SST";
+            let help="demo graficos — laboratorio de identidad SST; 20 muestras nativas. Izq/Der: lámina, Tab/Arriba/Abajo: foco, Enter: acción ficticia, Espacio: pausa, R: reiniciar, Esc: salir.";
             return Ok(if args.is_empty() || args.iter().any(|a|matches!(a.as_str(),"--help"|"-h")) {
                 CommandOutput::ok(help)
             } else { CommandOutput::error(help,2) });
