@@ -1,31 +1,12 @@
 SST Windows release CI report
-Source commit: a7ba518aa21c596506fdeca76bf81a4a53eb4d4e
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45902613912
-Recorded UTC: 2026-11-26 22:08:56Z
-Compile: failure
-Rust tests: skipped
-Software GUI startup: skipped
-Packaging: skipped
+Source commit: f9505a5ac6e1397e9315a76497966c98d795f0a9
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45903717150
+Recorded UTC: 2026-11-26 22:25:39Z
+Compile: success
+Rust tests: success
+Software GUI startup: success
+Packaging: success
 Compiler log tail:
     Updating crates.io index
    Compiling sst v0.1.14-blue.8 (D:\a\sst-blueversion\sst-blueversion)
-error: constant `SECTION_RAIL` is never used
-  --> src\presentation\formatter.rs:33:11
-   |
-33 | pub const SECTION_RAIL: (u8, u8, u8) = COMMAND_RGB;
-   |           ^^^^^^^^^^^^
-   |
-note: the lint level is defined here
-  --> src\main.rs:2:9
-   |
- 2 | #![deny(warnings)]
-   |         ^^^^^^^^
-   = note: `#[deny(dead_code)]` implied by `#[deny(warnings)]`
-
-error: constant `SECTION_RULE` is never used
-  --> src\presentation\formatter.rs:34:11
-   |
-34 | pub const SECTION_RULE: (u8, u8, u8) = (117,86,45);
-   |           ^^^^^^^^^^^^
-
-error: could not compile `sst` (bin "sst") due to 2 previous errors
+    Finished `release` profile [optimized] target(s) in 5m 15s
