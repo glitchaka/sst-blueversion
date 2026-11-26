@@ -107,7 +107,7 @@ Por nombre termina coincidencias del nombre de proceso. --tree/-t incluye descen
   sys drivers --pnp
   sys drivers --devices
 
---pnp enumera paquetes con pnputil; --devices enumera dispositivos conectados; las otras vistas usan driverquery.
+--pnp enumera paquetes con pnputil; --devices enumera dispositivos conectados; las otras vistas capturan CSV completo de driverquery para evitar el recorte de nombres.
 
 9. Eventos
 
@@ -204,4 +204,4 @@ Véanse domain.txt, hostname.txt y autologon.txt para opciones completas y adver
 
 La ayuda corta del propio sys no enumera toda la semántica avanzada; este manual es la referencia extensa.
 
-Estado de validación: startup, servicios y drivers requieren revisión de estructura, codificación y legibilidad; la presencia de un comando no certifica su resultado.
+Startup organiza el registro por alcance y tipo de inicio. Services consulta SCM mediante API Unicode y muestra estado y PID; el nombre permite consultar detalles. Pendiente validar en Windows.
