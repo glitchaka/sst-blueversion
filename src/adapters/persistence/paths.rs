@@ -42,6 +42,7 @@ SST_CONTENT_TOP_GAP=12
 # Densidad y texto de la terminal.
 SST_FONT_SIZE=13
 SST_FONT_COLOR='#B8BB26'
+SST_FONT_PALETTE='gruvbox'
 SST_CELL_WIDTH=8
 SST_CELL_HEIGHT=17
 SST_TERMINAL_PADDING_X=8
@@ -146,6 +147,7 @@ pub struct AppearanceConfig {
     pub content_top_gap: u16,
     pub font_size: u16,
     pub font_color: String,
+    pub font_palette: String,
     pub cell_width: u16,
     pub cell_height: u16,
     pub terminal_padding_x: u16,
@@ -168,6 +170,7 @@ impl Default for AppearanceConfig {
             content_top_gap: 12,
             font_size: 13,
             font_color: DEFAULT_FOREGROUND_HEX.to_owned(),
+            font_palette: "gruvbox".to_owned(),
             cell_width: 8,
             cell_height: 17,
             terminal_padding_x: 8,
@@ -276,6 +279,7 @@ impl AppPaths {
             }
 
             for (key, value, comment) in [
+                ("SST_FONT_PALETTE", "'gruvbox'", "# Paleta de fuentes: gruvbox, sunset, golden."),
                 ("SST_FONT_SIZE", "13", "# Tamaño de fuente de la terminal."),
                 ("SST_FONT_COLOR", "'#B8BB26'", "# Color base del texto de la terminal (#RRGGBB)."),
                 ("SST_CELL_WIDTH", "8", "# Ancho de celda de la terminal."),
@@ -419,6 +423,9 @@ impl AppPaths {
             .and_then(|value| value.parse::<u16>().ok())
         {
             config.font_size = value.clamp(8, 32);
+        }
+        if let Some(value) = assignment_value(&text, "SST_FONT_PALETTE") {
+            if matches!(value.as_str(), "gruvbox" | "sunset" | "golden") { config.font_palette = value; }
         }
         if let Some(value) = assignment_value(&text, "SST_FONT_COLOR") {
             config.font_color = if legacy_font_default(&value) { DEFAULT_FOREGROUND_HEX.to_owned() } else { value };
