@@ -555,7 +555,7 @@ Temas:
     Prueba activa de DESCARGA HTTPS con WinHTTP, sin curl.exe ni otros
     ejecutables. Usa un endpoint elegido por el operador, hasta el tiempo
     y volumen máximos indicados, sin guardar los datos descargados.
-    La modalidad --upload permite medir subida con un endpoint compatible. Sin URL explícita, se aplica el destino de prueba de la implementación.
+    El modo activo mide descarga y subida HTTPS con datos sintéticos. Por defecto usa Cloudflare; --download y --upload permiten indicar endpoints compatibles. Los resultados corresponden a los destinos medidos. --passive evita las transferencias de prueba.
 
   notsh test traffic --seconds 5 [--pid PID] [--top N]
     Captura eventos de red ETW y presenta bytes por segundo TX/RX por proceso,
