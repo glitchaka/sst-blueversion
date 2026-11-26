@@ -258,6 +258,16 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+      - name: Reject withdrawn or unapproved versions before publication
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git fetch origin main
+          git show "origin/main:.release/hold-$env:VERSION" 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Publication explicitly suspended for $env:VERSION." }
+          $global:LASTEXITCODE = 0
+
       - name: Verify latest application revision before publication
         shell: pwsh
         run: |

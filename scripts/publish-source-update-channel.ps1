@@ -7,6 +7,8 @@ if ($repo -ne 'glitchaka/sst-blueversion') {
 if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
     throw 'Falta la autorización GITHUB_TOKEN para publicar el canal de SST.'
 }
+$hold = Join-Path (Split-Path -Parent $PSScriptRoot) ".release/hold-$Version"
+if (Test-Path -LiteralPath $hold) { throw "Publication explicitly suspended for $Version." }
 $manifestFile = Join-Path (Split-Path -Parent $PSScriptRoot) 'dist/sst-update.json'
 if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) {
     throw "No existe el manifiesto distribuible: $manifestFile"
