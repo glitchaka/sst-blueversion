@@ -186,3 +186,79 @@ export component StateBadge inherits Rectangle {
     background: transparent;
     CutFrame { width: parent.width; height: parent.height; ink: root.ink; outline: root.outline; thickness: 1px; }
 }
+
+export component LinearScale inherits Rectangle {
+    in property <float> ratio;
+    in property <color> ink;
+    in property <color> track;
+    in property <color> line;
+    background: transparent;
+    Rectangle { width: parent.width; height: parent.height * 0.65; background: root.track; }
+    Rectangle { width: parent.width * root.ratio; height: parent.height * 0.65; background: root.ink; }
+    for i in 11 : Rectangle {
+        x: min(parent.width - 1px,parent.width * i / 10); y: parent.height * 0.70;
+        width: 1px; height: (i == 0 || i == 5 || i == 10) ? parent.height * 0.30 : parent.height * 0.15;
+        background: root.line;
+    }
+}
+export component ThresholdScale inherits Rectangle {
+    in property <float> ratio;
+    in property <float> threshold;
+    in property <color> ink;
+    in property <color> track;
+    in property <color> limit;
+    background: transparent;
+    Rectangle { y: parent.height * 0.35; width: parent.width; height: parent.height * 0.5; background: root.track; }
+    Rectangle { y: parent.height * 0.35; width: parent.width * root.ratio; height: parent.height * 0.5; background: root.ink; }
+    Rectangle { x: parent.width * root.threshold; width: 2px; height: parent.height; background: root.limit; }
+}
+export component ProportionalReadout inherits Rectangle {
+    in property <float> ratio;
+    in property <color> ink;
+    in property <color> track;
+    background: root.track;
+    Rectangle { width: parent.width * root.ratio; height: parent.height; background: root.ink; }
+}
+export component ContinuityCell inherits Rectangle {
+    in property <bool> lost;
+    in property <color> ink;
+    background: transparent;
+    Rectangle { y: root.lost ? parent.height * 0.34 : 0px; width: parent.width; height: root.lost ? parent.height * 0.32 : parent.height; background: root.ink; }
+}
+export component RouteBranch inherits Rectangle {
+    in property <int> count;
+    in property <color> ink;
+    in property <color> line;
+    background: transparent;
+    Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 50 L 20 50 L 65 50"; fill: transparent; stroke: root.ink; stroke-width: 1.5px; }
+    if root.count >= 2 : Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 20 50 L 32 12 L 49 12 M 20 50 L 32 88 L 49 88"; fill: transparent; stroke: root.line; stroke-width: 1.5px; }
+    if root.count >= 4 : Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 65 50 L 77 12 L 100 12 M 65 50 L 77 88 L 100 88"; fill: transparent; stroke: root.line; stroke-width: 1.5px; }
+    if root.count == 3 : Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 65 50 L 100 50"; fill: transparent; stroke: root.line; stroke-width: 1.5px; }
+}
+export component MetadataTab inherits Rectangle {
+    in property <color> ink;
+    in property <color> line;
+    in property <color> accent;
+    in property <bool> signals: false;
+    background: transparent;
+    CutFrame { width: parent.width; height: parent.height; ink: root.ink; outline: root.line; thickness: 1px; }
+    Rectangle { width: 3px; height: parent.height; background: root.accent; }
+    if root.signals : SignalSlashes { x: parent.width - 44px; y: 2px; width: 34px; height: min(14px,parent.height - 4px); ink: root.accent; }
+}
+export component RailFolio inherits Rectangle {
+    in property <color> ink;
+    in property <color> line;
+    background: transparent;
+    Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 0 L 100 0 L 100 75 L 70 100 L 0 100 Z"; fill: root.ink; stroke: transparent; }
+    Path { x: parent.width * 0.15; y: parent.height * 0.10; width: parent.width * 0.70; height: parent.height * 0.72; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 10 20 L 90 5 M 10 45 L 90 30 M 10 70 L 90 55"; fill: transparent; stroke: root.line; stroke-width: 1.5px; }
+}
+export component CompactRule inherits Rectangle {
+    in property <color> ink;
+    background: root.ink;
+}

@@ -82,7 +82,7 @@ pub fn caret_color(step: u8) -> (u8,u8,u8) {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Metric { Cpu, Utilization, Loss }
 impl Metric {
-    fn named(label:&str)->Option<Self>{
+    pub(super) fn named(label:&str)->Option<Self>{
         match label.trim().to_lowercase().as_str(){
             "cpu"|"cpu%"|"cpu %"|"cpu global"|"uso de cpu"|"cpu uso" => Some(Self::Cpu),
             "ram"|"ram %"|"memoria usada"|"uso de memoria"|"disk usage"|"uso de disco" => Some(Self::Utilization),

@@ -172,6 +172,7 @@ slint::slint! {
     import { AngularMark, CutFrame, Registration, AsymmetricHeader, SignalSlashes, FieldBracket, SteppedDivider } from "graphic_kit.slint";
     import { RadialTwenty, RingEight, ActivityScale, SegmentedProgress, IndeterminateWait, HatchedTransfer, MonitorFrame } from "graphic_kit.slint";
     import { WarningTriangle, StateBadge } from "graphic_kit.slint";
+    import { LinearScale, ThresholdScale, ProportionalReadout, ContinuityCell, RouteBranch, MetadataTab, RailFolio, CompactRule } from "graphic_kit.slint";
     export struct NativeGraphic { x: float, y: float, w: float, h: float, kind: int, ratio: float, tone: int }
     // Rendered vector outlines, never made of VT100/ASCII characters.
     // Transparent interiors preserve the user's terminal artwork and logo.
@@ -186,6 +187,9 @@ slint::slint! {
         in property <color> track;
         in property <color> success;
         in property <color> success-surface;
+        in property <color> on-success;
+        in property <color> on-warning;
+        in property <color> on-failure;
         in property <color> warning;
         in property <color> failure;
     }
@@ -348,6 +352,7 @@ slint::slint! {
         in property <string> background-image-fit-mode: "cover";
         in property <string> privilege-label: "TOKEN ?";
         in property <int> cpu-value;
+        in property <int> cpu-tone;
         in property <int> ram-value;
         in property <string> cpu-text: "CPU 0%";
         in property <string> ram-text: "RAM 0.0 GiB";
@@ -449,6 +454,18 @@ slint::slint! {
                 if mark.kind == 5 : WarningTriangle {
                     width: parent.width; height: parent.height; ink: OutputTheme.warning;
                 }
+                if mark.kind == 7 : LinearScale { width: parent.width; height: parent.height; ratio: mark.ratio; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; line: OutputTheme.muted; }
+                if mark.kind == 8 : ThresholdScale { width: parent.width; height: parent.height; ratio: mark.ratio; threshold: 0.5; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; limit: OutputTheme.warning; }
+                if mark.kind == 9 : ProportionalReadout { width: parent.width; height: parent.height; ratio: mark.ratio; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; }
+                if mark.kind == 10 : ContinuityCell { width: max(1px,parent.width - 2px); height: parent.height; lost: mark.tone == 2; ink: mark.tone == 2 ? OutputTheme.failure : OutputTheme.success; }
+                if mark.kind == 11 : Rectangle {
+                    width: parent.width; height: parent.height; background: transparent;
+                    RouteBranch { width: parent.width - 28px; height: parent.height; count: mark.tone; ink: OutputTheme.accent; line: OutputTheme.success; }
+                    Text { x: parent.width - 28px; width: 28px; height: parent.height; text: "" + mark.tone; color: OutputTheme.text; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
+                }
+                if mark.kind == 12 : Text { width: parent.width; height: parent.height; text: (mark.tone < 10 ? "0" : "") + mark.tone; color: OutputTheme.accent; font-size: min(16px,parent.height * 0.85); font-weight: 700; horizontal-alignment: right; vertical-alignment: center; }
+                if mark.kind == 13 : CompactRule { width: min(36px,parent.width); height: parent.height; ink: OutputTheme.failure; }
+                if mark.kind == 14 : Rectangle { x: parent.width / 2; width: 1px; height: parent.height; background: OutputTheme.rule; }
                 if mark.kind == 6 : Registration {
                     width: parent.width; height: parent.height; outline: OutputTheme.success; thickness: 1px;
                 }
@@ -576,8 +593,9 @@ slint::slint! {
             background: transparent; clip: true;
             property <length> line-height: root.completion-row-height * 1px;
             CutFrame { width: parent.width; height: parent.height; ink: OutputTheme.track; outline: OutputTheme.rule; thickness: 1px; }
+            RailFolio { x: 5px; width: 14px; height: parent.line-height; ink: OutputTheme.accent; line: OutputTheme.track; }
             Text {
-                x: 8px; width: parent.width - 100px; height: parent.line-height;
+                x: 24px; width: parent.width - 120px; height: parent.line-height;
                 text: "SUGERENCIAS / " + (root.completion-selected + 1) + " de " + root.completion-count;
                 color: OutputTheme.text; font-family: "Cascadia Mono"; font-size: min(13px,parent.line-height * 0.72); font-weight: 700;
                 vertical-alignment: center; overflow: elide;
@@ -694,11 +712,10 @@ slint::slint! {
                     width: 96px;
                     height: 24px;
                     background: transparent;
-                    CutFrame {
-                        width: parent.width; height: parent.height;
-                        ink: OutputTheme.track;
-                        outline: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO") ? OutputTheme.rule : OutputTheme.warning;
-                        thickness: 1px;
+                    MetadataTab {
+                        width: parent.width; height: parent.height; ink: OutputTheme.track;
+                        line: OutputTheme.rule;
+                        accent: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO") ? OutputTheme.accent : OutputTheme.warning;
                     }
 
                     Text {
@@ -722,14 +739,19 @@ slint::slint! {
                     x: 182px; y: 5px; width: 24px; height: 24px;
                     value: root.cpu-value; ink: OutputTheme.accent; track: OutputTheme.track; line: OutputTheme.rule;
                 }
+                AngularMark {
+                    visible: island.width >= 705px;
+                    x: 207px; y: 5px; width: 72px; height: 22px;
+                    ink: root.cpu-tone == 2 ? OutputTheme.failure : root.cpu-tone == 1 ? OutputTheme.warning : OutputTheme.success-surface;
+                }
                 Text {
                     visible: island.width >= 705px;
-                    x: 209px;
+                    x: 212px;
                     y: 0;
-                    width: 72px;
+                    width: 64px;
                     height: parent.height;
                     text: root.cpu-text;
-                    color: OutputTheme.text;
+                    color: root.cpu-tone == 2 ? OutputTheme.on-failure : root.cpu-tone == 1 ? OutputTheme.on-warning : OutputTheme.on-success;
                     font-family: "Segoe UI Variable";
                     font-size: 13px;
                     vertical-alignment: center;
@@ -1065,6 +1087,107 @@ struct ReportGraphic {
     row: u16, rows: u16, start: u16, end: u16, kind: i32, ratio: f32, tone: i32,
 }
 
+
+fn screen_row_text(screen:&vt100::Screen,row:u16,cols:u16)->String {
+    (0..cols).filter_map(|c|screen.cell(row,c)).map(|cell|{
+        let value=cell.contents(); if value.is_empty() {" ".to_owned()}else{value.to_owned()}
+    }).collect()
+}
+
+fn network_report_graphics(screen:&vt100::Screen)->Vec<ReportGraphic>{
+    let (rows,cols)=screen.size();
+    let mut result=Vec::new();
+    let mut samples:Vec<bool>=Vec::new();
+    let mut last_reply:Option<(u16,u16)>=None;
+    let mut ping=false;
+    let mut native=false;
+    let mut routes=false;
+    let mut groups:std::collections::BTreeMap<(std::net::IpAddr,u32),Vec<(u16,u16)>>=std::collections::BTreeMap::new();
+    let flush=|out:&mut Vec<ReportGraphic>,samples:&mut Vec<bool>,anchor:Option<(u16,u16)>|{
+        if let Some((row,end))=anchor {
+            let available=cols.saturating_sub(end.saturating_add(3));
+            let count=samples.len().min(24).min(usize::from(available));
+            if available>=8 && count>=2 {
+                let step=(available/(count as u16)).clamp(1,2);
+                for (i,lost) in samples.iter().skip(samples.len()-count).enumerate(){
+                    let start=end+3+i as u16*step;
+                    out.push(ReportGraphic{row,rows:1,start,end:start+step,kind:10,ratio:0.,tone:if *lost{2}else{0}});
+                }
+            }
+        }
+        samples.clear();
+    };
+    let flush_routes=|out:&mut Vec<ReportGraphic>,groups:&mut std::collections::BTreeMap<(std::net::IpAddr,u32),Vec<(u16,u16)>>|{
+        for entries in groups.values(){
+            if entries.len()<2 {continue;}
+            if let Some(&(row,end))=entries.last(){
+                if cols.saturating_sub(end)>=18 {
+                    out.push(ReportGraphic{row,rows:1,start:end+3,end:cols.saturating_sub(1),kind:11,ratio:0.,tone:entries.len() as i32});
+                }
+            }
+        }
+        groups.clear();
+    };
+    for row in 0..rows{
+        let raw=screen_row_text(screen,row,cols);
+        let line=raw.trim();
+        let lower=line.to_lowercase();
+        let end=(0..cols).rev().find(|&c|screen.cell(row,c).is_some_and(|v|!v.contents().trim().is_empty())).unwrap_or(0);
+        let new_ping=lower.starts_with("haciendo ping a ")||lower.starts_with("pinging ")||line.starts_with("PING ");
+        if new_ping {
+            flush(&mut result,&mut samples,last_reply.take());
+            ping=true;native=line.starts_with("PING ");
+        } else if line.starts_with("$ ") || line.starts_with("$") {
+            flush(&mut result,&mut samples,last_reply.take());
+            ping=false; native=false;
+        } else if ping {
+            let ok=(lower.starts_with("respuesta desde ")||lower.starts_with("reply from ")) && lower.contains("ttl=") && lower.contains("bytes=");
+            let native_ok=native && line.split_once(": ").is_some_and(|(ip,value)|ip.parse::<std::net::IpAddr>().is_ok()&&value.strip_suffix(" ms").is_some_and(|n|n.parse::<u64>().is_ok()));
+            let lost=lower.contains("tiempo de espera agotado")||lower.contains("request timed out")||lower.contains("destino inaccesible")||lower.contains("destination host unreachable")
+                ||(native&&lower.contains(": sin respuesta (estado "));
+            if ok||native_ok||lost {
+                samples.push(lost);last_reply=Some((row,end));
+            } else if lower.starts_with("estadísticas de ping")||lower.starts_with("ping statistics")||lower.starts_with("enviados:") {
+                flush(&mut result,&mut samples,last_reply.take());ping=false;native=false;
+            }
+        }
+        if line.starts_with("DESTINATION")&&line.contains("GATEWAY")&&line.contains("IFINDEX")&&line.contains("METRIC") {
+            flush_routes(&mut result,&mut groups); routes=true;
+        }else if routes{
+            let fields=line.split_whitespace().collect::<Vec<_>>();
+            if fields.len()==4 && fields[0].split_once('/').is_some_and(|(ip,prefix)|ip.parse::<std::net::IpAddr>().is_ok()&&prefix.parse::<u8>().is_ok()){
+                if let (Ok(gateway),Ok(index),Ok(_))=(fields[1].parse::<std::net::IpAddr>(),fields[2].parse::<u32>(),fields[3].parse::<u32>()){
+                    groups.entry((gateway,index)).or_default().push((row,end));continue;
+                }
+            }
+            if !line.is_empty(){flush_routes(&mut result,&mut groups);routes=false;}
+        }
+    }
+    flush(&mut result,&mut samples,last_reply);
+    flush_routes(&mut result,&mut groups);
+    result
+}
+
+fn feature_dividers(screen:&vt100::Screen)->Vec<ReportGraphic>{
+    use crate::presentation::formatter::{FEATURE_RGB,FEATURE_ALT_RGB};
+    let (rows,cols)=screen.size();
+    let surface=|r,c|screen.cell(r,c).and_then(|cell|match cell.bgcolor(){vt100::Color::Rgb(a,b,d)=>Some((a,b,d)),_=>None});
+    let mut marks=Vec::new();
+    for row in 0..rows.saturating_sub(2){
+        let a=(0..cols).rev().find(|&c|surface(row,c)==Some(FEATURE_RGB));
+        let b=(0..cols).find(|&c|surface(row,c)==Some(FEATURE_ALT_RGB));
+        if let (Some(a),Some(b))=(a,b){
+            if b>a+1 && surface(row+1,a)==Some(FEATURE_RGB) && surface(row+2,a)==Some(FEATURE_RGB)
+                && surface(row+1,b)==Some(FEATURE_ALT_RGB) && surface(row+2,b)==Some(FEATURE_ALT_RGB)
+                && (0..cols).any(|c|screen.cell(row,c).is_some_and(|v|!v.contents().trim().is_empty()))
+                && (0..cols).all(|c|screen.cell(row+1,c).is_none_or(|v|v.contents().trim().is_empty())) {
+                marks.push(ReportGraphic{row,rows:3,start:a+1,end:b,kind:14,ratio:0.,tone:0});
+            }
+        }
+    }
+    marks
+}
+
 fn report_graphics(screen: &vt100::Screen) -> Vec<ReportGraphic> {
     use crate::presentation::formatter::{Role, REPORT_HEADER_RGB, METER_OK_RGB, METER_WARN_RGB, METER_BAD_RGB};
     let (rows, cols) = screen.size();
@@ -1097,7 +1220,7 @@ fn report_graphics(screen: &vt100::Screen) -> Vec<ReportGraphic> {
                 let end=last.saturating_add(9).min(cols);
                 result.push(ReportGraphic{row,rows:1,start,end,kind:0,ratio:0.0,tone:1});
             } else {
-                result.push(ReportGraphic{row,rows:1,start,end:cols,kind:3,ratio:0.0,tone:0});
+                result.push(ReportGraphic{row,rows:1,start,end:cols,kind:13,ratio:0.0,tone:0});
             }
         }
 
@@ -1135,10 +1258,13 @@ fn report_graphics(screen: &vt100::Screen) -> Vec<ReportGraphic> {
                 }
             }
             let line=(a..=b).filter_map(|i|screen.cell(row,i)).map(|v|v.contents()).collect::<String>();
-            if line.trim_start().to_lowercase().starts_with("evidencia:") && b.saturating_add(2)<cols {
+            if (line.trim_start().to_lowercase().starts_with("evidencia:") || line.trim_start().to_lowercase().starts_with("evidencia detallada:")) && b.saturating_add(2)<cols {
                 result.push(ReportGraphic{row,rows:1,start:b+1,end:b+3,kind:6,ratio:0.0,tone:0});
             }
         }
+        // Metric geometry is chosen from the producer's existing metric semantics.
+        let line=screen_row_text(screen,row,cols);
+        let metric=line.split_once(':').and_then(|(name,_)|crate::presentation::formatter::Metric::named(name));
         let is_meter=|c| bg(row,c).is_some_and(|color|[(60,56,55),METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB].contains(&color)) && !has_text(row,c);
         let mut col=0;
         while col<cols {
@@ -1156,13 +1282,16 @@ fn report_graphics(screen: &vt100::Screen) -> Vec<ReportGraphic> {
                 col+=1;
             }
             if col-start>=3 {
-                result.push(ReportGraphic{row,rows:1,start,end:col,kind:2,ratio:filled as f32/f32::from(col-start),tone});
+                let kind=match metric {Some(crate::presentation::formatter::Metric::Loss)=>7,Some(crate::presentation::formatter::Metric::Cpu)=>8,Some(crate::presentation::formatter::Metric::Utilization)=>9,None=>2};
+                result.push(ReportGraphic{row,rows:1,start,end:col,kind,ratio:filled as f32/f32::from(col-start),tone});
             }
         }
     }
     if let Some((begin,left))=group {
         if rows-begin>=2 {result.push(ReportGraphic{row:begin,rows:rows-begin,start:left,end:left,kind:1,ratio:0.0,tone:0});}
     }
+    result.extend(network_report_graphics(screen));
+    result.extend(feature_dividers(screen));
     result
 }
 
@@ -1176,7 +1305,9 @@ impl ReportGraphic {
         match self.kind {
             0=>((x-2.*scale).max(0.),y+scale,width+2.*scale,(height-2.*scale).max(1.)),
             1=>((x-6.*scale).max(0.),y+scale,5.*scale,(height-2.*scale).max(1.)),
-            2=>(x,y+h*0.25,width,(h*0.5).max(2.)),
+            2|7|8|9=>(x,y+h*0.18,width,(h*0.64).max(2.)),
+            10|11|12=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
+            14=>(x,y+scale,width,(height-2.*scale).max(1.)),
             4=>((x-scale).max(0.),y+scale,width+2.*scale,(h-2.*scale).max(1.)),
             5|6=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             _=>(x,y+h-2.*scale,width,2.*scale),
@@ -1723,7 +1854,7 @@ impl TerminalModel {
                     if paint_background {
                         // Meter cells form compact native strips instead of full-height blocks.
                         if selection.is_none() && !cell.inverse() && is_meter_surface(cell.bgcolor()) {
-                            if !graphics.iter().any(|g|g.kind==2 && row==g.row && col>=g.start && col<g.end) {
+                            if !graphics.iter().any(|g|matches!(g.kind,2|7|8|9) && row==g.row && col>=g.start && col<g.end) {
                                 fill_rect(pixels,width,height,x,y+h/3,w,(h/3).max(2),bg);
                             }
                         } else {
@@ -2005,6 +2136,9 @@ fn apply_terminal_palette(ui:&SstBlueWindow,palette:&str) {
     theme.set_track(color(p.rail));
     theme.set_success(color(p.mint));
     theme.set_success_surface(color(p.moss));
+    theme.set_on_success(color(p.on_success));
+    theme.set_on_warning(color(readable_ink(p.amber)));
+    theme.set_on_failure(color(p.on_failure));
     theme.set_warning(color(p.amber));
     theme.set_failure(color(p.oxide));
 }
@@ -3045,9 +3179,19 @@ pub fn run() -> Result<()> {
                 }
 
                 if drawable && model.dirty && !ui.get_keygen_visible() {
-                    let marks=if model.selection.is_none() && !model.session.raw_mode() && !model.parser.screen().alternate_screen() {
+                    let mut marks=if model.selection.is_none() && !model.session.raw_mode() && !model.parser.screen().alternate_screen() {
                         report_graphics(model.parser.screen())
                     } else {Vec::new()};
+                    if model.selection.is_none() && !panels.is_empty() {
+                        let screen=model.parser.screen();
+                        let (rows,cols)=screen.size();
+                        for (i,panel) in panels.iter().enumerate() {
+                            let row=panel.start_row;
+                            if row<rows && cols>=12 && (cols-8..cols).all(|c|screen.cell(row,c).is_none_or(|v|v.contents().trim().is_empty())){
+                                marks.push(ReportGraphic{row,rows:1,start:cols-6,end:cols-2,kind:12,ratio:0.,tone:(i+1) as i32});
+                            }
+                        }
+                    }
                     let factor=model.scale.max(0.5);
                     let geometry=model.geometry();
                     let native=marks.iter().map(|g|{
@@ -3080,6 +3224,7 @@ pub fn run() -> Result<()> {
                 let now = Local::now();
 
                 ui.set_cpu_value(cpu.round().clamp(0.0,100.0) as i32);
+                ui.set_cpu_tone(match crate::presentation::formatter::Metric::Cpu.role(cpu,None){crate::presentation::formatter::Role::Failure=>2,crate::presentation::formatter::Role::Warning=>1,_=>0});
                 let total=system.total_memory();
                 ui.set_ram_value(if total==0 {0} else {((system.used_memory() as f64/total as f64)*100.0).round().clamp(0.0,100.0) as i32});
                 ui.set_cpu_text(format!("CPU {:.0}%", cpu).into());
