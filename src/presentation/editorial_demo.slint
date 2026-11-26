@@ -1,4 +1,5 @@
 import { AngularMark, CutFrame, Registration } from "graphic_kit.slint";
+import { AsymmetricHeader, SignalSlashes, FieldBracket, SteppedDivider } from "graphic_kit.slint";
 // SST native component catalogue. Each specimen is an isolated graphic at control scale.
 // No pictures, report covers, or changes to normal terminal rendering.
 export component EditorialDemo inherits Rectangle {
@@ -48,7 +49,7 @@ export component EditorialDemo inherits Rectangle {
                 Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "01 / Cabecera asimétrica"; color: root.selected == 0 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 0 ? root.acid : root.line; }
                 Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
-Path { x: 0px; y: 8px; width: parent.width; height: 32px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 0 L 72 0 L 79 21 L 100 21 L 100 100 L 0 100 Z"; fill: root.cream; stroke: transparent; stroke-width: 0px; }Text { x: 10px; y: 8px; width: parent.width - 65px; height: 32px; text: "SECCIÓN / 01"; color: root.ink; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 800; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Path { x: parent.width - 44px; y: 10px; width: 34px; height: 14px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 25 0 L 43 0 L 18 100 Z M 28 100 L 53 0 L 71 0 L 46 100 Z M 56 100 L 81 0 L 99 0 L 74 100 Z"; fill: root.accent-detail; stroke: transparent; stroke-width: 0px; }
+AsymmetricHeader { x: 0px; y: 8px; width: parent.width; height: 32px; ink: root.cream; }Text { x: 10px; y: 8px; width: parent.width - 65px; height: 32px; text: "SECCIÓN / 01"; color: root.ink; font-family: "Cascadia Mono"; font-size: 15px; font-weight: 800; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }SignalSlashes { x: parent.width - 44px; y: 10px; width: 34px; height: 14px; ink: root.accent-detail; }
                 }
             }
             // specimen 02 — Divisor escalonado
@@ -61,7 +62,7 @@ Path { x: 0px; y: 8px; width: parent.width; height: 32px; viewbox-width: 100; vi
                 Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "02 / Divisor escalonado"; color: root.selected == 1 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 1 ? root.acid : root.line; }
                 Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
-Path { x: 0px; y: 10px; width: parent.width; height: 23px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 65 L 52 65 L 59 25 L 100 25"; fill: transparent; stroke: root.cream; stroke-width: 2px; }Path { x: 0px; y: 10px; width: parent.width; height: 23px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 85 L 100 85"; fill: transparent; stroke: root.line; stroke-width: 1px; }Path { x: parent.width - 44px; y: 10px; width: 34px; height: 14px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 25 0 L 43 0 L 18 100 Z M 28 100 L 53 0 L 71 0 L 46 100 Z M 56 100 L 81 0 L 99 0 L 74 100 Z"; fill: root.accent-detail; stroke: transparent; stroke-width: 0px; }
+SteppedDivider { x: 0px; y: 10px; width: parent.width; height: 23px; ink: root.cream; thickness: 2px; }Path { x: 0px; y: 10px; width: parent.width; height: 23px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 85 L 100 85"; fill: transparent; stroke: root.line; stroke-width: 1px; }SignalSlashes { x: parent.width - 44px; y: 10px; width: 34px; height: 14px; ink: root.accent-detail; }
                 }
             }
             // specimen 03 — Marco recortado
@@ -87,7 +88,7 @@ Path { x: 0px; y: 3px; width: parent.width; height: min(64px, parent.height - 5p
                 Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "04 / Agrupador de campos"; color: root.selected == 3 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 3 ? root.acid : root.line; }
                 Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
-Path { x: 0px; y: 4px; width: 16px; height: 42px; viewbox-width: 16; viewbox-height: 42; fit: fill; commands: "M 16 0 L 6 0 L 0 6 L 0 36 L 6 42 L 16 42"; fill: transparent; stroke: root.acid; stroke-width: 2px; }
+FieldBracket { x: 0px; y: 4px; width: 16px; height: 42px; ink: root.acid; thickness: 2px; }
 Text { x: 24px; y: 2px; width: parent.width - 24px; height: 20px; text: "PID    4321"; color: root.cream; font-family: "Cascadia Mono"; font-size: 13px; vertical-alignment: center; overflow: elide; }
 Text { x: 24px; y: 24px; width: parent.width - 24px; height: 20px; text: "ESTADO Activo"; color: root.muted; font-family: "Cascadia Mono"; font-size: 13px; vertical-alignment: center; overflow: elide; }
                 }
@@ -102,7 +103,7 @@ Text { x: 24px; y: 24px; width: parent.width - 24px; height: 20px; text: "ESTADO
                 Text { x: 0px; y: 0px; width: parent.width; height: 20px; text: "05 / Pestaña de metadatos"; color: root.selected == 4 ? root.acid : root.muted; font-family: "Cascadia Mono"; font-size: 12px; font-weight: 600; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }
                 Rectangle { x: 0px; y: 21px; width: parent.width; height: 1px; background: root.selected == 4 ? root.acid : root.line; }
                 Rectangle { x: 2px; y: 27px; width: parent.width - 4px; height: max(1px, min(82px, parent.height - 29px)); background: transparent; clip: true;
-CutFrame { x: 0px; y: 8px; width: parent.width; height: 37px;  ink: root.rail; outline: root.line; thickness: 1px; }Rectangle { x: 0px; y: 8px; width: 4px; height: 37px; background: root.acid; }Text { x: 12px; y: 8px; width: parent.width - 56px; height: 37px; text: "INFO / LOCAL"; color: root.cream; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }Path { x: parent.width - 44px; y: 10px; width: 34px; height: 14px; viewbox-width: 100; viewbox-height: 100; fit: fill; commands: "M 0 100 L 25 0 L 43 0 L 18 100 Z M 28 100 L 53 0 L 71 0 L 46 100 Z M 56 100 L 81 0 L 99 0 L 74 100 Z"; fill: root.accent-detail; stroke: transparent; stroke-width: 0px; }
+CutFrame { x: 0px; y: 8px; width: parent.width; height: 37px;  ink: root.rail; outline: root.line; thickness: 1px; }Rectangle { x: 0px; y: 8px; width: 4px; height: 37px; background: root.acid; }Text { x: 12px; y: 8px; width: parent.width - 56px; height: 37px; text: "INFO / LOCAL"; color: root.cream; font-family: "Cascadia Mono"; font-size: 13px; font-weight: 700; horizontal-alignment: left; vertical-alignment: center; overflow: elide; }SignalSlashes { x: parent.width - 44px; y: 10px; width: 34px; height: 14px; ink: root.accent-detail; }
                 }
             }
             // specimen 06 — Riel y folio

@@ -28,3 +28,34 @@ export component Registration inherits Rectangle {
         commands: "M 0 25 L 0 0 L 12 0 M 88 0 L 100 0 L 100 25 M 100 75 L 100 100 L 88 100 M 12 100 L 0 100 L 0 75"; fill: root.ink; stroke: root.outline; stroke-width: root.thickness;
     }
 }
+
+export component AsymmetricHeader inherits Rectangle {
+    in property <color> ink: transparent;
+    background: transparent;
+    Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 0 L 72 0 L 79 21 L 100 21 L 100 100 L 0 100 Z"; fill: root.ink; stroke: transparent; stroke-width: 0px;
+    }
+}
+export component SignalSlashes inherits Rectangle {
+    in property <color> ink: transparent;
+    background: transparent;
+    Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 100 L 25 0 L 43 0 L 18 100 Z M 28 100 L 53 0 L 71 0 L 46 100 Z M 56 100 L 81 0 L 99 0 L 74 100 Z"; fill: root.ink; stroke: transparent; stroke-width: 0px;
+    }
+}
+export component FieldBracket inherits Rectangle {
+    in property <color> ink: transparent;
+    in property <length> thickness: 1px;
+    background: transparent;
+    Path { width: parent.width; height: parent.height; viewbox-width: 16; viewbox-height: 42; fit: fill;
+        commands: "M 16 0 L 6 0 L 0 6 L 0 36 L 6 42 L 16 42"; fill: transparent; stroke: root.ink; stroke-width: root.thickness;
+    }
+}
+export component SteppedDivider inherits Rectangle {
+    in property <color> ink: transparent;
+    in property <length> thickness: 1px;
+    background: transparent;
+    Path { width: parent.width; height: parent.height; viewbox-width: 100; viewbox-height: 100; fit: fill;
+        commands: "M 0 65 L 52 65 L 59 25 L 100 25"; fill: transparent; stroke: root.ink; stroke-width: root.thickness;
+    }
+}

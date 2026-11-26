@@ -56,7 +56,7 @@ El catálogo existe dentro de SST (`demo graficos`), no en ilustraciones ni info
 - Sugerencias
 - Jerarquía de dato
 
-La consola normal no adopta estas muestras automáticamente. Los estados y acciones son simulados. La fidelidad artística debe verificarse en la ventana real.
+La demo conserva estados simulados; la terminal habitual emplea las primitivas compartidas con datos reales. Las cabeceras, agrupadores, divisores y medidores se calculan desde las filas visibles, incluidas salidas externas en directo y scrollback. La selección y las aplicaciones de pantalla completa conservan su comportamiento.
 
 El catálogo hereda el esquema activo de config palette (gruvbox, sunset o golden). Los colores de los componentes se derivan de los roles de texto del formatter; los fondos del usuario y el logotipo no cambian. El agrupador de campos sustituye al pórtico decorativo.
 

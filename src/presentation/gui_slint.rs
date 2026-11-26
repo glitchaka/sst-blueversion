@@ -22,7 +22,7 @@ use fontdue::{Font, FontSettings, Metrics};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::{
     BackendSelector, ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer,
-    TimerMode,
+    TimerMode, ModelRc, VecModel,
 };
 use sysinfo::System;
 use windows_sys::Win32::{
@@ -169,7 +169,8 @@ const NERD_FONT_BYTES: &[u8] = crate::application::system::SST_TERMINAL_FONT_BYT
 
 slint::slint! {
     import { EditorialDemo } from "editorial_demo.slint";
-    import { AngularMark, CutFrame, Registration } from "graphic_kit.slint";
+    import { AngularMark, CutFrame, Registration, AsymmetricHeader, SignalSlashes, FieldBracket, SteppedDivider } from "graphic_kit.slint";
+    export struct NativeGraphic { x: float, y: float, w: float, h: float, kind: int, ratio: float, tone: int }
     // Rendered vector outlines, never made of VT100/ASCII characters.
     // Transparent interiors preserve the user's terminal artwork and logo.
     // Text-report section headings are individual native vector outlines,
@@ -185,9 +186,13 @@ slint::slint! {
         in property <color> failure;
     }
     component ReportHeadingBand inherits Rectangle {
+        in property <bool> signals;
         background: transparent;
-        CutFrame { width: parent.width; height: parent.height; outline: OutputTheme.rule; thickness: 1px; }
-        Rectangle { x: 1px; y: 3px; width: 3px; height: max(1px, parent.height - 6px); background: OutputTheme.rail; }
+        AsymmetricHeader { width: parent.width; height: parent.height; ink: OutputTheme.text; }
+        if root.signals : SignalSlashes {
+            x: parent.width - 24px; y: parent.height * 0.34;
+            width: 17px; height: parent.height * 0.48; ink: OutputTheme.track;
+        }
     }
     component TerminalSectionFrame inherits Rectangle {
         background: transparent;
@@ -299,23 +304,7 @@ slint::slint! {
         in property <color> caret-tone;
         in property <image> keygen-image;
         in property <bool> keygen-visible;
-        in property <int> report-heading-count: 0;
-        in property <float> report-grid-left: 0.0;
-        in property <float> report-grid-top: 0.0;
-        in property <float> report-grid-width: 0.0;
-        in property <float> report-line-height: 18.0;
-        in property <float> report-a-row: 0.0;
-        in property <float> report-a-width: 0.0;
-        in property <float> report-b-row: 0.0;
-        in property <float> report-b-width: 0.0;
-        in property <float> report-c-row: 0.0;
-        in property <float> report-c-width: 0.0;
-        in property <float> report-d-row: 0.0;
-        in property <float> report-d-width: 0.0;
-        in property <float> report-e-row: 0.0;
-        in property <float> report-e-width: 0.0;
-        in property <float> report-f-row: 0.0;
-        in property <float> report-f-width: 0.0;
+        in property <[NativeGraphic]> report-graphics;
 
         in property <int> monitor-panel-count: 0;
         in property <float> monitor-grid-left: 0.0;
@@ -381,6 +370,14 @@ slint::slint! {
                 opacity: root.background-image-opacity;
             }
 
+            // Native paths are behind the actual glyph buffer, never over the text.
+            for mark in root.report-graphics : ReportHeadingBand {
+                visible: !root.keygen-visible && root.demo-page == 0 && mark.kind == 0;
+                x: mark.x * 1px; y: mark.y * 1px;
+                width: mark.w * 1px; height: mark.h * 1px;
+                signals: mark.tone == 1;
+            }
+
             Image {
                 x: 0;
                 y: 0;
@@ -399,58 +396,24 @@ slint::slint! {
                 background: root.caret-tone;
             }
 
-            // Ordinary SST help and reports receive the same genuine native
-            // section accents. No box characters enter the command stream.
-            ReportHeadingBand {
-                visible: !root.keygen-visible && root.report-heading-count > 0;
-                x: root.report-grid-left * 1px;
-                y: (root.report-grid-top + root.report-a-row * root.report-line-height) * 1px;
-                width: root.report-a-width * 1px;
-                height: root.report-line-height * 1px;
+            for mark in root.report-graphics : Rectangle {
+                x: mark.x * 1px; y: mark.y * 1px;
+                width: mark.w * 1px; height: mark.h * 1px;
+                background: transparent;
+                visible: !root.keygen-visible && root.demo-page == 0 && mark.kind != 0;
+                if mark.kind == 1 : FieldBracket { width: parent.width; height: parent.height; ink: OutputTheme.rail; thickness: 1.5px; }
+                if mark.kind == 2 : Rectangle {
+                    width: parent.width; height: parent.height; background: transparent;
+                    AngularMark { width: parent.width; height: parent.height; ink: OutputTheme.track; outline: OutputTheme.rule; thickness: 1px; }
+                    if mark.ratio > 0 : AngularMark {
+                        width: max(1px, parent.width * mark.ratio); height: parent.height;
+                        ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.accent;
+                    }
+                }
+                if mark.kind == 3 : SteppedDivider { width: parent.width; height: parent.height; ink: OutputTheme.rail; thickness: 1px; }
             }
 
-            ReportHeadingBand {
-                visible: !root.keygen-visible && root.report-heading-count > 1;
-                x: root.report-grid-left * 1px;
-                y: (root.report-grid-top + root.report-b-row * root.report-line-height) * 1px;
-                width: root.report-b-width * 1px;
-                height: root.report-line-height * 1px;
-            }
-
-            ReportHeadingBand {
-                visible: !root.keygen-visible && root.report-heading-count > 2;
-                x: root.report-grid-left * 1px;
-                y: (root.report-grid-top + root.report-c-row * root.report-line-height) * 1px;
-                width: root.report-c-width * 1px;
-                height: root.report-line-height * 1px;
-            }
-
-            ReportHeadingBand {
-                visible: !root.keygen-visible && root.report-heading-count > 3;
-                x: root.report-grid-left * 1px;
-                y: (root.report-grid-top + root.report-d-row * root.report-line-height) * 1px;
-                width: root.report-d-width * 1px;
-                height: root.report-line-height * 1px;
-            }
-
-            ReportHeadingBand {
-                visible: !root.keygen-visible && root.report-heading-count > 4;
-                x: root.report-grid-left * 1px;
-                y: (root.report-grid-top + root.report-e-row * root.report-line-height) * 1px;
-                width: root.report-e-width * 1px;
-                height: root.report-line-height * 1px;
-            }
-
-            ReportHeadingBand {
-                visible: !root.keygen-visible && root.report-heading-count > 5;
-                x: root.report-grid-left * 1px;
-                y: (root.report-grid-top + root.report-f-row * root.report-line-height) * 1px;
-                width: root.report-f-width * 1px;
-                height: root.report-line-height * 1px;
-            }
-
-            // Draw only for a TUI that explicitly supplies semantic sections.
-            // The normal terminal (and its logo) has no vector overlays.
+            // Explicitly structured alternate-screen monitors keep their frames.
             TerminalSectionFrame {
                 visible: !root.keygen-visible && root.monitor-panel-count > 0;
                 x: root.monitor-grid-left * 1px;
@@ -993,6 +956,100 @@ impl ReadingAnchor{
     }
 }
 
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ReportGraphic {
+    row: u16, rows: u16, start: u16, end: u16, kind: i32, ratio: f32, tone: i32,
+}
+
+fn report_graphics(screen: &vt100::Screen) -> Vec<ReportGraphic> {
+    use crate::presentation::formatter::{Role, REPORT_HEADER_RGB, METER_OK_RGB, METER_WARN_RGB, METER_BAD_RGB};
+    let (rows, cols) = screen.size();
+    let role = |r,c| screen.cell(r,c).and_then(|v| match v.fgcolor() {
+        vt100::Color::Rgb(a,b,d) => Role::from_rgb((a,b,d)), _ => None,
+    });
+    let bg = |r,c| screen.cell(r,c).and_then(|v| match v.bgcolor() {
+        vt100::Color::Rgb(a,b,d) => Some((a,b,d)), _ => None,
+    });
+    let has_text = |r,c| screen.cell(r,c).is_some_and(|v| !v.contents().trim().is_empty());
+    let mut result = Vec::new();
+    let mut group: Option<(u16,u16)> = None;
+    for row in 0..rows {
+        let first = (0..cols).find(|&c| has_text(row,c));
+        let last = (0..cols).rev().find(|&c| has_text(row,c));
+        let table = (0..cols).any(|c| bg(row,c)==Some((56,54,46)));
+        let title = first.zip(last).filter(|&(a,b)| {
+            (a..=b).all(|c| !has_text(row,c)||role(row,c)==Some(Role::Title))
+                && (a..=b).any(|c|screen.cell(row,c).is_some_and(|v|v.contents().chars().any(char::is_alphabetic)))
+        });
+        if let Some((start,last)) = title {
+            let display = row>0 && bg(row,1)==Some(REPORT_HEADER_RGB)
+                && bg(row-1,1)==Some(REPORT_HEADER_RGB)
+                && (0..cols).all(|c| !has_text(row-1,c));
+            if table {
+                result.push(ReportGraphic{row,rows:1,start:0,end:cols,kind:3,ratio:0.0,tone:0});
+            } else if display {
+                result.push(ReportGraphic{row:row-1,rows:2,start:0,end:cols,kind:0,ratio:0.0,tone:0});
+            } else if last.saturating_add(8)<cols {
+                let end=last.saturating_add(9).min(cols);
+                result.push(ReportGraphic{row,rows:1,start,end,kind:0,ratio:0.0,tone:1});
+            } else {
+                result.push(ReportGraphic{row,rows:1,start,end:cols,kind:3,ratio:0.0,tone:0});
+            }
+        }
+
+        let field = first.is_some_and(|c| role(row,c)==Some(Role::Label))
+            && (0..cols).any(|c| role(row,c)==Some(Role::Label) && screen.cell(row,c).is_some_and(|v|v.contents().contains(':')))
+            && (0..cols).any(|c|has_text(row,c)&&matches!(role(row,c),Some(Role::Value|Role::Success|Role::Warning|Role::Failure|Role::Optimal)));
+        if field {
+            let start=first.unwrap_or(0);
+            if let Some((_,left))=group.as_mut(){*left=(*left).min(start);} else {group=Some((row,start));}
+        } else if let Some((begin,left))=group.take() {
+            if row-begin>=2 {result.push(ReportGraphic{row:begin,rows:row-begin,start:left,end:left,kind:1,ratio:0.0,tone:0});}
+        }
+        let is_meter=|c| bg(row,c).is_some_and(|color|[(60,56,55),METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB].contains(&color)) && !has_text(row,c);
+        let mut col=0;
+        while col<cols {
+            if !is_meter(col){col+=1;continue;}
+            let start=col;
+            let mut filled=0;
+            let mut tone=0;
+            while col<cols && is_meter(col) {
+                match bg(row,col) {
+                    Some(METER_OK_RGB)=>filled+=1,
+                    Some(METER_WARN_RGB)=>{filled+=1;tone=tone.max(1);},
+                    Some(METER_BAD_RGB)=>{filled+=1;tone=2;},
+                    _=>{},
+                }
+                col+=1;
+            }
+            if col-start>=3 {
+                result.push(ReportGraphic{row,rows:1,start,end:col,kind:2,ratio:filled as f32/f32::from(col-start),tone});
+            }
+        }
+    }
+    if let Some((begin,left))=group {
+        if rows-begin>=2 {result.push(ReportGraphic{row:begin,rows:rows-begin,start:left,end:left,kind:1,ratio:0.0,tone:0});}
+    }
+    result
+}
+
+impl ReportGraphic {
+    fn pixels(self, geometry:(f32,f32,f32,f32), scale:f32)->(f32,f32,f32,f32) {
+        let (left,top,w,h)=geometry;
+        let x=left+f32::from(self.start)*w;
+        let y=top+f32::from(self.row)*h;
+        let width=f32::from(self.end.saturating_sub(self.start))*w;
+        let height=f32::from(self.rows)*h;
+        match self.kind {
+            0=>((x-2.*scale).max(0.),y+scale,width+2.*scale,(height-2.*scale).max(1.)),
+            1=>((x-6.*scale).max(0.),y+scale,5.*scale,(height-2.*scale).max(1.)),
+            2=>(x,y+h*0.25,width,(h*0.5).max(2.)),
+            _=>(x,y+h-2.*scale,width,2.*scale),
+        }
+    }
+}
+
 struct TerminalModel {
     session: EmbeddedSession,
     parser: vt100::Parser,
@@ -1406,7 +1463,7 @@ impl TerminalModel {
         self.dirty = true;
     }
 
-    fn render(&mut self) -> Image {
+    fn render(&mut self, graphics: &[ReportGraphic]) -> Image {
         let width = self.width.max(1);
         let height = self.height.max(1);
         let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
@@ -1441,6 +1498,23 @@ impl TerminalModel {
             let default_fg = parse_rgb(&self.appearance.font_color).unwrap_or(FG);
             let default_fg = if palette == "gruvbox" { default_fg } else { font_palette_color(FG,palette) };
 
+            // The Slint header is behind the glyph surface. Open only its
+            // allocated rectangle, preserving every other pixel of the background.
+            for graphic in graphics.iter().filter(|g|g.kind==0) {
+                let (x,y,w,h)=graphic.pixels((left_pad,top_pad,cell_width,cell_height),self.scale);
+                let x0=x.floor().max(0.) as u32;
+                let y0=y.floor().max(0.) as u32;
+                let x1=((x+w).ceil().max(0.) as u32).min(width);
+                let y1=((y+h).ceil().max(0.) as u32).min(height);
+                for py in y0.min(height)..y1 {
+                    if x0<x1 {
+                        let start=(py*width+x0) as usize;
+                        let end=(py*width+x1) as usize;
+                        pixels[start..end].fill(Rgba8Pixel{r:0,g:0,b:0,a:0});
+                    }
+                }
+            }
+
             let selected_row = selection.and_then(|(a,b)| (cols != 0 && a / cols as usize == b.saturating_sub(1) / cols as usize).then(|| a / cols as usize));
             for row in 0..rows {
                 use crate::presentation::formatter::{Role,font_pixels};
@@ -1463,6 +1537,7 @@ impl TerminalModel {
                     && (0..cols).any(|col|feature_color(row,col).is_some()
                         && feature_color(row-1,col)==feature_color(row,col))
                     && (0..cols).all(|col|screen.cell(row-1,col).is_none_or(|c|c.contents().trim().is_empty()));
+                let native_heading=graphics.iter().any(|g|g.kind==0 && row>=g.row && row<g.row+g.rows);
                 for col in 0..cols {
                     let Some(cell) = screen.cell(row, col) else {
                         continue;
@@ -1514,7 +1589,9 @@ impl TerminalModel {
                     if paint_background {
                         // Meter cells form compact native strips instead of full-height blocks.
                         if selection.is_none() && !cell.inverse() && is_meter_surface(cell.bgcolor()) {
-                            fill_rect(pixels,width,height,x,y+h/3,w,(h/3).max(2),bg);
+                            if !graphics.iter().any(|g|g.kind==2 && row==g.row && col>=g.start && col<g.end) {
+                                fill_rect(pixels,width,height,x,y+h/3,w,(h/3).max(2),bg);
+                            }
                         } else {
                             fill_rect(pixels, width, height, x, y, w, h, bg);
                         }
@@ -1532,6 +1609,7 @@ impl TerminalModel {
                     }
 
                     let role=match cell.fgcolor(){vt100::Color::Rgb(r,g,b)=>Role::from_rgb((r,g,b)),_=>None};
+                    if native_heading && role==Some(Role::Title) {fg=readable_ink(kit.cream);}
                     let font_px=if role.is_some(){font_pixels(role,font_px,cell_width,cell_height)}else{font_px};
                     let font_key=font_px.round().max(1.0) as u16;
                     let font_px=font_key as f32;
@@ -1574,7 +1652,7 @@ impl TerminalModel {
                     let x=left_pad.round() as i32;
                     let h=cell_height.round().max(1.) as i32;
                     let w=(f32::from(cols)*cell_width).round() as i32;
-                    if card_title {
+                    if card_title && !native_heading {
                         // Shared stepped-divider language, in the two-cell heading gutter.
                         fill_rect(pixels,width,height,x,y-h/2,2,h,kit.accent_detail);
                         fill_rect(pixels,width,height,x,y+h/2,(cell_width*1.5) as i32,2,kit.accent_detail);
@@ -1619,7 +1697,7 @@ impl TerminalModel {
                     let mut x = (left_pad+2.*cell_width).round() as i32;
                     let baseline = (top_pad+(f32::from(row)+0.48)*cell_height).round() as i32;
                     let (r,g,b) = Role::Title.style().rgb;
-                    let Rgb(r,g,b) = font_palette_color(Rgb(r,g,b),palette);
+                    let Rgb(r,g,b) = if native_heading {readable_ink(kit.cream)} else {font_palette_color(Rgb(r,g,b),palette)};
                     for ch in heading.chars() {
                         let glyph = self.glyphs.entry((ch,size)).or_insert_with(||{
                             let (metrics,alpha) = self.font.rasterize(ch,f32::from(size));
@@ -2725,9 +2803,7 @@ pub fn run() -> Result<()> {
                     ui.set_caret_tone(slint::Color::from_rgb_u8(tone.0,tone.1,tone.2));
                 }
                 let panels = model.session.panels_snapshot();
-                // Reports use typography, not arbitrary per-line vector boxes.
                 // Dedicated live monitors retain their explicit section frames.
-                ui.set_report_heading_count(0);
                 ui.set_monitor_panel_count(panels.len().min(4) as i32);
                 if !panels.is_empty() {
                     let (left, top, cell_width, cell_height) = model.geometry();
@@ -2788,7 +2864,17 @@ pub fn run() -> Result<()> {
                 }
 
                 if drawable && model.dirty && !ui.get_keygen_visible() {
-                    ui.set_terminal_image(model.render());
+                    let marks=if model.selection.is_none() && !model.session.raw_mode() && !model.parser.screen().alternate_screen() {
+                        report_graphics(model.parser.screen())
+                    } else {Vec::new()};
+                    let factor=model.scale.max(0.5);
+                    let geometry=model.geometry();
+                    let native=marks.iter().map(|g|{
+                        let (x,y,w,h)=g.pixels(geometry,factor);
+                        NativeGraphic{x:x/factor,y:y/factor,w:w/factor,h:h/factor,kind:g.kind,ratio:g.ratio,tone:g.tone}
+                    }).collect::<Vec<_>>();
+                    ui.set_report_graphics(ModelRc::new(VecModel::from(native)));
+                    ui.set_terminal_image(model.render(&marks));
                 }
 
                 if model.session.exited() {
@@ -2984,5 +3070,46 @@ mod font_palette_regressions {
         assert_eq!((brand.0,brand.1,brand.2),(35,52,106));
         let original=font_palette_color(base,"gruvbox");
         assert_eq!((original.0,original.1,original.2),(base.0,base.1,base.2));
+    }
+}
+
+#[cfg(test)]
+mod live_graphic_integration {
+    use super::*;
+    use crate::presentation::formatter::{Formatter, Role, LiveReport};
+    #[test]
+    fn actual_live_ping_roles_create_native_headings_and_group() {
+        let raw=["Haciendo ping a 8.8.8.8 con 32 bytes de datos:",
+            "Respuesta desde 8.8.8.8: bytes=32 tiempo=2ms TTL=117",
+            "Respuesta desde 8.8.8.8: bytes=32 tiempo=3ms TTL=117",
+            "", "Estadísticas de ping para 8.8.8.8:",
+            "    Paquetes: enviados = 4, recibidos = 4, perdidos = 0",
+            "Tiempos aproximados de ida y vuelta en milisegundos:",
+            "    Mínimo = 2ms, Máximo = 3ms, Media = 2ms"];
+        let mut live=LiveReport::default();
+        let mut parser=vt100::Parser::new(20,100,100);
+        for line in raw {
+            let out=Formatter::live_layout(&live.line(line),100);
+            parser.process(format!("{out}\\r\\n").replace("\\r\\n","\r\n").as_bytes());
+        }
+        let marks=report_graphics(parser.screen());
+        assert_eq!(marks.iter().filter(|g|g.kind==0).count(),3);
+        assert!(marks.iter().any(|g|g.kind==1 && g.row==1 && g.rows==2));
+        assert!(parser.screen().contents().contains("tiempo=2ms"));
+        assert!(parser.screen().contents().contains("perdidos = 0"));
+    }
+    #[test]
+    fn every_visible_heading_is_rendered_and_plain_lines_are_not_marked() {
+        let mut parser=vt100::Parser::new(18,100,100);
+        parser.process(b"plain terminal line\r\n");
+        for n in 0..12 {
+            parser.process(format!("{}\r\n",Role::Title.paint(&format!("Section {n}:"))).as_bytes());
+        }
+        let marks=report_graphics(parser.screen());
+        assert_eq!(marks.iter().filter(|g|g.kind==0).count(),12);
+        assert!(marks.iter().all(|g|g.row!=0));
+        let source=include_str!("gui_slint.rs");
+        assert!(source.contains("set_report_graphics(ModelRc::new"));
+        assert!(source.contains("model.render(&marks)"));
     }
 }

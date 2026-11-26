@@ -207,7 +207,7 @@ impl Formatter {
     }
     pub fn live(text:&str)->String{style_live_line(&report_text(text))}
     pub fn live_layout(styled:&str,_cols:u16)->String {
-        // Streaming lines never reserve rows, add cards or draw rules.
+        // Streaming lines retain semantic roles without reserving extra rows.
         styled.to_owned()
     }
     pub fn terminal(text:&str)->String{text.to_owned()}
@@ -344,7 +344,7 @@ impl LiveReport {
         if is_table_header(&text) && columns>=2 {
             self.table=TableStyle::from_header(&text);
             self.header=Some(text.to_string());
-            return Role::Command.paint(&text);
+            return Role::Title.paint(&text);
         }
         self.header=None;
         self.table=TableStyle::default();
@@ -513,7 +513,7 @@ pub fn style_live_line(line: &str) -> String {
 
 fn stream_line(line:&str)->String{
     if line.trim().is_empty(){return line.to_owned();}
-    if is_section_heading(line){return Role::Command.paint(line);}
+    if is_section_heading(line){return Role::Title.paint(line);}
     // A stream is a running transcript, not a sequence of report headers.
     style_line(line)
 }
@@ -525,7 +525,7 @@ pub fn completion_catalogue(matches:&[String],cols:u16)->String {
     let items:Vec<String>=matches.iter().map(|s|s.chars().map(|c|if c.is_control(){'�'}else{c}).collect()).collect();
     let cell=items.iter().map(|s|display_width(s)).max().unwrap_or(1).saturating_add(3);
     let columns=(width/cell.max(1)).clamp(1,4);
-    let mut out=format!("\r\n{}\r\n",Role::Label.paint("SUGERENCIAS"));
+    let mut out=format!("\r\n{}\r\n",Role::Title.paint("SUGERENCIAS"));
     for row in items.chunks(columns) {
         if columns==1 {
             for item in row {
@@ -1397,11 +1397,11 @@ mod editorial_reference_tests{
         assert!(!out.contains(&background(FEATURE_RGB))&&!out.contains(&background(FEATURE_ALT_RGB)));
     }
     #[test]
-    fn live_lines_never_expand_into_a_display_card(){
+    fn live_headings_keep_semantic_title_without_reserving_rows(){
         let line="Haciendo ping a 8.8.8.8 con 32 bytes de datos:";
         let out=Formatter::live_layout(&Formatter::live(line),80);
         assert_eq!(report_text(&out),line);
-        assert!(!out.contains(HEADING)&&!out.contains("\x1b[48;"));
+        assert!(out.contains(HEADING)&&!out.contains("\x1b[48;"));
     }
     #[test]
     fn monitor_cpu_alert_is_scoped_to_its_column(){
