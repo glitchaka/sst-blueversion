@@ -1260,7 +1260,7 @@ config bg off
 - `config bg next`: avanza manualmente al fondo siguiente y lo deja fijo.
 - `config bg off`: desactiva la imagen de fondo.
 
-El builtin interno equivalente es `sst-config`; `config` es la interfaz normal del shell.
+El builtin interno equivalente es `sst-config`; `config` es la interfaz normal del shell y reenvía las operaciones de apariencia, incluidas las paletas. `config help` muestra su sintaxis.
 
 ### Carpeta `bg/`
 
