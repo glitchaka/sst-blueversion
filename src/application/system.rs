@@ -2500,8 +2500,13 @@ fn uname(args: &[String]) -> anyhow::Result<CommandOutput> {
         Ok(CommandOutput::ok(format!(
             "SST-Windows {host} {kernel} {arch} {os}\n"
         )))
+    } else if args.is_empty() {
+        Ok(CommandOutput::ok(format!(
+            "Sistema operativo: {}\nEquipo: {host}\nKernel: {kernel}\nArquitectura del ejecutable: {arch}\n",
+            System::long_os_version().unwrap_or(os)
+        )))
     } else {
-        Ok(CommandOutput::ok("SST-Windows\n"))
+        Ok(CommandOutput::error("sys uname: uso: sys uname [-a]", 2))
     }
 }
 
