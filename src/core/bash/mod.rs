@@ -3,6 +3,7 @@ pub mod environment;
 pub mod interpreter;
 pub mod lexer;
 pub mod parser;
+pub(crate) mod sst_completion;
 
 #[cfg(test)]
 mod diagnostic_tests;
