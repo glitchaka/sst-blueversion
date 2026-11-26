@@ -115,6 +115,10 @@ pub(crate) fn candidates(before: &str) -> Option<(usize, Vec<String>)> {
     let parts=normalized(&words);
     let path=parts.join(" ");
     let mut values=Vec::new();
+    if matches!(path.as_str(),"sudo"|"sudo --system"|"sudo --trustedinstaller") {
+        values.extend(ROUTES.iter().map(|(route,_)|*route).filter(|r|!r.contains(' ')));
+        values.extend(["wol","unban","whoami","neofetch","sigsour"]);
+    }
     for &(route, choices) in ROUTES { if path==route { values.extend(choices.split_whitespace()); } }
     let mut option_depth=0;
     for &(route, _) in OPTIONS {
@@ -163,7 +167,7 @@ mod tests {
             ("notsh interface ipv4 show int","interfaces"),("tools office auth r","repair"),
             ("tools office diagnose --d","--detail"),("instp upgrade s","sst"),
             ("config palette sun","sunset"),("triage 123 --p","--plan"),("guide tools office d","diagnose"),
-            ("echo hi; notsh wlan show p","profiles"),("sudo sys services --r","--running"),("sys domain join -d example -u user -","-p"),
+            ("echo hi; notsh wlan show p","profiles"),("sudo sys services --r","--running"),("sudo --system sy","sys"),("sys domain join -d example -u user -","-p"),
         ] {
             let (start,choices)=candidates(input).unwrap_or_else(||panic!("No candidates for {input}"));
             assert!(choices.contains(&expected.to_owned()),"{input}: {choices:?}");
