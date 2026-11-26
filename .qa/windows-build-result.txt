@@ -1,60 +1,60 @@
-Commit: 5fd10cdb4043313398ae6fcc8ae6906a81ae6fb3
-Tested UTC: 2026-11-24 20:33:47Z
+Commit: 22b85599fa909af21f265abee2b4a7516ee98423
+Tested UTC: 2026-11-26 22:57:08Z
 Test: failure
 Windows release build: skipped
 Log tail:
-   Compiling minimal-lexical v0.2.1
-   Compiling muda v0.19.3
-   Compiling nom v7.1.3
-   Compiling i-slint-renderer-software v1.18.1
-   Compiling rowan v0.17.0
-   Compiling winit v0.30.13
-   Compiling annotate-snippets v0.12.18
-   Compiling toml v0.5.11
-   Compiling rand_core v0.9.5
-   Compiling windows-targets v0.53.5
-   Compiling num_enum v0.7.6
-   Compiling webbrowser v1.2.7
-error: failed to run custom build command for `sdl2-sys v0.38.1`
+   Compiling serial2 v0.2.39
+   Compiling home v0.5.12
+   Compiling hashlink v0.12.2
+   Compiling aead v0.5.2
+   Compiling vte v0.15.0
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling typed-path v0.13.0
+   Compiling shell-words v1.1.1
+   Compiling fallible-iterator v0.3.0
+   Compiling downcast-rs v1.2.1
+   Compiling widestring v1.2.1
+   Compiling portable-pty v0.9.0
+   Compiling ferrisetw v1.2.0
+   Compiling zip v9.8.2
+   Compiling rusqlite v0.41.1
+   Compiling vt100 v0.16.2
+   Compiling chacha20poly1305 v0.10.1
+   Compiling rustyline v17.0.2
+   Compiling argon2 v0.5.3
+   Compiling snmp2 v0.5.3
+   Compiling crossterm v0.29.0
+   Compiling tar v0.4.46
+   Compiling symphonia v0.5.5
+   Compiling slint v1.18.1
+   Compiling fontdue v0.9.5
+   Compiling x25519-dalek v2.0.1
+   Compiling regex v1.13.2
+   Compiling dns-lookup v2.1.1
+   Compiling libcaca-rs v0.1.0
+   Compiling sdl2 v0.38.1
+   Compiling spellbook v0.4.2
+   Compiling ipnet v2.12.2
+   Compiling base64 v0.22.1
+   Compiling similar v2.7.0
+   Compiling glob v0.3.4
+   Compiling sysinfo v0.37.2
+error: Parse error: expected a top-level item such as a component, a struct, or a global
+   --> D:\a\sst-blueversion\sst-blueversion\src\presentation\editorial_demo.slint:540:5
+    |
+540 |     Rectangle { x: root.pad; y: parent.height - 28px; width: parent.width - 2 * root.pad; height: 1px; background: root.line; }
+    |     ^^^^^^^^^
+error: Error occurred
+   --> src\presentation\gui_slint.rs:170:1
+    |
+170 | / slint::slint! {
+171 | |     import { EditorialDemo } from "editorial_demo.slint";
+172 | |     import { AngularMark, CutFrame, Registration, AsymmetricHeader, SignalSlashes, FieldBracket, SteppedDivider } from "graphic_k...
+173 | |     import { RadialTwenty, RingEight, ActivityScale, SegmentedProgress, IndeterminateWait, HatchedTransfer, MonitorFrame } from "...
+...   |
+907 | | }
+    | |_^
+    |
+    = note: this error originates in the macro `slint::slint` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-Caused by:
-  process didn't exit successfully: `D:\a\sst-blueversion\sst-blueversion\target\debug\build\sdl2-sys/145fcfb09d4630aa\out\build_script_build` (exit code: 101)
-  --- stdout
-  CMAKE_TOOLCHAIN_FILE_x86_64-pc-windows-msvc = None
-  CMAKE_TOOLCHAIN_FILE_x86_64_pc_windows_msvc = None
-  HOST_CMAKE_TOOLCHAIN_FILE = None
-  CMAKE_TOOLCHAIN_FILE = None
-  CMAKE_GENERATOR_x86_64-pc-windows-msvc = None
-  CMAKE_GENERATOR_x86_64_pc_windows_msvc = None
-  HOST_CMAKE_GENERATOR = None
-  CMAKE_GENERATOR = None
-  CMAKE_PREFIX_PATH_x86_64-pc-windows-msvc = None
-  CMAKE_PREFIX_PATH_x86_64_pc_windows_msvc = None
-  HOST_CMAKE_PREFIX_PATH = None
-  CMAKE_PREFIX_PATH = None
-  CMAKE_x86_64-pc-windows-msvc = None
-  CMAKE_x86_64_pc_windows_msvc = None
-  HOST_CMAKE = None
-  CMAKE = None
-  -- Configuring incomplete, errors occurred!
-
-  --- stderr
-  running: "cmake" "C:\\Users\\runneradmin\\.cargo\\registry\\src\\index.crates.io-1949cf8c6b5b557f\\sdl2-sys-0.38.1\\SDL" "-B" "D:\\a\\sst-blueversion\\sst-blueversion\\target\\debug\\build\\sdl2-sys/1997c3784454a302\\out\\build" "-G" "Visual Studio 18 2026" "-Thost=x64" "-Ax64" "-DCMAKE_CONFIGURATION_TYPES=Release" "-DSDL_SHARED=OFF" "-DSDL_STATIC=ON" "-DSDL_MAIN_HANDLED=ON" "-DCMAKE_INSTALL_PREFIX=D:\\a\\sst-blueversion\\sst-blueversion\\target\\debug\\build\\sdl2-sys/1997c3784454a302\\out" "-DCMAKE_C_FLAGS= -D__FLTUSED__ -nologo -MT -Brepro -W0" "-DCMAKE_C_FLAGS_RELEASE= -D__FLTUSED__ -nologo -MT -Brepro -W0" "-DCMAKE_CXX_FLAGS= -nologo -MT -Brepro -W0" "-DCMAKE_CXX_FLAGS_RELEASE= -nologo -MT -Brepro -W0" "-DCMAKE_ASM_FLAGS= -nologo -MT -Brepro -W0" "-DCMAKE_ASM_FLAGS_RELEASE= -nologo -MT -Brepro -W0" "-DCMAKE_BUILD_TYPE=Release"
-  CMake Error at CMakeLists.txt:5 (cmake_minimum_required):
-    Compatibility with CMake < 3.5 has been removed from CMake.
-
-    Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
-    to tell CMake that the project requires at least <min> but has been updated
-    to work with policies introduced by <max> or earlier.
-
-    Or, add -DCMAKE_POLICY_VERSION_MINIMUM=3.5 to try configuring anyway.
-
-
-
-  thread 'main' (6164) panicked at C:\Users\runneradmin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cmake-0.1.58\src\lib.rs:1132:5:
-
-  command did not execute successfully, got: exit code: 1
-
-  build script failed, must exit now
-  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-warning: build failed, waiting for other jobs to finish...
+error: could not compile `sst` (bin "sst" test) due to 1 previous error
