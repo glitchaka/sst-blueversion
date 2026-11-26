@@ -1033,11 +1033,23 @@ mod tests {
     fn scripts_and_machine_output_remain_unmodified() {
         let text = "STATE   VALUE\nUP      1\n";
         for command in ["notsh interfaces | cat", "notsh interfaces > out.txt",
-            "notsh interfaces --json", "notsh interfaces --csv", "echo foo", "notsh interfaces; echo ok",
-            "notsh interfaces --plain", "cat report.txt", "grep error report.txt"] {
+            "notsh interfaces --json", "notsh interfaces --csv", "notsh interfaces; echo ok",
+            "notsh interfaces --plain", "cat report.txt | more", "grep error report.txt > hits.txt"] {
             assert_eq!(decorate(command, text), text, "{command}");
         }
     }
+    #[test]
+    fn interactive_reports_use_the_same_identity_for_all_command_names() {
+        let text = "STATE   VALUE\nUP      1\n";
+        let expected = decorate("sys",text);
+        assert_ne!(expected,text);
+        for command in ["echo foo","cat report.txt","grep error report.txt"] {
+            assert_eq!(decorate(command,text),expected);
+            let mode = Formatter::mode(command,false);
+            assert_eq!(Formatter::present(text,"",80,mode).stdout,text);
+        }
+    }
+
     #[test]
     fn preserves_precoloured_terminal_data() {
         let ansi = "\x1b[31mError\x1b[0m\n";
