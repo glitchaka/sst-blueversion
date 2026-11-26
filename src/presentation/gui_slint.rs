@@ -187,7 +187,7 @@ slint::slint! {
     component ReportHeadingBand inherits Rectangle {
         background: transparent;
         CutFrame { width: parent.width; height: parent.height; outline: OutputTheme.rule; thickness: 1px; }
-        Rectangle { x: 1px; y: 3px; width: 3px; height: max(1px,parent.height-6px); background: OutputTheme.rail; }
+        Rectangle { x: 1px; y: 3px; width: 3px; height: max(1px, parent.height - 6px); background: OutputTheme.rail; }
     }
     component TerminalSectionFrame inherits Rectangle {
         background: transparent;
@@ -1497,7 +1497,6 @@ impl TerminalModel {
                         let tone = Role::from_rgb((fg.0,fg.1,fg.2));
                         let alert = matches!(tone,Some(Role::Failure | Role::Warning));
                         if !alert {
-                            fg = BG;
                             bg = kit.acid;
                             fg = readable_ink(bg);
                         } else {
