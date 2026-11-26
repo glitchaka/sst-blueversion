@@ -1409,7 +1409,9 @@ impl TerminalModel {
             let selection = self.selection;
             let (left_pad, top_pad, cell_width, cell_height) = self.geometry();
             let font_px = (self.appearance.font_size as f32 * self.scale).round().max(8.0);
+            let palette = self.appearance.font_palette.as_str();
             let default_fg = parse_rgb(&self.appearance.font_color).unwrap_or(FG);
+            let default_fg = if palette == "gruvbox" { default_fg } else { font_palette_color(FG,palette) };
 
             let selected_row = selection.and_then(|(a,b)| (cols != 0 && a / cols as usize == b.saturating_sub(1) / cols as usize).then(|| a / cols as usize));
             for row in 0..rows {
@@ -1484,6 +1486,7 @@ impl TerminalModel {
                         fill_rect(pixels, width, height, x, y, w, h, bg);
                     }
 
+                    if selection.is_none() && !cell.inverse() { fg = font_palette_color(fg,palette); }
                     let content = cell.contents();
                     if content.is_empty() || card_title || (feature_row && feature_color(row,col).is_some()) {
                         continue;
@@ -1538,7 +1541,7 @@ impl TerminalModel {
                         let text=text.trim();
                         if text.is_empty(){continue;}
                         let color=(start..end).filter_map(|c|screen.cell(row,c)).find(|c|!c.contents().trim().is_empty())
-                            .map(|c|terminal_color(c.fgcolor(),default_fg)).unwrap_or(default_fg);
+                            .map(|c|font_palette_color(terminal_color(c.fgcolor(),default_fg),palette)).unwrap_or(default_fg);
                         let available=(f32::from(end-start)-3.).max(1.)*cell_width;
                         let size=(font_px*1.65).min(available/(0.62*text.chars().count().max(1) as f32))
                             .min(cell_height*1.6).round().max(1.) as u16;
@@ -1563,6 +1566,7 @@ impl TerminalModel {
                     let mut x = (left_pad+2.*cell_width).round() as i32;
                     let baseline = (top_pad+(f32::from(row)+0.48)*cell_height).round() as i32;
                     let (r,g,b) = Role::Title.style().rgb;
+                    let Rgb(r,g,b) = font_palette_color(Rgb(r,g,b),palette);
                     for ch in heading.chars() {
                         let glyph = self.glyphs.entry((ch,size)).or_insert_with(||{
                             let (metrics,alpha) = self.font.rasterize(ch,f32::from(size));
@@ -1612,6 +1616,25 @@ fn gruvbox_terminal_color(color: Rgb) -> Rgb {
         _ if b > 135 && b > r.saturating_add(28) && b > g.saturating_add(12) => themed(DETAIL_RGB),
         _ => color,
     }
+}
+
+// Recolor semantic foregrounds at the last rendering boundary, including
+// existing scrollback. Keep the original semantic RGB for role recognition.
+fn font_palette_color(color: Rgb, palette: &str) -> Rgb {
+    use crate::presentation::formatter::Role;
+    let Some(role) = Role::from_rgb((color.0,color.1,color.2)) else { return color; };
+    let rgb = match (palette,role) {
+        ("sunset", Role::Title | Role::Command) => (254,128,5),
+        ("sunset", Role::Value | Role::Detail) => (251,186,118),
+        ("sunset", Role::Label) => (251,186,118),
+        ("sunset", Role::Warning) => (249,76,31),
+        ("sunset", Role::Failure) => (206,47,37),
+        ("golden", Role::Title | Role::Command | Role::Value | Role::Detail | Role::Label) => (227,212,115),
+        ("golden", Role::Failure) => (215,46,46),
+        ("golden", Role::Warning) => (227,212,115),
+        _ => return color,
+    };
+    Rgb(rgb.0,rgb.1,rgb.2)
 }
 
 fn terminal_color(value: vt100::Color, default: Rgb) -> Rgb {
