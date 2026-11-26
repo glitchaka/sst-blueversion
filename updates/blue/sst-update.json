@@ -1,27 +1,26 @@
 {
   "schema": 1,
-  "version": "0.1.14-blue.4",
+  "version": "0.1.14-blue.5",
   "channel": "blue",
-  "published_at": "2026-11-26T18:34:03.8196318+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.4/sst.exe",
-  "sha256": "308a2d1977a37f4ccf0c1f306b6ccb301ef9a4468bf3c0e7e33b9ac69386cff4",
-  "size": 63728640,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.4/sst-updater.exe",
-  "updater_sha256": "66ae8e3d58c9fb8ba59e64aa8e124b65fa4019c650207d533822201f31b2c7bf",
+  "published_at": "2026-11-26T20:09:38.4160429+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.5/sst.exe",
+  "sha256": "4fdb938a02e9d7978a81724e2a9e9ffe5d55a5188e2d7bff0eecb83d52b63356",
+  "size": 61292032,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.5/sst-updater.exe",
+  "updater_sha256": "61f59c9c112698ec29f97e36c1fd383ef3c5c134f5ea4761d7bd06045ea7cf25",
   "updater_size": 433664,
   "changes": [
-    "Autocompletado jerárquico compartido por la ventana nativa y la sesión de consola: subcomandos, opciones contextuales y navegación de varios niveles.",
-    "Tab en la ventana nativa completa el token único, añade espacio para continuar, o amplía el prefijo común y muestra alternativas.",
-    "Pruebas de regresión del catálogo y del intérprete para sys, notsh, tools, instp, config, triage y guide.",
-    "Guide y README actualizados: NOTSH nativo, diagnóstico Office consolidado, recuperación triage, unban LDAP, sigsour, paletas y demo gráfica. El catálogo local excluye los nombres retirados.",
-    "Conserva la demo de identidad de blue.3; no modifica su diseño ni aplica la identidad experimental a la consola normal."
+    "Sustituye las láminas de informes e ilustraciones por un catálogo nativo de 36 elementos gráficos aislados, seis por vista.",
+    "Seis familias con perfiles angulares, marcos, cabeceras, indicadores, controles, señales, estados y tipografía; componentes a escala de uso y animaciones de prueba.",
+    "Sin archivos de imagen ni cambios de formatter, logotipo, fondo o paletas normales.",
+    "Guide, README y documentación de identidad sincronizados."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.14-blue.4.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.4/SST-Setup-0.1.14-blue.4.exe",
-    "sha256": "1c015fda1e211a8c2b6ed7202567a71993efca0ebdb2352479787f25679ff2e3",
-    "size": 72912134,
+    "name": "SST-Setup-0.1.14-blue.5.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.5/SST-Setup-0.1.14-blue.5.exe",
+    "sha256": "b2870e90e20dc282cb3e8e364c4091b9528320684f6b68f9b0157193ef05ff01",
+    "size": 70476467,
     "single_use": true,
-    "package_id": "494f6ca81258d1aa18832ceeaa9526a0"
+    "package_id": "d1abc71564603fd520ff796b3949bdcc"
   }
 }
