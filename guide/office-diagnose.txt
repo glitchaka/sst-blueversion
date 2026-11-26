@@ -8,10 +8,9 @@ Formas públicas
 
   tools office diagnose
   tools office status
+  tools office diagnose --detail
 
-`status` es alias de `diagnose`. `tools office verify` es un comando distinto: evalúa comprobaciones operativas, identifica fallos y propone siguientes pasos.
-
-No acepta parámetros adicionales. Si se entregan argumentos extra, SST devuelve error 2.
+`status` es alias de `diagnose`. La salida normal prioriza comprobaciones operativas y acciones; `--detail` añade el inventario técnico descrito abajo. Cualquier otro argumento devuelve error 2. No existe una operación verify separada.
 
 Qué revisa — OFFICE
 
