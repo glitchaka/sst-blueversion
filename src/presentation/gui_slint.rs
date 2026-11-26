@@ -2677,7 +2677,6 @@ pub fn run() -> Result<()> {
         if ui.get_demo_page()!=i32::from(frame.page) {
             ui.set_demo_title(identity::TITLES[usize::from(frame.page-1)].into());
             ui.set_demo_count(i32::from(identity::COUNT));
-            ui.set_demo_page(i32::from(frame.page));
         }
         ui.set_demo_selected(i32::from(frame.selected));
         ui.set_demo_progress(frame.progress());
@@ -2686,6 +2685,7 @@ pub fn run() -> Result<()> {
         ui.set_demo_blink(frame.blink());
         ui.set_demo_paused(frame.paused);
         ui.set_demo_action(frame.action);
+        if ui.get_demo_page()!=i32::from(frame.page) {ui.set_demo_page(i32::from(frame.page));}
     });
 
     let keygen_timer=Timer::default();

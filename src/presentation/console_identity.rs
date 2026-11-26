@@ -76,6 +76,17 @@ pub const TITLES: [&str;COUNT as usize]=[
 mod tests {
     use super::*;
     #[test]
+    fn editorial_lab_has_native_geometry_and_one_plate_per_index(){
+        let source=include_str!("editorial_demo.slint");
+        assert!(!source.contains("@image-url("));
+        assert!(!source.contains("Image {"));
+        for page in 1..=COUNT {
+            let marker=format!("if root.page == {page} : Rectangle");
+            assert_eq!(source.matches(&marker).count(),1,"plate {page}");
+        }
+        assert!(source.matches("Path {").count()>=40);
+    }
+    #[test]
     fn navigation_wraps_and_resets_local_interaction(){
         let mut s=DemoState::new(1);
         s.step(-1);assert_eq!(s.page,COUNT);

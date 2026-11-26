@@ -1998,7 +1998,7 @@ Recuperación de aplicaciones: `triage PID --plan` y `triage PID --close FILETIM
 
 ### Muestrario de identidad gráfica
 
-`demo graficos` abre un laboratorio de 20 láminas nativas sin imágenes, con datos y comportamientos ficticios. Incluye composición editorial, inventarios, estados, magnitudes, cursor, foco por teclado, transferencia, filas que cambian de estado por consumo, continuidad de red, confirmación, expansión y sugerencias. Las flechas izquierda/derecha recorren las láminas; PgUp/PgDn saltan cinco; Inicio/Fin acceden a los extremos; 1–9 son accesos directos. Tab y arriba/abajo cambian el foco, Enter actúa en la simulación, Espacio pausa, R reinicia y Esc sale. Consulta `guide demo graficos`. No cambia el formatter, la identidad normal, ni los ajustes de apariencia. No ejecuta operaciones reales.
+`demo graficos` abre un laboratorio de 20 láminas nativas sin imágenes, con datos y comportamientos ficticios. Incluye composición editorial brutalista, geometría arquitectónica de vacíos, instrumentación orbital, ramificaciones biomecánicas de señal, inventarios, estados, magnitudes, cursor, foco por teclado, transferencia, filas que cambian de estado por consumo, continuidad de red, confirmación, expansión y sugerencias. Las flechas izquierda/derecha recorren las láminas; PgUp/PgDn saltan cinco; Inicio/Fin acceden a los extremos; 1–9 son accesos directos. Tab y arriba/abajo cambian el foco, Enter actúa en la simulación, Espacio pausa, R reinicia y Esc sale. Consulta `guide demo graficos`. No cambia el formatter, la identidad normal, ni los ajustes de apariencia. No ejecuta operaciones reales.
 
 ## Autocompletado por niveles (Tab)
 
@@ -2020,3 +2020,5 @@ El catálogo local de SST se comparte entre la terminal nativa y la sesión de c
 También se conserva la búsqueda de archivos cuando no hay una opción SST aplicable. No se consultan credenciales ni se enumeran automáticamente cuentas AD, hosts o PID mediante Tab. `guide` incorpora la referencia local de SST y temas complementarios de upstream; los comandos retirados no se anuncian como herramientas actuales.
 
 `unban USUARIO` desbloquea una cuenta AD por LDAP con credenciales autorizadas solicitadas dentro de SST; no necesita elevación local. `sigsour` abre el catálogo PKGX. `notsh test` concentra las mediciones de red; no hay un comando independiente `netcheck` ni `netprobe`.
+
+La dirección gráfica del muestrario se documenta en [Identidad editorial de SST](docs/EDITORIAL_IDENTITY.md). La revisión experimental usa trazados vectoriales nativos de Slint; no contiene ilustraciones ni modifica la consola normal.

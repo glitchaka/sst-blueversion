@@ -18,28 +18,30 @@ NAVEGACIÓN
   Esc / q          volver a la consola
 
 COMPOSICIÓN Y JERARQUÍA
-01 Inventario asimétrico: titular, folio, cifra y contexto.
-02 Cabecera de red: dos interfaces, estados y retícula.
+01 Inventario asimétrico: titular monumental y estructura arquitectónica con vacío funcional.
+02 Cabecera de red: pórtico industrial, dos interfaces y estados.
 03 Memoria: superficie proporcional y unidades.
 04 Servicios: columnas alineadas y reglas.
 05 Foco por teclado: foco distinto de activación.
 06 Advertencia: magnitud, umbral y desviación.
 07 Incidencia: evidencia, acción y verificación.
-08 Escala: divisiones de 5%, lectura de CPU variable.
+08 Instrumento orbital: escala radial de veinte divisiones de 5%, lectura de CPU variable y umbral.
 
 COMPORTAMIENTOS
 09 Cursor: intermitencia y cambio de foco entre tokens.
 10 Transferencia: progreso 0–100%, pausa y fin estable.
 11 Procesos: carga ficticia variable; fila roja desde 85%.
-12 Continuidad: doce muestras ICMP ficticias, dos pérdidas.
+12 Continuidad: secuencia de doce señales ICMP, dos interrupciones y foco temporal.
 13 Estados: correcto, atención, fallo y sin evidencia.
 14 Densidad: registro adaptativo; columnas secundarias en ancho amplio.
 15 Expansión: detalle bajo demanda y selección por teclado.
 16 Confirmación: cancelar, cerrar o detalles; solo simulación.
-17 Topología: ruta y localización de fallo DNS.
+17 Topología: ramificaciones de señal y localización de fallo DNS.
 18 Evidencia parcial: dato ausente no equivale a cero.
-19 Espera: indicador indeterminado, sin inventar porcentaje.
+19 Espera: costillas oblicuas animadas, sin inventar porcentaje.
 20 Sugerencias: opciones contextualizadas de NOTSH, selección y aceptación ficticia.
 
 La demo no cambia el formatter, las paletas de usuario, el fondo, ni el logotipo.
 Su identidad queda aislada hasta aprobación visual.
+
+Dirección artística: consulta docs/EDITORIAL_IDENTITY.md en el repositorio. Los elementos vectoriales se dibujan mediante Path nativo de Slint, sin archivos de imagen.
