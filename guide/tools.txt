@@ -85,3 +85,5 @@ Office — detalle:
 Para detalle completo de estados, códigos, firma y recuperación:
   office-sara.txt
   office-gethelp.txt
+
+Estado de auditoría: diagnose y verify siguen siendo operaciones separadas; su consolidación y la eliminación de dependencias internas innecesarias están pendientes de validación.
