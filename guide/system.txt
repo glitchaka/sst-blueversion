@@ -204,4 +204,6 @@ Véanse domain.txt, hostname.txt y autologon.txt para opciones completas y adver
 
 La ayuda corta del propio sys no enumera toda la semántica avanzada; este manual es la referencia extensa.
 
-Startup organiza el registro por alcance y tipo de inicio. Services consulta SCM mediante API Unicode y muestra estado y PID; el nombre permite consultar detalles. Pendiente validar en Windows.
+Startup organiza el registro por alcance y tipo de inicio. Services consulta SCM mediante API Unicode y muestra estado y PID; el nombre permite consultar detalles. La compilación y las pruebas automatizadas de Windows no sustituyen la comprobación operativa en cada equipo.
+
+Tab: sys <Tab> lista subcomandos; sys services --r<Tab> completa --running; sys domain <Tab> lista las operaciones de dominio.
