@@ -1,28 +1,26 @@
 {
   "schema": 1,
-  "version": "0.1.14-blue.8",
+  "version": "0.1.14-blue.9",
   "channel": "blue",
-  "published_at": "2026-11-26T22:25:14.5866431+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.8/sst.exe",
-  "sha256": "af61308cac8991942d4b1aac20193ccf186cdcd8f9bd42a4db2080066d708903",
-  "size": 61406720,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.8/sst-updater.exe",
-  "updater_sha256": "450f46047870ab3f0aab165cf704176c9a16796b73ee37bba9ed850202ba05a8",
+  "published_at": "2026-11-26T22:39:21.7567840+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.9/sst.exe",
+  "sha256": "982231ddf6da963655cd4432e639212a274f182526b6bab9dad380ec055ea4ea",
+  "size": 61457408,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.9/sst-updater.exe",
+  "updater_sha256": "3f4a74b3930f85de254b548f865f897e4409d50df67a92fb209a14c8fe461aba",
   "updater_size": 433664,
   "changes": [
-    "Integra los trazados angulares, marcos y marcas de registro compartidos del catálogo en la terminal habitual.",
-    "Transferencias determinadas e indeterminadas, cabeceras, tablas, cursor, selección y medidores con la paleta activa.",
-    "Conserva los datos, el desplazamiento de lectura, los fondos y el logotipo; la demo sigue disponible.",
-    "Guide y README actualizados.",
-    "Prompt y sugerencias de Tab con jerarquía semántica; marco del token real en la isla superior, sin cambiar su distribución.",
-    "Corrige la expresión de geometría Slint y la asignación redundante detectadas por la compilación estricta de Windows."
+    "Corrige la activación de la identidad gráfica en la terminal habitual: cabeceras asimétricas, agrupadores, medidores y divisores nativos compartidos con el catálogo.",
+    "Salidas externas en directo, incluyendo ping, y sugerencias Tab conservan sus roles semánticos y la geometría sigue el viewport sin límite fijo de cabeceras.",
+    "Conserva datos, selección, scrollback, modo máquina, logotipo, fondos y las 18 paletas.",
+    "Regresiones de integración de salida en directo y viewport."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.14-blue.8.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.8/SST-Setup-0.1.14-blue.8.exe",
-    "sha256": "f4ac4625233739389b1ac15b17d27806af680babfe373be6bf9d2fae333c0067",
-    "size": 70595082,
+    "name": "SST-Setup-0.1.14-blue.9.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.9/SST-Setup-0.1.14-blue.9.exe",
+    "sha256": "55c245bd206fcf87bd0d96c75eefeb1c4b2a1ae5be27bf7d814eb707dee64ac1",
+    "size": 70646045,
     "single_use": true,
-    "package_id": "b2e2841e803b554b529fbe402c318ecf"
+    "package_id": "0d62ff1bdf411206060e2c55e7d82755"
   }
 }
