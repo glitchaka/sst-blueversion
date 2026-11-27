@@ -27,12 +27,7 @@ pub(super) fn fields(rows: &[&str], styles: &[&str], width: usize, out: &mut Vec
         .max().unwrap_or(1).min((width/3).max(8));
     for (i,row) in rows.iter().enumerate(){
         let Some((label,value))=field(row)else{out.push(styles[i].to_owned());continue;};
-        let normalized=format!("{label}: {value}");
-        let styled=style_line(&normalized);
-        let tone=styled.split_once(&format!(":{RESET} ")).and_then(|(_,v)|v.split_once('m'))
-            .filter(|(prefix,_)|prefix.starts_with("\x1b[")).map(|(prefix,_)|format!("{prefix}m"))
-            .unwrap_or_else(||VALUE.into());
-        let label_tone=if styled.starts_with(BAD){BAD}else if styled.starts_with(CAUTION){CAUTION}else{LABEL};
+        let label_tone=field_label_tone(label);
         let stacked=width<gutter+18||display_width(label)+1>gutter;
         let indent=if stacked{2}else{gutter+3};
         if stacked{out.push(format!("{label_tone}{label}:{RESET}"));}
@@ -40,7 +35,7 @@ pub(super) fn fields(rows: &[&str], styles: &[&str], width: usize, out: &mut Vec
         for (part,fragment) in wrap_line(value,width.saturating_sub(indent).max(12)).iter().enumerate(){
             let prefix=if stacked||part!=0{" ".repeat(indent)}
                 else{format!("{label_tone}{label}:{RESET}{}"," ".repeat(indent.saturating_sub(display_width(label)+1)))};
-            let mut line=format!("{prefix}{tone}{fragment}{RESET}");
+            let mut line=format!("{prefix}{}",paint_field_value(label,value,fragment,part==0));
             let remaining=width.saturating_sub(indent+display_width(fragment));
             if part==0&&fragment==value&&remaining>=10 {
                 if let Some((metric,n))=bounded_metric(label,value){
@@ -71,7 +66,7 @@ pub(super) fn field_grid(rows:&[&str],width:usize,out:&mut Vec<String>)->bool{
         for (i,(label,value)) in pair.iter().enumerate(){
             if i>0{line.push_str(&" ".repeat(gap));}
             let padded=label_width+3-display_width(label)-1;
-            line.push_str(&format!("{LABEL}{label}:{RESET}{}{VALUE}{value}{RESET}"," ".repeat(padded)));
+            line.push_str(&format!("{LABEL}{label}:{RESET}{}{}"," ".repeat(padded),paint_field_value(label,value,value,true)));
             if i==0 && pair.len()==2{
                 line.push_str(&" ".repeat(region-label_width-3-display_width(value)));
             }
@@ -182,6 +177,36 @@ pub(super) fn table(header:&str,rows:&[&str],width:usize)->String{
     }
     for (index,row) in data.iter().enumerate(){emit(&mut out,row,false,index);}
     out
+}
+
+/// Scalar measurement regions use the same feature typography as bounded
+/// metrics, but do not draw a gauge without a known denominator or threshold.
+pub(super) fn scalar_grid(items:&[(&str,&str,&str)],width:usize)->String{
+    let mut out=Vec::new();
+    let required=items.iter().map(|(label,value,source)|4+display_width(label).max(display_width(value)).max(display_width(source))).max().unwrap_or(1);
+    let columns=if width>=required.saturating_mul(2).saturating_add(3){2}else{1};
+    for group in items.chunks(columns){
+        let cell=((width-3*(group.len()-1))/group.len()).min(required.max(32));
+        if required>cell || cell<22{
+            for (label,value,source) in group{
+                for fragment in wrap_line(label,width){out.push(Role::Label.paint(&fragment));}
+                out.push(Role::Value.paint(value));
+                for fragment in wrap_line(source,width){out.push(Role::Detail.paint(&fragment));}
+            }
+            continue;
+        }
+        let mut labels=String::new();let mut reserve=String::new();let mut values=String::new();let mut sources=String::new();
+        for (i,(label,value,source)) in group.iter().enumerate(){
+            if i>0{for row in [&mut labels,&mut reserve,&mut values,&mut sources]{row.push_str("   ");}}
+            let surface=background(if i%2==0{FEATURE_RGB}else{FEATURE_ALT_RGB});
+            labels.push_str(&format!("{surface}  {LABEL}{label}{RESET}{surface}{}{RESET}"," ".repeat(cell-2-display_width(label))));
+            reserve.push_str(&format!("{surface}{}{RESET}"," ".repeat(cell)));
+            values.push_str(&format!("{surface}  {DETAILS}{value}{RESET}{surface}{}{RESET}"," ".repeat(cell-2-display_width(value))));
+            sources.push_str(&format!("  {LABEL}{source}{RESET}{}"," ".repeat(cell-2-display_width(source))));
+        }
+        out.extend([labels,reserve,values,sources]);
+    }
+    if out.is_empty(){String::new()}else{out.join("\n")+"\n"}
 }
 
 /// Display a bounded metric once, beside its exact value, with a real

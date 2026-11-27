@@ -338,7 +338,7 @@ impl TableStyle {
         let mut style = Self::default();
         for (i,(a,b)) in table_columns(line).into_iter().enumerate() {
             let label = line[a..b].trim();
-            if matches!(label.to_ascii_uppercase().as_str(),"ESTADO"|"STATUS"|"SALUD"|"HEALTH"|"RESULTADO") {
+            if status_label(label) {
                 style.status = Some(i);
             } else if let Some(metric) = Metric::named(label) {
                 style.metrics.push((i,metric,label.contains('%')));
@@ -419,10 +419,15 @@ fn numbered_section(line:&str)->Option<&str>{
         && number.chars().all(|c|c.is_ascii_alphanumeric())).then_some(title)
 }
 
-fn is_status_field(line: &str) -> bool {
-    let Some((key, _)) = line.trim().split_once(": ") else { return false; };
-    matches!(key.to_ascii_lowercase().as_str(),
-        "estado" | "status" | "salud" | "health" | "resultado" | "result")
+fn status_label(label:&str)->bool{
+    let key=label.trim().to_lowercase();
+    matches!(key.as_str(),"estado"|"status"|"state"|"salud"|"health"|"resultado"|"result"|
+        "admin"|"administrativo"|"operativo"|"operational"|"enlace físico"|"enlace fisico"|
+        "link state"|"conectado"|"connected"|"autorización efectiva"|"autenticación")
+        ||key.starts_with("estado ")||key.starts_with("status ")
+}
+fn is_status_field(line:&str)->bool{
+    line.trim().split_once(": ").is_some_and(|(key,_)|status_label(key))
 }
 
 fn looks_like_tabular_header(line: &str) -> bool {
@@ -463,7 +468,8 @@ pub(super) fn status_color(value: &str) -> Option<&'static str> {
         Some(PERFECT)
     } else if ["ESTABLISHED", "LISTENING", "CONECTADO", "CONECTADA", "CORRECTO",
         "CORRECTA", "ACTIVO", "ACTIVA", "OPERATIVO",
-        "OPERATIVA", "DISPONIBLE", "OK", "UP", "ENLACE DETECTADO", "PRESENTE",
+        "OPERATIVA", "DISPONIBLE", "OK", "UP", "ENLACE DETECTADO", "ENLACE ACTIVO", "PRESENTE",
+        "EJECUTÁNDOSE", "EJECUTANDOSE", "EN EJECUCIÓN", "RUNNING",
         "ICMP RESPONDE", "RESPONDE", "RESUELTO", "CONECTIVIDAD TCP CONFIRMADA", "CUENTA DESBLOQUEADA", "CUENTA SIN BLOQUEO PENDIENTE"]
         .contains(&status)
     {
@@ -502,6 +508,56 @@ fn is_section_heading(line: &str) -> bool {
         && !text.chars().any(char::is_lowercase)
 }
 
+fn field_label_tone(label:&str)->&'static str{
+    match label.trim().to_lowercase().as_str(){
+        "error"|"error crítico"|"error critico"|"fallo"|"crítico"|"critico"=>BAD,
+        "advertencia"|"aviso"|"warning"|"atención"|"atencion"=>CAUTION,
+        _=>LABEL,
+    }
+}
+fn field_value_tone(label:&str,value:&str)->&'static str{
+    if field_label_tone(label)!=LABEL{return DETAILS;}
+    if status_label(label){
+        if matches!(value.trim().to_uppercase().as_str(),"N/D"|"SIN DATOS"|"NO HAY DATOS"){return LABEL;}
+        if let Some(tone)=status_color(value){return tone;}
+    }
+    if let Some((metric,n))=bounded_metric(label,value){return metric.role(n,None).ansi();}
+    let key=label.trim().to_lowercase();
+    if let Some(tone)=Metric::named(&key).and_then(|metric|metric.color(value,key.contains('%'))){return tone;}
+    if display_width(value)>40||matches!(key.as_str(),"diagnóstico"|"diagnostico"|"nota"|"evidencia"|"evidencia detallada"|"motivo"|"fuente"|"fuentes consultadas"|"descripción"|"descripcion"){DETAILS}else{VALUE}
+}
+fn paint_field_value(label:&str,value:&str,fragment:&str,first:bool)->String{
+    // A qualified link/service state is not proof of a different condition.
+    // Preserve its qualification and distinguish it from the measured state.
+    if first&&status_label(label) {
+        if let Some((state,_))=value.split_once(" (") {
+            if let Some(tone)=status_color(state){
+                if let Some(suffix)=fragment.strip_prefix(state){
+                    return format!("{tone}{state}{RESET}{DETAILS}{suffix}{RESET}");
+                }
+            }
+        }
+    }
+    format!("{}{fragment}{RESET}",field_value_tone(label,value))
+}
+
+/// Generic measured scalar record: label, explicit quantity and its source.
+/// No scale or thermal/latency limit is invented when none was supplied.
+fn scalar_record(line:&str)->Option<(&str,&str,&str)>{
+    let columns=table_columns(line);
+    if columns.len()!=3{return None;}
+    let part=|i:usize|line[columns[i].0..columns[i].1].trim();
+    let (label,value,source)=(part(0),part(1),part(2));
+    let (number,unit)=value.rsplit_once(' ')?;
+    let number=number.replace(',',".").parse::<f64>().ok()?;
+    if !number.is_finite()||label.is_empty()||!source.starts_with('[')||!source.ends_with(']'){
+        return None;
+    }
+    if !matches!(unit,"°C"|"°F"|"ms"|"s"|"Mbps"|"Gbps"|"KiB"|"MiB"|"GiB"|"MB/s"|"MiB/s"|"V"|"W"|"RPM"){
+        return None;
+    }
+    Some((label,value,source))
+}
 fn style_line(line: &str) -> String {
     if line.trim().is_empty() { return line.to_owned(); }
     let stripped = line.trim_start();
@@ -521,18 +577,9 @@ fn style_line(line: &str) -> String {
            && !field.contains("  ") && field.chars().any(char::is_alphabetic)
         {
             let indent = &line[..line.len() - stripped.len()];
-            let key = field.to_ascii_lowercase();
-            // Explicit diagnostic labels are authoritative; arbitrary
-            // occurrences of these words in descriptions are not.
-            let alarm = matches!(key.as_str(),
-                "error" | "error crítico" | "error critico" | "fallo" | "crítico" | "critico");
-            let warning = matches!(key.as_str(),
-                "advertencia" | "aviso" | "warning" | "atención" | "atencion");
-            let label_color = if alarm { BAD } else if warning { CAUTION } else { LABEL };
-            let value_color = if alarm || warning { VALUE }
-                else if is_status_field(stripped) || key == "autorización efectiva" { status_color(value).unwrap_or(VALUE) }
-                else { Metric::named(&key).and_then(|metric|metric.color(value,key.contains('%'))).unwrap_or(VALUE) };
-            return format!("{indent}{label_color}{field}:{RESET} {value_color}{value}{RESET}");
+            let label_color=field_label_tone(field);
+            let styled=paint_field_value(field,value,value,true);
+            return format!("{indent}{label_color}{field}:{RESET} {styled}");
         }
     }
     if stripped.starts_with('•') {
@@ -948,6 +995,13 @@ fn compose_text(stdout:&str,cols:u16,kind:LayoutKind)->String{
     while cursor<lines.len(){
         let line=lines[cursor].trim_end_matches('\r');
         cursor+=1;
+        if scalar_record(line).is_some(){
+            let start=cursor-1;
+            while cursor<lines.len()&&scalar_record(lines[cursor]).is_some(){cursor+=1;}
+            let readings=lines[start..cursor].iter().filter_map(|line|scalar_record(line)).collect::<Vec<_>>();
+            result.push_str(&report_layout::scalar_grid(&readings,width));
+            previous_blank=false;table_active=false;table=TableStyle::default();continue;
+        }
         if let Some(strip)=continuity_strip(line,width) {
             result.push_str(&style_line(line));result.push('\n');
             result.push_str(&strip);result.push('\n');

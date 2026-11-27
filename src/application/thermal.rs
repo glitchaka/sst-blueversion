@@ -44,7 +44,7 @@ pub fn report() -> CommandOutput {
 
         let mut text = String::from("SST SENSORES — TEMPERATURAS REALES\n============================================================\n");
         if readings.is_empty() {
-            text.push_str("No se encontraron sensores termicos legibles con los proveedores disponibles.\n");
+            text.push_str("Estado: SIN DATOS\nMotivo: No se encontraron sensores térmicos legibles.\n");
         } else {
             let mut previous = String::new();
             for row in &readings {
@@ -58,11 +58,9 @@ pub fn report() -> CommandOutput {
 
         let has_cpu = readings.iter().any(|r| r.group == "CPU");
         if !has_cpu {
-            text.push_str("\nCPU: lectura directa pendiente; SST no dispone aún de un controlador propio para acceder a los sensores DTS/SMU del procesador.\n");
+            text.push_str("\nCPU: SIN DATOS\nMotivo: Lectura térmica directa no disponible.\n");
         }
-        text.push_str("\nFuentes consultadas: Windows Storage IOCTL y NVIDIA NVML (API directa).\n");
-        text.push_str("SST no ejecuta PowerShell ni consulta WMI, ACPI, LHM/OHM o nvidia-smi.\n");
-        text.push_str("Las temperaturas ausentes no se estiman ni se sustituyen por zonas ACPI.\n");
+        text.push_str("\nFuentes consultadas: Windows Storage IOCTL y NVIDIA NVML.\n");
         if !notes.is_empty() {
             text.push_str("\nProveedores no disponibles:\n");
             for note in notes {

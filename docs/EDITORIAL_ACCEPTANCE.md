@@ -87,3 +87,13 @@ Los usos son criterios de aceptación, no afirmaciones de que todos estén imple
 ## Validación de entrega
 
 Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. La compilación anterior falló al quedar un método de edición sin uso tras retirar el adorno del prompt; se eliminó el método en la revisión de fuente. No se ha ejecutado una nueva prueba. No se considera completada la aceptación visual de los 34 criterios ni de los 36 componentes. La versión publicada sigue siendo .11 hasta que exista una entrega completa.
+
+### Cambios de fuente incorporados en esta revisión
+
+- Composición nativa extraída al formatter; monitores con columnas medidas, grupos expandibles y métricas en regiones propias.
+- Continuidad etiquetada por conteos explícitos; relaciones de rutas con agrupación real.
+- Medidas escalares con unidad, dispositivo y fuente; sin umbrales ni porcentajes inventados.
+- Estados, valores y explicaciones con roles distintos; títulos compactos, prompt limpio y eliminación de marcos/folios genéricos.
+- Eliminación del texto de desarrollo en la ayuda concreta de tools y en el informe de sensores.
+
+Pendiente de aceptación: ejecutar el binario Windows bajo autorización y revisar todas las familias de salidas, todas las ayudas y las 18 paletas. La revisión de fuente no sustituye esa aceptación ni autoriza una publicación.
