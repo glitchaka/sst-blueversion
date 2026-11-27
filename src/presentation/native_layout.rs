@@ -53,6 +53,14 @@ pub(in crate::presentation) fn semantic_components(screen:&vt100::Screen)->Vec<R
             let Some(rgb)=surface(row,col)else{col+=1;continue;};
             // The selected surface is emitted only by real interactive list
             // and table controllers, so it is safe to draw a native active row.
+            if rgb==super::NAV_FOLIO_RGB {
+                let start=col;
+                while col<cols&&surface(row,col)==Some(rgb){col+=1;}
+                if col-start>=2 {
+                    marks.push(ReportGraphic{row,rows:1,start,end:col,kind:24,ratio:0.,tone:0});
+                }
+                continue;
+            }
             if rgb==super::SELECTED_RGB {
                 let start=col;
                 while col<cols&&surface(row,col)==Some(rgb){col+=1;}
