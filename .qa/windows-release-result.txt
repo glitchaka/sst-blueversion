@@ -1,12 +1,54 @@
 SST Windows release CI report
-Source commit: b4ddb2c65165f16ec5fc0ff37d5065f1924723a0
-Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45915767964
-Recorded UTC: 2026-11-27 00:24:49Z
+Source commit: 763731937f2a9fd1a91ae47f89047c6d0b7e8a3a
+Run: https://github.com/glitchaka/sst-blueversion/actions/runs/45916610843
+Recorded UTC: 2026-11-27 00:35:27Z
 Compile: success
 Rust tests: success
 Software GUI startup: success
 Packaging: success
 Compiler log tail:
     Updating crates.io index
+   Compiling smallvec v1.16.6
+   Compiling pin-project-lite v0.2.18
+   Compiling pin-project-internal v1.2.0
+   Compiling icu_normalizer v2.4.0
+   Compiling harfrust v0.12.0
+   Compiling kurbo v0.13.1
+   Compiling fixed_decimal v0.7.3
+   Compiling svgtypes v0.16.2
+   Compiling fontique v0.11.1
+   Compiling icu_decimal v2.4.0
+   Compiling usvg v0.48.1
+   Compiling idna_adapter v1.2.2
+   Compiling resvg v0.48.1
+   Compiling icu_segmenter v2.4.0
+   Compiling i-slint-common v1.18.1
+   Compiling tracing v0.1.44
+   Compiling parley v0.11.1
+   Compiling pin-project v1.2.0
+   Compiling idna v1.1.0
+   Compiling winit v0.30.13
+   Compiling url v2.5.9
+   Compiling i-slint-core v1.18.1
+   Compiling parking_lot_core v0.9.12
+   Compiling webbrowser v1.2.7
+   Compiling softbuffer v0.4.8
+   Compiling i-slint-compiler v1.18.1
+   Compiling nibble_vec v0.1.0
+   Compiling regex-syntax v0.8.12
+   Compiling radix_trie v0.2.1
+   Compiling tokio v1.54.1
+   Compiling i-slint-renderer-software v1.18.1
+   Compiling i-slint-backend-winit v1.18.1
+   Compiling i-slint-backend-selector v1.18.1
+   Compiling regex-automata v0.4.19
+   Compiling parking_lot v0.12.5
    Compiling sst v0.1.14-blue.10 (D:\a\sst-blueversion\sst-blueversion)
-    Finished `release` profile [optimized] target(s) in 4m 07s
+   Compiling rusqlite v0.41.1
+   Compiling rustyline v17.0.2
+   Compiling snmp2 v0.5.3
+   Compiling crossterm v0.29.0
+   Compiling slint-macros v1.18.1
+   Compiling regex v1.13.2
+   Compiling slint v1.18.1
+    Finished `release` profile [optimized] target(s) in 4m 54s
