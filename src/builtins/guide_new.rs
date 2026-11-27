@@ -112,33 +112,24 @@ struct GuideIndex {
 
 impl GuideIndex {
     fn from_json(raw: &str) -> Option<Self> {
-        let mut spec: CatalogSpec = serde_json::from_str(raw).ok()?;
+        let spec: CatalogSpec = serde_json::from_str(raw).ok()?;
         if spec.schema != 1 || spec.areas.is_empty() {
             return None;
         }
-        // The upstream documentation can lag behind a newly built-in
-        // diagnostic. Keep the local native tool discoverable immediately.
-        if !spec.entries.iter().any(|item| item.name == "netcheck")
-            && spec.areas.iter().any(|area| area.id == "diagnostics")
-        {
-            spec.entries.push(EntrySpec {
-                name: "netcheck".to_owned(),
-                aliases: Vec::new(),
-                area: "diagnostics".to_owned(),
-                summary: "Diagnóstico de enlace, IP/DHCP, gateway, DNS, ICMP y TCP.".to_owned(),
-                manual: ManualSpec {
-                    file: "network".to_owned(),
-                    extension: "txt".to_owned(),
-                    section: "whole".to_owned(),
-                    topic: None,
-                },
-            });
-        }
-
         let mut area_lookup = HashMap::new();
         for (index, area) in spec.areas.iter().enumerate() {
             let id = area.id.trim().to_ascii_lowercase();
             if id.is_empty() || area_lookup.insert(id, index).is_some() {
+                return None;
+            }
+        }
+
+        // Reserve canonical command names before registering aliases.
+        // An alias shared with a standalone topic must never invalidate the catalogue.
+        let mut primary_names = HashSet::new();
+        for item in &spec.entries {
+            let name = item.name.trim().to_ascii_lowercase();
+            if name.is_empty() || !primary_names.insert(name) {
                 return None;
             }
         }
@@ -158,7 +149,7 @@ impl GuideIndex {
                 .aliases
                 .into_iter()
                 .map(|alias| alias.trim().to_owned())
-                .filter(|alias| !alias.is_empty())
+                .filter(|alias| !alias.is_empty() && !primary_names.contains(&alias.to_ascii_lowercase()))
                 .collect::<Vec<_>>();
 
             let mut search_key = format!(
@@ -226,6 +217,10 @@ impl GuideIndex {
             })
             .collect()
     }
+}
+
+pub(super) fn index_is_valid(raw: &str) -> bool {
+    GuideIndex::from_json(raw).is_some()
 }
 
 #[derive(Clone, Copy)]
