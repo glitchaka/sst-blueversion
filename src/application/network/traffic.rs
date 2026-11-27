@@ -372,22 +372,8 @@ impl NetworkTrafficService {
 
             match self.output(&filtered_args, rates.as_ref(), Some(&telemetry_note)) {
                 Ok(output) => {
-                    let rows = output.stdout.lines().collect::<Vec<_>>();
-                    let max_rows = terminal_height.saturating_sub(9).max(2);
-                    let mut body = String::new();
-                    for row in rows.iter().take(max_rows) {
-                        if row.starts_with("telemetry:"){body.push_str(tui_style::WARN);}
-                        body.push_str(&tui_style::shorten(row,terminal_width.saturating_sub(4).max(40)));
-                        if row.starts_with("telemetry:"){body.push_str(tui_style::RESET);}
-                        body.push('\n');
-                    }
-                    if rows.len() > max_rows {
-                        body.push_str(&format!(
-                            "{}+ {} filas adicionales. Usa --top para limitar los resultados.{}",
-                            tui_style::LABEL, rows.len() - max_rows, tui_style::RESET,
-                        ));
-                    }
-                    screen.section("PROCESOS  /  CONEXIONES", &body);
+                    let budget=terminal_height.saturating_sub(9);
+                    screen.section_limited("PROCESOS  /  CONEXIONES",&output.stdout,budget);
                 }
                 Err(error) => {
                     screen.section(

@@ -2054,4 +2054,4 @@ La identidad gráfica se aplica ahora también a la terminal habitual: los traza
 
 El prompt inicial y el de edición comparten los roles de la paleta. Las alternativas de Tab se muestran en un selector nativo: Tab o flechas recorren candidatos, Enter acepta, Esc cancela y F2 expande o contrae. Aceptar no ejecuta el comando. La isla superior conserva íntegramente su diseño anterior; el catálogo se aplica exclusivamente al contenido de la terminal y sus comandos.
 
-<!-- Presentation contract: the shared formatter owns layout for reports and monitors; no arbitrary command-specific visual chrome. -->
+El formatter común controla la presentación de informes y monitores. La revisión editorial en curso se registra en [criterios de aceptación](docs/EDITORIAL_ACCEPTANCE.md); los cambios de `main` no equivalen a una publicación.

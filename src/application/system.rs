@@ -208,8 +208,7 @@ impl SystemService {
         let mut terminal = self.terminal.alternate_screen()?;
         let mut sort_cpu = true;
         let mut tree = false;
-        use crate::presentation::formatter::{ExpandableFields, Metric, Role, monitor_summary, monitor_row, monitor_cells, selected_surface, SURFACE, SURFACE_ALT, SURFACE_HEAD};
-        let selected_bg = selected_surface();
+        use crate::presentation::formatter::{ExpandableFields, Metric, Role, MonitorRecord, monitor_summary, monitor_row, monitor_table, SURFACE, SURFACE_ALT, SURFACE_HEAD};
         let interval = Duration::from_millis(900);
         let mut offset = 0usize;
         let mut selected = None;
@@ -295,47 +294,21 @@ impl SystemService {
                 Role::Value.ansi(),
                 SURFACE,
             );
-            monitor_row(
-                &mut screen,
-                "  PID      PPID        CPU %     RAM MiB   PROCESO / JERARQUÍA",
-                width,
-                Role::Label.ansi(),
-                SURFACE_HEAD,
-            );
-
-            let mut shown = 0usize;
-            for (pid, tree_prefix) in rows.iter().skip(offset).take(max_rows) {
-                let Some(process) = system.process(*pid) else { continue; };
-                let ppid = process.parent().map(|p| p.as_u32()).unwrap_or(0);
-                let mut name = format!("{tree_prefix}{}", process.name().to_string_lossy());
-                let name_width = width.saturating_sub(43);
-                if name.chars().count() > name_width && name_width > 3 {
-                    name = name.chars().take(name_width - 1).collect();
-                    name.push('…');
-                }
-
-                let cpu = process.cpu_usage();
-                let memory = process.memory() as f64 / 1024.0 / 1024.0;
-                let active = selected.is_some() && identity(*pid) == selected;
-                let marker = if active { "›" } else { " " };
-                let identity_text=format!("{marker} {:<8} {:<8} ",pid.as_u32(),ppid);
-                let cpu_text=format!("{cpu:>6.1}");
-                let memory_text=format!(" {memory:>11.1}   ");
-                let previous_cpu = previous.get(&(*pid,process.start_time())).copied();
-                let tone = Metric::Cpu.role(cpu,previous_cpu);
-                let background = if active { &selected_bg } else if shown % 2 == 0 { SURFACE } else { SURFACE_ALT };
-                monitor_cells(&mut screen,&[(&identity_text,Role::Label),(&cpu_text,tone),(&memory_text,Role::Value),(&name,Role::Value)],width,background);
-                shown += 1;
-            }
-            // Draw a full opaque alternate screen; the desktop wallpaper must
-            // not obscure process names, headings, or empty parts of the table.
-            for _ in shown..max_rows {
-                monitor_row(
-                    &mut screen, "", width,
-                    Role::Value.ansi(),
-                    SURFACE,
-                );
-            }
+            let records=rows.iter().skip(offset).take(max_rows).filter_map(|(pid,tree_prefix)|{
+                let process=system.process(*pid)?;
+                let parent=process.parent().map(|p|p.as_u32()).unwrap_or(0);
+                let previous_cpu=previous.get(&(*pid,process.start_time())).copied();
+                Some(MonitorRecord{
+                    values:vec![pid.as_u32().to_string(),parent.to_string(),
+                        format!("{:.1}",process.cpu_usage()),
+                        format!("{:.1}",process.memory() as f64/1024.0/1024.0),
+                        format!("{tree_prefix}{}",process.name().to_string_lossy())],
+                    selected:selected.is_some()&&identity(*pid)==selected,
+                    previous:previous_cpu.map(|value|(2,value)),
+                })
+            }).collect::<Vec<_>>();
+            let shown=records.len();
+            monitor_table(&mut screen,&["PID","PPID","CPU %","RAM MiB","PROCESO / JERARQUÍA"],&records,width,max_rows);
             let detail_header_row = table_start + max_rows;
             if detail_available {
                 detail.render(&mut screen,width,expanded);

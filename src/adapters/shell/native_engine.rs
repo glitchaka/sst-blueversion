@@ -853,7 +853,11 @@ impl ShellCommandHost for WindowsShellHost {
             let force_abort = std::sync::Arc::clone(&self.force_abort);
             let result = service.ping_live(
                 &args[1..],
-                &mut |line| crate::adapters::terminal::io::write(crate::presentation::formatter::Formatter::live(line).as_bytes()),
+                &mut |line| {
+                    use crate::presentation::formatter::Formatter;
+                    let cols=crate::adapters::terminal::io::size().map(|(cols,_)|cols).unwrap_or(80);
+                    crate::adapters::terminal::io::write(Formatter::live_layout(&Formatter::live(line),cols).as_bytes())
+                },
                 &|| interrupt.load(Ordering::SeqCst)
                     || force_abort.load(Ordering::SeqCst),
             )?;

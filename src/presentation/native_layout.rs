@@ -11,81 +11,6 @@ fn screen_row_text(screen:&vt100::Screen,row:u16,cols:u16)->String {
     }).collect()
 }
 
-fn network_report_graphics(screen:&vt100::Screen)->Vec<ReportGraphic>{
-    let (rows,cols)=screen.size();
-    let mut result=Vec::new();
-    let mut samples:Vec<bool>=Vec::new();
-    let mut ping=false;
-    let mut native=false;
-    let mut routes=false;
-    let mut groups:std::collections::BTreeMap<(std::net::IpAddr,u32),Vec<(u16,u16)>>=std::collections::BTreeMap::new();
-    let flush=|out:&mut Vec<ReportGraphic>,samples:&mut Vec<bool>,anchor:Option<(u16,u16)>|{
-        if let Some((row,end))=anchor {
-            let available=cols.saturating_sub(end.saturating_add(16));
-            let count=samples.len();
-            if count>=2 && count<=24 && usize::from(available)>=count {
-                out.push(ReportGraphic{row,rows:1,start:end+3,end:end+15,kind:18,ratio:0.,tone:0});
-                let step=(available/(count as u16)).clamp(1,2);
-                for (i,lost) in samples.iter().enumerate(){
-                    let start=end+16+i as u16*step;
-                    out.push(ReportGraphic{row,rows:1,start,end:start+step,kind:10,ratio:0.,tone:if *lost{2}else{0}});
-                }
-            }
-        }
-        samples.clear();
-    };
-    let flush_routes=|out:&mut Vec<ReportGraphic>,groups:&mut std::collections::BTreeMap<(std::net::IpAddr,u32),Vec<(u16,u16)>>|{
-        for entries in groups.values(){
-            if entries.len()<2 {continue;}
-            if let Some(&(row,end))=entries.last(){
-                if cols.saturating_sub(end)>=18 {
-                    // Retain the underlying routing rows; no unexplained
-                    // count or topology is appended to an individual route.
-                    let _=(&out,row);
-                }
-            }
-        }
-        groups.clear();
-    };
-    for row in 0..rows{
-        let raw=screen_row_text(screen,row,cols);
-        let line=raw.trim();
-        let lower=line.to_lowercase();
-        let end=(0..cols).rev().find(|&c|screen.cell(row,c).is_some_and(|v|!v.contents().trim().is_empty())).unwrap_or(0);
-        let new_ping=lower.starts_with("haciendo ping a ")||lower.starts_with("pinging ")||line.starts_with("PING ");
-        if new_ping {
-            samples.clear();
-            ping=true;native=line.starts_with("PING ");
-        } else if line.starts_with("$ ") || line.starts_with("$") {
-            samples.clear();
-            ping=false; native=false;
-        } else if ping {
-            let ok=(lower.starts_with("respuesta desde ")||lower.starts_with("reply from ")) && lower.contains("ttl=") && lower.contains("bytes=");
-            let native_ok=native && line.split_once(": ").is_some_and(|(ip,value)|ip.parse::<std::net::IpAddr>().is_ok()&&value.strip_suffix(" ms").is_some_and(|n|n.parse::<u64>().is_ok()));
-            let lost=lower.contains("tiempo de espera agotado")||lower.contains("request timed out")||lower.contains("destino inaccesible")||lower.contains("destination host unreachable")
-                ||(native&&lower.contains(": sin respuesta (estado "));
-            if ok||native_ok||lost {
-                samples.push(lost);
-            } else if lower.starts_with("estadísticas de ping")||lower.starts_with("ping statistics")||lower.starts_with("enviados:") {
-                flush(&mut result,&mut samples,Some((row,end)));ping=false;native=false;
-            }
-        }
-        if line.starts_with("DESTINATION")&&line.contains("GATEWAY")&&line.contains("IFINDEX")&&line.contains("METRIC") {
-            flush_routes(&mut result,&mut groups); routes=true;
-        }else if routes{
-            let fields=line.split_whitespace().collect::<Vec<_>>();
-            if fields.len()==4 && fields[0].split_once('/').is_some_and(|(ip,prefix)|ip.parse::<std::net::IpAddr>().is_ok()&&prefix.parse::<u8>().is_ok()){
-                if let (Ok(gateway),Ok(index),Ok(_))=(fields[1].parse::<std::net::IpAddr>(),fields[2].parse::<u32>(),fields[3].parse::<u32>()){
-                    groups.entry((gateway,index)).or_default().push((row,end));continue;
-                }
-            }
-            if !line.is_empty(){flush_routes(&mut result,&mut groups);routes=false;}
-        }
-    }
-    flush_routes(&mut result,&mut groups);
-    result
-}
-
 fn feature_dividers(screen:&vt100::Screen)->Vec<ReportGraphic>{
     use crate::presentation::formatter::{FEATURE_RGB,FEATURE_ALT_RGB};
     let (rows,cols)=screen.size();
@@ -110,16 +35,27 @@ fn feature_dividers(screen:&vt100::Screen)->Vec<ReportGraphic>{
 // Decode formatter-owned component roles, independent of the originating
 // command, language, labels, and number of fields.
 pub(in crate::presentation) fn semantic_components(screen:&vt100::Screen)->Vec<ReportGraphic>{
-    use crate::presentation::formatter::{EXPANSION_RGB,GROUP_FIELDS_RGB};
+    use crate::presentation::formatter::{EXPANSION_RGB,GROUP_FIELDS_RGB,CONTINUITY_OK_RGB,CONTINUITY_LOST_RGB};
     let (rows,cols)=screen.size();
     let surface=|r,c|screen.cell(r,c).and_then(|cell|match cell.bgcolor(){vt100::Color::Rgb(a,b,d)=>Some((a,b,d)),_=>None});
     let mut marks=Vec::new();
     // Each region is explicitly reserved by the formatter. The exact same
     // component is selected for foreground reports and live monitors.
     for row in 0..rows {
+        for col in 0..cols {
+            let rgb=surface(row,col);
+            if matches!(rgb,Some(CONTINUITY_OK_RGB|CONTINUITY_LOST_RGB)) {
+                marks.push(ReportGraphic{row,rows:1,start:col,end:col+1,kind:10,ratio:0.,tone:if rgb==Some(CONTINUITY_LOST_RGB){2}else{0}});
+            }
+        }
         let mut col=0;
         while col<cols {
             let Some(rgb)=surface(row,col)else{col+=1;continue;};
+            if let Some(count)=super::decode_route_marker(rgb) {
+                let start=col;while col<cols&&surface(row,col)==Some(rgb){col+=1;}
+                if col-start>=5{marks.push(ReportGraphic{row,rows:1,start,end:col,kind:11,ratio:0.,tone:i32::from(count)});}
+                continue;
+            }
             let Some((metric,value))=super::decode_metric_marker(rgb)else{col+=1;continue;};
             let start=col;
             while col<cols&&surface(row,col)==Some(rgb){col+=1;}
@@ -211,10 +147,6 @@ pub(in crate::presentation) fn report_graphics(screen: &vt100::Screen) -> Vec<Re
                     }
                 }
             }
-            let line=(a..=b).filter_map(|i|screen.cell(row,i)).map(|v|v.contents()).collect::<String>();
-            if (line.trim_start().to_lowercase().starts_with("evidencia:") || line.trim_start().to_lowercase().starts_with("evidencia detallada:")) && b.saturating_add(2)<cols {
-                result.push(ReportGraphic{row,rows:1,start:b+1,end:b+3,kind:6,ratio:0.0,tone:0});
-            }
         }
         // Metric geometry is chosen from the producer's existing metric semantics.
         let line=screen_row_text(screen,row,cols);
@@ -247,7 +179,6 @@ pub(in crate::presentation) fn report_graphics(screen: &vt100::Screen) -> Vec<Re
     if let Some((begin,left))=group {
         if rows-begin>=2 {result.push(ReportGraphic{row:begin,rows:rows-begin,start:left,end:left,kind:1,ratio:0.0,tone:0});}
     }
-    if !screen.alternate_screen() {result.extend(network_report_graphics(screen));}
     result.extend(feature_dividers(screen));
     result
 }

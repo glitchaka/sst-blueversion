@@ -457,12 +457,10 @@ slint::slint! {
                 if mark.kind == 10 : ContinuityCell { width: max(1px,parent.width - 2px); height: parent.height; lost: mark.tone == 2; ink: mark.tone == 2 ? OutputTheme.failure : OutputTheme.success; }
                 if mark.kind == 11 : Rectangle {
                     width: parent.width; height: parent.height; background: transparent;
-                    RouteBranch { width: parent.width - 28px; height: parent.height; count: mark.tone; ink: OutputTheme.accent; line: OutputTheme.success; }
-                    Text { x: parent.width - 28px; width: 28px; height: parent.height; text: "" + mark.tone; color: OutputTheme.text; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
+                    RouteBranch { width: parent.width; height: parent.height; count: mark.tone; ink: OutputTheme.accent; line: OutputTheme.success; }
                 }
                 if mark.kind == 12 : Text { width: parent.width; height: parent.height; text: (mark.tone < 10 ? "0" : "") + mark.tone; color: OutputTheme.accent; font-size: min(16px,parent.height * 0.85); font-weight: 700; horizontal-alignment: right; vertical-alignment: center; }
                 if mark.kind == 13 : CompactRule { width: min(36px,parent.width); height: parent.height; ink: OutputTheme.rule; }
-                if mark.kind == 18 : Text { width: parent.width; height: parent.height; text: "Continuidad"; color: OutputTheme.muted; font-size: min(11px,parent.height * 0.8); vertical-alignment: center; }
                 if mark.kind == 17 : Rectangle {
                     x: 0px; y: max(0px,parent.height - 1px); width: parent.width; height: 1px; background: OutputTheme.rule;
                     Rectangle { x: 0px; y: 0px; width: min(30px,parent.width); height: 1px; background: OutputTheme.accent; }
@@ -1559,7 +1557,9 @@ impl TerminalModel {
                         (r,g,b)==crate::presentation::formatter::REPORT_HEADER_RGB
                         || (r,g,b)==crate::presentation::formatter::FEATURE_RGB
                         || (r,g,b)==crate::presentation::formatter::FEATURE_ALT_RGB
-                        || crate::presentation::formatter::decode_metric_marker((r,g,b)).is_some());
+                        || crate::presentation::formatter::decode_metric_marker((r,g,b)).is_some()
+                        || matches!((r,g,b),crate::presentation::formatter::CONTINUITY_OK_RGB|crate::presentation::formatter::CONTINUITY_LOST_RGB)
+                        || crate::presentation::formatter::decode_route_marker((r,g,b)).is_some());
                     let mut paint_background =
                         (!matches!(cell.bgcolor(), vt100::Color::Default) && !layout_marker) || cell.inverse();
 
@@ -3133,7 +3133,7 @@ mod live_graphic_integration {
         }
         let marks=report_graphics(parser.screen());
         assert_eq!(marks.iter().filter(|g|g.kind==0).count(),3);
-        assert!(marks.iter().any(|g|g.kind==1 && g.row==1 && g.rows==2));
+        assert!(semantic_components(parser.screen()).iter().any(|g|g.kind==10));
         assert!(parser.screen().contents().contains("tiempo=2ms"));
         assert!(parser.screen().contents().contains("perdidos = 0"));
     }
@@ -3146,20 +3146,16 @@ mod live_graphic_integration {
         let marks=report_graphics(parser.screen());
         for tone in [0,1,2,3] {assert!(marks.iter().any(|g|g.kind==4 && g.tone==tone),"missing status {tone}");}
         assert!(marks.iter().any(|g|g.kind==5));
-        assert!(marks.iter().any(|g|g.kind==6));
         for line in ["Haciendo ping a 127.0.0.1 con 32 bytes de datos:",
             "Respuesta desde 127.0.0.1: bytes=32 tiempo=1ms TTL=128",
             "Tiempo de espera agotado para esta solicitud.",
             "Estadísticas de ping para 127.0.0.1:",
-            "DESTINATION GATEWAY IFINDEX METRIC",
-            "0.0.0.0/0 192.0.2.1 5 10",
-            "192.0.2.0/24 192.0.2.1 5 10"] {
-            parser.process(format!("{}\r\n",Formatter::live(line)).as_bytes());
+            "Enviados: 2; recibidos: 1"] {
+            parser.process(format!("{}\r\n",Formatter::live_layout(&Formatter::live(line),140)).as_bytes());
         }
-        let marks=report_graphics(parser.screen());
+        let marks=semantic_components(parser.screen());
         assert!(marks.iter().any(|g|g.kind==10 && g.tone==0));
         assert!(marks.iter().any(|g|g.kind==10 && g.tone==2));
-        assert!(marks.iter().any(|g|g.kind==11 && g.tone==2));
     }
     #[test]
     fn every_visible_heading_is_rendered_and_plain_lines_are_not_marked() {

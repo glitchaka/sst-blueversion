@@ -152,6 +152,34 @@ pub(super) fn table(header:&str,rows:&[&str],width:usize)->String{
         }
     };
     emit(&mut out,&labels,true,0);
+    // Group only a genuine relationship schema with valid destinations,
+    // gateways and interface IDs. Do not infer topology from arbitrary text.
+    let column=|names:&[&str]|labels.iter().position(|label|names.iter().any(|name|label.eq_ignore_ascii_case(name)));
+    let schema=column(&["DESTINATION","DESTINO"]).zip(column(&["GATEWAY","NEXT HOP","PUERTA DE ENLACE"]))
+        .zip(column(&["IFINDEX","INTERFAZ"]));
+    if let Some(((destination,gateway),interface))=schema.filter(|_|width>=42) {
+        let mut groups:std::collections::BTreeMap<(String,String),Vec<usize>>=std::collections::BTreeMap::new();
+        let valid=data.iter().enumerate().all(|(index,row)|{
+            let Some(dest)=row.get(destination)else{return false;};
+            let Some(via)=row.get(gateway)else{return false;};
+            let Some(iface)=row.get(interface)else{return false;};
+            if !dest.split_once('/').is_some_and(|(ip,prefix)|ip.parse::<std::net::IpAddr>().is_ok()&&prefix.parse::<u8>().is_ok())
+                || via.parse::<std::net::IpAddr>().is_err()||iface.parse::<u32>().is_err(){return false;}
+            groups.entry((via.clone(),iface.clone())).or_default().push(index);true
+        });
+        if valid&&groups.values().any(|entries|entries.len()>=2) {
+            for ((gateway,interface),entries) in groups {
+                if entries.len()>=2 {
+                    let label=format!("Vía {gateway} · interfaz {interface} · {} rutas",entries.len());
+                    if (2..=4).contains(&entries.len())&&display_width(&label)+10<=width {
+                        out.push_str(&format!("{}{}{RESET}  {}\n",background(route_marker(entries.len()))," ".repeat(8),Role::Detail.paint(&label)));
+                    }else {for part in wrap_line(&label,width){out.push_str(&Role::Detail.paint(&part));out.push('\n');}}
+                }
+                for index in entries {emit(&mut out,&data[index],false,index);}
+            }
+            return out;
+        }
+    }
     for (index,row) in data.iter().enumerate(){emit(&mut out,row,false,index);}
     out
 }

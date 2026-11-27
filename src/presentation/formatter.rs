@@ -241,9 +241,19 @@ impl Formatter {
         out
     }
     pub fn live(text:&str)->String{style_live_line(&report_text(text))}
-    pub fn live_layout(styled:&str,_cols:u16)->String {
-        // Streaming lines retain semantic roles without reserving extra rows.
-        styled.to_owned()
+    pub fn live_layout(styled:&str,cols:u16)->String {
+        if styled.contains(['\r','\0']){return styled.to_owned();}
+        let width=usize::from(cols.saturating_sub(3)).clamp(18,160);
+        let mut out=String::new();
+        for line in styled.split_inclusive('\n') {
+            let (body,ending)=line.strip_suffix('\n').map_or((line,""),|s|(s,"\n"));
+            out.push_str(body);
+            if let Some(strip)=continuity_strip(&report_text(body),width) {
+                out.push_str("\r\n");out.push_str(&strip);
+            }
+            out.push_str(ending);
+        }
+        out
     }
     pub fn terminal(text:&str)->String{text.to_owned()}
     pub fn stream_bytes(bytes:&[u8],terminal:bool)->Vec<u8>{
@@ -938,6 +948,11 @@ fn compose_text(stdout:&str,cols:u16,kind:LayoutKind)->String{
     while cursor<lines.len(){
         let line=lines[cursor].trim_end_matches('\r');
         cursor+=1;
+        if let Some(strip)=continuity_strip(line,width) {
+            result.push_str(&style_line(line));result.push('\n');
+            result.push_str(&strip);result.push('\n');
+            previous_blank=false;table_active=false;table=TableStyle::default();continue;
+        }
         if !line.trim().is_empty() && lines.get(cursor).is_some_and(|s|report_layout::underline(s)) {
             cursor+=1;
             result.push_str(&Role::Title.paint(line.trim()));
@@ -1271,7 +1286,7 @@ pub fn monitor_row(
     background: &str,
 ) {
     let visible=shorten(text,width);
-    buffer.push_str(if foreground==HEADING {SURFACE}else{background});
+    buffer.push_str(if foreground==HEADING&&background==SURFACE_HEAD {SURFACE}else{background});
     buffer.push_str(foreground);
     buffer.push_str(&visible);
     buffer.push_str(&" ".repeat(width.saturating_sub(display_width(&visible))));
@@ -1293,10 +1308,101 @@ pub fn monitor_cells(buffer:&mut String,cells:&[(&str,Role)],width:usize,backgro
     buffer.push_str("\x1b[0m\r\n");
 }
 
+/// One selectable record, without graphics or coordinates in the producer.
+pub struct MonitorRecord {
+    pub values: Vec<String>,
+    pub selected: bool,
+    pub previous: Option<(usize,f32)>,
+}
+
+/// Shared measured table for fixed-height monitors. Selection, alignment,
+/// semantic tones, column allocation and row surfaces belong here.
+pub fn monitor_table(buffer:&mut String,headers:&[&str],records:&[MonitorRecord],width:usize,row_budget:usize) {
+    let count=headers.len();
+    if count==0{return;}
+    let prefix=2usize;
+    let gap=2usize;
+    let budget=width.saturating_sub(prefix+gap*(count-1));
+    let mut sizes=headers.iter().map(|s|display_width(s).max(3)).collect::<Vec<_>>();
+    for record in records {
+        for (i,value) in record.values.iter().take(count).enumerate(){sizes[i]=sizes[i].max(display_width(value));}
+    }
+    while sizes.iter().sum::<usize>()>budget {
+        let Some((i,_))=sizes.iter().enumerate().filter(|(_,w)|**w>1).max_by_key(|(_,w)|**w)else{break;};
+        sizes[i]-=1;
+    }
+    let numeric=(0..count).map(|i|!records.is_empty()&&records.iter().all(|row|row.values.get(i).is_some_and(|v|v.trim().parse::<f64>().is_ok()))).collect::<Vec<_>>();
+    let schema=headers.join("  ");
+    let style=TableStyle::from_header(&schema);
+    let pad=|value:&str,i:usize,right:bool|{
+        let part=shorten(value,sizes[i]);
+        let blank=" ".repeat(sizes[i].saturating_sub(display_width(&part)));
+        if right{format!("{blank}{part}")}else{format!("{part}{blank}")}
+    };
+    let header=headers.iter().enumerate().map(|(i,label)|pad(label,i,numeric[i])).collect::<Vec<_>>().join("  ");
+    monitor_row(buffer,&format!("  {header}"),width,Role::Title.ansi(),TABLE_HEADER);
+    let selected=selected_surface();
+    for (index,record) in records.iter().take(row_budget).enumerate(){
+        let mut cells:Vec<(String,Role)>=vec![(if record.selected{"› ".into()}else{"  ".into()},Role::Label)];
+        for i in 0..count {
+            if i>0{cells.push(("  ".into(),Role::Label));}
+            let value=record.values.get(i).map(String::as_str).unwrap_or("—");
+            let previous=record.previous.filter(|(column,_)|*column==i).map(|(_,value)|value);
+            let role=Metric::named(headers[i]).and_then(|metric|{
+                let number=value.trim().trim_end_matches('%').replace(',',".").parse::<f32>().ok()?;
+                Some(metric.role(number,previous))
+            }).or_else(||style.tone(i,value).and_then(|ansi|
+                [Role::Success,Role::Warning,Role::Failure,Role::Optimal,Role::Value].into_iter().find(|role|role.ansi()==ansi)
+            )).unwrap_or(if numeric[i]{Role::Value}else{Role::Detail});
+            cells.push((pad(value,i,numeric[i]),role));
+        }
+        let refs=cells.iter().map(|(v,r)|(v.as_str(),*r)).collect::<Vec<_>>();
+        monitor_cells(buffer,&refs,width,if record.selected{&selected}else if index%2==0{SURFACE}else{SURFACE_ALT});
+    }
+    for _ in records.len().min(row_budget)..row_budget{
+        monitor_row(buffer,"",width,Role::Detail.ansi(),SURFACE);
+    }
+}
+
 /// Semantic component transport. These reserved surfaces encode layout roles,
 /// not a palette; native renderers resolve them independently of command names.
 pub const EXPANSION_RGB: (u8,u8,u8) = (61,56,54);
 pub const GROUP_FIELDS_RGB: (u8,u8,u8) = (30,32,33);
+pub(super) const CONTINUITY_OK_RGB:(u8,u8,u8)=(18,224,1);
+pub(super) const CONTINUITY_LOST_RGB:(u8,u8,u8)=(18,224,2);
+fn route_marker(count:usize)->(u8,u8,u8){(18,223,count.min(4) as u8)}
+pub(super) fn decode_route_marker(rgb:(u8,u8,u8))->Option<u8>{
+    (rgb.0==18&&rgb.1==223&&(2..=4).contains(&rgb.2)).then_some(rgb.2)
+}
+
+/// Only an explicit, internally consistent count is eligible. Aggregate
+/// cells represent totals, not an invented sequence of individual replies.
+fn continuity_strip(line:&str,width:usize)->Option<String>{
+    static SENT:std::sync::OnceLock<regex::Regex>=std::sync::OnceLock::new();
+    static RECEIVED:std::sync::OnceLock<regex::Regex>=std::sync::OnceLock::new();
+    static LOST:std::sync::OnceLock<regex::Regex>=std::sync::OnceLock::new();
+    let count=|slot:&'static std::sync::OnceLock<regex::Regex>,pattern:&str|
+        slot.get_or_init(||regex::Regex::new(pattern).expect("valid counter schema"))
+            .captures(line).and_then(|c|c.get(1)).and_then(|m|m.as_str().parse::<u32>().ok());
+    let sent=count(&SENT,r"(?i)\b(?:enviados|sent)\s*[:=]\s*(\d+)")?;
+    let received=count(&RECEIVED,r"(?i)\b(?:recibidos|received)\s*[:=]\s*(\d+)")?;
+    let lost=sent.checked_sub(received)?;
+    if sent==0||count(&LOST,r"(?i)\b(?:perdidos|lost)\s*[:=]\s*(\d+)").is_some_and(|n|n!=lost){return None;}
+    let label=format!("Continuidad  {received}/{sent}   Pérdidas {lost}");
+    let free=width.saturating_sub(display_width(&label)+3);
+    if free<5{return None;}
+    let mut out=format!("{}{label}{RESET}   ",Role::Detail.ansi());
+    if sent<=24&&free>=sent as usize {
+        out.push_str(&background(CONTINUITY_OK_RGB));
+        out.push_str(&" ".repeat(received as usize));
+        out.push_str(&background(CONTINUITY_LOST_RGB));
+        out.push_str(&" ".repeat(lost as usize));
+        out.push_str(RESET);
+    }else {
+        out.push_str(&meter(Metric::Loss,100.*lost as f32/sent as f32,free.min(18)));
+    }
+    Some(out)
+}
 
 /// Reusable expandable record. Producers supply data and interaction state;
 /// this formatter owns the header, field alignment and responsive row budget.
@@ -1360,7 +1466,10 @@ impl LiveScreen {
     pub fn width(mut self,width:usize)->Self{self.width=width.saturating_sub(3).clamp(18,160);self}
 
     pub fn section(&mut self, title: &str, body: &str) {
-        let start = self.line;
+        self.section_limited(title,body,usize::MAX);
+    }
+    pub fn section_limited(&mut self,title:&str,body:&str,budget:usize) {
+        let start=self.line;
         self.text.push_str("  ");
         self.text.push_str(ACCENT);
         self.text.push_str(title);
@@ -1368,10 +1477,17 @@ impl LiveScreen {
         self.text.push('\n');
         self.line += 1;
 
-        let styled=if body.contains('\x1b'){body.to_owned()}
-            else{compose_text(body,self.width.saturating_add(3) as u16,classify(body))};
-        for line in styled.trim_end_matches('\n').lines(){
+        let plain=report_text(body);
+        let styled=if body.contains('\x1b')&&(plain.contains('\x1b')||!body.contains('\n')){body.to_owned()}
+            else{compose_text(&plain,self.width.saturating_add(3) as u16,classify(&plain))};
+        let rows=styled.trim_end_matches('\n').lines().collect::<Vec<_>>();
+        let shown=if rows.len()>budget{budget.saturating_sub(1)}else{rows.len()};
+        for line in rows.iter().take(shown){
             self.text.push_str(line);self.text.push('\n');self.line+=1;
+        }
+        if shown<rows.len()&&budget>0 {
+            self.text.push_str(&Role::Detail.paint(&format!("{} líneas adicionales",rows.len()-shown)));
+            self.text.push('\n');self.line+=1;
         }
 
         if self.panels.len() < 4 {
@@ -1514,9 +1630,8 @@ mod component_layout_tests{
         let data="RECURSOS\nCPU: 65%\nRAM: 81%\nNombre: equipo\n";
         for root in ["inventario","diagnostico-nuevo"] {
             let out=Formatter::result(root,data,"",92,&[root.into()],OutputMode::Interactive).stdout;
-            assert!(out.contains(METER_TRACK));
-            assert!(out.contains(&background(METER_BAD_RGB)));
-            assert!(out.contains(&background(METER_WARN_RGB)));
+            assert!(out.contains(&background(metric_marker(Metric::Cpu,65.))));
+            assert!(out.contains(&background(metric_marker(Metric::Utilization,81.))));
             assert!(out.contains("65%")&&out.contains("81%")&&out.contains("equipo"));
             assert_eq!(Formatter::result(root,data,"",92,&[],OutputMode::Machine).stdout,data);
         }
