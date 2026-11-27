@@ -367,6 +367,15 @@ slint::slint! {
         callback close-window();
         callback window-state-change();
 
+        in property <bool> config-open;
+        in property <bool> config-saved;
+        in property <[ConfigField]> config-fields;
+        in property <string> config-message;
+        callback config-edit(int, string);
+        callback config-save();
+        callback config-cancel();
+        public function restore-terminal-focus() { terminal-focus.focus(); }
+
         surface := Rectangle {
             x: 0;
             y: 0;
@@ -470,21 +479,21 @@ slint::slint! {
                     ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track;
                 }
                 if mark.kind == 15 : RadialTwenty {
-                    x: (parent.width-self.width)/2; y: (parent.height-self.height)/2;
+                    x: (parent.width - self.width)/2; y: (parent.height - self.height)/2;
                     width: min(parent.width,parent.height); height: self.width;
                     value: round(mark.ratio*100);
                     ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.accent;
                     track: OutputTheme.track; line: OutputTheme.rule;
                 }
                 if mark.kind == 16 : RingEight {
-                    x: (parent.width-self.width)/2; y: (parent.height-self.height)/2;
+                    x: (parent.width - self.width)/2; y: (parent.height - self.height)/2;
                     width: min(parent.width,parent.height); height: self.width;
                     value: round(mark.ratio*100);
                     ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
                     track: OutputTheme.track; line: OutputTheme.rule;
                 }
                 if mark.kind == 19 : LinearScale {
-                    x: 2px; y: parent.height*0.36; width: max(1px,parent.width-4px); height: parent.height*0.28;
+                    x: 2px; y: parent.height*0.36; width: max(1px,parent.width - 4px); height: parent.height*0.28;
                     ratio: mark.ratio; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
                     track: OutputTheme.track; line: OutputTheme.muted;
                 }
@@ -692,14 +701,6 @@ slint::slint! {
             accent-detail: root.demo-accent-detail;
         }
 
-        in property <bool> config-open;
-        in property <bool> config-saved;
-        in property <[ConfigField]> config-fields;
-        in property <string> config-message;
-        callback config-edit(int, string);
-        callback config-save();
-        callback config-cancel();
-        public function restore-terminal-focus() { terminal-focus.focus(); }
         if root.config-open : ConfigForm {
             x: 0; y: 45px; width: parent.width; height: parent.height - 45px;
             fields: root.config-fields; message: root.config-message;
