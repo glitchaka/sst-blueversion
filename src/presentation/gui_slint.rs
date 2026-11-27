@@ -171,7 +171,7 @@ slint::slint! {
     import { ConfigForm, ConfigField } from "config_form.slint";
     import { EditorialDemo } from "editorial_demo.slint";
     import { AngularMark, CutFrame, Registration, FieldBracket, SteppedDivider, AsymmetricHeader } from "graphic_kit.slint";
-    import { RadialTwenty, RingEight, SegmentedProgress, IndeterminateWait, HatchedTransfer } from "graphic_kit.slint";
+    import { RadialTwenty, RingEight, SegmentedProgress, IndeterminateWait, HatchedTransfer, ActivityScale } from "graphic_kit.slint";
     import { WarningTriangle, StateBadge } from "graphic_kit.slint";
     import { LinearScale, ThresholdScale, ProportionalReadout, ContinuityCell, RouteBranch, RailFolio, CompactRule, MetadataTab } from "graphic_kit.slint";
     export struct NativeGraphic { x: float, y: float, w: float, h: float, kind: int, ratio: float, tone: int }
@@ -480,6 +480,10 @@ slint::slint! {
                     x: 2px; y: parent.height*0.36; width: max(1px,parent.width-4px); height: parent.height*0.28;
                     ratio: mark.ratio; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
                     track: OutputTheme.track; line: OutputTheme.muted;
+                }
+                if mark.kind == 23 : ActivityScale {
+                    width: parent.width; height: parent.height; ratio: mark.ratio;
+                    ink: OutputTheme.accent; track: OutputTheme.track;
                 }
                 if mark.kind == 10 : ContinuityCell { width: max(1px,parent.width - 2px); height: parent.height; lost: mark.tone == 2; ink: mark.tone == 2 ? OutputTheme.failure : OutputTheme.success; }
                 if mark.kind == 11 : Rectangle {
@@ -1095,7 +1099,7 @@ impl ReportGraphic {
             0=>((x-2.*scale).max(0.),y+scale,width+2.*scale,(height-2.*scale).max(1.)),
             1=>((x-6.*scale).max(0.),y+scale,5.*scale,(height-2.*scale).max(1.)),
             8|9=>(x,y+scale,width,(h-2.*scale).max(2.)),
-            2|7=>(x,y+h*0.18,width,(h*0.64).max(2.)),
+            2|7|23=>(x,y+h*0.18,width,(h*0.64).max(2.)),
             15|16|19=>(x+scale,y+scale,(width-2.*scale).max(1.),(height-2.*scale).max(1.)),
             10|11|12|18=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             14=>(x,y+scale,width,(height-2.*scale).max(1.)),
@@ -1604,6 +1608,7 @@ impl TerminalModel {
                         || (r,g,b)==crate::presentation::formatter::SELECTED_RGB
                         || matches!((r,g,b),crate::presentation::formatter::METADATA_TAB_RGB|crate::presentation::formatter::EVIDENCE_REF_RGB)
                         || crate::presentation::formatter::decode_status_token((r,g,b)).is_some()
+                        || crate::presentation::formatter::decode_activity_marker((r,g,b)).is_some()
                         || crate::presentation::formatter::decode_metric_marker((r,g,b)).is_some()
                         || matches!((r,g,b),crate::presentation::formatter::CONTINUITY_OK_RGB|crate::presentation::formatter::CONTINUITY_LOST_RGB)
                         || crate::presentation::formatter::decode_route_marker((r,g,b)).is_some());
