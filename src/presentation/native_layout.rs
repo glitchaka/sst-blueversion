@@ -108,7 +108,14 @@ pub(in crate::presentation) fn report_graphics(screen: &vt100::Screen) -> Vec<Re
                 result.push(ReportGraphic{row,rows:1,start,end:last.saturating_add(1),kind:3,ratio:0.0,tone:0});
             } else {
                 let primary=bg(row,0)==Some(REPORT_HEADER_RGB);
-                result.push(ReportGraphic{row,rows:1,start,end:last.saturating_add(1).min(cols),kind:0,ratio:0.0,tone:if primary {1}else{0}});
+                // Primary headings reserve their own leading gutter and a
+                // short trailing edge. Secondary headings remain unframed.
+                let (start,end)=if primary {
+                    (0,last.saturating_add(3).min(cols))
+                } else {
+                    (start,last.saturating_add(1).min(cols))
+                };
+                result.push(ReportGraphic{row,rows:1,start,end,kind:0,ratio:0.0,tone:if primary {1}else{0}});
             }
         }
 
