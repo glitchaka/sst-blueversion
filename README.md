@@ -128,7 +128,7 @@ Entre las capacidades de SST se encuentran:
 
 | Comando | Qué hace | Ejemplo |
 |---|---|---|
-| `sys info` | Resumen del sistema operativo, CPU, memoria y equipo. | `sys info` |
+| `sys info` | Inventario del equipo, sistema operativo, usuario de sesión, CPU, memoria, volúmenes y cuentas locales. | `sys info` |
 | `sys processes` / `sys ps` | Procesos y consumo. | `sys processes` |
 | `sys top` | TUI de procesos; `c` ordena por CPU, `m` por memoria, `q` sale. | `sys top` |
 | `sys disks` / `sys df` | Discos, capacidad y uso. | `sys disks` |
