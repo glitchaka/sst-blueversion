@@ -526,6 +526,27 @@ fn field_value_tone(label:&str,value:&str)->&'static str{
     if let Some(tone)=Metric::named(&key).and_then(|metric|metric.color(value,key.contains('%'))){return tone;}
     if display_width(value)>40||matches!(key.as_str(),"diagnóstico"|"diagnostico"|"nota"|"evidencia"|"evidencia detallada"|"motivo"|"fuente"|"fuentes consultadas"|"descripción"|"descripcion"){DETAILS}else{VALUE}
 }
+/// Status geometry is authorized by the field/column schema, not by a
+/// word in prose, a process name, or the foreground colour of a metric.
+pub(super) fn status_token(value:&str)->Option<(u8,u8,u8)>{
+    let tone=match status_color(value){
+        Some(GOOD)=>0,Some(CAUTION)=>1,Some(BAD)=>2,
+        _ if matches!(value.trim().to_uppercase().as_str(),"SIN DATOS"|"NO HAY DATOS"|"N/D")=>3,
+        _=>return None,
+    };
+    Some((18,226,tone))
+}
+pub(super) fn decode_status_token(rgb:(u8,u8,u8))->Option<i32>{
+    (rgb.0==18&&rgb.1==226&&rgb.2<=3).then_some(i32::from(rgb.2))
+}
+fn paint_status(value:&str,tone:&str)->String {
+    if let Some(marker)=status_token(value){
+        format!("{}{tone}{value}{RESET}",background(marker))
+    }else{
+        format!("{tone}{value}{RESET}")
+    }
+}
+
 fn paint_field_value(label:&str,value:&str,fragment:&str,first:bool)->String{
     // A qualified link/service state is not proof of a different condition.
     // Preserve its qualification and distinguish it from the measured state.
@@ -533,12 +554,16 @@ fn paint_field_value(label:&str,value:&str,fragment:&str,first:bool)->String{
         if let Some((state,_))=value.split_once(" (") {
             if let Some(tone)=status_color(state){
                 if let Some(suffix)=fragment.strip_prefix(state){
-                    return format!("{tone}{state}{RESET}{DETAILS}{suffix}{RESET}");
+                    return format!("{}{DETAILS}{suffix}{RESET}",paint_status(state,tone));
                 }
             }
         }
     }
-    format!("{}{fragment}{RESET}",field_value_tone(label,value))
+    let tone=field_value_tone(label,value);
+    if first&&fragment==value&&status_label(label) {
+        return paint_status(fragment,tone);
+    }
+    format!("{tone}{fragment}{RESET}")
 }
 
 /// Generic measured scalar record: label, explicit quantity and its source.
@@ -899,7 +924,7 @@ fn compose_assessment(stdout:&str,width:usize)->Option<String>{
             let gap=label_width.saturating_sub(display_width(&name))+3;
             let color=status_color(status).unwrap_or(VALUE);
             if display_width(&name)+gap+display_width(status)<=width{
-                out.push_str(&format!("{LABEL}{name}{RESET}{}{color}{status}{RESET}\n"," ".repeat(gap)));
+                out.push_str(&format!("{LABEL}{name}{RESET}{}{}\n"," ".repeat(gap),paint_status(status,color)));
             }else{emit(&mut out,&name);emit(&mut out,&format!("  Estado: {status}"));}
         }else{emit(&mut out,&name);}
         let mut removed_status=false;
