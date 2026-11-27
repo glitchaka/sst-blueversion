@@ -1603,6 +1603,7 @@ impl TerminalModel {
                         || (r,g,b)==crate::presentation::formatter::FEATURE_ALT_RGB
                         || (r,g,b)==crate::presentation::formatter::SELECTED_RGB
                         || matches!((r,g,b),crate::presentation::formatter::METADATA_TAB_RGB|crate::presentation::formatter::EVIDENCE_REF_RGB)
+                        || crate::presentation::formatter::decode_status_token((r,g,b)).is_some()
                         || crate::presentation::formatter::decode_metric_marker((r,g,b)).is_some()
                         || matches!((r,g,b),crate::presentation::formatter::CONTINUITY_OK_RGB|crate::presentation::formatter::CONTINUITY_LOST_RGB)
                         || crate::presentation::formatter::decode_route_marker((r,g,b)).is_some());
@@ -1880,6 +1881,7 @@ fn kit_surface(rgb:(u8,u8,u8),p:DemoColors)->Option<Rgb>{
         METER_OK_RGB=>p.mint,
         METER_WARN_RGB=>p.amber,
         METER_BAD_RGB=>p.oxide,
+        (29,32,33)=>mix_rgb(p.graphite,p.muted,4), // monitor surface
         (60,56,54)=>p.rail, // explicit monitor heading
         (60,56,55)=>p.rail, // meter track
         _=>return None,
