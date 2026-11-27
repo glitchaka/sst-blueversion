@@ -15,7 +15,7 @@ SST está pensado para poder llevarse como herramienta portable y trabajar desde
 
 ### Guía de comandos SST
 
-`guide` da prioridad al índice y los manuales de SST integrados en el ejecutable. Incorpora temas complementarios de `glitchaka/adm-toolbox/tutorials`, incluida la referencia Arch; las descargas se conservan en `guide/upstream/`. La documentación propia funciona sin conexión y se actualiza con cada versión. Para conocer el autocompletado por niveles, consulta `guide guide`.
+`guide` consulta el índice y los manuales de `glitchaka/adm-toolbox/tutorials` en cada nueva apertura, independientemente del canal de actualización de SST. Las fichas se descargan bajo demanda. La última copia válida en `guide/upstream/` y los archivos locales o integrados se usan sin conexión. Para conocer el autocompletado por niveles, consulta `guide guide`.
 
 La baliza de presencia LAN entre instancias SST está desactivada en esta edición: no se abre UDP/43838 ni se realiza un broadcast para localizar otras SST. Los comandos habituales de red permanecen disponibles.
 
@@ -2018,7 +2018,7 @@ El catálogo local de SST se comparte entre la terminal nativa y la sesión de c
 | `triage 123 --p` | `--plan` |
 | `guide tools office d` | `diagnose` |
 
-También se conserva la búsqueda de archivos cuando no hay una opción SST aplicable. No se consultan credenciales ni se enumeran automáticamente cuentas AD, hosts o PID mediante Tab. `guide` incorpora la referencia local de SST y temas complementarios de upstream; los comandos retirados no se anuncian como herramientas actuales.
+También se conserva la búsqueda de archivos cuando no hay una opción SST aplicable. No se consultan credenciales ni se enumeran automáticamente cuentas AD, hosts o PID mediante Tab. `guide` consulta el catálogo independiente de SST y la referencia Arch; los comandos retirados no se anuncian como herramientas actuales.
 
 `unban USUARIO` desbloquea una cuenta AD por LDAP con credenciales autorizadas solicitadas dentro de SST; no necesita elevación local. `sigsour` abre el catálogo PKGX. `notsh test` concentra las mediciones de red; no hay un comando independiente `netcheck` ni `netprobe`.
 
