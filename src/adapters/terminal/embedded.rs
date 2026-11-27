@@ -281,12 +281,39 @@ impl EmbeddedSession {
         if self.completion.is_none() {return;}
         match action {
             -1=>self.finish_completion(false),
-            -2=>self.finish_completion(true),
+            -2=>{
+                if let Err(error)=self.accept_completion(){
+                    self.busy.store(false, Ordering::SeqCst);
+                    self.emit(&format!("sst: {error}\r\n"));
+                    self.redraw();
+                }
+            },
             -3=>{if let Some(s)=self.completion.as_mut(){s.expanded=!s.expanded;}},
             i if i>=0=>{if let Some(s)=self.completion.as_mut(){if (i as usize)<s.items.len(){s.selected=i as usize;}}},
             _=>{},
         }
     }
+    /// The palette picker is a setting action, not an ordinary argument
+    /// completion. One explicit acceptance applies the selected theme.
+    /// All other completions keep the existing edit-only behavior.
+    fn accept_completion(&mut self) -> Result<()> {
+        if self.completion.is_none() {return Ok(());}
+        self.finish_completion(true);
+        if self.pending.is_empty() {
+            let line=self.line.iter().collect::<String>();
+            let words=line.split_ascii_whitespace().collect::<Vec<_>>();
+            if let [command,"palette",name]=words.as_slice() {
+                if matches!(*command,"config"|"sst-config")
+                    && crate::core::palettes::get(name).is_some()
+                    && !line.contains(['\n','\r'])
+                {
+                    return self.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn finish_completion(&mut self, accept: bool) {
         let Some(s)=self.completion.take() else{return;};
         self.emit("\r\x1b[5A\x1b[J");
@@ -519,7 +546,7 @@ impl EmbeddedSession {
                         }
                         return Ok(());
                     }
-                    KeyCode::Enter => { self.finish_completion(true); return Ok(()); }
+                    KeyCode::Enter => { return self.accept_completion(); }
                     KeyCode::Esc => { self.finish_completion(false); return Ok(()); }
                     KeyCode::F(2) => { self.completion_action(-3); return Ok(()); }
                     _=>self.finish_completion(false),
