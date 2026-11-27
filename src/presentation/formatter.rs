@@ -1619,7 +1619,8 @@ fn angular_tip_cells(width:usize)->usize {
     (width.saturating_mul(8).saturating_add(99)/100).max(1)
 }
 
-pub fn navigation_page(title:&str,lines:&[String],selected:Option<usize>,footer:&str,cols:u16,rows:u16)->String {
+pub(super) const NAV_FOLIO_RGB:(u8,u8,u8)=(18,229,1);
+pub fn navigation_page(title:&str,lines:&[String],selected:Option<usize>,folio:Option<(usize,usize)>,footer:&str,cols:u16,rows:u16)->String {
     let width=usize::from(cols).saturating_sub(3).max(1);
     let height=usize::from(rows).max(1);
     let body=height.saturating_sub(4).min(28);
@@ -1635,7 +1636,15 @@ pub fn navigation_page(title:&str,lines:&[String],selected:Option<usize>,footer:
     let title=shorten(&safe(title),width.saturating_sub(2));
     out.push_str(&background(REPORT_HEADER_RGB));
     out.push_str("  ");out.push_str(Role::Title.ansi());out.push_str(&title);
-    out.push_str(RESET);out.push_str("\r\n\r\n");
+    out.push_str(RESET);out.push_str("\r\n");
+    if let Some((position,total))=folio.filter(|&(p,t)|p>0&&p<=t){
+        let value=format!("{position} / {total}");
+        if width>=display_width(&value)+5{
+            out.push_str("  ");out.push_str(&background(NAV_FOLIO_RGB));out.push_str("  ");out.push_str(RESET);
+            out.push(' ');out.push_str(&Role::Label.paint(&value));
+        }else{out.push_str(&Role::Label.paint(&shorten(&value,width)));}
+    }
+    out.push_str("\r\n");
     let active=selected_surface();
     for i in 0..body {
         let value=lines.get(i).map(String::as_str).unwrap_or("");
