@@ -311,11 +311,6 @@ slint::slint! {
         in property <color> demo-on-success;
         in property <color> demo-accent-detail;
         in property <bool> caret-visible;
-        in property <bool> input-focused;
-        in property <float> input-x;
-        in property <float> input-y;
-        in property <float> input-width;
-        in property <float> input-height;
         in property <float> caret-x;
         in property <float> caret-y;
         in property <float> caret-height;
@@ -432,13 +427,6 @@ slint::slint! {
                 background: root.caret-tone;
             }
 
-            if root.input-focused && !root.keygen-visible && root.demo-page == 0 : Rectangle {
-                x: root.input-x * 1px; y: root.input-y * 1px;
-                width: root.input-width * 1px; height: root.input-height * 1px;
-                background: transparent;
-                Rectangle { x: 0px; y: parent.height - 1px; width: parent.width; height: 1px; background: OutputTheme.rule; }
-                Registration { x: 0px; y: 0px; width: min(24px,parent.width); height: parent.height; outline: OutputTheme.accent; thickness: 1px; }
-            }
             for mark in root.report-graphics : Rectangle {
                 x: mark.x * 1px; y: mark.y * 1px;
                 width: mark.w * 1px; height: mark.h * 1px;
@@ -490,6 +478,10 @@ slint::slint! {
                 }
                 if mark.kind == 12 : Text { width: parent.width; height: parent.height; text: (mark.tone < 10 ? "0" : "") + mark.tone; color: OutputTheme.accent; font-size: min(16px,parent.height * 0.85); font-weight: 700; horizontal-alignment: right; vertical-alignment: center; }
                 if mark.kind == 13 : CompactRule { width: min(36px,parent.width); height: parent.height; ink: OutputTheme.failure; }
+                if mark.kind == 17 : Rectangle {
+                    x: 0px; y: max(0px,parent.height - 1px); width: parent.width; height: 1px; background: OutputTheme.rule;
+                    Rectangle { x: 0px; y: 0px; width: min(30px,parent.width); height: 1px; background: OutputTheme.accent; }
+                }
                 if mark.kind == 14 : Rectangle { x: parent.width / 2; width: 1px; height: parent.height; background: OutputTheme.rule; }
                 if mark.kind == 6 : Registration {
                     width: parent.width; height: parent.height; outline: OutputTheme.success; thickness: 1px;
@@ -1194,6 +1186,28 @@ fn feature_dividers(screen:&vt100::Screen)->Vec<ReportGraphic>{
 }
 
 // Instrument the native process monitor, not the top island or other apps.
+// The monitor owns a reserved detail region. Only this explicit region gets
+// the expansion divider and field bracket; never the shell's prompt.
+fn process_monitor_detail(screen:&vt100::Screen)->Vec<ReportGraphic>{
+    let (rows,cols)=screen.size();
+    if rows<10 || cols<25 || screen_row_text(screen,0,cols).trim()!="SST  /  MONITOR DE PROCESOS" {return Vec::new();}
+    let mut marks=Vec::new();
+    for row in 5..rows.saturating_sub(1) {
+        let line=screen_row_text(screen,row,cols);
+        let line=line.trim();
+        if !(line.starts_with("+ DETALLE / ") || line.starts_with("− DETALLE / PID ")) {continue;}
+        marks.push(ReportGraphic{row,rows:1,start:2,end:cols.saturating_sub(1),kind:17,ratio:0.,tone:0});
+        if line.starts_with("− DETALLE / PID ") && row+3<rows
+            && screen_row_text(screen,row+1,cols).trim_start().starts_with("PID ")
+            && screen_row_text(screen,row+2,cols).trim_start().starts_with("CPU ")
+            && screen_row_text(screen,row+3,cols).trim_start().starts_with("PROCESO ") {
+            marks.push(ReportGraphic{row:row+1,rows:3,start:3,end:3,kind:1,ratio:0.,tone:0});
+        }
+        break;
+    }
+    marks
+}
+
 fn process_monitor_metrics(screen:&vt100::Screen)->Vec<ReportGraphic>{
     use crate::presentation::formatter::{Metric,Role};
     let (rows,cols)=screen.size();
@@ -3114,15 +3128,10 @@ pub fn run() -> Result<()> {
                 let screen = model.parser.screen();
                 let show_caret = drawable && screen.scrollback() == 0 && !screen.hide_cursor();
                 ui.set_caret_visible(show_caret && model.session.completion_view().is_none());
-                ui.set_input_focused(show_caret && model.focused && model.session.editable() && model.session.completion_view().is_none());
                 if show_caret {
                     let (row,col) = screen.cursor_position();
                     let (left,top,w,h) = model.geometry();
                     let factor = model.scale.max(0.5);
-                    ui.set_input_x((left-2.*factor).max(0.)/factor);
-                    ui.set_input_y((top+f32::from(row)*h)/factor);
-                    ui.set_input_width(((f32::from(col)+12.)*w/factor).min(f32::from(screen.size().1)*w/factor));
-                    ui.set_input_height(h/factor);
                     ui.set_caret_x((left+f32::from(col)*w)/factor);
                     ui.set_caret_y((top+f32::from(row)*h)/factor);
                     ui.set_caret_height((h/factor-1.0).max(1.0));
@@ -3220,9 +3229,13 @@ pub fn run() -> Result<()> {
                     let mut marks=if model.selection.is_none() && !model.session.raw_mode() && !model.parser.screen().alternate_screen() {
                         report_graphics(model.parser.screen())
                     } else {Vec::new()};
+                    if model.selection.is_none() && model.parser.screen().alternate_screen() {
+                        let screen=model.parser.screen();
+                        marks.extend(process_monitor_detail(screen));
+                        marks.extend(process_monitor_metrics(screen));
+                    }
                     if model.selection.is_none() && !panels.is_empty() {
                         let screen=model.parser.screen();
-                        marks.extend(process_monitor_metrics(screen));
                         let (rows,cols)=screen.size();
                         for (i,panel) in panels.iter().enumerate() {
                             let row=panel.start_row;

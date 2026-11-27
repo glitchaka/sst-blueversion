@@ -195,7 +195,7 @@ impl SystemService {
         if args.iter().any(|arg| matches!(arg.as_str(), "--help" | "-h")) {
             return Ok(CommandOutput::ok(
                 "sys top [NOMBRE | --find NOMBRE]\n\
-                 c: ordenar por CPU | m: RAM | t: árbol | flechas/PgUp/PgDown: mover | q/Esc: salir\n\
+                 c: ordenar por CPU | m: RAM | t: árbol | flechas/PgUp/PgDown: mover | Enter: detalle | q/Esc: salir\n\
                  Ejemplo: sys top outlook\n",
             ));
         }
@@ -213,6 +213,7 @@ impl SystemService {
         let interval = Duration::from_millis(900);
         let mut offset = 0usize;
         let mut selected = None;
+        let mut detail_open = false;
         let mut previous = HashMap::new();
         // Two samples initialize meaningful CPU utilization, and then the same
         // sampler is refreshed after each 900-ms frame.
@@ -234,10 +235,14 @@ impl SystemService {
             let (columns, height) = terminal.size()?;
             // Leave a column free to prevent the terminal's automatic wrap.
             let width = usize::from(columns.saturating_sub(1)).max(1);
-            let max_rows = usize::from(height.saturating_sub(7));
             let identity = |pid: Pid| system.process(pid).map(|p| (pid,p.start_time()));
             let mut index = selected.and_then(|id| rows.iter().position(|(pid,_)|identity(*pid)==Some(id)));
-            if index.is_none() { selected = None; }
+            if index.is_none() { selected = None; detail_open = false; }
+            // The detail occupies its own rows, never covers the process table.
+            let detail_available = height >= 10;
+            let expanded = detail_available && detail_open && selected.is_some() && height >= 14;
+            let detail_rows = if expanded { 3 } else { 0 };
+            let max_rows = usize::from(height.saturating_sub(7 + detail_rows));
             let page = max_rows.max(1);
             if let Some(i) = index { offset = offset.min(i).max(i.saturating_sub(page-1)); }
             offset = offset.min(rows.len().saturating_sub(page));
@@ -325,14 +330,33 @@ impl SystemService {
                     SURFACE,
                 );
             }
-            monitor_row(
-                &mut screen, "", width,
-                Role::Value.ansi(),
-                SURFACE,
-            );
+            let detail_header_row = 5 + max_rows;
+            if detail_available {
+                let caption = match selected {
+                    Some((pid, _)) => format!("  {} DETALLE / PID {pid}", if expanded { "−" } else { "+" }),
+                    None => "  + DETALLE / Seleccione un proceso".to_owned(),
+                };
+                monitor_row(&mut screen, &caption, width, Role::Command.ansi(), SURFACE_HEAD);
+                if expanded {
+                    if let Some(process) = selected.and_then(|(pid,_)| system.process(pid)) {
+                        let pid = format!("{:<8}", process.pid());
+                        let parent = process.parent().map(|p|p.to_string()).unwrap_or_else(||"N/D".into());
+                        let status = format!("{:?}", process.status());
+                        let cpu = format!("{:.1}%", process.cpu_usage());
+                        let memory = format!("{:.1} MiB", process.memory() as f64 / 1024.0 / 1024.0);
+                        let name = process.name().to_string_lossy();
+                        let elapsed = format!("{} s", process.run_time());
+                        monitor_cells(&mut screen,&[("    PID      ",Role::Label),(&pid,Role::Value),(" PPID ",Role::Label),(&parent,Role::Value),("   ESTADO ",Role::Label),(&status,Role::Value)],width,SURFACE);
+                        monitor_cells(&mut screen,&[("    CPU      ",Role::Label),(&cpu,Metric::Cpu.role(process.cpu_usage(),None)),("   RAM ",Role::Label),(&memory,Role::Value),("   TIEMPO ",Role::Label),(&elapsed,Role::Value)],width,SURFACE);
+                        monitor_cells(&mut screen,&[("    PROCESO  ",Role::Label),(&name,Role::Value)],width,SURFACE);
+                    }
+                }
+            } else {
+                monitor_row(&mut screen,"",width,Role::Value.ansi(),SURFACE);
+            }
             monitor_row(
                 &mut screen,
-                "  SST top   ·   Actualización automática de métricas   ·   q para cerrar",
+                "  SST top   ·   Enter: detalle   ·   q para cerrar",
                 width,
                 Role::Label.ansi(),
                 SURFACE_HEAD,
@@ -349,6 +373,11 @@ impl SystemService {
                 Some(TerminalKey::Char('c')) => sort_cpu = true,
                 Some(TerminalKey::Char('m')) => sort_cpu = false,
                 Some(TerminalKey::Char('t')) => tree = !tree,
+                Some(TerminalKey::Enter) if detail_available && height >= 14 => {
+                    if index.is_none() && !rows.is_empty() { index = Some(offset); detail_open = true; }
+                    else if index.is_some() { detail_open = !detail_open; }
+                }
+                Some(TerminalKey::Row(row)) if detail_available && height >= 14 && usize::from(row) == detail_header_row && index.is_some() => detail_open = !detail_open,
                 Some(TerminalKey::Row(row)) if (5..5+shown).contains(&usize::from(row)) =>
                     index = Some(offset + usize::from(row) - 5),
                 Some(TerminalKey::Up) => index = Some(current.saturating_sub(1)),
@@ -379,7 +408,7 @@ fn system_help() -> CommandOutput {
          Información:\n\
            sys info                     resumen del equipo\n\
            sys processes [NOMBRE]       buscar o listar procesos por CPU/RAM\n\
-           sys top [NOMBRE]             monitor TUI filtrable por CPU/RAM\n\
+           sys top [NOMBRE]             monitor TUI filtrable por CPU/RAM; Enter: detalle\n\
            sys disks                    discos y uso\n\
            sys memory                   memoria y swap\n\
            sys sensors                  temperaturas de hardware disponibles\n\

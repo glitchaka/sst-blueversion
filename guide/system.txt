@@ -38,7 +38,9 @@ Top TUI:
   c                         ordenar todos los procesos por CPU
   m                         ordenar por memoria
   t                         alternar lista global y árbol
-  flechas/PgUp/PgDown        desplazar
+  flechas/PgUp/PgDown        seleccionar/desplazar
+  Enter                     abrir/cerrar detalle del proceso seleccionado
+  clic en DETALLE           abrir/cerrar el mismo panel (ventana nativa)
   q o Esc                   salir
 
 Búsqueda: `sys processes outlook` y `sys top outlook` incluyen olk.exe y sus descendientes WebView2; no confunden otros WebView2 de Teams o Copilot.
