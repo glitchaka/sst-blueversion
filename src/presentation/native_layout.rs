@@ -96,9 +96,16 @@ pub(in crate::presentation) fn semantic_components(screen:&vt100::Screen)->Vec<R
     }
     let mut row=0;
     while row<rows {
-        if cols>=6 && surface(row,1)==Some(EXPANSION_RGB) {
-            let end=(1..cols).take_while(|&c|surface(row,c)==Some(EXPANSION_RGB)).last().unwrap_or(1)+1;
+        if cols>=6 && matches!(surface(row,1),Some(EXPANSION_RGB|super::INSPECTION_RGB)) {
+            let marker=surface(row,1);
+            let end=(1..cols).take_while(|&c|surface(row,c)==marker).last().unwrap_or(1)+1;
             marks.push(ReportGraphic{row,rows:1,start:2,end,kind:17,ratio:0.,tone:0});
+            if marker==Some(super::INSPECTION_RGB) {
+                let last=(0..end).rev().find(|&c|screen.cell(row,c).is_some_and(|v|!v.contents().trim().is_empty()));
+                if let Some(last)=last {
+                    marks.push(ReportGraphic{row,rows:1,start:0,end:last.saturating_add(3).min(end),kind:6,ratio:0.,tone:0});
+                }
+            }
         }
         if let Some(col)=(0..cols.saturating_sub(2)).find(|&c|surface(row,c)==Some(GROUP_FIELDS_RGB)&&surface(row,c+1)==Some(GROUP_FIELDS_RGB)) {
             let first=row;
