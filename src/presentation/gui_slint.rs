@@ -204,8 +204,8 @@ slint::slint! {
         if root.signals : Rectangle {
             x: 0px; y: 0px; width: 2px; height: parent.height; background: OutputTheme.accent;
         }
-        if !root.signals : Rectangle {
-            x: 0px; y: parent.height - 1px; width: min(parent.width, 36px); height: 1px; background: OutputTheme.rule;
+        if !root.signals : CompactRule {
+            x: 0px; y: parent.height - 2px; width: min(parent.width, 36px); height: 2px; ink: OutputTheme.rule;
         }
     }
 
@@ -505,7 +505,7 @@ slint::slint! {
                 }
                 if mark.kind == 14 : Rectangle { x: parent.width / 2; width: 1px; height: parent.height; background: OutputTheme.rule; }
                 if mark.kind == 6 : Registration {
-                    width: parent.width; height: parent.height; outline: OutputTheme.success; thickness: 1px;
+                    width: parent.width; height: parent.height; outline: OutputTheme.accent; thickness: 1px;
                 }
             }
 
@@ -1891,7 +1891,7 @@ fn kit_surface(rgb:(u8,u8,u8),p:DemoColors)->Option<Rgb>{
         crate::presentation::formatter::METADATA_TAB_RGB=>p.rail,
         crate::presentation::formatter::EVIDENCE_REF_RGB=>p.graphite,
         SELECTED_RGB=>p.rail,
-        EXPANSION_RGB=>p.rail,
+        EXPANSION_RGB|crate::presentation::formatter::INSPECTION_RGB=>p.rail,
         GROUP_FIELDS_RGB=>p.graphite,
         METER_OK_RGB=>p.mint,
         METER_WARN_RGB=>p.amber,
