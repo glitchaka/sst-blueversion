@@ -69,6 +69,14 @@ pub(in crate::presentation) fn semantic_components(screen:&vt100::Screen)->Vec<R
                 }
                 continue;
             }
+            if let Some(ratio)=super::decode_activity_marker(rgb) {
+                let start=col;
+                while col<cols&&surface(row,col)==Some(rgb){col+=1;}
+                if col-start>=16 {
+                    marks.push(ReportGraphic{row,rows:1,start,end:col,kind:23,ratio,tone:0});
+                }
+                continue;
+            }
             if let Some(count)=super::decode_route_marker(rgb) {
                 let start=col;while col<cols&&surface(row,col)==Some(rgb){col+=1;}
                 if col-start>=5{marks.push(ReportGraphic{row,rows:1,start,end:col,kind:11,ratio:0.,tone:i32::from(count)});}
