@@ -84,6 +84,22 @@ pub(super) fn table(header:&str,rows:&[&str],width:usize)->String{
     let data=rows.iter().map(|line|cells(line)).collect::<Vec<_>>();
     let style=TableStyle::from_header(header);
     let count=labels.len();
+    // A mismatched row cannot be assigned to arbitrary columns. Retain its
+    // original content rather than panic or discard evidence.
+    if count<2 || data.iter().any(|row|row.len()!=count) {
+        let mut out=String::new();
+        for line in std::iter::once(header).chain(rows.iter().copied()) {
+            for fragment in wrap_line(line,width) {
+                out.push_str(&style_line(&fragment));
+                out.push('\n');
+            }
+        }
+        return out;
+    }
+    let numeric:Vec<_>=(0..count).map(|i|!data.is_empty()&&data.iter().all(|row|{
+        let value=row[i].trim().trim_end_matches('%').replace(',',".");
+        value.parse::<f64>().is_ok_and(f64::is_finite)
+    })).collect();
     let mut out=String::new();
     let gap=2;
     let budget=width.saturating_sub(gap*(count-1));
@@ -134,9 +150,16 @@ pub(super) fn table(header:&str,rows:&[&str],width:usize)->String{
                 if i>0{visible.push_str("  ");styled.push_str("  ");}
                 let part=parts.get(line).map(String::as_str).unwrap_or("");
                 let padding=" ".repeat(widths[i].saturating_sub(display_width(part)));
-                visible.push_str(part);visible.push_str(&padding);
                 let tone=if heading{HEADING}else{style.tone(i,&row[i]).unwrap_or(VALUE)};
-                styled.push_str(tone);styled.push_str(part);styled.push_str(RESET);styled.push_str(&padding);
+                // Align quantities and their headers by the same right edge.
+                // Long identifiers and explanatory text remain left aligned.
+                if numeric[i] {
+                    visible.push_str(&padding);visible.push_str(part);
+                    styled.push_str(&padding);styled.push_str(tone);styled.push_str(part);styled.push_str(RESET);
+                } else {
+                    visible.push_str(part);visible.push_str(&padding);
+                    styled.push_str(tone);styled.push_str(part);styled.push_str(RESET);styled.push_str(&padding);
+                }
             }
             if heading{
                 // Apply the same shared surface as every other table header.
@@ -282,9 +305,12 @@ pub(super) fn counted_summary(text:&str,width:usize)->Option<String>{
     if !detail.is_empty(){for line in wrap_line(detail,width){out.push_str(&Role::Detail.paint(&line));out.push('\n');}}
     if let Some(index)=rest.iter().position(|l|l.starts_with("Conteo: ")){
         let line=rest.remove(index);
-        let counts:Vec<_>=line.strip_prefix("Conteo: ")?.split(" · ").filter_map(|p|p.split_once(": ")).collect();
-        let styled=counts.iter().map(|(name,value)|{
-            let tone=match *name{"Críticos" if *value!="0"=>BAD,"Sospechosos"|"Revisar" if *value!="0"=>CAUTION,_=>VALUE};
+        let counts:Vec<_>=line.strip_prefix("Conteo: ")?.split(" · ").collect();
+        let styled=counts.iter().map(|part|{
+            let Some((name,value))=part.split_once(": ") else {
+                return Role::Detail.paint(part);
+            };
+            let tone=match name{"Críticos" if value!="0"=>BAD,"Sospechosos"|"Revisar" if value!="0"=>CAUTION,_=>VALUE};
             format!("{LABEL}{name}{RESET} {tone}{value}{RESET}")
         }).collect::<Vec<_>>();
         if display_width(line)<=width{out.push_str(&styled.join("   │   "));out.push('\n');}
