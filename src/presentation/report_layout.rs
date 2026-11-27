@@ -168,14 +168,19 @@ pub(super) fn table(header:&str,rows:&[&str],width:usize)->String{
                 let part=parts.get(line).map(String::as_str).unwrap_or("");
                 let padding=" ".repeat(widths[i].saturating_sub(display_width(part)));
                 let tone=if heading{HEADING}else{style.tone(i,&row[i]).unwrap_or(VALUE)};
+                // A status badge belongs to an actual status column and
+                // only when the complete state fits on one physical row.
+                let styled_part=if !heading&&style.status==Some(i)&&part==row[i] {
+                    paint_status(part,tone)
+                }else{format!("{tone}{part}{RESET}")};
                 // Align quantities and their headers by the same right edge.
                 // Long identifiers and explanatory text remain left aligned.
                 if numeric[i] {
                     visible.push_str(&padding);visible.push_str(part);
-                    styled.push_str(&padding);styled.push_str(tone);styled.push_str(part);styled.push_str(RESET);
+                    styled.push_str(&padding);styled.push_str(&styled_part);
                 } else {
                     visible.push_str(part);visible.push_str(&padding);
-                    styled.push_str(tone);styled.push_str(part);styled.push_str(RESET);styled.push_str(&padding);
+                    styled.push_str(&styled_part);styled.push_str(&padding);
                 }
             }
             if heading{
