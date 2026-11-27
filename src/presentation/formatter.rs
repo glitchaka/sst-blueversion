@@ -1426,7 +1426,10 @@ pub fn monitor_table(buffer:&mut String,headers:&[&str],records:&[MonitorRecord]
     if count==0{return;}
     let prefix=2usize;
     let gap=2usize;
-    let budget=width.saturating_sub(prefix+gap*(count-1));
+    // Reserve the angular tip for every row, keeping column positions
+    // unchanged when selection moves. The selected outline uses this margin.
+    let tip=angular_tip_cells(width);
+    let budget=width.saturating_sub(prefix+gap*(count-1)+tip);
     let mut sizes=headers.iter().map(|s|display_width(s).max(3)).collect::<Vec<_>>();
     for record in records {
         for (i,value) in record.values.iter().take(count).enumerate(){sizes[i]=sizes[i].max(display_width(value));}
@@ -1559,6 +1562,10 @@ impl ExpandableFields {
 /// Fixed-height navigation pages share the monitor surfaces and text roles.
 /// The controller supplies the selected row; no selection is inferred from
 /// user-visible text. Leave a real right margin for the angular active row.
+fn angular_tip_cells(width:usize)->usize {
+    (width.saturating_mul(8).saturating_add(99)/100).max(1)
+}
+
 pub fn navigation_page(title:&str,lines:&[String],selected:Option<usize>,footer:&str,cols:u16,rows:u16)->String {
     let width=usize::from(cols).saturating_sub(3).max(1);
     let height=usize::from(rows).max(1);
@@ -1579,8 +1586,7 @@ pub fn navigation_page(title:&str,lines:&[String],selected:Option<usize>,footer:
         let value=lines.get(i).map(String::as_str).unwrap_or("");
         let value=safe(value);
         if selected==Some(i) {
-            // The last two cells are reserved for the tip, not text.
-            let value=shorten(&value,width.saturating_sub(4));
+            let value=shorten(&value,width.saturating_sub(2+angular_tip_cells(width)));
             monitor_row(&mut out,&format!("  {value}"),width,Role::Command.ansi(),&active);
         }else{
             let value=shorten(&value,width.saturating_sub(2));
@@ -1589,6 +1595,8 @@ pub fn navigation_page(title:&str,lines:&[String],selected:Option<usize>,footer:
     }
     if height>=4 {out.push_str("\r\n");}
     monitor_row(&mut out,&safe(footer),width,Role::Label.ansi(),SURFACE);
+    // No final newline: a full-height screen must not scroll its header off.
+    if out.ends_with("\r\n"){out.truncate(out.len()-2);}
     out.push_str(RESET);
     out
 }
@@ -1658,10 +1666,18 @@ impl LiveScreen {
 /// Monitors must fit within terminal cells, not pixel width. ANSI escape
 /// sequences do not contribute to the visible width.
 pub fn shorten(value: &str, max: usize) -> String {
-    let max = max.max(1);
-    if value.chars().count() <= max { return value.to_owned(); }
-    if max <= 2 { return value.chars().take(max).collect(); }
-    format!("{}…", value.chars().take(max - 1).collect::<String>())
+    if max==0 {return String::new();}
+    if display_width(value)<=max {return value.to_owned();}
+    let budget=max.saturating_sub(1);
+    let mut out=String::new();
+    let mut used=0usize;
+    for ch in value.chars() {
+        let cells=display_width(&ch.to_string());
+        if used.saturating_add(cells)>budget{break;}
+        out.push(ch);used+=cells;
+    }
+    out.push('…');
+    out
 }
 
 #[cfg(test)]
