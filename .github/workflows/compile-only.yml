@@ -1,0 +1,75 @@
+name: Compile SST only
+
+# Explicit compilation without test execution or distribution.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.qa/compile-only.trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Synchronize version metadata
+        shell: pwsh
+        run: ./scripts/sync-version.ps1
+
+      - name: Prepare pinned IEEE registry for reproducible build
+        shell: pwsh
+        run: |
+          $rev = '65f556005f63a22ae353e6f129440dbdb3c29c06'
+          $dir = Join-Path $env:RUNNER_TEMP 'sst-ieee'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $items = @(
+            @{ Name = 'oui.csv'; Env = 'SST_IEEE_MAL_CSV' },
+            @{ Name = 'mam.csv'; Env = 'SST_IEEE_MAM_CSV' },
+            @{ Name = 'oui36.csv'; Env = 'SST_IEEE_MAS_CSV' }
+          )
+          foreach ($item in $items) {
+            $target = Join-Path $dir $item.Name
+            $url = "https://raw.githubusercontent.com/StewAlexander-com/maclookup.py/$rev/$($item.Name)"
+            & curl.exe -L --fail --silent --show-error --retry 3 --retry-all-errors --connect-timeout 8 --max-time 120 $url -o $target
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $target)) {
+              throw "No se pudo preparar $($item.Name) para el build"
+            }
+            if ((Get-Item -LiteralPath $target).Length -lt 10000) {
+              throw "El registro $($item.Name) descargado parece incompleto"
+            }
+            "$($item.Env)=$target" >> $env:GITHUB_ENV
+          }
+
+      - name: Restore and verify both original SST keygen MP3 tracks
+        shell: pwsh
+        run: ./scripts/prepare-keygen-soundtrack.ps1
+
+      - name: Build SST, native SFX packager and stub
+        id: compile
+        shell: pwsh
+        run: |
+          cargo build --release --bin sst --bin sst_updater --bin sst_sfx_packager --bin sst_sfx_stub *> cargo-release-build.log
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content cargo-release-build.log -Tail 100
+            throw 'Windows release compilation failed.'
+          }
+
+      - name: Preserve compiler output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sst-compile-only-log
+          path: cargo-release-build.log
+          if-no-files-found: warn
