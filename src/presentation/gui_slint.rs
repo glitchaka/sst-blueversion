@@ -488,6 +488,10 @@ slint::slint! {
                     ratio: mark.ratio; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
                     track: OutputTheme.track; line: OutputTheme.muted;
                 }
+                if mark.kind == 24 : RailFolio {
+                    width: parent.width; height: parent.height;
+                    ink: OutputTheme.accent; line: OutputTheme.track;
+                }
                 if mark.kind == 23 : ActivityScale {
                     width: parent.width; height: parent.height; ratio: mark.ratio;
                     ink: OutputTheme.accent; track: OutputTheme.track;
@@ -1108,7 +1112,7 @@ impl ReportGraphic {
             8|9=>(x,y+scale,width,(h-2.*scale).max(2.)),
             2|7|23=>(x,y+h*0.18,width,(h*0.64).max(2.)),
             15|16|19=>(x+scale,y+scale,(width-2.*scale).max(1.),(height-2.*scale).max(1.)),
-            10|11|12|18=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
+            10|11|12|18|24=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             14=>(x,y+scale,width,(height-2.*scale).max(1.)),
             20|21|22=>(x,y+scale,width,(h-2.*scale).max(1.)),
             4=>((x-scale).max(0.),y+scale,width+2.*scale,(h-2.*scale).max(1.)),
@@ -1616,6 +1620,7 @@ impl TerminalModel {
                         || (r,g,b)==crate::presentation::formatter::SELECTED_RGB
                         || matches!((r,g,b),crate::presentation::formatter::METADATA_TAB_RGB|crate::presentation::formatter::EVIDENCE_REF_RGB)
                         || crate::presentation::formatter::decode_status_token((r,g,b)).is_some()
+                        || (r,g,b)==crate::presentation::formatter::NAV_FOLIO_RGB
                         || crate::presentation::formatter::decode_activity_marker((r,g,b)).is_some()
                         || crate::presentation::formatter::decode_metric_marker((r,g,b)).is_some()
                         || matches!((r,g,b),crate::presentation::formatter::CONTINUITY_OK_RGB|crate::presentation::formatter::CONTINUITY_LOST_RGB)
