@@ -901,42 +901,5 @@ fn content_width(columns: u16) -> usize {
 }
 
 fn manual_lines(text: &str, width: usize) -> Vec<String> {
-    let mut out = Vec::new();
-    for raw in text.lines() {
-        if raw.trim().is_empty() {
-            out.push(String::new());
-            continue;
-        }
-        let indent = raw.chars().take_while(|ch| ch.is_whitespace()).count().min(8);
-        let prefix = " ".repeat(indent);
-        let available = width.saturating_sub(indent).max(8);
-        for line in wrap(raw.trim(), available) {
-            out.push(format!("{prefix}{line}"));
-        }
-    }
-    out
+    crate::presentation::formatter::reference_lines(text,width)
 }
-
-fn wrap(value: &str, width: usize) -> Vec<String> {
-    if width == 0 {
-        return vec![String::new()];
-    }
-    let mut rows = Vec::new();
-    let mut line = String::new();
-    for word in value.split_whitespace() {
-        let extra = word.chars().count() + if line.is_empty() { 0 } else { 1 };
-        if !line.is_empty() && line.chars().count() + extra > width {
-            rows.push(line);
-            line = String::new();
-        }
-        if !line.is_empty() {
-            line.push(' ');
-        }
-        line.push_str(word);
-    }
-    if !line.is_empty() || rows.is_empty() {
-        rows.push(line);
-    }
-    rows
-}
-
