@@ -41,6 +41,7 @@
 | 33 | Ayudas limitadas a función, sintaxis, opciones, ejemplos y advertencias operativas. |
 | 34 | Entender la información al mirarla: separar resultados principales, datos secundarios y evidencia, sin sacrificar datos. |
 | 35 | Ampliar `sys info` como inventario integral del equipo: conservar las métricas existentes, incorporar información de hardware y sistema operativo y las cuentas locales disponibles en `sys users`, diferenciándolas del usuario de sesión actual. Obtener la información en una sola ejecución, con jerarquía y agrupación mediante el formatter común; distinguir datos no disponibles y conservar `sys users` para consultas específicas. |
+| 36 | Corregir `hostname` y `sys hostname`: conservar renombrado local y en dominio; ante fallo de autenticación 1326 o permisos de dominio, permitir introducir credenciales autorizadas en la propia consola con contraseña oculta, sin almacenarlas ni incluirlas en argumentos o registros. Usar API nativa, distinguir autenticación de permisos, no renombrar sólo localmente como alternativa en equipos unidos a AD y comunicar reinicio requerido únicamente al confirmar éxito. |
 
 ## Matriz funcional del catálogo
 
@@ -87,7 +88,7 @@ Los usos son criterios de aceptación, no afirmaciones de que todos estén imple
 
 ## Validación de entrega
 
-Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. La compilación anterior falló al quedar un método de edición sin uso tras retirar el adorno del prompt; se eliminó el método en la revisión de fuente. No se ha ejecutado una nueva prueba. No se considera completada la aceptación visual de los 35 criterios ni de los 36 componentes. La versión publicada sigue siendo .11 hasta que exista una entrega completa.
+Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. La compilación anterior falló al quedar un método de edición sin uso tras retirar el adorno del prompt; se eliminó el método en la revisión de fuente. No se ha ejecutado una nueva prueba. No se considera completada la aceptación visual de los 36 criterios ni de los 36 componentes. La versión publicada sigue siendo .11 hasta que exista una entrega completa.
 
 ### Cambios de fuente incorporados en esta revisión
 
