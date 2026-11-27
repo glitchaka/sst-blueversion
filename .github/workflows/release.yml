@@ -251,6 +251,17 @@ jobs:
         shell: pwsh
         run: ./scripts/test-independent-updater.ps1 -UpdaterPath ./target/release/sst_updater.exe
 
+      - name: Capture actual terminal rendering before release
+        shell: pwsh
+        run: ./scripts/capture-native-catalogue.ps1 -Exe ./target/release/sst.exe
+
+      - name: Preserve release visual evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sst-native-catalogue-release-evidence
+          path: qa-visual/*.png
+          if-no-files-found: error
+
       - name: Upload private workflow artifact
         uses: actions/upload-artifact@v4
         with:
