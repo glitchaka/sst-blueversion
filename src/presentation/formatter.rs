@@ -347,7 +347,9 @@ impl TableStyle {
         style
     }
     fn tone(&self, index:usize, value:&str)->Option<&'static str>{
-        if self.status==Some(index){status_color(value)}else{
+        if self.status==Some(index){
+            if status_token(value).is_some_and(|(_,_,tone)|tone==3){Some(LABEL)}else{status_color(value)}
+        }else{
             self.metrics.iter().find(|(i,_,_)|*i==index)
                 .and_then(|(_,metric,implicit)|metric.color(value,*implicit))
         }
@@ -361,9 +363,13 @@ impl TableStyle {
             let tone = self.tone(i,value);
             if let Some(color) = tone {
                 out.push_str(&line[last..a]);
-                out.push_str(color);
-                out.push_str(value);
-                out.push_str(RESET);
+                if self.status==Some(i){
+                    out.push_str(&paint_status(value,color));
+                }else{
+                    out.push_str(color);
+                    out.push_str(value);
+                    out.push_str(RESET);
+                }
                 last = b;
             }
         }
@@ -382,7 +388,8 @@ impl LiveReport {
         // A numeric PID and an uppercase state are a data row, not a title.
         // Preserve the live schema until a real boundary or a repeated header.
         if let Some(header)=&self.header {
-            if text.as_ref()!=header.as_str() && columns==table_columns(header).len() {
+            if !text.trim().is_empty() && !is_table_header(&text)
+                && field_parts(&text).is_none() && columns==table_columns(header).len() {
                 return self.table.row(&text);
             }
         }
@@ -1599,8 +1606,10 @@ pub fn navigation_page(title:&str,lines:&[String],selected:Option<usize>,footer:
     let body=height.saturating_sub(4).min(28);
     let safe=|value:&str|value.chars().map(|c|if c.is_control(){'�'}else{c}).collect::<String>();
     let mut out=String::from("\x1b[0m\x1b[2J\x1b[H");
-    if height<=1 {
+    if height<=3 {
         monitor_row(&mut out,&safe(title),width,Role::Title.ansi(),SURFACE);
+        if height>=2 {monitor_row(&mut out,&safe(footer),width,Role::Label.ansi(),SURFACE);}
+        if out.ends_with("\r\n"){out.truncate(out.len()-2);}
         return out;
     }
     // Use the primary heading marker directly instead of an ASCII box.
@@ -1616,7 +1625,9 @@ pub fn navigation_page(title:&str,lines:&[String],selected:Option<usize>,footer:
             let value=shorten(&value,width.saturating_sub(2+angular_tip_cells(width)));
             monitor_row(&mut out,&format!("  {value}"),width,Role::Command.ansi(),&active);
         }else{
-            let value=shorten(&value,width.saturating_sub(2));
+            // A selection changes emphasis, never the width of its contents.
+            let margin=if selected.is_some(){angular_tip_cells(width)}else{0};
+            let value=shorten(&value,width.saturating_sub(2+margin));
             monitor_row(&mut out,&format!("  {value}"),width,Role::Detail.ansi(),SURFACE);
         }
     }
@@ -1718,6 +1729,34 @@ impl LiveScreen {
 
 /// Monitors must fit within terminal cells, not pixel width. ANSI escape
 /// sequences do not contribute to the visible width.
+/// Hard reflow for manuals: preserve spaces and every source character,
+/// including URLs and command tokens, even if one token is wider than the viewport.
+pub fn reference_lines(text:&str,width:usize)->Vec<String>{
+    let width=width.max(2);
+    let mut result=Vec::new();
+    for raw in text.lines(){
+        let expanded=raw.replace('\t',"    ");
+        if expanded.is_empty(){result.push(String::new());continue;}
+        let mut rest=expanded.as_str();
+        while !rest.is_empty(){
+            if display_width(rest)<=width{result.push(rest.to_owned());break;}
+            let mut used=0usize;
+            let mut end=0;
+            let mut space=0;
+            for (i,ch) in rest.char_indices(){
+                let cells=display_width(&ch.to_string());
+                if used+cells>width{break;}
+                used+=cells;end=i+ch.len_utf8();
+                if ch.is_whitespace()&&used>width/2 {space=end;}
+            }
+            let end=if space>0{space}else{end.max(rest.chars().next().map_or(0,char::len_utf8))};
+            result.push(rest[..end].to_owned());
+            rest=&rest[end..];
+        }
+    }
+    result
+}
+
 pub fn shorten(value: &str, max: usize) -> String {
     if max==0 {return String::new();}
     if display_width(value)<=max {return value.to_owned();}
