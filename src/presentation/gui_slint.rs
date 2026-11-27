@@ -172,7 +172,7 @@ slint::slint! {
     import { AngularMark, CutFrame, Registration, AsymmetricHeader, SignalSlashes, FieldBracket, SteppedDivider } from "graphic_kit.slint";
     import { RadialTwenty, RingEight, ActivityScale, SegmentedProgress, IndeterminateWait, HatchedTransfer, MonitorFrame } from "graphic_kit.slint";
     import { WarningTriangle, StateBadge } from "graphic_kit.slint";
-    import { LinearScale, ThresholdScale, ProportionalReadout, ContinuityCell, RouteBranch, MetadataTab, RailFolio, CompactRule } from "graphic_kit.slint";
+    import { LinearScale, ThresholdScale, ProportionalReadout, ContinuityCell, RouteBranch, RailFolio, CompactRule } from "graphic_kit.slint";
     export struct NativeGraphic { x: float, y: float, w: float, h: float, kind: int, ratio: float, tone: int }
     // Rendered vector outlines, never made of VT100/ASCII characters.
     // Transparent interiors preserve the user's terminal artwork and logo.

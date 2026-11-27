@@ -25,9 +25,9 @@ jobs:
         shell: pwsh
         run: ./scripts/sync-version.ps1
 
-      - name: Regenerate canonical Cargo.lock
+      - name: Validate canonical locked dependencies without upgrading them
         shell: pwsh
-        run: cargo generate-lockfile
+        run: cargo metadata --locked --format-version 1 --no-deps
 
       - name: Commit canonical lockfile
         shell: pwsh
