@@ -1556,6 +1556,43 @@ impl ExpandableFields {
     }
 }
 
+/// Fixed-height navigation pages share the monitor surfaces and text roles.
+/// The controller supplies the selected row; no selection is inferred from
+/// user-visible text. Leave a real right margin for the angular active row.
+pub fn navigation_page(title:&str,lines:&[String],selected:Option<usize>,footer:&str,cols:u16,rows:u16)->String {
+    let width=usize::from(cols).saturating_sub(3).max(1);
+    let height=usize::from(rows).max(1);
+    let body=height.saturating_sub(4).min(28);
+    let safe=|value:&str|value.chars().map(|c|if c.is_control(){'�'}else{c}).collect::<String>();
+    let mut out=String::from("\x1b[0m\x1b[2J\x1b[H");
+    if height<=1 {
+        monitor_row(&mut out,&safe(title),width,Role::Title.ansi(),SURFACE);
+        return out;
+    }
+    // Use the primary heading marker directly instead of an ASCII box.
+    let title=shorten(&safe(title),width.saturating_sub(2));
+    out.push_str(&background(REPORT_HEADER_RGB));
+    out.push_str("  ");out.push_str(Role::Title.ansi());out.push_str(&title);
+    out.push_str(RESET);out.push_str("\r\n\r\n");
+    let active=selected_surface();
+    for i in 0..body {
+        let value=lines.get(i).map(String::as_str).unwrap_or("");
+        let value=safe(value);
+        if selected==Some(i) {
+            // The last two cells are reserved for the tip, not text.
+            let value=shorten(&value,width.saturating_sub(4));
+            monitor_row(&mut out,&format!("  {value}"),width,Role::Command.ansi(),&active);
+        }else{
+            let value=shorten(&value,width.saturating_sub(2));
+            monitor_row(&mut out,&format!("  {value}"),width,Role::Detail.ansi(),SURFACE);
+        }
+    }
+    if height>=4 {out.push_str("\r\n");}
+    monitor_row(&mut out,&safe(footer),width,Role::Label.ansi(),SURFACE);
+    out.push_str(RESET);
+    out
+}
+
 pub struct LiveScreen {
     text: String,
     line: usize,
