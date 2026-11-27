@@ -148,28 +148,22 @@ pub(in crate::presentation) fn report_graphics(screen: &vt100::Screen) -> Vec<Re
         } else if let Some((begin,left))=group.take() {
             if row-begin>=2 {result.push(ReportGraphic{row:begin,rows:row-begin,start:left,end:left,kind:1,ratio:0.0,tone:0});}
         }
-        // Only actual formatter status spans are framed; incidental prose and
-        // numbers painted with warning tones are not converted into badges.
-        if let Some((a,b))=first.zip(last) {
-            let mut c=a;
-            while c<=b {
-                let Some(r)=role(row,c) else {c+=1;continue;};
-                let start=c;
-                while c<=b && role(row,c)==Some(r) {c+=1;}
-                let text=(start..c).filter_map(|i|screen.cell(row,i)).map(|v|v.contents()).collect::<String>();
-                let clean=text.trim();
-                let tone=match (r,crate::presentation::formatter::status_color(clean)) {
-                    (Role::Success,Some(crate::presentation::formatter::GOOD))=>Some(0),
-                    (Role::Warning,Some(crate::presentation::formatter::CAUTION))=>Some(1),
-                    (Role::Failure,Some(crate::presentation::formatter::BAD))=>Some(2),
-                    (Role::Label|Role::Value|Role::Detail,_) if matches!(clean.to_uppercase().as_str(),"SIN DATOS"|"NO HAY DATOS"|"N/D")=>Some(3),
-                    _=>None,
-                };
-                if let Some(tone)=tone {
-                    result.push(ReportGraphic{row,rows:1,start,end:c,kind:4,ratio:0.0,tone});
-                    if tone==1 && c.saturating_add(2)<cols && (c..c+2).all(|i|!has_text(row,i)) {
-                        result.push(ReportGraphic{row,rows:1,start:c+1,end:c+2,kind:5,ratio:0.0,tone});
-                    }
+        // Explicit status tokens are emitted by the common formatter only
+        // for a known status field or column. A metric, filename or help
+        // sentence with the same foreground cannot acquire a badge.
+        let mut status_col=0;
+        while status_col<cols {
+            let Some(rgb)=bg(row,status_col) else {status_col+=1;continue;};
+            let Some(tone)=super::decode_status_token(rgb) else {status_col+=1;continue;};
+            let start=status_col;
+            while status_col<cols&&bg(row,status_col)==Some(rgb){status_col+=1;}
+            if (start..status_col).any(|c|has_text(row,c)){
+                result.push(ReportGraphic{row,rows:1,start,end:status_col,kind:4,ratio:0.,tone});
+                // A warning icon requires a genuinely unused cell after the
+                // status token; never overlap an adjacent table value.
+                if tone==1 && status_col.saturating_add(2)<cols
+                    && (status_col..status_col+2).all(|c|!has_text(row,c)){
+                    result.push(ReportGraphic{row,rows:1,start:status_col+1,end:status_col+2,kind:5,ratio:0.,tone});
                 }
             }
         }
