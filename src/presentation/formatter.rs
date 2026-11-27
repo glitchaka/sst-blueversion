@@ -1415,7 +1415,9 @@ pub fn monitor_row(
     background: &str,
 ) {
     let visible=shorten(text,width);
-    buffer.push_str(if foreground==HEADING&&background==SURFACE_HEAD {SURFACE}else{background});
+    if foreground==HEADING&&background==SURFACE_HEAD {
+        buffer.push_str(&self::background(REPORT_HEADER_RGB));
+    }else{buffer.push_str(background);}
     buffer.push_str(foreground);
     buffer.push_str(&visible);
     buffer.push_str(&" ".repeat(width.saturating_sub(display_width(&visible))));
@@ -1651,10 +1653,14 @@ impl LiveScreen {
     }
     pub fn section_limited(&mut self,title:&str,body:&str,budget:usize) {
         let start=self.line;
-        self.text.push_str("  ");
-        self.text.push_str(ACCENT);
-        self.text.push_str(title);
-        self.text.push_str(RESET);
+        let safe=shorten(title,self.width.saturating_sub(3));
+        if start==0 {
+            let lines=report_layout::headline(&safe,self.width);
+            self.text.push_str(&lines.join("\n"));
+        }else{
+            self.text.push_str("  ");
+            self.text.push_str(&Role::Title.paint(&safe));
+        }
         self.text.push('\n');
         self.line += 1;
 
@@ -1699,7 +1705,7 @@ impl LiveScreen {
     pub fn footer(&mut self, text: &str) {
         self.text.push_str("  ");
         self.text.push_str(LABEL);
-        self.text.push_str(text);
+        self.text.push_str(&shorten(text,self.width.saturating_sub(2)));
         self.text.push_str(RESET);
         self.text.push('\n');
         self.line += 1;
