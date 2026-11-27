@@ -569,21 +569,29 @@ slint::slint! {
             width: root.completion-width * 1px; height: root.completion-row-height * 5px;
             background: transparent; clip: true;
             property <length> line-height: root.completion-row-height * 1px;
+            // CutFrame removes 8% of the width at the top-right and bottom-left.
+            // Keep controls inside the polygon, not merely its rectangular bounds.
+            property <length> corner-inset: self.width * 0.08 + 5px;
+            property <length> row-inset: self.width * 0.03 + 4px;
+            property <length> detail-width: min(95px, max(48px, (self.width - self.corner-inset) * 0.30));
+            property <length> footer-width: max(0px, self.width - 2 * self.corner-inset);
+            property <length> accept-width: min(150px, max(0px, (self.footer-width - 6px) * 0.53));
+            property <length> cancel-width: min(130px, max(0px, self.footer-width - self.accept-width - 6px));
             CutFrame { width: parent.width; height: parent.height; ink: OutputTheme.track; outline: OutputTheme.rule; thickness: 1px; }
             RailFolio { x: 5px; y: 0px; width: 14px; height: parent.line-height; ink: OutputTheme.accent; line: OutputTheme.track; }
             Text {
-                x: 24px; y: 0px; width: parent.width - 120px; height: parent.line-height;
+                x: 24px; y: 1px; width: max(0px, parent.width - parent.corner-inset - parent.detail-width - 28px); height: max(1px, parent.line-height - 2px);
                 text: "SUGERENCIAS / " + (root.completion-selected + 1) + " de " + root.completion-count;
                 color: OutputTheme.text; font-family: "Cascadia Mono"; font-size: min(13px,parent.line-height * 0.72); font-weight: 700;
                 vertical-alignment: center; overflow: elide;
             }
             Rectangle {
-                x: parent.width - 95px; y: 0px; width: 95px; height: parent.line-height; background: transparent;
-                Text { text: root.completion-expanded ? "− DETALLE" : "+ DETALLE"; color: OutputTheme.accent; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                x: parent.width - parent.corner-inset - parent.detail-width; y: 1px; width: parent.detail-width; height: max(1px, parent.line-height - 2px); background: transparent;
+                Text { x: 2px; y: 0px; width: max(0px, parent.width - 4px); height: parent.height; text: root.completion-expanded ? "− DETALLE" : "+ DETALLE"; color: OutputTheme.accent; font-size: min(11px, parent.height * 0.70, parent.width / 5.8); horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
                 TouchArea { clicked => { root.completion-action(-3); terminal-focus.focus(); } }
             }
             for item[i] in root.completion-items : Rectangle {
-                x: 4px; y: (i+1) * parent.line-height; width: parent.width - 8px; height: parent.line-height;
+                x: parent.row-inset; y: (i+1) * parent.line-height; width: max(0px, parent.width - 2 * parent.row-inset); height: parent.line-height;
                 background: transparent;
                 AngularMark { visible: root.completion-selected == root.completion-first + i; width: parent.width; height: parent.height; ink: OutputTheme.accent; }
                 Registration { visible: root.completion-selected == root.completion-first + i; width: parent.width; height: parent.height; outline: OutputTheme.accent; thickness: 1px; }
@@ -595,17 +603,17 @@ slint::slint! {
                 TouchArea { clicked => { root.completion-action(root.completion-first + i); terminal-focus.focus(); } }
             }
             Rectangle {
-                x: 5px; y: parent.line-height * 4; width: min(150px,parent.width * 0.48); height: parent.line-height - 1px;
+                x: parent.corner-inset; y: parent.line-height * 4 + 2px; width: parent.accept-width; height: max(1px, parent.line-height - 5px);
                 background: transparent;
                 CutFrame { width: parent.width; height: parent.height; ink: OutputTheme.rail; outline: OutputTheme.accent; thickness: 1px; }
-                Text { text: "ENTER / ACEPTAR"; color: OutputTheme.text; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                Text { x: 3px; y: 0px; width: max(0px, parent.width - 6px); height: parent.height; text: "ENTER / ACEPTAR"; color: OutputTheme.text; font-size: min(11px, parent.height * 0.76, parent.width / 9); horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
                 TouchArea { clicked => { root.completion-action(-2); terminal-focus.focus(); } }
             }
             Rectangle {
-                x: min(162px,parent.width * 0.50); y: parent.line-height * 4; width: min(130px,parent.width * 0.45); height: parent.line-height - 1px;
+                x: parent.corner-inset + parent.accept-width + 6px; y: parent.line-height * 4 + 2px; width: parent.cancel-width; height: max(1px, parent.line-height - 5px);
                 background: transparent;
                 CutFrame { width: parent.width; height: parent.height; outline: OutputTheme.rule; thickness: 1px; }
-                Text { text: "ESC / CANCELAR"; color: OutputTheme.text; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+                Text { x: 3px; y: 0px; width: max(0px, parent.width - 6px); height: parent.height; text: "ESC / CANCELAR"; color: OutputTheme.text; font-size: min(11px, parent.height * 0.76, parent.width / 8.4); horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
                 TouchArea { clicked => { root.completion-action(-1); terminal-focus.focus(); } }
             }
         }
