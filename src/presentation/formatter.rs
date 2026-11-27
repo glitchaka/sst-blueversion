@@ -870,7 +870,15 @@ fn compose_assessment(stdout:&str,width:usize)->Option<String>{
     let (caption,summary)=blocks.remove(index);
     let mut doc=Document::default();doc.title(title);
     let mut out=doc.render(OutputMode::Interactive);
-    let emit=|out:&mut String,line:&str|{for part in wrap_line(line,width){out.push_str(&style_line(&part));out.push('\n');}};
+    let emit=|out:&mut String,line:&str|{
+        if let Some((label,value,marker))=context_field(line) {
+            for part in report_layout::context_row(label,value,marker,width) {
+                out.push_str(&part);out.push('\n');
+            }
+        } else {
+            for part in wrap_line(line,width){out.push_str(&style_line(&part));out.push('\n');}
+        }
+    };
     out.push('\n');
     for line in summary{
         if is_status_field(&line){
@@ -882,12 +890,7 @@ fn compose_assessment(stdout:&str,width:usize)->Option<String>{
         emit(&mut out,&line);
     }
     if !meta.is_empty(){out.push('\n');}
-    let mut metadata=Document::default();
-    for line in &meta{
-        if let Some((name,value))=field_parts(line){metadata.field(name,value);}
-        else{metadata.line(Role::Detail,line.as_str());}
-    }
-    out.push_str(&metadata.render(OutputMode::Interactive));
+    for line in &meta {emit(&mut out,line);}
     out.push_str(&format!("\n{HEADING}Comprobaciones{RESET}\n"));
     let label_width=blocks.iter().map(|(n,_)|display_width(n)).max().unwrap_or(0).min(width/2);
     for (name,rows) in blocks{
