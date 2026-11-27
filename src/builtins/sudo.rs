@@ -676,8 +676,8 @@ unsafe fn run_with_system_token(
         let got_status = GetExitCodeProcess(process_info.hProcess, &mut status);
         CloseHandle(process_info.hProcess);
     
-        let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
-        let stderr = fs::read_to_string(&stderr_path).unwrap_or_default();
+        let stdout_result = fs::read_to_string(&stdout_path);
+        let stderr_result = fs::read_to_string(&stderr_path);
         let _ = fs::remove_file(&stdout_path);
         let _ = fs::remove_file(&stderr_path);
     
@@ -688,11 +688,7 @@ unsafe fn run_with_system_token(
             );
         }
     
-        Ok(CommandOutput {
-            stdout,
-            stderr,
-            status: status as i32,
-        })
+        Ok(captured_elevated_output(stdout_result, stderr_result, status))
     }
 }
 fn run_via_uac(command: &str, cwd: &Path) -> Result<CommandOutput> {
@@ -766,8 +762,8 @@ fn run_via_uac(command: &str, cwd: &Path) -> Result<CommandOutput> {
     let got_status = unsafe { GetExitCodeProcess(info.hProcess, &mut status) };
     unsafe { CloseHandle(info.hProcess); }
 
-    let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
-    let stderr = fs::read_to_string(&stderr_path).unwrap_or_default();
+    let stdout_result = fs::read_to_string(&stdout_path);
+    let stderr_result = fs::read_to_string(&stderr_path);
     let _ = fs::remove_file(&stdout_path);
     let _ = fs::remove_file(&stderr_path);
 
@@ -778,11 +774,33 @@ fn run_via_uac(command: &str, cwd: &Path) -> Result<CommandOutput> {
         ));
     }
 
-    Ok(CommandOutput {
-        stdout,
-        stderr,
-        status: status as i32,
-    })
+    Ok(captured_elevated_output(stdout_result, stderr_result, status))
+}
+
+fn captured_elevated_output(
+    stdout: std::io::Result<String>,
+    stderr: std::io::Result<String>,
+    status: u32,
+) -> CommandOutput {
+    let mut diagnostics = String::new();
+    let stdout = stdout.unwrap_or_else(|error| {
+        diagnostics.push_str(&format!("sudo: no se pudo recuperar stdout: {error}\n"));
+        String::new()
+    });
+    let mut stderr = stderr.unwrap_or_else(|error| {
+        diagnostics.push_str(&format!("sudo: no se pudo recuperar stderr: {error}\n"));
+        String::new()
+    });
+    if !diagnostics.is_empty() {
+        stderr.push_str(&diagnostics);
+        stderr.push_str(&format!(
+            "sudo: proceso elevado finalizado (código {status}); resultado incompleto. Comprueba el estado antes de repetir la operación.\n"
+        ));
+    } else if status != 0 && stderr.trim().is_empty() {
+        stderr.push_str(&format!("sudo: el proceso elevado terminó con código {status}.\n"));
+    }
+    let effective_status = if !diagnostics.is_empty() && status == 0 { 1 } else { status as i32 };
+    CommandOutput { stdout, stderr, status: effective_status }
 }
 
 struct TokenStatus {
@@ -1078,7 +1096,7 @@ fn wide(value: impl AsRef<OsStr>) -> Vec<u16> {
 
 fn shell_quote(value: &str) -> String {
     if !value.is_empty()
-        && value.chars().all(|ch| ch.is_ascii_alphanumeric() || "_-./:\\".contains(ch))
+        && value.chars().all(|ch| ch.is_ascii_alphanumeric() || "_-./:".contains(ch))
     {
         return value.to_owned();
     }
