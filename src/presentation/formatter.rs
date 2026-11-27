@@ -402,7 +402,7 @@ impl LiveReport {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 enum LayoutKind { Plain, Reference, Assessment, Summary, Report }
 fn classify(text:&str)->LayoutKind{
-    if text.trim().is_empty()||text.contains(['\x1b','\0']){return LayoutKind::Plain;}
+    if text.trim().is_empty()||text.contains(['\x1b','\0','\r','\u{8}']){return LayoutKind::Plain;}
     if help_document(text){return LayoutKind::Reference;}
     if text.lines().any(|l|matches!(l.trim().to_uppercase().as_str(),"CONCLUSIÓN"|"CONCLUSION"))
         && text.lines().any(|l|numbered_section(l).is_some()){return LayoutKind::Assessment;}
@@ -1007,7 +1007,9 @@ fn compose_text(stdout:&str,cols:u16,kind:LayoutKind)->String{
             result.push_str(&strip);result.push('\n');
             previous_blank=false;table_active=false;table=TableStyle::default();continue;
         }
-        if !line.trim().is_empty() && lines.get(cursor).is_some_and(|s|report_layout::underline(s)) {
+        if !line.trim().is_empty()
+            && !(is_table_header(line) && table_columns(line).len()>=2)
+            && lines.get(cursor).is_some_and(|s|report_layout::underline(s)) {
             cursor+=1;
             result.push_str(&Role::Title.paint(line.trim()));
             result.push('\n');
@@ -1018,7 +1020,8 @@ fn compose_text(stdout:&str,cols:u16,kind:LayoutKind)->String{
         }
         // A run of fields becomes a component, not a series of unrelated
         // coloured strings. Help and fixed-width tables retain their syntax.
-        if !table_active && field_parts(line).is_some(){
+        if field_parts(line).is_some(){
+            table_active=false;table=TableStyle::default();
             let start=cursor-1;
             while cursor<lines.len()&&field_parts(lines[cursor]).is_some(){cursor+=1;}
             let group=&lines[start..cursor];
@@ -1040,9 +1043,12 @@ fn compose_text(stdout:&str,cols:u16,kind:LayoutKind)->String{
         }
         if is_table_header(line) && table_columns(line).len()>=2 {
             let count=table_columns(line).len();
+            // A separator belongs to the column schema, not to a new headline.
+            let first_data=if lines.get(cursor).is_some_and(|s|report_layout::underline(s)) {cursor+1}else{cursor};
+            cursor=first_data;
             let start=cursor;
             while cursor<lines.len() && !lines[cursor].trim().is_empty()
-                && lines[cursor]!=line && table_columns(lines[cursor]).len()==count
+                && !is_table_header(lines[cursor]) && table_columns(lines[cursor]).len()==count
                 && field_parts(lines[cursor]).is_none() && !report_layout::underline(lines[cursor]) {
                 cursor+=1;
             }
@@ -1063,10 +1069,13 @@ fn compose_text(stdout:&str,cols:u16,kind:LayoutKind)->String{
         } else if line.trim().is_empty() || (is_section_heading(line) && table_columns(line).len() <= 1) {
             table = TableStyle::default();table_active=false;
         }
-        if table_active && display_width(line)<=width && !is_table_header(line){
+        if table_active && !line.trim().is_empty() && !is_table_header(line)
+            && table_columns(line).len()>=2 && display_width(line)<=width {
             result.push_str(&table_body_band(line,&table.row(line),width,table_index));
             result.push('\n');table_index+=1;previous_blank=false;continue;
         }
+        // Do not carry column roles into unrelated prose or a different record schema.
+        if table_active {table_active=false;table=TableStyle::default();}
         if line.trim().is_empty() {
             if !previous_blank { result.push('\n'); }
             previous_blank = true;
@@ -1314,11 +1323,14 @@ pub(super) fn decode_metric_marker(rgb:(u8,u8,u8))->Option<(Metric,f32)>{
 /// Shared monitor summary layout; caller supplies facts and viewport only.
 /// When space is limited, preserve facts as text rather than microscopic gauges.
 pub fn monitor_summary(text:&str,width:usize,budget:usize)->Vec<String>{
-    let fields=text.split('·').filter_map(|part|field_parts(part.trim())).collect::<Vec<_>>();
-    let metrics=fields.iter().filter_map(|(name,value)|bounded_metric(name,value)
-        .map(|(metric,n)|(*name,*value,metric,n))).collect::<Vec<_>>();
-    let other=fields.iter().filter(|(name,value)|bounded_metric(name,value).is_none())
-        .map(|(name,value)|format!("{name}: {value}")).collect::<Vec<_>>();
+    let parts=text.split('·').map(str::trim).filter(|part|!part.is_empty()).collect::<Vec<_>>();
+    let metrics=parts.iter().filter_map(|part|{
+        let (name,value)=field_parts(part)?;
+        bounded_metric(name,value).map(|(metric,n)|(name,value,metric,n))
+    }).collect::<Vec<_>>();
+    let other=parts.iter().copied().filter(|part|
+        field_parts(part).and_then(|(name,value)|bounded_metric(name,value)).is_none()
+    ).collect::<Vec<_>>();
     if !metrics.is_empty() && metrics.len()<=3 {
         if let Some(mut rows)=report_layout::metric_grid(&metrics,width) {
             if !other.is_empty(){
@@ -1328,7 +1340,12 @@ pub fn monitor_summary(text:&str,width:usize,budget:usize)->Vec<String>{
         }
     }
     let mut rows=wrap_line(text.trim(),width).iter().map(|line|Role::Detail.paint(line)).collect::<Vec<_>>();
-    rows.truncate(budget.max(1));
+    let available=budget.max(1);
+    if rows.len()>available {
+        let hidden=rows.len().saturating_sub(available).saturating_add(1);
+        rows.truncate(available.saturating_sub(1));
+        rows.push(Role::Detail.paint(&shorten(&format!("+ {hidden} líneas de resumen"),width)));
+    }
     rows
 }
 
