@@ -47,6 +47,23 @@ pub(super) fn fields(rows: &[&str], styles: &[&str], width: usize, out: &mut Vec
     }
 }
 
+/// Compact labelled context, with geometry reserved before native rendering.
+/// The original value stays visible and long references wrap rather than clip.
+pub(super) fn context_row(label:&str,value:&str,marker:(u8,u8,u8),width:usize)->Vec<String>{
+    let tab_width=display_width(label)+7;
+    let indent=tab_width+2;
+    if width<indent+12 {
+        return wrap_line(&format!("{label}: {value}"),width)
+            .iter().map(|line|style_line(line)).collect();
+    }
+    let tab=format!("{}   {LABEL}{label}:{RESET}{}   {RESET}",
+        background(marker),background(marker));
+    wrap_line(value,width-indent).iter().enumerate().map(|(i,part)|{
+        let prefix=if i==0 {format!("{tab}  ")}else{" ".repeat(indent)};
+        format!("{prefix}{}",Role::Detail.paint(part.trim_start()))
+    }).collect()
+}
+
 /// Compact metadata uses a two-column editorial grid when both regions fit.
 /// Long values, metric bars and statuses retain their full-width reading order.
 pub(super) fn field_grid(rows:&[&str],width:usize,out:&mut Vec<String>)->bool{
