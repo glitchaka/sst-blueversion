@@ -1,0 +1,1 @@
+Retry release 0.1.14-blue.10 from canonical Cargo.lock at 9c33ec76b90cec384ce058031b7916537179d8af. The previous release passed all build, packaging and capture gates but main changed when version-sync regenerated yeslogic-fontconfig-sys. Retain all publication checks and the .9 hold.
