@@ -795,13 +795,43 @@ fn render_field_group(lines:&[&str],width:usize)->String {
     }
     ordinary_fields(lines,width).join("\n")+"\n"
 }
+/// Explicit report context and evidence references use shared presentation
+/// roles. These are labels of existing data, not inferred actions or results.
+pub(super) const METADATA_TAB_RGB:(u8,u8,u8)=(18,225,1);
+pub(super) const EVIDENCE_REF_RGB:(u8,u8,u8)=(18,225,2);
+fn context_field(line:&str)->Option<(&str,&str,(u8,u8,u8))>{
+    let (label,value)=field_parts(line)?;
+    if value.trim().is_empty(){return None;}
+    let marker=match label.trim().to_lowercase().as_str(){
+        "origen"|"fuente"|"fuentes consultadas"|"ámbito"|"ambito"|"source"|"scope"=>METADATA_TAB_RGB,
+        "evidencia detallada"|"archivo de evidencia"|"evidence file"=>EVIDENCE_REF_RGB,
+        _=>return None,
+    };
+    Some((label,value,marker))
+}
 fn ordinary_fields(lines:&[&str],width:usize)->Vec<String>{
     let styles:Vec<_>=lines.iter().map(|s|style_line(s)).collect();
     let styles:Vec<_>=styles.iter().map(String::as_str).collect();
     let mut out=Vec::new();
     let grouped=lines.len()>=2 && width>=24;
     let inner=width.saturating_sub(if grouped{3}else{0});
-    if !report_layout::field_grid(lines,inner,&mut out){
+    // Keep short explicit context fields in their own labelled strip.
+    // Other properties retain the normal grid and the original reading order.
+    if lines.iter().any(|line|context_field(line).is_some()) {
+        let mut first=0;
+        for (i,line) in lines.iter().enumerate(){
+            if let Some((label,value,marker))=context_field(line){
+                if i>first {
+                    report_layout::fields(&lines[first..i],&styles[first..i],inner,&mut out);
+                }
+                out.extend(report_layout::context_row(label,value,marker,inner));
+                first=i+1;
+            }
+        }
+        if first<lines.len(){
+            report_layout::fields(&lines[first..],&styles[first..],inner,&mut out);
+        }
+    } else if !report_layout::field_grid(lines,inner,&mut out){
         report_layout::fields(lines,&styles,inner,&mut out);
     }
     if grouped {
