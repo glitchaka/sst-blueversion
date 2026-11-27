@@ -102,4 +102,6 @@ Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. 
 - Revisión común de tablas: separación de cabecera y datos, límites de registros, alineación numérica y conservación de fragmentos no tabulares. Resúmenes de monitores conservan información auxiliar y anuncian líneas omitidas por espacio.
 - Selección de texto limitada a celdas seleccionadas, sin cambiar la geometría de cabeceras compactas ni activar una composición anterior al seleccionar.
 
+- Autocompletado: la captura del usuario es la referencia visual más cercana a lo esperado, no una aceptación definitiva. Se conserva su diseño y se ajustan los controles DETALLE y ENTER / ACEPTAR, ESC / CANCELAR al área interior real del marco recortado (8% de recorte en sus esquinas); se respetan las cinco filas y el funcionamiento del teclado. El resto de los informes aún requiere revisión editorial. Corrección en fuente: 35711e9.
+
 Pendiente de aceptación: ejecutar el binario Windows bajo autorización y revisar todas las familias de salidas, todas las ayudas y las 18 paletas. La revisión de fuente no sustituye esa aceptación ni autoriza una publicación.
