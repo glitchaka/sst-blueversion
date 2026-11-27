@@ -19,43 +19,19 @@ const MAX_MANUAL_BYTES: usize = 512 * 1024;
 static FILE_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
 static TOPIC_CACHE: OnceLock<Mutex<HashMap<String, Option<Arc<str>>>>> = OnceLock::new();
 
-/// El catálogo completo procede del repositorio original, incluido Arch.
-/// Si no hay red, se reutiliza la última copia válida y, finalmente, el catálogo SST integrado.
+/// El repositorio de Guide es la fuente de documentación. Cada apertura
+/// consulta su índice actual, sin depender de la versión del ejecutable.
 pub(super) fn load_index() -> Option<String> {
-    let local = read_local_or_bundled(INDEX_FILE, MAX_INDEX_BYTES);
-    let remote = fetch_upstream(INDEX_FILE, MAX_INDEX_BYTES, true)
-        .or_else(|| read_upstream_cache(INDEX_FILE, MAX_INDEX_BYTES));
-    // Validate the effective catalogue, not merely the JSON syntax. An
-    // incompatible upstream index must not disable the bundled SST guide.
-    if let (Some(local), Some(remote)) = (&local, &remote) {
-        if let Some(merged) = merge_guide_indexes(local, remote) {
-            if super::guide_new::index_is_valid(&merged) {
-                return Some(merged);
-            }
+    // Las fichas se reutilizan durante una apertura, no durante toda la vida
+    // de SST. Volver a abrir Guide permite consultar las revisiones publicadas.
+    for cache in [&FILE_CACHE, &TOPIC_CACHE] {
+        if let Some(cache) = cache.get() {
+            cache.lock().unwrap_or_else(|error| error.into_inner()).clear();
         }
     }
-    local.filter(|text| super::guide_new::index_is_valid(text))
-        .or_else(|| remote.filter(|text| super::guide_new::index_is_valid(text)))
-}
-
-// SST owns its command documentation; upstream contributes additional topics.
-fn merge_guide_indexes(local: &str, remote: &str) -> Option<String> {
-    let mut local: serde_json::Value = serde_json::from_str(local).ok()?;
-    let remote: serde_json::Value = serde_json::from_str(remote).ok()?;
-    for (section, key) in [("areas", "id"), ("entries", "name")] {
-        let entries = local.get_mut(section)?.as_array_mut()?;
-        if let Some(extra) = remote.get(section).and_then(|v| v.as_array()) {
-            for entry in extra {
-                let Some(name) = entry.get(key).and_then(|v| v.as_str()) else { continue; };
-                if section == "entries" && matches!(name, "diag" | "netcheck" | "netprobe" | "tools office verify") { continue; }
-                if !entries.iter().any(|old| old.get(key).and_then(|v| v.as_str())
-                    .is_some_and(|old_name| old_name.trim().eq_ignore_ascii_case(name.trim()))) {
-                    entries.push(entry.clone());
-                }
-            }
-        }
-    }
-    serde_json::to_string(&local).ok()
+    fetch_upstream(INDEX_FILE, MAX_INDEX_BYTES, true)
+        .or_else(|| read_upstream_cache(INDEX_FILE, MAX_INDEX_BYTES))
+        .or_else(|| read_local_or_bundled(INDEX_FILE, MAX_INDEX_BYTES))
 }
 
 pub(super) fn load_manual(
@@ -107,7 +83,7 @@ fn fetch_cached(file: &str, extension: &str) -> Option<Arc<str>> {
         return value;
     }
 
-    // Mantener la caché de fichas: ahora el origen es un archivo local.
+    // Reutilizar la ficha únicamente durante esta apertura de Guide.
     let value = fetch_repo_file(&filename, MAX_MANUAL_BYTES).map(Arc::<str>::from);
     cache
         .lock()
@@ -117,11 +93,11 @@ fn fetch_cached(file: &str, extension: &str) -> Option<Arc<str>> {
 }
 
 fn fetch_repo_file(filename: &str, max_bytes: usize) -> Option<String> {
-    // Los manuales se obtienen bajo demanda del origen y se conservan para uso sin red.
-    // No descargar otra vez si ya se recuperó el mismo fichero.
-    read_local_or_bundled(filename, max_bytes)
+    // Consultar el manual remoto al abrirlo por primera vez en esta sesión
+    // de Guide. La caché y los manuales locales son alternativas sin red.
+    fetch_upstream(filename, max_bytes, true)
         .or_else(|| read_upstream_cache(filename, max_bytes))
-        .or_else(|| fetch_upstream(filename, max_bytes, false))
+        .or_else(|| read_local_or_bundled(filename, max_bytes))
 }
 
 /// Official Arch repository metadata for choosing functionality to adapt.
@@ -240,12 +216,7 @@ fn valid_upstream_text(filename: &str, text: &str) -> bool {
     if filename != INDEX_FILE {
         return !text.is_empty();
     }
-    let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
-        return false;
-    };
-    json.get("schema").and_then(|v| v.as_u64()) == Some(1)
-        && json.get("areas").and_then(|v| v.as_array()).is_some_and(|a| !a.is_empty())
-        && json.get("entries").and_then(|v| v.as_array()).is_some_and(|a| !a.is_empty())
+    super::guide_new::index_is_valid(text)
 }
 
 fn read_upstream_cache(filename: &str, max_bytes: usize) -> Option<String> {
@@ -306,10 +277,12 @@ fn read_local_or_bundled(filename: &str, max_bytes: usize) -> Option<String> {
         return None;
     }
     let file = AppPaths::detect().root_dir().join("guide").join(filename);
-    crate::adapters::persistence::bundled_guide_asset(filename)
-        .filter(|bytes| !bytes.is_empty() && bytes.len() <= max_bytes)
-        .and_then(|bytes| String::from_utf8(bytes.to_vec()).ok())
-        .or_else(|| read_text(&file, max_bytes))
+    read_text(&file, max_bytes)
+        .filter(|text| valid_upstream_text(filename, text))
+        .or_else(|| crate::adapters::persistence::bundled_guide_asset(filename)
+            .filter(|bytes| !bytes.is_empty() && bytes.len() <= max_bytes)
+            .and_then(|bytes| String::from_utf8(bytes.to_vec()).ok())
+            .filter(|text| valid_upstream_text(filename, text)))
 }
 
 fn valid_component(value: &str) -> bool {
