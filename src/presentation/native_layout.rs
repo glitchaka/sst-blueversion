@@ -51,6 +51,14 @@ pub(in crate::presentation) fn semantic_components(screen:&vt100::Screen)->Vec<R
         let mut col=0;
         while col<cols {
             let Some(rgb)=surface(row,col)else{col+=1;continue;};
+            if matches!(rgb,super::METADATA_TAB_RGB|super::EVIDENCE_REF_RGB) {
+                let start=col;
+                while col<cols&&surface(row,col)==Some(rgb){col+=1;}
+                if col-start>=7 {
+                    marks.push(ReportGraphic{row,rows:1,start,end:col,kind:if rgb==super::METADATA_TAB_RGB{20}else{21},ratio:0.,tone:0});
+                }
+                continue;
+            }
             if let Some(count)=super::decode_route_marker(rgb) {
                 let start=col;while col<cols&&surface(row,col)==Some(rgb){col+=1;}
                 if col-start>=5{marks.push(ReportGraphic{row,rows:1,start,end:col,kind:11,ratio:0.,tone:i32::from(count)});}
