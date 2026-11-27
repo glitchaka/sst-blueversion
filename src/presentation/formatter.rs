@@ -1508,6 +1508,7 @@ pub fn monitor_table(buffer:&mut String,headers:&[&str],records:&[MonitorRecord]
 /// Semantic component transport. These reserved surfaces encode layout roles,
 /// not a palette; native renderers resolve them independently of command names.
 pub const EXPANSION_RGB: (u8,u8,u8) = (61,56,54);
+pub(super) const INSPECTION_RGB:(u8,u8,u8)=(18,228,1);
 pub const GROUP_FIELDS_RGB: (u8,u8,u8) = (30,32,33);
 pub(super) const CONTINUITY_OK_RGB:(u8,u8,u8)=(18,224,1);
 pub(super) const CONTINUITY_LOST_RGB:(u8,u8,u8)=(18,224,2);
@@ -1558,36 +1559,54 @@ impl ExpandableFields {
     pub fn field(&mut self, label: impl Into<String>, value: impl Into<String>, role: Role) {
         self.fields.push((label.into(),value.into(),role));
     }
-    fn layout(&self,width:usize)->Vec<Vec<usize>> {
-        let mut rows:Vec<Vec<usize>>=Vec::new();
-        let mut occupied=4usize;
-        for (i,(label,value,_)) in self.fields.iter().enumerate() {
-            let need=display_width(label)+2+display_width(value);
-            if rows.is_empty() || occupied+need>width {
-                rows.push(Vec::new());
-                occupied=4;
+    fn layout(&self,width:usize)->Vec<Vec<(String,Role)>> {
+        let width=width.max(1);
+        let indent=4usize.min(width.saturating_sub(1));
+        let safe=|value:&str|value.chars().map(|c|if c.is_control(){'�'}else{c}).collect::<String>();
+        let mut rows=Vec::new();
+        let mut row=vec![(" ".repeat(indent),Role::Label)];
+        let mut used=indent;
+        for (label,value,role) in &self.fields {
+            let label=safe(label);let value=safe(value);
+            let prefix=format!("{label}  ");
+            let need=display_width(&prefix)+display_width(&value);
+            let gap=if used>indent{4}else{0};
+            if used>indent&&used+gap+need>width{
+                rows.push(std::mem::take(&mut row));
+                row.push((" ".repeat(indent),Role::Label));used=indent;
             }
-            if let Some(row)=rows.last_mut() { row.push(i); }
-            occupied=occupied.saturating_add(need+4);
+            if need>width.saturating_sub(indent){
+                if used>indent {
+                    rows.push(std::mem::take(&mut row));
+                    row.push((" ".repeat(indent),Role::Label));used=indent;
+                }
+                for part in reference_lines(&format!("{label}:"),width.saturating_sub(indent)){
+                    rows.push(vec![(" ".repeat(indent),Role::Label),(part,Role::Label)]);
+                }
+                for part in reference_lines(&value,width.saturating_sub(indent)){
+                    rows.push(vec![(" ".repeat(indent),Role::Label),(part,*role)]);
+                }
+                continue;
+            }
+            if used>indent{
+                row.push(("    ".into(),Role::Label));used+=4;
+            }
+            row.push((prefix,Role::Label));row.push((value,*role));used+=need;
         }
+        if used>indent{rows.push(row);}
         rows
     }
     pub fn body_rows(&self,width:usize)->usize { self.layout(width).len() }
     pub fn render(&self,buffer:&mut String,width:usize,expanded:bool) {
         let marker=if expanded {"−"}else{"+"};
-        let safe=|value:&str|value.chars().map(|c|if c.is_control(){'�'}else{c}).collect::<String>();
-        monitor_row(buffer,&format!("  {marker} {}",safe(&self.title)),width,Role::Command.ansi(),&background(EXPANSION_RGB));
+        let safe=self.title.chars().map(|c|if c.is_control(){'�'}else{c}).collect::<String>();
+        let title=shorten(&format!("  {marker} {safe}"),width.saturating_sub(2));
+        let surface=background(if expanded{INSPECTION_RGB}else{EXPANSION_RGB});
+        monitor_row(buffer,&title,width,Role::Command.ansi(),&surface);
         if !expanded {return;}
         let surface=background(GROUP_FIELDS_RGB);
         for row in self.layout(width) {
-            let mut cells:Vec<(String,Role)>=vec![("    ".into(),Role::Label)];
-            for (position,index) in row.into_iter().enumerate() {
-                let (label,value,role)=&self.fields[index];
-                if position>0 {cells.push(("    ".into(),Role::Label));}
-                cells.push((format!("{}  ",safe(label)),Role::Label));
-                cells.push((safe(value),*role));
-            }
-            let refs=cells.iter().map(|(s,r)|(s.as_str(),*r)).collect::<Vec<_>>();
+            let refs=row.iter().map(|(s,r)|(s.as_str(),*r)).collect::<Vec<_>>();
             monitor_cells(buffer,&refs,width,&surface);
         }
     }
