@@ -227,9 +227,12 @@ slint::slint! {
 
         background: transparent;
         border-width: 0px;
+        clip: true;
+        property <length> row-height: self.height / 2;
+        property <length> value-width: min(120px, max(45px,self.width * 0.26));
 
         track := Rectangle {
-            x: 4px; y: 5px; width: max(1px,parent.width - 144px); height: 13px;
+            x: 4px; y: parent.row-height * 0.23; width: max(1px,parent.width - parent.value-width - 12px); height: max(1px,parent.row-height * 0.54);
             background: transparent; clip: true;
             if root.transfer-known-total && !root.transfer-stalled : Rectangle {
                 width: parent.width; height: parent.height; background: transparent;
@@ -250,27 +253,30 @@ slint::slint! {
         }
 
         Text {
-            x: parent.width - 131px;
+            x: parent.width - parent.value-width - 4px;
             y: 0px;
-            width: 126px;
-            height: 22px;
+            width: parent.value-width;
+            height: parent.row-height;
             text: root.transfer-percent;
             color: OutputTheme.accent;
             font-family: "Segoe UI Variable";
-            font-size: 16px;
+            font-size: min(16px,parent.row-height * 0.78);
+            vertical-alignment: center;
+            overflow: elide;
             font-weight: 700;
             horizontal-alignment: right;
         }
 
         Text {
             x: 4px;
-            y: 23px;
-            width: parent.width - 9px;
-            height: 19px;
+            y: parent.row-height;
+            width: max(1px,parent.width - 9px);
+            height: parent.row-height;
             text: root.transfer-amount + "   ·   " + root.transfer-speed + "   ·   ETA " + root.transfer-eta;
             color: OutputTheme.text;
             font-family: "Segoe UI Variable";
-            font-size: 12px;
+            font-size: min(12px,parent.row-height * 0.74);
+            vertical-alignment: center;
             overflow: elide;
         }
     }
@@ -342,6 +348,7 @@ slint::slint! {
         // Logical coordinates align the live transfer indicator to the command output.
         in property <float> transfer-x: 22.0;
         in property <float> transfer-y: 65.0;
+        in property <float> transfer-height: 32.0;
         in property <bool> transfer-visible: false;
         in property <bool> transfer-stalled: false;
         in property <bool> transfer-known-total: false;
@@ -646,8 +653,8 @@ slint::slint! {
             visible: root.transfer-visible && !root.keygen-visible;
             x: root.transfer-x * 1px;
             y: root.transfer-y * 1px;
-            width: min(585px, root.width - root.transfer-x * 1px - 18px);
-            height: 43px;
+            width: max(1px,min(585px, root.width - root.transfer-x * 1px - 18px));
+            height: root.transfer-height * 1px;
             transfer-percent: root.transfer-percent;
             transfer-amount: root.transfer-amount;
             transfer-speed: root.transfer-speed;
@@ -2952,6 +2959,7 @@ pub fn run() -> Result<()> {
                         let factor = scale.max(0.5);
                         ui.set_transfer_x((left / factor).max(8.0));
                         ui.set_transfer_y((top + f32::from(graphic_row) * line_height) / factor);
+                        ui.set_transfer_height((2.0 * line_height / factor).max(2.0));
                         ui.set_transfer_visible(model.parser.screen().scrollback()==0);
                         ui.set_transfer_ratio(progress.fraction());
                         ui.set_transfer_phase(((model.blink.elapsed().as_millis()/100)%12) as i32);
