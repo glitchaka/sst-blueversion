@@ -1,28 +1,27 @@
 {
   "schema": 1,
-  "version": "0.1.14-blue.10",
+  "version": "0.1.14-blue.11",
   "channel": "blue",
-  "published_at": "2026-11-27T00:33:58.5152634+00:00",
-  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.10/sst.exe",
-  "sha256": "b601d9d8020d62bdfa7cc643ebda91d1dd463d02605d922c279f6587384a1bd1",
-  "size": 61659648,
-  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.10/sst-updater.exe",
-  "updater_sha256": "6e4136781783dded4ef0616c9ea418c6cd7e6d842561e9902f26c073a7a0e393",
+  "published_at": "2026-11-27T01:10:31.8542668+00:00",
+  "asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.11/sst.exe",
+  "sha256": "8e8137bcebd51f5e1cbd9287b101ac0c6afd2319c7288458601ad4c4026b8821",
+  "size": 61690880,
+  "updater_asset_url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.11/sst-updater.exe",
+  "updater_sha256": "f65b2cb075abdfb3223c4cc2e74d135e379a839589f125470275161b17025f66",
   "updater_size": 433664,
   "changes": [
-    "Sustituye la revisión .9 retirada sin reutilizar su tag ni sus ejecutables.",
-    "Integra la geometría compartida del catálogo en reportes, salidas en directo, campos, medidores, estados, controles de Tab, transferencias y monitores.",
-    "Indicadores de CPU y RAM, escalas, continuidad de paquetes y rutas vinculados a datos reales; selección, aceptación, cancelación y expansión del selector de Tab.",
-    "Corrige los solapamientos del selector, el prompt y la geometría angular de los monitores y cabeceras.",
-    "Conserva los 18 esquemas, el logotipo original, el fondo del usuario y la salida de máquina.",
-    "Incluye capturas de la terminal real en Windows como evidencia de la release. Las capturas no prueban por sí solas cada estado de las 36 muestras."
+    "Restaura la isla superior exactamente al diseño de la versión .7: privilegios, reloj, CPU/RAM en texto y controles originales.",
+    "Traslada los indicadores radiales, anillo y escalas al área de contenido de la terminal, vinculados a métricas de los comandos y al monitor de procesos.",
+    "Mantiene los datos existentes de sys info y agrega mediciones de CPU y RAM en porcentaje.",
+    "Conserva el fondo, logotipo, paletas y controles de ventana.",
+    "Evita regenerar todas las dependencias al sincronizar el número de versión."
   ],
   "setup": {
-    "name": "SST-Setup-0.1.14-blue.10.exe",
-    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.10/SST-Setup-0.1.14-blue.10.exe",
-    "sha256": "66de352452752a6518cd5249fbfdaeec42ab3cd0d17edbb2fc560d79eadcf519",
-    "size": 70848403,
+    "name": "SST-Setup-0.1.14-blue.11.exe",
+    "url": "https://github.com/glitchaka/sst-blueversion/releases/download/v0.1.14-blue.11/SST-Setup-0.1.14-blue.11.exe",
+    "sha256": "d537955517a5479d72cfe1158dcc0d745754a8dead98492c825e979a037eedaa",
+    "size": 70879667,
     "single_use": true,
-    "package_id": "19082e3a118431b24e82f50adcd4f332"
+    "package_id": "9a5572028f79286ed7adb25ecc01ba52"
   }
 }
