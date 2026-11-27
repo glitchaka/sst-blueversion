@@ -367,7 +367,7 @@ fn system_help() -> CommandOutput {
         "sys — información y administración local de Windows\n\n\
          uso: sys SUBCOMANDO [opciones]\n\n\
          Información:\n\
-           sys info                     resumen del equipo\n\
+           sys info                     equipo, sesión, CPU, RAM, discos y cuentas locales\n\
            sys processes [NOMBRE]       buscar o listar procesos por CPU/RAM\n\
            sys top [NOMBRE]             monitor TUI filtrable por CPU/RAM; Enter: detalle\n\
            sys disks                    discos y uso\n\
@@ -1307,21 +1307,48 @@ fn info() -> anyhow::Result<CommandOutput> {
     let total = system.total_memory();
     let used = system.used_memory();
     let memory_usage = if total == 0 { 0.0 } else { used as f64 / total as f64 * 100.0 };
-
-    Ok(CommandOutput::ok(format!(
-        "hostname: {}\nos: {}\nkernel: {}\nuptime: {} s\ncpus: {}\nmemory_total: {} MiB\nmemory_used: {} MiB\ncpu_usage: {:.1}%\nmemory_usage: {:.1}%\n",
+    let cpu = system.cpus().first().map(|cpu| cpu.brand().trim())
+        .filter(|brand| !brand.is_empty()).unwrap_or("no disponible");
+    let session = whoami()?.stdout;
+    let mut out = format!(
+        "EQUIPO Y SESIÓN\nhostname: {}\nos: {}\nkernel: {}\narchitecture: {}\nuptime: {} s\nsession_user: {}\n\nCPU Y MEMORIA\ncpu_model: {}\ncpus: {}\nmemory_total: {} MiB\nmemory_used: {} MiB\nmemory_available: {} MiB\ncpu_usage: {:.1}%\nmemory_usage: {:.1}%\n",
         System::host_name().unwrap_or_else(|| "desconocido".to_owned()),
         System::long_os_version().unwrap_or_else(|| "Windows".to_owned()),
         System::kernel_version().unwrap_or_else(|| "desconocido".to_owned()),
+        env::consts::ARCH,
         System::uptime(),
+        session.trim(),
+        cpu,
         system.cpus().len(),
-        system.total_memory() / 1024 / 1024,
-        system.used_memory() / 1024 / 1024,
+        total / 1024 / 1024,
+        used / 1024 / 1024,
+        system.available_memory() / 1024 / 1024,
         system.global_cpu_usage(),
         memory_usage,
-    )))
+    );
+    out.push_str("\nALMACENAMIENTO\n");
+    match disks() {
+        Ok(report) if report.status == 0 => {
+            if report.stdout.lines().count() > 1 {
+                out.push_str(&report.stdout);
+            } else {
+                out.push_str("No hay datos de volúmenes disponibles.\n");
+            }
+        }
+        Ok(report) => { let _ = writeln!(out, "Datos no disponibles (código {}): {}", report.status, report.stderr.trim()); }
+        Err(error) => { let _ = writeln!(out, "Datos no disponibles: {error}"); }
+    }
+    out.push_str("\nCUENTAS LOCALES (SAM)\n");
+    match users(&[]) {
+        Ok(report) if report.status == 0 && !report.stdout.trim().is_empty() => {
+            out.push_str(&report.stdout);
+            if !out.ends_with('\n') { out.push('\n'); }
+        }
+        Ok(report) => { let _ = writeln!(out, "Datos no disponibles (código {}): {}", report.status, report.stderr.trim()); }
+        Err(error) => { let _ = writeln!(out, "Datos no disponibles: {error}"); }
+    }
+    Ok(CommandOutput::ok(out))
 }
-
 
 
 fn keygen_system_facts(system: &System) -> Vec<String> {
