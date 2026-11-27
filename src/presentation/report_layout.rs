@@ -43,7 +43,7 @@ pub(super) fn fields(rows: &[&str], styles: &[&str], width: usize, out: &mut Vec
             let mut line=format!("{prefix}{tone}{fragment}{RESET}");
             let remaining=width.saturating_sub(indent+display_width(fragment));
             if part==0&&fragment==value&&remaining>=10 {
-                if let Some((metric,n))=percent_metric(label,value){
+                if let Some((metric,n))=bounded_metric(label,value){
                     line.push_str("   ");line.push_str(&super::meter(metric,n,(remaining-3).min(18)));
                 }
             }
@@ -154,6 +154,37 @@ pub(super) fn table(header:&str,rows:&[&str],width:usize)->String{
     emit(&mut out,&labels,true,0);
     for (index,row) in data.iter().enumerate(){emit(&mut out,row,false,index);}
     out
+}
+
+/// Display a bounded metric once, beside its exact value, with a real
+/// three-row region. Columns reflow from measured content, not command names.
+pub(super) fn metric_grid(items:&[(&str,&str,Metric,f32)],width:usize)->Option<Vec<String>>{
+    if items.is_empty()||width<28{return None;}
+    let gutter=7;
+    let gap=3;
+    let required=items.iter().map(|(label,value,_,_)|gutter+2+display_width(label).max(display_width(value))).max()?;
+    if required>width{return None;}
+    let columns=((width+gap)/(required+gap)).clamp(1,3).min(items.len());
+    let mut out=Vec::new();
+    for group in items.chunks(columns){
+        let cell=((width-gap*(group.len()-1))/group.len()).min(required.max(34));
+        if cell<required{return None;}
+        let mut labels=String::new();let mut reserve=String::new();let mut values=String::new();
+        for (i,(label,value,metric,n)) in group.iter().enumerate(){
+            if i>0{for row in [&mut labels,&mut reserve,&mut values]{row.push_str("   ");}}
+            let token=background(metric_marker(*metric,*n));
+            let gauge=format!("{token}{}{RESET}"," ".repeat(gutter));
+            let surface=background(if i%2==0{FEATURE_RGB}else{FEATURE_ALT_RGB});
+            let body=cell-gutter;
+            let role=metric.role(*n,None);
+            let tone=if role==Role::Value{Role::Detail}else{role};
+            labels.push_str(&format!("{gauge}{surface} {LABEL}{label}{RESET}{surface}{}{RESET}"," ".repeat(body-1-display_width(label))));
+            reserve.push_str(&format!("{gauge}{surface}{}{RESET}"," ".repeat(body)));
+            values.push_str(&format!("{gauge}{surface} {}{value}{RESET}{surface}{}{RESET}",tone.ansi()," ".repeat(body-1-display_width(value))));
+        }
+        out.extend([labels,reserve,values]);
+    }
+    Some(out)
 }
 
 /// Editorial feature strip: short values receive display-size typography,

@@ -169,8 +169,8 @@ const NERD_FONT_BYTES: &[u8] = crate::application::system::SST_TERMINAL_FONT_BYT
 
 slint::slint! {
     import { EditorialDemo } from "editorial_demo.slint";
-    import { AngularMark, CutFrame, Registration, AsymmetricHeader, SignalSlashes, FieldBracket, SteppedDivider } from "graphic_kit.slint";
-    import { RadialTwenty, RingEight, ActivityScale, SegmentedProgress, IndeterminateWait, HatchedTransfer, MonitorFrame } from "graphic_kit.slint";
+    import { AngularMark, CutFrame, Registration, FieldBracket, SteppedDivider } from "graphic_kit.slint";
+    import { RadialTwenty, RingEight, SegmentedProgress, IndeterminateWait, HatchedTransfer } from "graphic_kit.slint";
     import { WarningTriangle, StateBadge } from "graphic_kit.slint";
     import { LinearScale, ThresholdScale, ProportionalReadout, ContinuityCell, RouteBranch, RailFolio, CompactRule } from "graphic_kit.slint";
     export struct NativeGraphic { x: float, y: float, w: float, h: float, kind: int, ratio: float, tone: int }
@@ -198,10 +198,6 @@ slint::slint! {
         in property <bool> signals;
         background: transparent;
         Rectangle { x: 0px; y: parent.height - 1px; width: min(parent.width, signals ? 96px : 36px); height: 1px; background: signals ? OutputTheme.accent : OutputTheme.rule; }
-    }
-    component TerminalSectionFrame inherits Rectangle {
-        background: transparent;
-        MonitorFrame { width: parent.width; height: parent.height; ink: OutputTheme.rail; line: OutputTheme.rule; }
     }
 
     // The download panel is independent of the VT100 pixel surface.
@@ -326,19 +322,6 @@ slint::slint! {
         in property <float> completion-row-height;
         callback completion-action(int);
 
-        in property <int> monitor-panel-count: 0;
-        in property <float> monitor-grid-left: 0.0;
-        in property <float> monitor-grid-top: 0.0;
-        in property <float> monitor-grid-width: 0.0;
-        in property <float> monitor-line-height: 18.0;
-        in property <float> monitor-a-row: 0.0;
-        in property <float> monitor-a-rows: 0.0;
-        in property <float> monitor-b-row: 0.0;
-        in property <float> monitor-b-rows: 0.0;
-        in property <float> monitor-c-row: 0.0;
-        in property <float> monitor-c-rows: 0.0;
-        in property <float> monitor-d-row: 0.0;
-        in property <float> monitor-d-rows: 0.0;
         in property <image> background-image;
         in property <float> background-image-opacity: 0.0;
         in property <string> background-image-fit-mode: "cover";
@@ -452,6 +435,25 @@ slint::slint! {
                     width: parent.width; height: parent.height; ratio: mark.ratio;
                     ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track;
                 }
+                if mark.kind == 15 : RadialTwenty {
+                    x: (parent.width-self.width)/2; y: (parent.height-self.height)/2;
+                    width: min(parent.width,parent.height); height: self.width;
+                    value: round(mark.ratio*100);
+                    ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.accent;
+                    track: OutputTheme.track; line: OutputTheme.rule;
+                }
+                if mark.kind == 16 : RingEight {
+                    x: (parent.width-self.width)/2; y: (parent.height-self.height)/2;
+                    width: min(parent.width,parent.height); height: self.width;
+                    value: round(mark.ratio*100);
+                    ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
+                    track: OutputTheme.track; line: OutputTheme.rule;
+                }
+                if mark.kind == 19 : LinearScale {
+                    x: 2px; y: parent.height*0.36; width: max(1px,parent.width-4px); height: parent.height*0.28;
+                    ratio: mark.ratio; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
+                    track: OutputTheme.track; line: OutputTheme.muted;
+                }
                 if mark.kind == 10 : ContinuityCell { width: max(1px,parent.width - 2px); height: parent.height; lost: mark.tone == 2; ink: mark.tone == 2 ? OutputTheme.failure : OutputTheme.success; }
                 if mark.kind == 11 : Rectangle {
                     width: parent.width; height: parent.height; background: transparent;
@@ -469,39 +471,6 @@ slint::slint! {
                 if mark.kind == 6 : Registration {
                     width: parent.width; height: parent.height; outline: OutputTheme.success; thickness: 1px;
                 }
-            }
-
-            // Explicitly structured alternate-screen monitors keep their frames.
-            TerminalSectionFrame {
-                visible: !root.keygen-visible && root.monitor-panel-count > 0;
-                x: root.monitor-grid-left * 1px;
-                y: (root.monitor-grid-top + root.monitor-a-row * root.monitor-line-height) * 1px;
-                width: root.monitor-grid-width * 1px;
-                height: (root.monitor-a-rows * root.monitor-line-height + 0.22 * root.monitor-line-height) * 1px;
-            }
-
-            TerminalSectionFrame {
-                visible: !root.keygen-visible && root.monitor-panel-count > 1;
-                x: root.monitor-grid-left * 1px;
-                y: (root.monitor-grid-top + root.monitor-b-row * root.monitor-line-height) * 1px;
-                width: root.monitor-grid-width * 1px;
-                height: (root.monitor-b-rows * root.monitor-line-height + 0.22 * root.monitor-line-height) * 1px;
-            }
-
-            TerminalSectionFrame {
-                visible: !root.keygen-visible && root.monitor-panel-count > 2;
-                x: root.monitor-grid-left * 1px;
-                y: (root.monitor-grid-top + root.monitor-c-row * root.monitor-line-height) * 1px;
-                width: root.monitor-grid-width * 1px;
-                height: (root.monitor-c-rows * root.monitor-line-height + 0.22 * root.monitor-line-height) * 1px;
-            }
-
-            TerminalSectionFrame {
-                visible: !root.keygen-visible && root.monitor-panel-count > 3;
-                x: root.monitor-grid-left * 1px;
-                y: (root.monitor-grid-top + root.monitor-d-row * root.monitor-line-height) * 1px;
-                width: root.monitor-grid-width * 1px;
-                height: (root.monitor-d-rows * root.monitor-line-height + 0.22 * root.monitor-line-height) * 1px;
             }
 
             if root.keygen-visible : Rectangle {
@@ -1076,7 +1045,8 @@ impl ReportGraphic {
             1=>((x-6.*scale).max(0.),y+scale,5.*scale,(height-2.*scale).max(1.)),
             8|9=>(x,y+scale,width,(h-2.*scale).max(2.)),
             2|7=>(x,y+h*0.18,width,(h*0.64).max(2.)),
-            10|11|12|15|16|18=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
+            15|16|19=>(x+scale,y+scale,(width-2.*scale).max(1.),(height-2.*scale).max(1.)),
+            10|11|12|18=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             14=>(x,y+scale,width,(height-2.*scale).max(1.)),
             4=>((x-scale).max(0.),y+scale,width+2.*scale,(h-2.*scale).max(1.)),
             5|6=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
@@ -1568,7 +1538,7 @@ impl TerminalModel {
                     vt100::Color::Rgb(a,b,d) if (a,b,d)==crate::presentation::formatter::FEATURE_RGB || (a,b,d)==crate::presentation::formatter::FEATURE_ALT_RGB=>Some((a,b,d)),
                     _=>None
                 });
-                let feature_row=row>0 && selection.is_none() && selected_row!=Some(usize::from(row))
+                let feature_row=row>0
                     && (0..cols).any(|col|feature_color(row,col).is_some()
                         && feature_color(row-1,col)==feature_color(row,col))
                     && (0..cols).all(|col|screen.cell(row-1,col).is_none_or(|c|c.contents().trim().is_empty()));
@@ -1588,7 +1558,8 @@ impl TerminalModel {
                     let layout_marker=matches!(cell.bgcolor(),vt100::Color::Rgb(r,g,b) if
                         (r,g,b)==crate::presentation::formatter::REPORT_HEADER_RGB
                         || (r,g,b)==crate::presentation::formatter::FEATURE_RGB
-                        || (r,g,b)==crate::presentation::formatter::FEATURE_ALT_RGB);
+                        || (r,g,b)==crate::presentation::formatter::FEATURE_ALT_RGB
+                        || crate::presentation::formatter::decode_metric_marker((r,g,b)).is_some());
                     let mut paint_background =
                         (!matches!(cell.bgcolor(), vt100::Color::Default) && !layout_marker) || cell.inverse();
 
@@ -1709,8 +1680,10 @@ impl TerminalModel {
                         let text=(start..end).filter_map(|c|screen.cell(row,c)).map(|c|c.contents()).collect::<String>();
                         let text=text.trim();
                         if text.is_empty(){continue;}
-                        let color=(start..end).filter_map(|c|screen.cell(row,c)).find(|c|!c.contents().trim().is_empty())
+                        let mut color=(start..end).filter_map(|c|screen.cell(row,c)).find(|c|!c.contents().trim().is_empty())
                             .map(|c|font_palette_color(terminal_color(c.fgcolor(),default_fg),palette)).unwrap_or(default_fg);
+                        let row_start=usize::from(row)*usize::from(cols);
+                        if selection.is_some_and(|(a,b)|row_start+usize::from(end)>a.min(b)&&row_start+usize::from(start)<a.max(b)){color=readable_ink(kit.acid);}
                         let available=(f32::from(end-start)-3.).max(1.)*cell_width;
                         let size=(font_px*1.65).min(available/(0.62*text.chars().count().max(1) as f32))
                             .min(cell_height*1.6).round().max(1.) as u16;
@@ -2888,35 +2861,6 @@ pub fn run() -> Result<()> {
                     ui.set_completion_items(ModelRc::new(VecModel::from(shown)));
                 }
                 let panels = model.session.panels_snapshot();
-                // Dedicated live monitors retain their explicit section frames.
-                ui.set_monitor_panel_count(panels.len().min(4) as i32);
-                if !panels.is_empty() {
-                    let (left, top, cell_width, cell_height) = model.geometry();
-                    let factor = model.scale.max(0.5);
-                    let (_, cols) = model.parser.screen().size();
-                    ui.set_monitor_grid_left((left + 0.35 * cell_width) / factor);
-                    ui.set_monitor_grid_top((top - 0.16 * cell_height) / factor);
-                    ui.set_monitor_grid_width(
-                        (cols.saturating_sub(1) as f32 * cell_width) / factor,
-                    );
-                    ui.set_monitor_line_height(cell_height / factor);
-                    let mut iter = panels.iter();
-                    let mut next = || iter.next().map(|p| (f32::from(p.start_row), f32::from(p.rows)))
-                        .unwrap_or((0.0, 0.0));
-                    let (row, rows) = next();
-                    ui.set_monitor_a_row(row);
-                    ui.set_monitor_a_rows(rows);
-                    let (row, rows) = next();
-                    ui.set_monitor_b_row(row);
-                    ui.set_monitor_b_rows(rows);
-                    let (row, rows) = next();
-                    ui.set_monitor_c_row(row);
-                    ui.set_monitor_c_rows(rows);
-                    let (row, rows) = next();
-                    ui.set_monitor_d_row(row);
-                    ui.set_monitor_d_rows(rows);
-                }
-
                 // Shared transfer metrics are read by the Slint event loop.
                 // No ANSI progress bar, global reading layer, or window texture
                 // modification is used while downloading through instp.

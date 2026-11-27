@@ -358,7 +358,7 @@ impl NetworkTrafficService {
                 .size()
                 .map(|(cols, rows)| (cols as usize, rows as usize))
                 .unwrap_or((120, 32));
-            let mut screen = LiveScreen::new();
+            let mut screen = LiveScreen::new().width(terminal_width);
             let status = if telemetry_error.is_some() {
                 format!(
                     "{}ETW no disponible{}   {}",

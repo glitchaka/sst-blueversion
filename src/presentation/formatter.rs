@@ -88,7 +88,7 @@ impl Metric {
     pub(super) fn named(label:&str)->Option<Self>{
         match label.trim().to_lowercase().as_str(){
             "cpu"|"cpu%"|"cpu %"|"cpu global"|"uso de cpu"|"cpu uso"|"cpu_usage" => Some(Self::Cpu),
-            "ram"|"ram %"|"memoria usada"|"uso de memoria"|"disk usage"|"uso de disco"|"memory_usage" => Some(Self::Utilization),
+            "ram"|"ram %"|"memory"|"memory %"|"memoria"|"memoria usada"|"uso de memoria"|"disk usage"|"uso de disco"|"memory_usage" => Some(Self::Utilization),
             "pérdida"|"perdida"|"packet loss"|"pérdida de paquetes" => Some(Self::Loss),
             _ => None,
         }
@@ -478,6 +478,11 @@ fn is_section_heading(line: &str) -> bool {
             && text.chars().filter(|ch| *ch == ':').count() == 1;
     }
     if text.starts_with("== ") { return true; }
+    // Numbered records are local section headings, not raw pink prose.
+    if let Some((number,name))=text.strip_prefix('[').and_then(|s|s.split_once("] ")) {
+        if !number.is_empty() && number.chars().all(|c|c.is_ascii_digit())
+            && name.chars().any(char::is_alphabetic) {return true;}
+    }
     if let Some((number, title)) = text.split_once(". ") {
         if number.chars().next().is_some_and(|c|c.is_ascii_digit())
             && number.chars().all(|c|c.is_ascii_alphanumeric())
@@ -524,8 +529,9 @@ fn style_line(line: &str) -> String {
         let indent = &line[..line.len() - stripped.len()];
         return format!("{indent}{BULLET}•{RESET} {}", stripped.trim_start_matches('•').trim_start());
     }
-    // A bare word in arbitrary output is not a verified machine state.
-    line.to_owned()
+    // Explanatory prose is subordinate to actual values. Never infer a
+    // status from an arbitrary word in the transcript.
+    Role::Detail.paint(line)
 }
 
 /// Shared presentation for incremental external-process output. Each complete
@@ -715,6 +721,24 @@ fn meter(metric:Metric,value:f32,width:usize)->String{
         " ".repeat(filled)," ".repeat(width-filled))
 }
 fn render_field_group(lines:&[&str],width:usize)->String {
+    let mut out=Vec::new();
+    let metrics=lines.iter().filter_map(|line|{
+        let (name,value)=field_parts(line)?;
+        bounded_metric(name,value).map(|(metric,n)|(name,value,metric,n))
+    }).collect::<Vec<_>>();
+    // Display real measurements as a dedicated region when the group is small;
+    // long inventories retain compact tables/fields.
+    if !metrics.is_empty() && metrics.len()<=3 && lines.len()<=10 {
+        if let Some(cards)=report_layout::metric_grid(&metrics,width){
+            out.extend(cards);
+            let rest=lines.iter().copied().filter(|line|field_parts(line).is_none_or(|(name,value)|bounded_metric(name,value).is_none())).collect::<Vec<_>>();
+            if !rest.is_empty(){out.extend(ordinary_fields(&rest,width));}
+            return out.join("\n")+"\n";
+        }
+    }
+    ordinary_fields(lines,width).join("\n")+"\n"
+}
+fn ordinary_fields(lines:&[&str],width:usize)->Vec<String>{
     let styles:Vec<_>=lines.iter().map(|s|style_line(s)).collect();
     let styles:Vec<_>=styles.iter().map(String::as_str).collect();
     let mut out=Vec::new();
@@ -727,8 +751,7 @@ fn render_field_group(lines:&[&str],width:usize)->String {
         let gutter=format!("{}  {RESET} ",background(GROUP_FIELDS_RGB));
         for row in &mut out {*row=format!("{gutter}{row}");}
     }
-    out.push(String::new());
-    out.join("\n")
+    out
 }
 fn table_header_band(line:&str,width:usize)->String {
     let padded=format!("{HEADING}{line}{}"," ".repeat(width.saturating_sub(display_width(line))));
@@ -1195,9 +1218,49 @@ fn bounded_metric(label:&str,value:&str)->Option<(Metric,f32)> {
     if let Some(pair)=percent_metric(label,value) {return Some(pair);}
     if metric!=Metric::Utilization {return None;}
     let (used,total)=value.split_once('/')?;
-    let number=|s:&str|s.split_whitespace().next()?.replace(',',".").parse::<f32>().ok();
-    let (used,total)=(number(used)?,number(total)?);
+    fn quantity(text:&str)->Option<(f32,&str)> {
+        let mut words=text.split_whitespace();
+        let n=words.next()?.replace(',',".").parse::<f32>().ok()?;
+        let unit=words.next().unwrap_or("");
+        if words.next().is_some(){return None;}
+        Some((n,unit))
+    }
+    let (used,left_unit)=quantity(used)?;
+    let (total,right_unit)=quantity(total)?;
+    if !left_unit.is_empty()&&!right_unit.is_empty()&&left_unit!=right_unit{return None;}
     (used.is_finite()&&total.is_finite()&&total>0.&&used>=0.&&used<=total).then_some((metric,100.*used/total))
+}
+
+/// A reserved, three-row metric region transports a real bounded value.
+/// The encoded RGB is a semantic token, never a user-visible color.
+fn metric_marker(metric:Metric,value:f32)->(u8,u8,u8){
+    (17,match metric{Metric::Cpu=>220,Metric::Utilization=>221,Metric::Loss=>222},value.round().clamp(0.,100.) as u8)
+}
+pub(super) fn decode_metric_marker(rgb:(u8,u8,u8))->Option<(Metric,f32)>{
+    if rgb.0!=17 || rgb.2>100{return None;}
+    let metric=match rgb.1{220=>Metric::Cpu,221=>Metric::Utilization,222=>Metric::Loss,_=>return None};
+    Some((metric,f32::from(rgb.2)))
+}
+
+/// Shared monitor summary layout; caller supplies facts and viewport only.
+/// When space is limited, preserve facts as text rather than microscopic gauges.
+pub fn monitor_summary(text:&str,width:usize,budget:usize)->Vec<String>{
+    let fields=text.split('·').filter_map(|part|field_parts(part.trim())).collect::<Vec<_>>();
+    let metrics=fields.iter().filter_map(|(name,value)|bounded_metric(name,value)
+        .map(|(metric,n)|(*name,*value,metric,n))).collect::<Vec<_>>();
+    let other=fields.iter().filter(|(name,value)|bounded_metric(name,value).is_none())
+        .map(|(name,value)|format!("{name}: {value}")).collect::<Vec<_>>();
+    if !metrics.is_empty() && metrics.len()<=3 {
+        if let Some(mut rows)=report_layout::metric_grid(&metrics,width) {
+            if !other.is_empty(){
+                rows.extend(wrap_line(&other.join("   ·   "),width).iter().map(|line|Role::Detail.paint(line)));
+            }
+            if rows.len()<=budget.max(1){return rows;}
+        }
+    }
+    let mut rows=wrap_line(text.trim(),width).iter().map(|line|Role::Detail.paint(line)).collect::<Vec<_>>();
+    rows.truncate(budget.max(1));
+    rows
 }
 
 pub fn monitor_row(
@@ -1207,26 +1270,11 @@ pub fn monitor_row(
     foreground: &str,
     background: &str,
 ) {
-    // The same semantic formatter composes every native monitor row.
-    let visible: String = text.chars().take(width).collect();
-    let used=display_width(&visible);
-    let mut free=width.saturating_sub(used);
-    let metrics:Vec<_>=text.split('·').filter_map(|part| {
-        let (label,value)=part.trim().split_once(':')?;
-        bounded_metric(label.trim(),value.trim())
-    }).collect();
+    let visible=shorten(text,width);
     buffer.push_str(if foreground==HEADING {SURFACE}else{background});
     buffer.push_str(foreground);
     buffer.push_str(&visible);
-    if used==display_width(text) && !metrics.is_empty() && free>=metrics.len()*9 {
-        let size=(free/metrics.len()).saturating_sub(3).min(14);
-        for (metric,value) in metrics {
-            buffer.push_str("   ");buffer.push_str(&meter(metric,value,size));
-            free=free.saturating_sub(size+3);
-        }
-        buffer.push_str(background);
-    }
-    buffer.push_str(&" ".repeat(free));
+    buffer.push_str(&" ".repeat(width.saturating_sub(display_width(&visible))));
     buffer.push_str("\x1b[0m\r\n");
 }
 
@@ -1302,12 +1350,14 @@ pub struct LiveScreen {
     text: String,
     line: usize,
     panels: Vec<TerminalPanel>,
+    width: usize,
 }
 
 impl LiveScreen {
     pub fn new() -> Self {
-        Self { text: String::new(), line: 0, panels: Vec::new() }
+        Self { text: String::new(), line: 0, panels: Vec::new(),width:100 }
     }
+    pub fn width(mut self,width:usize)->Self{self.width=width.saturating_sub(3).clamp(18,160);self}
 
     pub fn section(&mut self, title: &str, body: &str) {
         let start = self.line;
@@ -1318,26 +1368,10 @@ impl LiveScreen {
         self.text.push('\n');
         self.line += 1;
 
-        let mut table = TableStyle::default();
-        let mut table_active=false;
-        let mut index=0;
-        for line in body.trim_end_matches('\n').split('\n') {
-            if line.is_empty() && body.trim().is_empty() { break; }
-            self.text.push_str("  ");
-            if line.contains('\x1b') {
-                self.text.push_str(line);
-            } else if is_table_header(line) {
-                table = TableStyle::from_header(line);
-                table_active=true;index=0;
-                self.text.push_str(&table_header_band(line,display_width(line)));
-            } else {
-                if line.trim().is_empty(){table_active=false;table=TableStyle::default();}
-                let styled=table.row(line);
-                if table_active{self.text.push_str(&table_body_band(line,&styled,display_width(line),index));index+=1;}
-                else{self.text.push_str(&styled);}
-            }
-            self.text.push('\n');
-            self.line += 1;
+        let styled=if body.contains('\x1b'){body.to_owned()}
+            else{compose_text(body,self.width.saturating_add(3) as u16,classify(body))};
+        for line in styled.trim_end_matches('\n').lines(){
+            self.text.push_str(line);self.text.push('\n');self.line+=1;
         }
 
         if self.panels.len() < 4 {

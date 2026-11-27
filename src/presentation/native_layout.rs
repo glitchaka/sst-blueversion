@@ -39,7 +39,9 @@ fn network_report_graphics(screen:&vt100::Screen)->Vec<ReportGraphic>{
             if entries.len()<2 {continue;}
             if let Some(&(row,end))=entries.last(){
                 if cols.saturating_sub(end)>=18 {
-                    out.push(ReportGraphic{row,rows:1,start:end+3,end:cols.saturating_sub(1),kind:11,ratio:0.,tone:entries.len() as i32});
+                    // Retain the underlying routing rows; no unexplained
+                    // count or topology is appended to an individual route.
+                    let _=(&out,row);
                 }
             }
         }
@@ -112,6 +114,24 @@ pub(in crate::presentation) fn semantic_components(screen:&vt100::Screen)->Vec<R
     let (rows,cols)=screen.size();
     let surface=|r,c|screen.cell(r,c).and_then(|cell|match cell.bgcolor(){vt100::Color::Rgb(a,b,d)=>Some((a,b,d)),_=>None});
     let mut marks=Vec::new();
+    // Each region is explicitly reserved by the formatter. The exact same
+    // component is selected for foreground reports and live monitors.
+    for row in 0..rows {
+        let mut col=0;
+        while col<cols {
+            let Some(rgb)=surface(row,col)else{col+=1;continue;};
+            let Some((metric,value))=super::decode_metric_marker(rgb)else{col+=1;continue;};
+            let start=col;
+            while col<cols&&surface(row,col)==Some(rgb){col+=1;}
+            if row>0&&surface(row-1,start)==Some(rgb){continue;}
+            let mut height=1;
+            while row+height<rows&&(start..col).all(|c|surface(row+height,c)==Some(rgb)){height+=1;}
+            if height<2||col-start<4{continue;}
+            let kind=match metric{super::Metric::Cpu=>15,super::Metric::Utilization=>16,super::Metric::Loss=>19};
+            let tone=match metric.role(value,None){super::Role::Failure=>2,super::Role::Warning=>1,_=>0};
+            marks.push(ReportGraphic{row,rows:height,start,end:col,kind,ratio:value/100.,tone});
+        }
+    }
     let mut row=0;
     while row<rows {
         if cols>=6 && surface(row,1)==Some(EXPANSION_RGB) {
@@ -156,7 +176,8 @@ pub(in crate::presentation) fn report_graphics(screen: &vt100::Screen) -> Vec<Re
             }
         }
 
-        let field = !matches!(bg(row,0),Some(crate::presentation::formatter::GROUP_FIELDS_RGB))
+        let field = first.is_some_and(|c|c>=2)
+            && !matches!(bg(row,0),Some(crate::presentation::formatter::GROUP_FIELDS_RGB))
             && first.is_some_and(|c| role(row,c)==Some(Role::Label))
             && (0..cols).any(|c| role(row,c)==Some(Role::Label) && screen.cell(row,c).is_some_and(|v|v.contents().contains(':')))
             && (0..cols).any(|c|has_text(row,c)&&matches!(role(row,c),Some(Role::Value|Role::Success|Role::Warning|Role::Failure|Role::Optimal)));

@@ -208,7 +208,7 @@ impl SystemService {
         let mut terminal = self.terminal.alternate_screen()?;
         let mut sort_cpu = true;
         let mut tree = false;
-        use crate::presentation::formatter::{ExpandableFields, Metric, Role, monitor_row, monitor_cells, selected_surface, SURFACE, SURFACE_ALT, SURFACE_HEAD};
+        use crate::presentation::formatter::{ExpandableFields, Metric, Role, monitor_summary, monitor_row, monitor_cells, selected_surface, SURFACE, SURFACE_ALT, SURFACE_HEAD};
         let selected_bg = selected_surface();
         let interval = Duration::from_millis(900);
         let mut offset = 0usize;
@@ -257,7 +257,13 @@ impl SystemService {
             let can_expand = detail_available && usize::from(height)>=8+body_rows;
             let expanded = can_expand && detail_open && selected.is_some();
             let detail_rows = if expanded { body_rows as u16 } else { 0 };
-            let max_rows = usize::from(height.saturating_sub(7 + detail_rows));
+            let used=system.used_memory()/1024/1024;
+            let total=system.total_memory()/1024/1024;
+            let facts=format!("Procesos: {}   ·   CPU global: {:.1}%   ·   RAM: {} / {} MiB   ·   Uptime: {}m",
+                system.processes().len(),system.global_cpu_usage(),used,total,System::uptime()/60);
+            let summary=monitor_summary(&facts,width,usize::from(height.saturating_sub(9+detail_rows)).max(1));
+            let table_start=4+summary.len();
+            let max_rows=usize::from(height.saturating_sub(6+summary.len() as u16+detail_rows));
             let page = max_rows.max(1);
             if let Some(i) = index { offset = offset.min(i).max(i.saturating_sub(page-1)); }
             offset = offset.min(rows.len().saturating_sub(page));
@@ -270,22 +276,7 @@ impl SystemService {
                 Role::Title.ansi(),
                 SURFACE_HEAD,
             );
-            let used = system.used_memory() / 1024 / 1024;
-            let total = system.total_memory() / 1024 / 1024;
-            monitor_row(
-                &mut screen,
-                &format!(
-                    "  Procesos: {}   ·   CPU global: {:.1}%   ·   RAM: {} / {} MiB   ·   Uptime: {}m",
-                    system.processes().len(),
-                    system.global_cpu_usage(),
-                    used,
-                    total,
-                    System::uptime() / 60
-                ),
-                width,
-                Role::Value.ansi(),
-                SURFACE_ALT,
-            );
+            for row in summary {screen.push_str(&row);screen.push_str("\r\n");}
             monitor_row(
                 &mut screen,
                 &format!(
@@ -306,7 +297,7 @@ impl SystemService {
             );
             monitor_row(
                 &mut screen,
-                "  PID      PPID      CPU %      RAM MiB   PROCESO / JERARQUÍA",
+                "  PID      PPID        CPU %     RAM MiB   PROCESO / JERARQUÍA",
                 width,
                 Role::Label.ansi(),
                 SURFACE_HEAD,
@@ -327,7 +318,7 @@ impl SystemService {
                 let memory = process.memory() as f64 / 1024.0 / 1024.0;
                 let active = selected.is_some() && identity(*pid) == selected;
                 let marker = if active { "›" } else { " " };
-                let identity_text=format!("{marker} {:<8} {:<8} ",pid,ppid);
+                let identity_text=format!("{marker} {:<8} {:<8} ",pid.as_u32(),ppid);
                 let cpu_text=format!("{cpu:>6.1}");
                 let memory_text=format!(" {memory:>11.1}   ");
                 let previous_cpu = previous.get(&(*pid,process.start_time())).copied();
@@ -345,7 +336,7 @@ impl SystemService {
                     SURFACE,
                 );
             }
-            let detail_header_row = 5 + max_rows;
+            let detail_header_row = table_start + max_rows;
             if detail_available {
                 detail.render(&mut screen,width,expanded);
             } else {
@@ -375,8 +366,8 @@ impl SystemService {
                     else if index.is_some() { detail_open = !detail_open; }
                 }
                 Some(TerminalKey::Row(row)) if can_expand && usize::from(row) == detail_header_row && index.is_some() => detail_open = !detail_open,
-                Some(TerminalKey::Row(row)) if (5..5+shown).contains(&usize::from(row)) =>
-                    index = Some(offset + usize::from(row) - 5),
+                Some(TerminalKey::Row(row)) if (table_start..table_start+shown).contains(&usize::from(row)) =>
+                    index = Some(offset + usize::from(row) - table_start),
                 Some(TerminalKey::Up) => index = Some(current.saturating_sub(1)),
                 Some(TerminalKey::Down) => index = Some(if index.is_none() { offset } else { (current+1).min(last) }),
                 Some(TerminalKey::PageUp) => index = Some(current.saturating_sub(page)),
