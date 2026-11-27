@@ -84,8 +84,8 @@ pub enum Metric { Cpu, Utilization, Loss }
 impl Metric {
     pub(super) fn named(label:&str)->Option<Self>{
         match label.trim().to_lowercase().as_str(){
-            "cpu"|"cpu%"|"cpu %"|"cpu global"|"uso de cpu"|"cpu uso" => Some(Self::Cpu),
-            "ram"|"ram %"|"memoria usada"|"uso de memoria"|"disk usage"|"uso de disco" => Some(Self::Utilization),
+            "cpu"|"cpu%"|"cpu %"|"cpu global"|"uso de cpu"|"cpu uso"|"cpu_usage" => Some(Self::Cpu),
+            "ram"|"ram %"|"memoria usada"|"uso de memoria"|"disk usage"|"uso de disco"|"memory_usage" => Some(Self::Utilization),
             "pérdida"|"perdida"|"packet loss"|"pérdida de paquetes" => Some(Self::Loss),
             _ => None,
         }
@@ -663,7 +663,7 @@ fn field_parts(line:&str)->Option<(&str,&str)>{
         || !name.chars().any(char::is_alphabetic){return None;}
     Some((name,value))
 }
-fn percent_metric(name:&str,value:&str)->Option<(Metric,f32)>{
+pub(super) fn percent_metric(name:&str,value:&str)->Option<(Metric,f32)>{
     let metric=Metric::named(name)?;
     let value=value.trim();
     let raw=value.strip_suffix('%').or_else(||name.contains('%').then_some(value))?;

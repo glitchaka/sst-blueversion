@@ -352,9 +352,6 @@ slint::slint! {
         in property <float> background-image-opacity: 0.0;
         in property <string> background-image-fit-mode: "cover";
         in property <string> privilege-label: "TOKEN ?";
-        in property <int> cpu-value;
-        in property <int> cpu-tone;
-        in property <int> ram-value;
         in property <string> cpu-text: "CPU 0%";
         in property <string> ram-text: "RAM 0.0 GiB";
         in property <string> clock-text: "00:00";
@@ -462,8 +459,29 @@ slint::slint! {
                     width: parent.width; height: parent.height; ink: OutputTheme.warning;
                 }
                 if mark.kind == 7 : LinearScale { width: parent.width; height: parent.height; ratio: mark.ratio; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; line: OutputTheme.muted; }
-                if mark.kind == 8 : ThresholdScale { width: parent.width; height: parent.height; ratio: mark.ratio; threshold: 0.5; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; limit: OutputTheme.warning; }
-                if mark.kind == 9 : ProportionalReadout { width: parent.width; height: parent.height; ratio: mark.ratio; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; }
+                if mark.kind == 8 : Rectangle {
+                    width: parent.width; height: parent.height; background: transparent;
+                    property <color> tone-ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
+                    RadialTwenty { x: 0px; y: 0px; width: parent.height; height: parent.height; value: round(mark.ratio * 100); ink: parent.tone-ink; track: OutputTheme.track; line: OutputTheme.rule; }
+                    ThresholdScale { x: parent.height + 5px; y: 0px; width: max(1px,parent.width - parent.height - 5px); height: parent.height * 0.68; ratio: mark.ratio; threshold: 0.5; ink: parent.tone-ink; track: OutputTheme.track; limit: OutputTheme.warning; }
+                    ActivityScale { x: parent.height + 5px; y: parent.height * 0.76; width: max(1px,parent.width - parent.height - 5px); height: max(2px,parent.height * 0.18); ratio: mark.ratio; ink: parent.tone-ink; track: OutputTheme.track; }
+                }
+                if mark.kind == 9 : Rectangle {
+                    width: parent.width; height: parent.height; background: transparent;
+                    property <color> tone-ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
+                    RingEight { x: 0px; y: 0px; width: parent.height; height: parent.height; value: round(mark.ratio * 100); ink: parent.tone-ink; track: OutputTheme.track; line: OutputTheme.rule; }
+                    ProportionalReadout { x: parent.height + 5px; y: 1px; width: max(1px,parent.width - parent.height - 5px); height: max(1px,parent.height - 2px); ratio: mark.ratio; ink: parent.tone-ink; track: OutputTheme.track; }
+                }
+                if mark.kind == 15 : Rectangle {
+                    width: parent.width; height: parent.height; background: transparent;
+                    RadialTwenty { x: 0px; y: 0px; width: parent.height; height: parent.height; value: round(mark.ratio * 100); ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; line: OutputTheme.rule; }
+                    Text { x: parent.height + 3px; y: 0px; width: parent.width - parent.height - 3px; height: parent.height; text: "CPU"; color: OutputTheme.muted; font-size: min(11px,parent.height * 0.75); vertical-alignment: center; }
+                }
+                if mark.kind == 16 : Rectangle {
+                    width: parent.width; height: parent.height; background: transparent;
+                    RingEight { x: 0px; y: 0px; width: parent.height; height: parent.height; value: round(mark.ratio * 100); ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; line: OutputTheme.rule; }
+                    Text { x: parent.height + 3px; y: 0px; width: parent.width - parent.height - 3px; height: parent.height; text: "RAM"; color: OutputTheme.muted; font-size: min(11px,parent.height * 0.75); vertical-alignment: center; }
+                }
                 if mark.kind == 10 : ContinuityCell { width: max(1px,parent.width - 2px); height: parent.height; lost: mark.tone == 2; ink: mark.tone == 2 ? OutputTheme.failure : OutputTheme.success; }
                 if mark.kind == 11 : Rectangle {
                     width: parent.width; height: parent.height; background: transparent;
@@ -718,12 +736,12 @@ slint::slint! {
                     y: 5px;
                     width: 96px;
                     height: 24px;
-                    background: transparent;
-                    MetadataTab {
-                        width: parent.width; height: parent.height; ink: OutputTheme.track;
-                        line: OutputTheme.rule;
-                        accent: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO") ? OutputTheme.accent : OutputTheme.warning;
-                    }
+                    border-radius: 7px;
+                    background: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
+                        ? #3c3836 : #504030;
+                    border-width: 1px;
+                    border-color: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
+                        ? #665c54 : #d79921;
 
                     Text {
                         x: 2px;
@@ -732,7 +750,7 @@ slint::slint! {
                         height: parent.height;
                         text: root.privilege-label;
                         color: (root.privilege-label == "USUARIO" || root.privilege-label == "LIMITADO")
-                            ? OutputTheme.text : OutputTheme.warning;
+                            ? #ebdbb2 : #fabd2f;
                         font-family: "Segoe UI Variable";
                         font-size: 11px;
                         font-weight: 700;
@@ -741,52 +759,32 @@ slint::slint! {
                     }
                 }
 
-                RadialTwenty {
-                    visible: island.width >= 705px;
-                    x: 182px; y: 5px; width: 24px; height: 24px;
-                    value: root.cpu-value; ink: OutputTheme.accent; track: OutputTheme.track; line: OutputTheme.rule;
-                }
-                AngularMark {
-                    visible: island.width >= 705px;
-                    x: 207px; y: 5px; width: 72px; height: 22px;
-                    ink: root.cpu-tone == 2 ? OutputTheme.failure : root.cpu-tone == 1 ? OutputTheme.warning : OutputTheme.success-surface;
-                }
                 Text {
                     visible: island.width >= 705px;
-                    x: 212px;
+                    x: 184px;
                     y: 0;
-                    width: 64px;
+                    width: 92px;
                     height: parent.height;
                     text: root.cpu-text;
-                    color: root.cpu-tone == 2 ? OutputTheme.on-failure : root.cpu-tone == 1 ? OutputTheme.on-warning : OutputTheme.on-success;
+                    color: #ebdbb2;
                     font-family: "Segoe UI Variable";
                     font-size: 13px;
                     vertical-alignment: center;
                 }
 
-                RingEight {
-                    visible: island.width >= 705px;
-                    x: 282px; y: 5px; width: 24px; height: 24px;
-                    value: root.ram-value; ink: OutputTheme.success; track: OutputTheme.track; line: OutputTheme.rule;
-                }
                 Text {
                     visible: island.width >= 705px;
-                    x: 310px;
+                    x: 281px;
                     y: 0;
-                    width: 98px;
+                    width: 128px;
                     height: parent.height;
                     text: root.ram-text;
-                    color: OutputTheme.text;
+                    color: #ebdbb2;
                     font-family: "Segoe UI Variable";
                     font-size: 13px;
                     vertical-alignment: center;
                 }
 
-                ActivityScale {
-                    visible: island.width >= 705px;
-                    x: 210px; y: 28px; width: 63px; height: 3px;
-                    ratio: root.cpu-value / 100.0; ink: OutputTheme.success; track: OutputTheme.track;
-                }
                 Text {
                     visible: island.width >= 525px;
                     x: island.width - 296px;
@@ -794,7 +792,7 @@ slint::slint! {
                     width: 62px;
                     height: parent.height;
                     text: root.clock-text;
-                    color: OutputTheme.text;
+                    color: #ebdbb2;
                     font-family: "Segoe UI Variable";
                     font-size: 13px;
                     vertical-alignment: center;
@@ -808,7 +806,7 @@ slint::slint! {
                     width: 86px;
                     height: parent.height;
                     text: root.date-text;
-                    color: OutputTheme.muted;
+                    color: #bdae93;
                     font-family: "Segoe UI Variable";
                     font-size: 12px;
                     vertical-alignment: center;
@@ -833,7 +831,7 @@ slint::slint! {
                         commands: root.maximized
                             ? "M 1 6 L 15 6"
                             : "M 1 1 L 8 9 L 15 1";
-                        stroke: OutputTheme.text;
+                        stroke: #d5c4a1;
                         stroke-width: 2.4px;
                         stroke-line-cap: round;
                         stroke-line-join: round;
@@ -866,7 +864,7 @@ slint::slint! {
                         commands: root.maximized
                             ? "M 1 1 L 8 9 L 15 1"
                             : "M 1 10 L 8 2 L 15 10";
-                        stroke: OutputTheme.text;
+                        stroke: #d5c4a1;
                         stroke-width: 2.4px;
                         stroke-line-cap: round;
                         stroke-line-join: round;
@@ -897,7 +895,7 @@ slint::slint! {
                         width: 18px;
                         height: 18px;
                         commands: "M 9 1 L 9 8 M 3.3 3.7 A 7 7 0 1 0 14.7 3.7";
-                        stroke: close-touch.has-hover ? OutputTheme.failure : OutputTheme.rail;
+                        stroke: close-touch.has-hover ? #fb4934 : #fe8019;
                         stroke-width: 2px;
                         stroke-line-cap: round;
                     }
@@ -1195,6 +1193,31 @@ fn feature_dividers(screen:&vt100::Screen)->Vec<ReportGraphic>{
     marks
 }
 
+// Instrument the native process monitor, not the top island or other apps.
+fn process_monitor_metrics(screen:&vt100::Screen)->Vec<ReportGraphic>{
+    use crate::presentation::formatter::{Metric,Role};
+    let (rows,cols)=screen.size();
+    let mut result=Vec::new();
+    for row in 1..rows {
+        if screen_row_text(screen,row-1,cols).trim()!="SST  /  MONITOR DE PROCESOS"{continue;}
+        let line=screen_row_text(screen,row,cols);
+        let Some((_,cpu))=line.split_once("CPU global: ") else {continue;};
+        let Some(cpu)=cpu.split_once('%').and_then(|(v,_)|v.trim().parse::<f32>().ok()).filter(|v|v.is_finite()&&(0.0..=100.0).contains(v)) else {continue;};
+        let Some((_,ram))=line.split_once("RAM: ") else {continue;};
+        let Some((used,total))=ram.split_once(" MiB").and_then(|(v,_)|v.split_once(" / ")) else {continue;};
+        let (Ok(used),Ok(total))=(used.trim().parse::<f32>(),total.trim().parse::<f32>()) else {continue;};
+        if !used.is_finite()||!total.is_finite()||total<=0.0||used<0.0||used>total {continue;}
+        let last=(0..cols).rev().find(|&c|screen.cell(row,c).is_some_and(|v|!v.contents().trim().is_empty())).unwrap_or(cols);
+        if cols.saturating_sub(last)<15 {continue;}
+        let tone=|m:Metric,v:f32|match m.role(v,None){Role::Failure=>2,Role::Warning=>1,_=>0};
+        let start=last+2;
+        result.push(ReportGraphic{row,rows:1,start,end:start+6,kind:15,ratio:cpu/100.0,tone:tone(Metric::Cpu,cpu)});
+        let ram=100.0*used/total;
+        result.push(ReportGraphic{row,rows:1,start:start+7,end:start+13,kind:16,ratio:ram/100.0,tone:tone(Metric::Utilization,ram)});
+    }
+    result
+}
+
 fn report_graphics(screen: &vt100::Screen) -> Vec<ReportGraphic> {
     use crate::presentation::formatter::{Role, REPORT_HEADER_RGB, METER_OK_RGB, METER_WARN_RGB, METER_BAD_RGB};
     let (rows, cols) = screen.size();
@@ -1271,6 +1294,7 @@ fn report_graphics(screen: &vt100::Screen) -> Vec<ReportGraphic> {
         }
         // Metric geometry is chosen from the producer's existing metric semantics.
         let line=screen_row_text(screen,row,cols);
+        let exact_metric=line.split_once(':').and_then(|(name,value)|crate::presentation::formatter::percent_metric(name.trim(),value.trim()));
         let metric=line.split_once(':').and_then(|(name,_)|crate::presentation::formatter::Metric::named(name));
         let is_meter=|c| bg(row,c).is_some_and(|color|[(60,56,55),METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB].contains(&color)) && !has_text(row,c);
         let mut col=0;
@@ -1290,7 +1314,9 @@ fn report_graphics(screen: &vt100::Screen) -> Vec<ReportGraphic> {
             }
             if col-start>=3 {
                 let kind=match metric {Some(crate::presentation::formatter::Metric::Loss)=>7,Some(crate::presentation::formatter::Metric::Cpu)=>8,Some(crate::presentation::formatter::Metric::Utilization)=>9,None=>2};
-                result.push(ReportGraphic{row,rows:1,start,end:col,kind,ratio:filled as f32/f32::from(col-start),tone});
+                let ratio=exact_metric.map_or(filled as f32/f32::from(col-start),|(_,v)|v/100.0);
+                if let Some((metric,n))=exact_metric {tone=match metric.role(n,None){Role::Failure=>2,Role::Warning=>1,_=>0};}
+                result.push(ReportGraphic{row,rows:1,start,end:col,kind:if col-start<7 && matches!(kind,8|9){2}else{kind},ratio,tone});
             }
         }
     }
@@ -1312,8 +1338,9 @@ impl ReportGraphic {
         match self.kind {
             0=>((x-2.*scale).max(0.),y+scale,width+2.*scale,(height-2.*scale).max(1.)),
             1=>((x-6.*scale).max(0.),y+scale,5.*scale,(height-2.*scale).max(1.)),
-            2|7|8|9=>(x,y+h*0.18,width,(h*0.64).max(2.)),
-            10|11|12=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
+            8|9=>(x,y+scale,width,(h-2.*scale).max(2.)),
+            2|7=>(x,y+h*0.18,width,(h*0.64).max(2.)),
+            10|11|12|15|16=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             14=>(x,y+scale,width,(height-2.*scale).max(1.)),
             4=>((x-scale).max(0.),y+scale,width+2.*scale,(h-2.*scale).max(1.)),
             5|6=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
@@ -3195,6 +3222,7 @@ pub fn run() -> Result<()> {
                     } else {Vec::new()};
                     if model.selection.is_none() && !panels.is_empty() {
                         let screen=model.parser.screen();
+                        marks.extend(process_monitor_metrics(screen));
                         let (rows,cols)=screen.size();
                         for (i,panel) in panels.iter().enumerate() {
                             let row=panel.start_row;
@@ -3234,10 +3262,6 @@ pub fn run() -> Result<()> {
                 let ram_gib = system.used_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
                 let now = Local::now();
 
-                ui.set_cpu_value(cpu.round().clamp(0.0,100.0) as i32);
-                ui.set_cpu_tone(match crate::presentation::formatter::Metric::Cpu.role(cpu,None){crate::presentation::formatter::Role::Failure=>2,crate::presentation::formatter::Role::Warning=>1,_=>0});
-                let total=system.total_memory();
-                ui.set_ram_value(if total==0 {0} else {((system.used_memory() as f64/total as f64)*100.0).round().clamp(0.0,100.0) as i32});
                 ui.set_cpu_text(format!("CPU {:.0}%", cpu).into());
                 ui.set_ram_text(format!("RAM {:.1} GiB", ram_gib).into());
                 ui.set_clock_text(now.format("%H:%M").to_string().into());

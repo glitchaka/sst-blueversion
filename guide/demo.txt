@@ -63,6 +63,6 @@ Dentro de `demo graficos`, pulsa P para la paleta siguiente y O para la anterior
 
 La identidad gráfica se aplica ahora también a la terminal habitual: los trazados compartidos del catálogo se usan en marcos y transferencias; las cabeceras, tablas, selección, cursor e indicadores de métricas utilizan los roles de la paleta activa. La salida de máquina y los datos de los comandos se conservan. Los elementos del catálogo se vinculan a las funciones de la terminal habitual; `demo graficos` conserva las muestras aisladas como referencia.
 
-El prompt inicial y el de edición comparten los roles de la paleta. Las alternativas de Tab se muestran en un selector nativo: Tab o flechas recorren candidatos, Enter acepta, Esc cancela y F2 expande o contrae. Aceptar no ejecuta el comando. La isla superior conserva sus dimensiones y usa el marco recortado del catálogo para el token de privilegios.
+El prompt inicial y el de edición comparten los roles de la paleta. Las alternativas de Tab se muestran en un selector nativo: Tab o flechas recorren candidatos, Enter acepta, Esc cancela y F2 expande o contrae. Aceptar no ejecuta el comando. La isla superior conserva íntegramente su diseño anterior; el catálogo se aplica exclusivamente al contenido de la terminal y sus comandos.
 
 Las cabeceras de comandos en directo (por ejemplo ping), los títulos de informes, sugerencias, grupos de campos y medidores se presentan con primitivas compartidas del catálogo, sin introducir caracteres decorativos en los datos ni añadir filas a la salida en directo.

@@ -1313,11 +1313,13 @@ fn run_windows_tool(program: &str, args: &[String]) -> anyhow::Result<CommandOut
 }
 
 fn info() -> anyhow::Result<CommandOutput> {
-    let mut system = System::new_all();
-    system.refresh_all();
+    let system = sampled_processes();
+    let total = system.total_memory();
+    let used = system.used_memory();
+    let memory_usage = if total == 0 { 0.0 } else { used as f64 / total as f64 * 100.0 };
 
     Ok(CommandOutput::ok(format!(
-        "hostname: {}\nos: {}\nkernel: {}\nuptime: {} s\ncpus: {}\nmemory_total: {} MiB\nmemory_used: {} MiB\n",
+        "hostname: {}\nos: {}\nkernel: {}\nuptime: {} s\ncpus: {}\nmemory_total: {} MiB\nmemory_used: {} MiB\ncpu_usage: {:.1}%\nmemory_usage: {:.1}%\n",
         System::host_name().unwrap_or_else(|| "desconocido".to_owned()),
         System::long_os_version().unwrap_or_else(|| "Windows".to_owned()),
         System::kernel_version().unwrap_or_else(|| "desconocido".to_owned()),
@@ -1325,6 +1327,8 @@ fn info() -> anyhow::Result<CommandOutput> {
         system.cpus().len(),
         system.total_memory() / 1024 / 1024,
         system.used_memory() / 1024 / 1024,
+        system.global_cpu_usage(),
+        memory_usage,
     )))
 }
 
