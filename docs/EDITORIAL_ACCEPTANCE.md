@@ -99,4 +99,7 @@ Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. 
 - Estados, valores y explicaciones con roles distintos; títulos compactos, prompt limpio y eliminación de marcos/folios genéricos.
 - Eliminación del texto de desarrollo en la ayuda concreta de tools y en el informe de sensores.
 
+- Revisión común de tablas: separación de cabecera y datos, límites de registros, alineación numérica y conservación de fragmentos no tabulares. Resúmenes de monitores conservan información auxiliar y anuncian líneas omitidas por espacio.
+- Selección de texto limitada a celdas seleccionadas, sin cambiar la geometría de cabeceras compactas ni activar una composición anterior al seleccionar.
+
 Pendiente de aceptación: ejecutar el binario Windows bajo autorización y revisar todas las familias de salidas, todas las ayudas y las 18 paletas. La revisión de fuente no sustituye esa aceptación ni autoriza una publicación.
