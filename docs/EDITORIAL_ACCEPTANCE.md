@@ -89,7 +89,7 @@ Los usos son criterios de aceptación, no afirmaciones de que todos estén imple
 
 ## Validación de entrega
 
-Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. La compilación anterior falló al quedar un método de edición sin uso tras retirar el adorno del prompt; se eliminó el método en la revisión de fuente. No se ha ejecutado una nueva prueba. No se considera completada la aceptación visual de los 37 criterios ni de los 36 componentes. La versión publicada sigue siendo .11 hasta que exista una entrega completa.
+Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. La compilación anterior falló al quedar un método de edición sin uso tras retirar el adorno del prompt; se eliminó el método en la revisión de fuente. Se inició una compilación exclusiva de Rust y Slint, sin ejecutar pruebas. No se considera completada la aceptación visual de los 37 criterios ni de los 36 componentes. La versión publicada sigue siendo .11 hasta que exista una entrega completa.
 
 ### Cambios de fuente incorporados en esta revisión
 
@@ -107,5 +107,7 @@ Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. 
 - Pestaña de metadatos (05) y referencia de evidencia (29): composición común a partir de campos explícitos de origen, fuente, ámbito o archivo de evidencia. Las etiquetas reservan su propia región y los valores largos refluyen fuera de la pestaña sin fingir enlaces, acciones o verificaciones. Proyección nativa con MetadataTab y roles de la paleta. Se aplica también al flujo de diagnósticos con conclusión. Fuente: 85efc70, cd3e038, ce4779e, 3d4307f, 431447f. No constituye aceptación visual ni certificación de las 36 muestras.
 
 - Selector de paletas: Enter o Aceptar ejecuta únicamente la selección de una paleta válida en `config palette` / `sst-config palette` en una línea completa e independiente; el resto del autocompletado conserva su función de edición. Fuente: bb21870. Pendiente validación visual y operativa.
+
+- Integración adicional de navegación Guide con el formatter común: filas activas, folio real de selección y reflujo de manuales sin truncar tokens. Registro de inspección únicamente con detalle abierto, conservación de propiedades largas y marcas de estado explícitas en tablas y monitores. Barras de actividad ETW basadas en intervalos observados. Transferencia dentro de dos filas reales; visibilidad de las formas nativas sobre fondo opaco y mapeo de superficies alternas a la paleta. Commits principales: 21ca424, 7c0c4a1, 0278d88, fcf021a, 783a3ff, 21756c1, ef4fbb4, 64bf888, 8b5a942. Compilación exclusiva separada de las pruebas y publicación: workflow compile-only.yml; no constituye aceptación visual ni liberación de la revisión.
 
 Pendiente de aceptación: ejecutar el binario Windows bajo autorización y revisar todas las familias de salidas, todas las ayudas y las 18 paletas. La revisión de fuente no sustituye esa aceptación ni autoriza una publicación.
