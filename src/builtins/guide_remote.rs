@@ -25,10 +25,17 @@ pub(super) fn load_index() -> Option<String> {
     let local = read_local_or_bundled(INDEX_FILE, MAX_INDEX_BYTES);
     let remote = fetch_upstream(INDEX_FILE, MAX_INDEX_BYTES, true)
         .or_else(|| read_upstream_cache(INDEX_FILE, MAX_INDEX_BYTES));
-    match (local, remote) {
-        (Some(local), Some(remote)) => Some(merge_guide_indexes(&local, &remote).unwrap_or(local)),
-        (local, remote) => local.or(remote),
+    // Validate the effective catalogue, not merely the JSON syntax. An
+    // incompatible upstream index must not disable the bundled SST guide.
+    if let (Some(local), Some(remote)) = (&local, &remote) {
+        if let Some(merged) = merge_guide_indexes(local, remote) {
+            if super::guide_new::index_is_valid(&merged) {
+                return Some(merged);
+            }
+        }
     }
+    local.filter(|text| super::guide_new::index_is_valid(text))
+        .or_else(|| remote.filter(|text| super::guide_new::index_is_valid(text)))
 }
 
 // SST owns its command documentation; upstream contributes additional topics.
@@ -41,7 +48,8 @@ fn merge_guide_indexes(local: &str, remote: &str) -> Option<String> {
             for entry in extra {
                 let Some(name) = entry.get(key).and_then(|v| v.as_str()) else { continue; };
                 if section == "entries" && matches!(name, "diag" | "netcheck" | "netprobe" | "tools office verify") { continue; }
-                if !entries.iter().any(|old| old.get(key).and_then(|v| v.as_str()) == Some(name)) {
+                if !entries.iter().any(|old| old.get(key).and_then(|v| v.as_str())
+                    .is_some_and(|old_name| old_name.trim().eq_ignore_ascii_case(name.trim()))) {
                     entries.push(entry.clone());
                 }
             }
