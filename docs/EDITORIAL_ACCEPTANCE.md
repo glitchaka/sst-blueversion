@@ -41,7 +41,7 @@
 | 33 | Ayudas limitadas a función, sintaxis, opciones, ejemplos y advertencias operativas. |
 | 34 | Entender la información al mirarla: separar resultados principales, datos secundarios y evidencia, sin sacrificar datos. |
 | 35 | Ampliar `sys info` como inventario integral del equipo: conservar las métricas existentes, incorporar información de hardware y sistema operativo y las cuentas locales disponibles en `sys users`, diferenciándolas del usuario de sesión actual. Obtener la información en una sola ejecución, con jerarquía y agrupación mediante el formatter común; distinguir datos no disponibles y conservar `sys users` para consultas específicas. |
-| 36 | Corregir `hostname` y `sys hostname`: conservar renombrado local y en dominio; ante fallo de autenticación 1326 o permisos de dominio, permitir introducir credenciales autorizadas en la propia consola con contraseña oculta, sin almacenarlas ni incluirlas en argumentos o registros. Usar API nativa, distinguir autenticación de permisos, no renombrar sólo localmente como alternativa en equipos unidos a AD y comunicar reinicio requerido únicamente al confirmar éxito. |
+| 36 | Investigar y corregir la regresión de `hostname` y `sys hostname` (NetAPI/Win32 1326 en blue.11). Recuperar el funcionamiento anterior y preservar la sintaxis, elevación y flujo de trabajo; comprobar primero el contexto de ejecución, token y autenticación de dominio. La implementación de `computer_name.rs` y `hostname_set()` coincide con el código del 26 de octubre (c3ad89b). No imponer una nueva solicitud de credenciales ni cambiar el comportamiento sin determinar su necesidad; no almacenar secretos ni renombrar sólo localmente equipos unidos a AD. |
 
 ## Matriz funcional del catálogo
 
