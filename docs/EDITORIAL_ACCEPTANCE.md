@@ -42,6 +42,7 @@
 | 34 | Entender la información al mirarla: separar resultados principales, datos secundarios y evidencia, sin sacrificar datos. |
 | 35 | Ampliar `sys info` como inventario integral del equipo: conservar las métricas existentes, incorporar información de hardware y sistema operativo y las cuentas locales disponibles en `sys users`, diferenciándolas del usuario de sesión actual. Obtener la información en una sola ejecución, con jerarquía y agrupación mediante el formatter común; distinguir datos no disponibles y conservar `sys users` para consultas específicas. |
 | 36 | Resolver la regresión en la ejecución elevada de `sudo`, observada con `sudo hostname` y `sudo domain` en blue.11: recuperar stdout, stderr y estado real en la misma consola, incluyendo aviso de reinicio cuando proceda, cancelación y errores. No confundir elevación local con autenticación de dominio; conservar sintaxis y comportamiento de los comandos existentes. Corregido en fuente el escapado de rutas Windows y la pérdida silenciosa de resultados (ec91e53); pendiente validación autorizada de extremo a extremo y diagnóstico del error 1326 sin atribuirlo automáticamente a AD. |
+| 37 | Restaurar `guide` y `guide TEMA` en blue.11: el alias `keygen` de `sys` colisionaba con la ficha independiente e invalidaba el catálogo entero. Corrección de fuente: prioridad de nombres canónicos, limpieza del alias redundante y de la inyección obsoleta de netcheck; validación del índice combinado con recuperación del catálogo local si el remoto es incompatible. Conservar todas las fichas válidas, navegación y consulta sin conexión. Pendiente aceptación en Windows bajo autorización. |
 
 ## Matriz funcional del catálogo
 
@@ -88,7 +89,7 @@ Los usos son criterios de aceptación, no afirmaciones de que todos estén imple
 
 ## Validación de entrega
 
-Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. La compilación anterior falló al quedar un método de edición sin uso tras retirar el adorno del prompt; se eliminó el método en la revisión de fuente. No se ha ejecutado una nueva prueba. No se considera completada la aceptación visual de los 36 criterios ni de los 36 componentes. La versión publicada sigue siendo .11 hasta que exista una entrega completa.
+Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. La compilación anterior falló al quedar un método de edición sin uso tras retirar el adorno del prompt; se eliminó el método en la revisión de fuente. No se ha ejecutado una nueva prueba. No se considera completada la aceptación visual de los 37 criterios ni de los 36 componentes. La versión publicada sigue siendo .11 hasta que exista una entrega completa.
 
 ### Cambios de fuente incorporados en esta revisión
 
