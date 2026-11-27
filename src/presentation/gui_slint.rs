@@ -1566,9 +1566,10 @@ impl TerminalModel {
             let default_fg = parse_rgb(&self.appearance.font_color).unwrap_or(FG);
             let default_fg = if palette == "gruvbox" { default_fg } else { font_palette_color(FG,palette) };
 
-            // The Slint header is behind the glyph surface. Open only its
-            // allocated rectangle, preserving every other pixel of the background.
-            for graphic in graphics.iter().filter(|g|g.kind==0 || (g.kind==4 && (g.tone==0 || g.tone==2))) {
+            // Every background component is behind the glyph surface. Open
+            // only the regions reserved for it, including metadata and selection,
+            // so it remains visible even with an opaque terminal background.
+            for graphic in graphics.iter().filter(|g|matches!(g.kind,0|20|21|22) || (g.kind==4 && (g.tone==0 || g.tone==2))) {
                 let (x,y,w,h)=graphic.pixels((left_pad,top_pad,cell_width,cell_height),self.scale);
                 let x0=x.floor().max(0.) as u32;
                 let y0=y.floor().max(0.) as u32;
@@ -1663,8 +1664,8 @@ impl TerminalModel {
                     if !selection.is_some_and(|(a,b)| index >= a.min(b) && index < a.max(b)) && !cell.inverse() {
                         fg = font_palette_color(fg,palette);
                     }
-                    let active_row=graphics.iter().any(|g|g.kind==22 && row==g.row && col>=g.start && col<g.end);
-                    if semantic_surface.is_some() && (paint_background || active_row) && !cell.inverse() && !is_meter_surface(cell.bgcolor()) && contrast(fg,bg)<4.5 {
+                    let native_surface=graphics.iter().any(|g|matches!(g.kind,20|21|22) && row==g.row && col>=g.start && col<g.end);
+                    if semantic_surface.is_some() && (paint_background || native_surface) && !cell.inverse() && !is_meter_surface(cell.bgcolor()) && contrast(fg,bg)<4.5 {
                         fg=readable_ink(bg);
                     }
                     let content = cell.contents();
@@ -1886,7 +1887,9 @@ fn kit_surface(rgb:(u8,u8,u8),p:DemoColors)->Option<Rgb>{
     use crate::presentation::formatter::{METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB,SELECTED_RGB,EXPANSION_RGB,GROUP_FIELDS_RGB};
     Some(match rgb {
         (56,54,46)=>p.rail, // table head
-        (36,39,38)=>mix_rgb(p.graphite,p.muted,12), // alternating table row
+        (36,39,38)|(40,40,40)=>mix_rgb(p.graphite,p.muted,12), // alternating table and monitor row
+        crate::presentation::formatter::METADATA_TAB_RGB=>p.rail,
+        crate::presentation::formatter::EVIDENCE_REF_RGB=>p.graphite,
         SELECTED_RGB=>p.rail,
         EXPANSION_RGB=>p.rail,
         GROUP_FIELDS_RGB=>p.graphite,
