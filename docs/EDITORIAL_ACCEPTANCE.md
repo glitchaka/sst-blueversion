@@ -106,4 +106,6 @@ Estado actual: cambios de fuente en revisión; no verificados en el ejecutable. 
 
 - Pestaña de metadatos (05) y referencia de evidencia (29): composición común a partir de campos explícitos de origen, fuente, ámbito o archivo de evidencia. Las etiquetas reservan su propia región y los valores largos refluyen fuera de la pestaña sin fingir enlaces, acciones o verificaciones. Proyección nativa con MetadataTab y roles de la paleta. Se aplica también al flujo de diagnósticos con conclusión. Fuente: 85efc70, cd3e038, ce4779e, 3d4307f, 431447f. No constituye aceptación visual ni certificación de las 36 muestras.
 
+- Selector de paletas: Enter o Aceptar ejecuta únicamente la selección de una paleta válida en `config palette` / `sst-config palette` en una línea completa e independiente; el resto del autocompletado conserva su función de edición. Fuente: bb21870. Pendiente validación visual y operativa.
+
 Pendiente de aceptación: ejecutar el binario Windows bajo autorización y revisar todas las familias de salidas, todas las ayudas y las 18 paletas. La revisión de fuente no sustituye esa aceptación ni autoriza una publicación.
