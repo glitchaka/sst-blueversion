@@ -1,1 +1,1 @@
-Compile the complete current source snapshot, including visible native overlays, inspected records, real navigation folio and read-only Guide fallback. No tests, launches, releases or update channel changes.
+Compile after correcting Slint property scope and subtraction syntax (8a4303b). No tests or publication.
