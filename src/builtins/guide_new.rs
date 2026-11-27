@@ -701,6 +701,7 @@ fn render_areas(
         &index.ui.title,
         &lines,
         Some(intro + selected.saturating_sub(start)),
+        Some((selected+1,index.areas.len())),
         &index.ui.areas_footer,
     )
 }
@@ -742,7 +743,8 @@ fn render_commands(
         &index.ui.commands_footer
     };
     draw(terminal, size, &index.ui.title, &lines,
-        (!visible.is_empty()).then_some(2+selected.saturating_sub(start)), footer)
+        (!visible.is_empty()).then_some(2+selected.saturating_sub(start)),
+        (!visible.is_empty()).then_some((selected+1,visible.len())), footer)
 }
 
 fn render_search(
@@ -791,7 +793,8 @@ fn render_search(
         &index.ui.search_footer
     };
     draw(terminal, size, &index.ui.title, &lines,
-        (!visible.is_empty()&&!typing).then_some(2+selected.saturating_sub(start)), footer)
+        (!visible.is_empty()&&!typing).then_some(2+selected.saturating_sub(start)),
+        (!visible.is_empty()&&!typing).then_some((selected+1,visible.len())), footer)
 }
 
 fn render_detail(
@@ -848,6 +851,7 @@ fn render_detail(
         &format!("{} — {}", index.ui.title, entry.name),
         &lines,
         None,
+        None,
         &footer,
     )?;
     Ok(max_scroll)
@@ -889,9 +893,10 @@ fn draw(
     title: &str,
     lines: &[String],
     selected: Option<usize>,
+    folio: Option<(usize,usize)>,
     footer: &str,
 ) -> Result<()> {
-    let out=crate::presentation::formatter::navigation_page(title,lines,selected,footer,size.0,size.1);
+    let out=crate::presentation::formatter::navigation_page(title,lines,selected,folio,footer,size.0,size.1);
     terminal.write(&out)?;
     terminal.flush()
 }
