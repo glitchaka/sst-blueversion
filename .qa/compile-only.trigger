@@ -1,1 +1,1 @@
-Compile current Rust and Slint sources only. Do not execute tests, launch SST, distribute artifacts or activate the update channel.
+Compile the complete current source snapshot, including visible native overlays, inspected records, real navigation folio and read-only Guide fallback. No tests, launches, releases or update channel changes.
