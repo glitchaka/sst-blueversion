@@ -170,7 +170,7 @@ const NERD_FONT_BYTES: &[u8] = crate::application::system::SST_TERMINAL_FONT_BYT
 slint::slint! {
     import { ConfigForm, ConfigField } from "config_form.slint";
     import { EditorialDemo } from "editorial_demo.slint";
-    import { AngularMark, CutFrame, Registration, FieldBracket, SteppedDivider } from "graphic_kit.slint";
+    import { AngularMark, CutFrame, Registration, FieldBracket, SteppedDivider, AsymmetricHeader } from "graphic_kit.slint";
     import { RadialTwenty, RingEight, SegmentedProgress, IndeterminateWait, HatchedTransfer } from "graphic_kit.slint";
     import { WarningTriangle, StateBadge } from "graphic_kit.slint";
     import { LinearScale, ThresholdScale, ProportionalReadout, ContinuityCell, RouteBranch, RailFolio, CompactRule } from "graphic_kit.slint";
@@ -198,7 +198,15 @@ slint::slint! {
     component ReportHeadingBand inherits Rectangle {
         in property <bool> signals;
         background: transparent;
-        Rectangle { x: 0px; y: parent.height - 1px; width: min(parent.width, signals ? 96px : 36px); height: 1px; background: signals ? OutputTheme.accent : OutputTheme.rule; }
+        if root.signals : AsymmetricHeader {
+            width: parent.width; height: parent.height; ink: OutputTheme.track;
+        }
+        if root.signals : Rectangle {
+            x: 0px; y: 0px; width: 2px; height: parent.height; background: OutputTheme.accent;
+        }
+        if !root.signals : Rectangle {
+            x: 0px; y: parent.height - 1px; width: min(parent.width, 36px); height: 1px; background: OutputTheme.rule;
+        }
     }
 
     // The download panel is independent of the VT100 pixel surface.
