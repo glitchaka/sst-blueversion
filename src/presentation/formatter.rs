@@ -4,6 +4,9 @@
 
 #[path = "report_layout.rs"]
 mod report_layout;
+#[path = "native_layout.rs"]
+mod native_layout;
+pub(super) use native_layout::{ReportGraphic, report_graphics, semantic_components};
 
 pub const RESET: &str = "\x1b[0m";
 
@@ -131,10 +134,42 @@ fn report_text(text: &str) -> std::borrow::Cow<'_, str> {
     if clean.contains('\x1b') { Cow::Borrowed(text) } else { clean }
 }
 
+/// ANSI art and ordinary terminal protocols retain their original bytes.
+fn metadata_sidecar(text:&str)->String {
+    if !text.contains("\x1b[48;2;") || text.contains('\0') {return text.to_owned();}
+    let mut output=String::new();
+    for line in text.split_inclusive('\n') {
+        let (body,ending)=line.strip_suffix('\n').map_or((line,""),|s|(s,"\n"));
+        let parts=body.rsplit_once("\x1b[0m  ");
+        if let Some((art,side))=parts {
+            let plain=report_text(art);
+            let value=report_text(side);
+            let is_art=art.contains("\x1b[48;2;") && plain.chars().count()>=16
+                && plain.chars().all(|c|matches!(c,' '|'█'|'▓'|'▒'|'░'|'%'|'#'|'*'|'+'|'='));
+            if is_art && (field_parts(&value).is_some() || value.contains('@')&&!value.contains(char::is_whitespace)) {
+                output.push_str(art);output.push_str(RESET);
+                if let Some((label,data))=field_parts(&value) {
+                    output.push_str(&background(GROUP_FIELDS_RGB));output.push_str("  ");output.push_str(RESET);
+                    output.push_str(&Role::Label.paint(label));output.push_str(": ");
+                    output.push_str(&Role::Value.paint(data));
+                } else {
+                    output.push_str("  ");output.push_str(&Role::Title.paint(&value));
+                }
+                output.push_str(ending);continue;
+            }
+        }
+        output.push_str(line);
+    }
+    output
+}
+
 /// Explicit presentation contract for complete command results. Machine
 /// data and terminal protocols go through this same entrypoint unmodified.
 pub struct Formatter;
 impl Formatter {
+    /// Preserve terminal protocols and the original artwork. Only a structured
+    /// metadata sidecar beside ANSI character art is eligible for composition.
+    pub fn terminal_content(text:&str)->String { metadata_sidecar(text) }
     pub fn mode(command:&str,interactive:bool)->OutputMode{
         if !interactive || is_machine_or_shell_command(command){return OutputMode::Machine;}
         let root=command.split_whitespace().next().unwrap_or("");
@@ -150,7 +185,7 @@ impl Formatter {
     /// The production presentation API accepts content, width and transport only.
     pub fn present(stdout:&str,stderr:&str,cols:u16,mode:OutputMode)->FormattedOutput{
         if mode!=OutputMode::Interactive{
-            return FormattedOutput{stdout:stdout.to_owned(),stderr:stderr.to_owned()};
+            return FormattedOutput{stdout:if mode==OutputMode::Terminal {Self::terminal_content(stdout)}else{stdout.to_owned()},stderr:stderr.to_owned()};
         }
         let width = usize::from(cols.saturating_sub(3)).clamp(18,160);
         let clean = report_text(stdout);
@@ -683,8 +718,14 @@ fn render_field_group(lines:&[&str],width:usize)->String {
     let styles:Vec<_>=lines.iter().map(|s|style_line(s)).collect();
     let styles:Vec<_>=styles.iter().map(String::as_str).collect();
     let mut out=Vec::new();
-    if !report_layout::field_grid(lines,width,&mut out){
-        report_layout::fields(lines,&styles,width,&mut out);
+    let grouped=lines.len()>=2 && width>=24;
+    let inner=width.saturating_sub(if grouped{3}else{0});
+    if !report_layout::field_grid(lines,inner,&mut out){
+        report_layout::fields(lines,&styles,inner,&mut out);
+    }
+    if grouped {
+        let gutter=format!("{}  {RESET} ",background(GROUP_FIELDS_RGB));
+        for row in &mut out {*row=format!("{gutter}{row}");}
     }
     out.push(String::new());
     out.join("\n")
@@ -1149,6 +1190,16 @@ pub const WARN:&str=CAUTION;
 pub const CONTENT:&str=DETAILS;
 /// Style a whole terminal row, including empty cells. This ensures the
 /// alternate-screen TUI has readable contrast independently of the wallpaper.
+fn bounded_metric(label:&str,value:&str)->Option<(Metric,f32)> {
+    let metric=Metric::named(label)?;
+    if let Some(pair)=percent_metric(label,value) {return Some(pair);}
+    if metric!=Metric::Utilization {return None;}
+    let (used,total)=value.split_once('/')?;
+    let number=|s:&str|s.split_whitespace().next()?.replace(',',".").parse::<f32>().ok();
+    let (used,total)=(number(used)?,number(total)?);
+    (used.is_finite()&&total.is_finite()&&total>0.&&used>=0.&&used<=total).then_some((metric,100.*used/total))
+}
+
 pub fn monitor_row(
     buffer: &mut String,
     text: &str,
@@ -1156,11 +1207,26 @@ pub fn monitor_row(
     foreground: &str,
     background: &str,
 ) {
+    // The same semantic formatter composes every native monitor row.
     let visible: String = text.chars().take(width).collect();
-    buffer.push_str(background);
+    let used=display_width(&visible);
+    let mut free=width.saturating_sub(used);
+    let metrics:Vec<_>=text.split('·').filter_map(|part| {
+        let (label,value)=part.trim().split_once(':')?;
+        bounded_metric(label.trim(),value.trim())
+    }).collect();
+    buffer.push_str(if foreground==HEADING {SURFACE}else{background});
     buffer.push_str(foreground);
     buffer.push_str(&visible);
-    buffer.push_str(&" ".repeat(width.saturating_sub(visible.chars().count())));
+    if used==display_width(text) && !metrics.is_empty() && free>=metrics.len()*9 {
+        let size=(free/metrics.len()).saturating_sub(3).min(14);
+        for (metric,value) in metrics {
+            buffer.push_str("   ");buffer.push_str(&meter(metric,value,size));
+            free=free.saturating_sub(size+3);
+        }
+        buffer.push_str(background);
+    }
+    buffer.push_str(&" ".repeat(free));
     buffer.push_str("\x1b[0m\r\n");
 }
 

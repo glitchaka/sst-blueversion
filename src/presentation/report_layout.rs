@@ -213,18 +213,16 @@ pub(super) fn counted_summary(text:&str,width:usize)->Option<String>{
     Some(out)
 }
 
-/// One editorial headline, rendered at display size by the native viewport.
+/// Compact primary heading, with no full-width banner or extra display rows.
 /// These two reserved rows are transparent layout markers, not background art.
 pub(super) fn headline(text:&str,width:usize)->Vec<String>{
     let body=text.trim();
     if display_width(body)>width.saturating_sub(3){return vec![Role::Title.paint(body)];}
-    vec![format!("{HEADER}{}{RESET}"," ".repeat(width)),
-        format!("{HEADER}  {HEADING}{body}{RESET}{HEADER}{}{RESET}",
-            " ".repeat(width.saturating_sub(display_width(body)+2)))]
+    vec![format!("{HEADER}  {HEADING}{body}{RESET}")]
 }
 
 /// Final composition pass. Only the first document title gets display
-/// typography; section headings get an unobtrusive native rule. Existing
+/// marker; section headings get compact typographic hierarchy. Existing
 /// field groups, tables, prose and live terminal data are not boxed again.
 pub(super) fn render(styled:&str,width:usize,structured:bool)->String{
     if !structured||styled.is_empty()||styled.contains(['\0','\r']){return styled.into();}

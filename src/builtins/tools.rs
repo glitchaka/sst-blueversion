@@ -73,9 +73,7 @@ impl BuiltinCommand for ToolsBuiltin {
 fn help_output() -> CommandOutput {
     CommandOutput::ok(
         "SST Tools\n\n\
-         Framework de diagnóstico, reparación, limpieza y desinstalación profunda\n\
-         organizado por producto o proveedor. Office es una familia de tools;\n\
-         no define el subsistema completo.\n\n\
+         Diagnóstico, reparación, limpieza y desinstalación por producto.\n\n\
          Sintaxis\n\
            tools list\n\
            tools <producto> <acción> [opciones]\n\n\
@@ -87,13 +85,6 @@ fn help_output() -> CommandOutput {
              tools office scrub [all|m365|2024|2021|2019|2016|2013|2010|2007]\n\
              tools office sara [VERSION]\n\
              tools office scrub-current [VERSION]\n\n\
-         Modelo para nuevas familias\n\
-           tools <producto> diagnose\n\
-           tools <producto> repair\n\
-           tools <producto> remove\n\n\
-         SST puede combinar diagnóstico propio antes/después con la herramienta\n\
-         oficial del fabricante. Los backends externos se descargan desde su fuente,\n\
-         se validan antes de ejecutarse y permanecen aislados del código de SST.\n\n\
          Office\n\
            diagnose evalúa salud, prioriza fallos y recomienda pasos.\n\
            --detail añade evidencia de instalación, Outlook, WebView2, WAM/AAD Broker,\n\

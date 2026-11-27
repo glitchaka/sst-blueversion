@@ -147,7 +147,8 @@ impl EmbeddedSession {
                 // decoration, never the only logo: keyboard focus, window
                 // resize or renderer state must not make SST brandless.
                 let fetch = engine.execute(&format!("fetch --startup-cols={cols}"))?;
-                io::write(fetch.stdout.as_bytes())?;
+                let formatted = crate::presentation::formatter::Formatter::terminal_content(&fetch.stdout);
+                io::write(formatted.as_bytes())?;
                 io::write(fetch.stderr.as_bytes())?;
 
                 let security = crate::application::security::shared_security_service(paths.clone());
@@ -299,7 +300,6 @@ impl EmbeddedSession {
         }
         self.redraw();
     }
-    pub fn editable(&self) -> bool { !self.raw_mode() && !self.busy.load(Ordering::SeqCst) && !self.exited() }
 
     /// Semantic frames from the current alternate-screen TUI, if any.
     pub fn panels_snapshot(&self) -> Vec<TerminalPanel> {

@@ -197,11 +197,7 @@ slint::slint! {
     component ReportHeadingBand inherits Rectangle {
         in property <bool> signals;
         background: transparent;
-        AsymmetricHeader { width: parent.width; height: parent.height; ink: OutputTheme.text; }
-        if root.signals : SignalSlashes {
-            x: parent.width - 24px; y: parent.height * 0.34;
-            width: 17px; height: parent.height * 0.48; ink: OutputTheme.track;
-        }
+        Rectangle { x: 0px; y: parent.height - 1px; width: min(parent.width, signals ? 96px : 36px); height: 1px; background: signals ? OutputTheme.accent : OutputTheme.rule; }
     }
     component TerminalSectionFrame inherits Rectangle {
         background: transparent;
@@ -447,28 +443,14 @@ slint::slint! {
                     width: parent.width; height: parent.height; ink: OutputTheme.warning;
                 }
                 if mark.kind == 7 : LinearScale { width: parent.width; height: parent.height; ratio: mark.ratio; ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; line: OutputTheme.muted; }
-                if mark.kind == 8 : Rectangle {
-                    width: parent.width; height: parent.height; background: transparent;
-                    property <color> tone-ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
-                    RadialTwenty { x: 0px; y: 0px; width: parent.height; height: parent.height; value: round(mark.ratio * 100); ink: parent.tone-ink; track: OutputTheme.track; line: OutputTheme.rule; }
-                    ThresholdScale { x: parent.height + 5px; y: 0px; width: max(1px,parent.width - parent.height - 5px); height: parent.height * 0.68; ratio: mark.ratio; threshold: 0.5; ink: parent.tone-ink; track: OutputTheme.track; limit: OutputTheme.warning; }
-                    ActivityScale { x: parent.height + 5px; y: parent.height * 0.76; width: max(1px,parent.width - parent.height - 5px); height: max(2px,parent.height * 0.18); ratio: mark.ratio; ink: parent.tone-ink; track: OutputTheme.track; }
+                if mark.kind == 8 : ThresholdScale {
+                    width: parent.width; height: parent.height; ratio: mark.ratio; threshold: 0.5;
+                    ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
+                    track: OutputTheme.track; limit: OutputTheme.warning;
                 }
-                if mark.kind == 9 : Rectangle {
-                    width: parent.width; height: parent.height; background: transparent;
-                    property <color> tone-ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success;
-                    RingEight { x: 0px; y: 0px; width: parent.height; height: parent.height; value: round(mark.ratio * 100); ink: parent.tone-ink; track: OutputTheme.track; line: OutputTheme.rule; }
-                    ProportionalReadout { x: parent.height + 5px; y: 1px; width: max(1px,parent.width - parent.height - 5px); height: max(1px,parent.height - 2px); ratio: mark.ratio; ink: parent.tone-ink; track: OutputTheme.track; }
-                }
-                if mark.kind == 15 : Rectangle {
-                    width: parent.width; height: parent.height; background: transparent;
-                    RadialTwenty { x: 0px; y: 0px; width: parent.height; height: parent.height; value: round(mark.ratio * 100); ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; line: OutputTheme.rule; }
-                    Text { x: parent.height + 3px; y: 0px; width: parent.width - parent.height - 3px; height: parent.height; text: "CPU"; color: OutputTheme.muted; font-size: min(11px,parent.height * 0.75); vertical-alignment: center; }
-                }
-                if mark.kind == 16 : Rectangle {
-                    width: parent.width; height: parent.height; background: transparent;
-                    RingEight { x: 0px; y: 0px; width: parent.height; height: parent.height; value: round(mark.ratio * 100); ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track; line: OutputTheme.rule; }
-                    Text { x: parent.height + 3px; y: 0px; width: parent.width - parent.height - 3px; height: parent.height; text: "RAM"; color: OutputTheme.muted; font-size: min(11px,parent.height * 0.75); vertical-alignment: center; }
+                if mark.kind == 9 : ProportionalReadout {
+                    width: parent.width; height: parent.height; ratio: mark.ratio;
+                    ink: mark.tone == 2 ? OutputTheme.failure : mark.tone == 1 ? OutputTheme.warning : OutputTheme.success; track: OutputTheme.track;
                 }
                 if mark.kind == 10 : ContinuityCell { width: max(1px,parent.width - 2px); height: parent.height; lost: mark.tone == 2; ink: mark.tone == 2 ? OutputTheme.failure : OutputTheme.success; }
                 if mark.kind == 11 : Rectangle {
@@ -477,7 +459,8 @@ slint::slint! {
                     Text { x: parent.width - 28px; width: 28px; height: parent.height; text: "" + mark.tone; color: OutputTheme.text; font-size: 10px; horizontal-alignment: right; vertical-alignment: center; }
                 }
                 if mark.kind == 12 : Text { width: parent.width; height: parent.height; text: (mark.tone < 10 ? "0" : "") + mark.tone; color: OutputTheme.accent; font-size: min(16px,parent.height * 0.85); font-weight: 700; horizontal-alignment: right; vertical-alignment: center; }
-                if mark.kind == 13 : CompactRule { width: min(36px,parent.width); height: parent.height; ink: OutputTheme.failure; }
+                if mark.kind == 13 : CompactRule { width: min(36px,parent.width); height: parent.height; ink: OutputTheme.rule; }
+                if mark.kind == 18 : Text { width: parent.width; height: parent.height; text: "Continuidad"; color: OutputTheme.muted; font-size: min(11px,parent.height * 0.8); vertical-alignment: center; }
                 if mark.kind == 17 : Rectangle {
                     x: 0px; y: max(0px,parent.height - 1px); width: parent.width; height: 1px; background: OutputTheme.rule;
                     Rectangle { x: 0px; y: 0px; width: min(30px,parent.width); height: 1px; background: OutputTheme.accent; }
@@ -1079,268 +1062,7 @@ impl ReadingAnchor{
 }
 
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct ReportGraphic {
-    row: u16, rows: u16, start: u16, end: u16, kind: i32, ratio: f32, tone: i32,
-}
-
-
-fn screen_row_text(screen:&vt100::Screen,row:u16,cols:u16)->String {
-    (0..cols).filter_map(|c|screen.cell(row,c)).map(|cell|{
-        let value=cell.contents(); if value.is_empty() {" ".to_owned()}else{value.to_owned()}
-    }).collect()
-}
-
-fn network_report_graphics(screen:&vt100::Screen)->Vec<ReportGraphic>{
-    let (rows,cols)=screen.size();
-    let mut result=Vec::new();
-    let mut samples:Vec<bool>=Vec::new();
-    let mut last_reply:Option<(u16,u16)>=None;
-    let mut ping=false;
-    let mut native=false;
-    let mut routes=false;
-    let mut groups:std::collections::BTreeMap<(std::net::IpAddr,u32),Vec<(u16,u16)>>=std::collections::BTreeMap::new();
-    let flush=|out:&mut Vec<ReportGraphic>,samples:&mut Vec<bool>,anchor:Option<(u16,u16)>|{
-        if let Some((row,end))=anchor {
-            let available=cols.saturating_sub(end.saturating_add(3));
-            let count=samples.len().min(24).min(usize::from(available));
-            if available>=8 && count>=2 {
-                let step=(available/(count as u16)).clamp(1,2);
-                for (i,lost) in samples.iter().skip(samples.len()-count).enumerate(){
-                    let start=end+3+i as u16*step;
-                    out.push(ReportGraphic{row,rows:1,start,end:start+step,kind:10,ratio:0.,tone:if *lost{2}else{0}});
-                }
-            }
-        }
-        samples.clear();
-    };
-    let flush_routes=|out:&mut Vec<ReportGraphic>,groups:&mut std::collections::BTreeMap<(std::net::IpAddr,u32),Vec<(u16,u16)>>|{
-        for entries in groups.values(){
-            if entries.len()<2 {continue;}
-            if let Some(&(row,end))=entries.last(){
-                if cols.saturating_sub(end)>=18 {
-                    out.push(ReportGraphic{row,rows:1,start:end+3,end:cols.saturating_sub(1),kind:11,ratio:0.,tone:entries.len() as i32});
-                }
-            }
-        }
-        groups.clear();
-    };
-    for row in 0..rows{
-        let raw=screen_row_text(screen,row,cols);
-        let line=raw.trim();
-        let lower=line.to_lowercase();
-        let end=(0..cols).rev().find(|&c|screen.cell(row,c).is_some_and(|v|!v.contents().trim().is_empty())).unwrap_or(0);
-        let new_ping=lower.starts_with("haciendo ping a ")||lower.starts_with("pinging ")||line.starts_with("PING ");
-        if new_ping {
-            flush(&mut result,&mut samples,last_reply.take());
-            ping=true;native=line.starts_with("PING ");
-        } else if line.starts_with("$ ") || line.starts_with("$") {
-            flush(&mut result,&mut samples,last_reply.take());
-            ping=false; native=false;
-        } else if ping {
-            let ok=(lower.starts_with("respuesta desde ")||lower.starts_with("reply from ")) && lower.contains("ttl=") && lower.contains("bytes=");
-            let native_ok=native && line.split_once(": ").is_some_and(|(ip,value)|ip.parse::<std::net::IpAddr>().is_ok()&&value.strip_suffix(" ms").is_some_and(|n|n.parse::<u64>().is_ok()));
-            let lost=lower.contains("tiempo de espera agotado")||lower.contains("request timed out")||lower.contains("destino inaccesible")||lower.contains("destination host unreachable")
-                ||(native&&lower.contains(": sin respuesta (estado "));
-            if ok||native_ok||lost {
-                samples.push(lost);last_reply=Some((row,end));
-            } else if lower.starts_with("estadísticas de ping")||lower.starts_with("ping statistics")||lower.starts_with("enviados:") {
-                flush(&mut result,&mut samples,last_reply.take());ping=false;native=false;
-            }
-        }
-        if line.starts_with("DESTINATION")&&line.contains("GATEWAY")&&line.contains("IFINDEX")&&line.contains("METRIC") {
-            flush_routes(&mut result,&mut groups); routes=true;
-        }else if routes{
-            let fields=line.split_whitespace().collect::<Vec<_>>();
-            if fields.len()==4 && fields[0].split_once('/').is_some_and(|(ip,prefix)|ip.parse::<std::net::IpAddr>().is_ok()&&prefix.parse::<u8>().is_ok()){
-                if let (Ok(gateway),Ok(index),Ok(_))=(fields[1].parse::<std::net::IpAddr>(),fields[2].parse::<u32>(),fields[3].parse::<u32>()){
-                    groups.entry((gateway,index)).or_default().push((row,end));continue;
-                }
-            }
-            if !line.is_empty(){flush_routes(&mut result,&mut groups);routes=false;}
-        }
-    }
-    flush(&mut result,&mut samples,last_reply);
-    flush_routes(&mut result,&mut groups);
-    result
-}
-
-fn feature_dividers(screen:&vt100::Screen)->Vec<ReportGraphic>{
-    use crate::presentation::formatter::{FEATURE_RGB,FEATURE_ALT_RGB};
-    let (rows,cols)=screen.size();
-    let surface=|r,c|screen.cell(r,c).and_then(|cell|match cell.bgcolor(){vt100::Color::Rgb(a,b,d)=>Some((a,b,d)),_=>None});
-    let mut marks=Vec::new();
-    for row in 0..rows.saturating_sub(2){
-        let a=(0..cols).rev().find(|&c|surface(row,c)==Some(FEATURE_RGB));
-        let b=(0..cols).find(|&c|surface(row,c)==Some(FEATURE_ALT_RGB));
-        if let (Some(a),Some(b))=(a,b){
-            if b>a+1 && surface(row+1,a)==Some(FEATURE_RGB) && surface(row+2,a)==Some(FEATURE_RGB)
-                && surface(row+1,b)==Some(FEATURE_ALT_RGB) && surface(row+2,b)==Some(FEATURE_ALT_RGB)
-                && (0..cols).any(|c|screen.cell(row,c).is_some_and(|v|!v.contents().trim().is_empty()))
-                && (0..cols).all(|c|screen.cell(row+1,c).is_none_or(|v|v.contents().trim().is_empty())) {
-                marks.push(ReportGraphic{row,rows:3,start:a+1,end:b,kind:14,ratio:0.,tone:0});
-            }
-        }
-    }
-    marks
-}
-
-// Instrument the native process monitor, not the top island or other apps.
-// Decode formatter-owned component roles, independent of the originating
-// command, language, labels, and number of fields.
-fn semantic_components(screen:&vt100::Screen)->Vec<ReportGraphic>{
-    use crate::presentation::formatter::{EXPANSION_RGB,GROUP_FIELDS_RGB};
-    let (rows,cols)=screen.size();
-    let surface=|r,c|screen.cell(r,c).and_then(|cell|match cell.bgcolor(){vt100::Color::Rgb(a,b,d)=>Some((a,b,d)),_=>None});
-    let mut marks=Vec::new();
-    let mut row=0;
-    while row<rows {
-        if cols>=6 && surface(row,1)==Some(EXPANSION_RGB) {
-            let end=(1..cols).take_while(|&c|surface(row,c)==Some(EXPANSION_RGB)).last().unwrap_or(1)+1;
-            marks.push(ReportGraphic{row,rows:1,start:2,end,kind:17,ratio:0.,tone:0});
-        }
-        if cols>=6 && surface(row,1)==Some(GROUP_FIELDS_RGB) {
-            let first=row;
-            while row<rows && surface(row,1)==Some(GROUP_FIELDS_RGB){row+=1;}
-            marks.push(ReportGraphic{row:first,rows:row-first,start:3,end:3,kind:1,ratio:0.,tone:0});
-        }else{row+=1;}
-    }
-    marks
-}
-
-fn process_monitor_metrics(screen:&vt100::Screen)->Vec<ReportGraphic>{
-    use crate::presentation::formatter::{Metric,Role};
-    let (rows,cols)=screen.size();
-    let mut result=Vec::new();
-    for row in 1..rows {
-        if screen_row_text(screen,row-1,cols).trim()!="SST  /  MONITOR DE PROCESOS"{continue;}
-        let line=screen_row_text(screen,row,cols);
-        let Some((_,cpu))=line.split_once("CPU global: ") else {continue;};
-        let Some(cpu)=cpu.split_once('%').and_then(|(v,_)|v.trim().parse::<f32>().ok()).filter(|v|v.is_finite()&&(0.0..=100.0).contains(v)) else {continue;};
-        let Some((_,ram))=line.split_once("RAM: ") else {continue;};
-        let Some((used,total))=ram.split_once(" MiB").and_then(|(v,_)|v.split_once(" / ")) else {continue;};
-        let (Ok(used),Ok(total))=(used.trim().parse::<f32>(),total.trim().parse::<f32>()) else {continue;};
-        if !used.is_finite()||!total.is_finite()||total<=0.0||used<0.0||used>total {continue;}
-        let last=(0..cols).rev().find(|&c|screen.cell(row,c).is_some_and(|v|!v.contents().trim().is_empty())).unwrap_or(cols);
-        if cols.saturating_sub(last)<15 {continue;}
-        let tone=|m:Metric,v:f32|match m.role(v,None){Role::Failure=>2,Role::Warning=>1,_=>0};
-        let start=last+2;
-        result.push(ReportGraphic{row,rows:1,start,end:start+6,kind:15,ratio:cpu/100.0,tone:tone(Metric::Cpu,cpu)});
-        let ram=100.0*used/total;
-        result.push(ReportGraphic{row,rows:1,start:start+7,end:start+13,kind:16,ratio:ram/100.0,tone:tone(Metric::Utilization,ram)});
-    }
-    result
-}
-
-fn report_graphics(screen: &vt100::Screen) -> Vec<ReportGraphic> {
-    use crate::presentation::formatter::{Role, REPORT_HEADER_RGB, METER_OK_RGB, METER_WARN_RGB, METER_BAD_RGB};
-    let (rows, cols) = screen.size();
-    let role = |r,c| screen.cell(r,c).and_then(|v| match v.fgcolor() {
-        vt100::Color::Rgb(a,b,d) => Role::from_rgb((a,b,d)), _ => None,
-    });
-    let bg = |r,c| screen.cell(r,c).and_then(|v| match v.bgcolor() {
-        vt100::Color::Rgb(a,b,d) => Some((a,b,d)), _ => None,
-    });
-    let has_text = |r,c| screen.cell(r,c).is_some_and(|v| !v.contents().trim().is_empty());
-    let mut result = Vec::new();
-    let mut group: Option<(u16,u16)> = None;
-    for row in 0..rows {
-        let first = (0..cols).find(|&c| has_text(row,c));
-        let last = (0..cols).rev().find(|&c| has_text(row,c));
-        let table = (0..cols).any(|c| bg(row,c)==Some((56,54,46)));
-        let title = first.zip(last).filter(|&(a,b)| {
-            (a..=b).all(|c| !has_text(row,c)||role(row,c)==Some(Role::Title))
-                && (a..=b).any(|c|screen.cell(row,c).is_some_and(|v|v.contents().chars().any(char::is_alphabetic)))
-        });
-        if let Some((start,last)) = title {
-            let display = row>0 && bg(row,1)==Some(REPORT_HEADER_RGB)
-                && bg(row-1,1)==Some(REPORT_HEADER_RGB)
-                && (0..cols).all(|c| !has_text(row-1,c));
-            if table {
-                result.push(ReportGraphic{row,rows:1,start:0,end:cols,kind:3,ratio:0.0,tone:0});
-            } else if display {
-                result.push(ReportGraphic{row:row-1,rows:2,start:0,end:cols,kind:0,ratio:0.0,tone:0});
-            } else if last.saturating_add(8)<cols {
-                let end=last.saturating_add(9).min(cols);
-                result.push(ReportGraphic{row,rows:1,start,end,kind:0,ratio:0.0,tone:1});
-            } else {
-                result.push(ReportGraphic{row,rows:1,start,end:cols,kind:13,ratio:0.0,tone:0});
-            }
-        }
-
-        let field = first.is_some_and(|c| role(row,c)==Some(Role::Label))
-            && (0..cols).any(|c| role(row,c)==Some(Role::Label) && screen.cell(row,c).is_some_and(|v|v.contents().contains(':')))
-            && (0..cols).any(|c|has_text(row,c)&&matches!(role(row,c),Some(Role::Value|Role::Success|Role::Warning|Role::Failure|Role::Optimal)));
-        if field {
-            let start=first.unwrap_or(0);
-            if let Some((_,left))=group.as_mut(){*left=(*left).min(start);} else {group=Some((row,start));}
-        } else if let Some((begin,left))=group.take() {
-            if row-begin>=2 {result.push(ReportGraphic{row:begin,rows:row-begin,start:left,end:left,kind:1,ratio:0.0,tone:0});}
-        }
-        // Only actual formatter status spans are framed; incidental prose and
-        // numbers painted with warning tones are not converted into badges.
-        if let Some((a,b))=first.zip(last) {
-            let mut c=a;
-            while c<=b {
-                let Some(r)=role(row,c) else {c+=1;continue;};
-                let start=c;
-                while c<=b && role(row,c)==Some(r) {c+=1;}
-                let text=(start..c).filter_map(|i|screen.cell(row,i)).map(|v|v.contents()).collect::<String>();
-                let clean=text.trim();
-                let tone=match (r,crate::presentation::formatter::status_color(clean)) {
-                    (Role::Success,Some(crate::presentation::formatter::GOOD))=>Some(0),
-                    (Role::Warning,Some(crate::presentation::formatter::CAUTION))=>Some(1),
-                    (Role::Failure,Some(crate::presentation::formatter::BAD))=>Some(2),
-                    (Role::Label|Role::Value|Role::Detail,_) if matches!(clean.to_uppercase().as_str(),"SIN DATOS"|"NO HAY DATOS"|"N/D")=>Some(3),
-                    _=>None,
-                };
-                if let Some(tone)=tone {
-                    result.push(ReportGraphic{row,rows:1,start,end:c,kind:4,ratio:0.0,tone});
-                    if tone==1 && c.saturating_add(2)<cols && (c..c+2).all(|i|!has_text(row,i)) {
-                        result.push(ReportGraphic{row,rows:1,start:c+1,end:c+2,kind:5,ratio:0.0,tone});
-                    }
-                }
-            }
-            let line=(a..=b).filter_map(|i|screen.cell(row,i)).map(|v|v.contents()).collect::<String>();
-            if (line.trim_start().to_lowercase().starts_with("evidencia:") || line.trim_start().to_lowercase().starts_with("evidencia detallada:")) && b.saturating_add(2)<cols {
-                result.push(ReportGraphic{row,rows:1,start:b+1,end:b+3,kind:6,ratio:0.0,tone:0});
-            }
-        }
-        // Metric geometry is chosen from the producer's existing metric semantics.
-        let line=screen_row_text(screen,row,cols);
-        let exact_metric=line.split_once(':').and_then(|(name,value)|crate::presentation::formatter::percent_metric(name.trim(),value.trim()));
-        let metric=line.split_once(':').and_then(|(name,_)|crate::presentation::formatter::Metric::named(name));
-        let is_meter=|c| bg(row,c).is_some_and(|color|[(60,56,55),METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB].contains(&color)) && !has_text(row,c);
-        let mut col=0;
-        while col<cols {
-            if !is_meter(col){col+=1;continue;}
-            let start=col;
-            let mut filled=0;
-            let mut tone=0;
-            while col<cols && is_meter(col) {
-                match bg(row,col) {
-                    Some(METER_OK_RGB)=>filled+=1,
-                    Some(METER_WARN_RGB)=>{filled+=1;tone=tone.max(1);},
-                    Some(METER_BAD_RGB)=>{filled+=1;tone=2;},
-                    _=>{},
-                }
-                col+=1;
-            }
-            if col-start>=3 {
-                let kind=match metric {Some(crate::presentation::formatter::Metric::Loss)=>7,Some(crate::presentation::formatter::Metric::Cpu)=>8,Some(crate::presentation::formatter::Metric::Utilization)=>9,None=>2};
-                let ratio=exact_metric.map_or(filled as f32/f32::from(col-start),|(_,v)|v/100.0);
-                if let Some((metric,n))=exact_metric {tone=match metric.role(n,None){Role::Failure=>2,Role::Warning=>1,_=>0};}
-                result.push(ReportGraphic{row,rows:1,start,end:col,kind:if col-start<7 && matches!(kind,8|9){2}else{kind},ratio,tone});
-            }
-        }
-    }
-    if let Some((begin,left))=group {
-        if rows-begin>=2 {result.push(ReportGraphic{row:begin,rows:rows-begin,start:left,end:left,kind:1,ratio:0.0,tone:0});}
-    }
-    result.extend(network_report_graphics(screen));
-    result.extend(feature_dividers(screen));
-    result
-}
+use crate::presentation::formatter::{ReportGraphic, report_graphics, semantic_components};
 
 impl ReportGraphic {
     fn pixels(self, geometry:(f32,f32,f32,f32), scale:f32)->(f32,f32,f32,f32) {
@@ -1354,7 +1076,7 @@ impl ReportGraphic {
             1=>((x-6.*scale).max(0.),y+scale,5.*scale,(height-2.*scale).max(1.)),
             8|9=>(x,y+scale,width,(h-2.*scale).max(2.)),
             2|7=>(x,y+h*0.18,width,(h*0.64).max(2.)),
-            10|11|12|15|16=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
+            10|11|12|15|16|18=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             14=>(x,y+scale,width,(height-2.*scale).max(1.)),
             4=>((x-scale).max(0.),y+scale,width+2.*scale,(h-2.*scale).max(1.)),
             5|6=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
@@ -1924,7 +1646,7 @@ impl TerminalModel {
                     }
 
                     let role=match cell.fgcolor(){vt100::Color::Rgb(r,g,b)=>Role::from_rgb((r,g,b)),_=>None};
-                    if native_heading && role==Some(Role::Title) {fg=readable_ink(kit.cream);}
+                    if native_heading && role==Some(Role::Title) {fg=kit.acid;}
                     if let Some(badge)=filled_badge {fg=if badge.tone==2 {kit.on_failure}else{kit.on_success};}
                     let font_px=if role.is_some(){font_pixels(role,font_px,cell_width,cell_height)}else{font_px};
                     let font_key=font_px.round().max(1.0) as u16;
@@ -2013,7 +1735,7 @@ impl TerminalModel {
                     let mut x = (left_pad+2.*cell_width).round() as i32;
                     let baseline = (top_pad+(f32::from(row)+0.48)*cell_height).round() as i32;
                     let (r,g,b) = Role::Title.style().rgb;
-                    let Rgb(r,g,b) = if native_heading {readable_ink(kit.cream)} else {font_palette_color(Rgb(r,g,b),palette)};
+                    let Rgb(r,g,b) = if native_heading {kit.acid} else {font_palette_color(Rgb(r,g,b),palette)};
                     for ch in heading.chars() {
                         let glyph = self.glyphs.entry((ch,size)).or_insert_with(||{
                             let (metrics,alpha) = self.font.rasterize(ch,f32::from(size));
@@ -3228,26 +2950,18 @@ pub fn run() -> Result<()> {
                 }
 
                 if drawable && model.dirty && !ui.get_keygen_visible() {
-                    let mut marks=if model.selection.is_none() && !model.session.raw_mode() && !model.parser.screen().alternate_screen() {
-                        report_graphics(model.parser.screen())
+                    let screen=model.parser.screen();
+                    let (rows,cols)=screen.size();
+                    let native_view=!panels.is_empty() || (0..rows).any(|row| {
+                        cols>1 && screen.cell(row,1).is_some_and(|c|matches!(c.bgcolor(),vt100::Color::Rgb(29,32,33)|vt100::Color::Rgb(60,56,54)))
+                    });
+                    let mut marks=if !model.session.raw_mode() || native_view {
+                        report_graphics(screen)
                     } else {Vec::new()};
-                    if model.selection.is_none() {
-                        marks.extend(semantic_components(model.parser.screen()));
-                    }
-                    if model.selection.is_none() && model.parser.screen().alternate_screen() {
-                        let screen=model.parser.screen();
-                        marks.extend(process_monitor_metrics(screen));
-                    }
-                    if model.selection.is_none() && !panels.is_empty() {
-                        let screen=model.parser.screen();
-                        let (rows,cols)=screen.size();
-                        for (i,panel) in panels.iter().enumerate() {
-                            let row=panel.start_row;
-                            if row<rows && cols>=12 && (cols-8..cols).all(|c|screen.cell(row,c).is_none_or(|v|v.contents().trim().is_empty())){
-                                marks.push(ReportGraphic{row,rows:1,start:cols-6,end:cols-2,kind:12,ratio:0.,tone:(i+1) as i32});
-                            }
-                        }
-                    }
+                    marks.extend(semantic_components(screen));
+                    // Selection is a text operation, not a change of document layout.
+                    // Only filled status overlays can conflict with selected glyphs.
+                    if model.selection.is_some(){marks.retain(|m|m.kind!=4);}
                     let factor=model.scale.max(0.5);
                     let geometry=model.geometry();
                     let native=marks.iter().map(|g|{

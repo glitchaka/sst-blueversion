@@ -2053,3 +2053,5 @@ Dentro de `demo graficos`, pulsa P para la paleta siguiente y O para la anterior
 La identidad gráfica se aplica ahora también a la terminal habitual: los trazados compartidos del catálogo se usan en marcos y transferencias; las cabeceras, tablas, selección, cursor e indicadores de métricas utilizan los roles de la paleta activa. La salida de máquina y los datos de los comandos se conservan. Los elementos del catálogo se vinculan a las funciones de la terminal habitual; `demo graficos` conserva las muestras aisladas como referencia.
 
 El prompt inicial y el de edición comparten los roles de la paleta. Las alternativas de Tab se muestran en un selector nativo: Tab o flechas recorren candidatos, Enter acepta, Esc cancela y F2 expande o contrae. Aceptar no ejecuta el comando. La isla superior conserva íntegramente su diseño anterior; el catálogo se aplica exclusivamente al contenido de la terminal y sus comandos.
+
+<!-- Presentation contract: the shared formatter owns layout for reports and monitors; no arbitrary command-specific visual chrome. -->

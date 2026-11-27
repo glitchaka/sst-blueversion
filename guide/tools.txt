@@ -8,7 +8,6 @@ Nombres equivalentes:
 Objetivo:
   `tools` es el punto de entrada para utilidades de diagnóstico, reparación,
   limpieza y desinstalación profunda organizadas por producto o proveedor.
-  No pertenece a Office: Office es sólo una de sus familias.
 
 Modelo de comandos:
   tools list
@@ -53,23 +52,6 @@ VERSION aceptada:
 
 Default si se omite VERSION: all.
 
-Diseño de nuevas familias:
-  Cada producto/proveedor se incorpora debajo de `tools` manteniendo una
-  interfaz homogénea cuando corresponda:
-
-  tools <producto> diagnose
-  tools <producto> repair
-  tools <producto> remove
-
-  SST puede combinar diagnóstico propio antes/después con la herramienta
-  oficial del fabricante. Las utilidades externas no se consideran parte del
-  código de SST: deben descargarse desde su fuente oficial, validarse antes de
-  ejecutarse y mantenerse aisladas en la carpeta temporal de `tools`.
-
-  Un desinstalador de fabricante no debe sustituirse por una limpieza genérica
-  de archivos/Registro cuando el proveedor dispone de una herramienta oficial.
-  La verificación posterior de residuos sí puede ser responsabilidad de SST.
-
 Office — detalle:
   diagnose evalúa la salud operativa, incluida la respuesta de Outlook (new).
   --detail añade el inventario de instalación, residuos y autenticación. No ejecuta reparaciones.
@@ -85,4 +67,3 @@ Para detalle completo de estados, códigos, firma y recuperación:
   office-sara.txt
   office-gethelp.txt
 
-Estado de auditoría: diagnose y verify se consolidaron en diagnose [--detail]; falta validación Windows y revisión de dependencias.
