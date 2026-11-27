@@ -1537,20 +1537,10 @@ impl TerminalModel {
                 }
             }
 
-            let selected_row = selection.and_then(|(a,b)| (cols != 0 && a / cols as usize == b.saturating_sub(1) / cols as usize).then(|| a / cols as usize));
             for row in 0..rows {
                 use crate::presentation::formatter::{Role,font_pixels};
-                // A native visual accent appears only for a semantic title.
-                // No ANSI boxes or graphical decoration are emitted by commands.
-                let title= (0..cols.min(12)).any(|col|screen.cell(row,col).is_some_and(|cell|
-                    cell.bold()&&cell.contents().chars().any(char::is_alphabetic)&&
-                    matches!(cell.fgcolor(),vt100::Color::Rgb(r,g,b) if Role::from_rgb((r,g,b)).is_some_and(|role| role.style().section))));
-                // A semantic card reserves the preceding band for title ascenders.
-                // Render the actual glyph run at display size after painting its cells.
-                let is_band = |r:u16| screen.cell(r,1).is_some_and(|cell|
-                    matches!(cell.bgcolor(),vt100::Color::Rgb(r,g,b) if (r,g,b)==crate::presentation::formatter::REPORT_HEADER_RGB));
-                let card_title = title && row > 0 && selection.is_none() && selected_row!=Some(usize::from(row)) && is_band(row) && is_band(row-1)
-                    && (0..cols).all(|col|screen.cell(row-1,col).is_none_or(|c|c.contents().trim().is_empty()));
+                // Headings occupy the formatter's actual reserved row.
+                // Selection never changes their font or geometry.
                 let feature_color=|r:u16,c:u16|screen.cell(r,c).and_then(|cell|match cell.bgcolor(){
                     vt100::Color::Rgb(a,b,d) if (a,b,d)==crate::presentation::formatter::FEATURE_RGB || (a,b,d)==crate::presentation::formatter::FEATURE_ALT_RGB=>Some((a,b,d)),
                     _=>None
@@ -1587,10 +1577,6 @@ impl TerminalModel {
                     }
 
                     let index = row as usize * cols as usize + col as usize;
-                    if selected_row == Some(usize::from(row)) {
-                        bg = kit.rail;
-                        paint_background = true;
-                    }
                     if selection
                         .is_some_and(|(a, b)| index >= a.min(b) && index < a.max(b))
                     {
@@ -1631,7 +1617,7 @@ impl TerminalModel {
                         fg=readable_ink(bg);
                     }
                     let content = cell.contents();
-                    if content.is_empty() || card_title || (feature_row && feature_color(row,col).is_some()) {
+                    if content.is_empty() || (feature_row && feature_color(row,col).is_some()) {
                         continue;
                     }
 
@@ -1680,11 +1666,6 @@ impl TerminalModel {
                     let x=left_pad.round() as i32;
                     let h=cell_height.round().max(1.) as i32;
                     let w=(f32::from(cols)*cell_width).round() as i32;
-                    if card_title && !native_heading {
-                        // Shared stepped-divider language, in the two-cell heading gutter.
-                        fill_rect(pixels,width,height,x,y-h/2,2,h,kit.accent_detail);
-                        fill_rect(pixels,width,height,x,y+h/2,(cell_width*1.5) as i32,2,kit.accent_detail);
-                    }
                     if (0..cols).any(|c|screen.cell(row,c).is_some_and(|v|matches!(v.bgcolor(),vt100::Color::Rgb(56,54,46)))) {
                         fill_rect(pixels,width,height,x,y+h-1,w,1,kit.line);
                     }
@@ -1715,27 +1696,6 @@ impl TerminalModel {
                             draw_glyph(pixels,width,height,x,baseline,glyph,color);
                             x+=glyph.metrics.advance_width.round() as i32;
                         }
-                    }
-                }
-                if card_title {
-                    let heading = (0..cols).filter_map(|col|screen.cell(row,col))
-                        .map(|cell|cell.contents()).collect::<String>();
-                    let heading = heading.trim();
-                    let available = (f32::from(cols)-4.).max(1.)*cell_width;
-                    let size = (font_px*1.7).min(available/(0.62*heading.chars().count().max(1) as f32))
-                        .min(cell_height*1.6).round().max(1.) as u16;
-                    let mut x = (left_pad+2.*cell_width).round() as i32;
-                    let baseline = (top_pad+(f32::from(row)+0.48)*cell_height).round() as i32;
-                    let (r,g,b) = Role::Title.style().rgb;
-                    let Rgb(r,g,b) = if native_heading {kit.acid} else {font_palette_color(Rgb(r,g,b),palette)};
-                    for ch in heading.chars() {
-                        let glyph = self.glyphs.entry((ch,size)).or_insert_with(||{
-                            let (metrics,alpha) = self.font.rasterize(ch,f32::from(size));
-                            Glyph { metrics,alpha }
-                        });
-                        draw_glyph(pixels,width,height,x,baseline,glyph,Rgb(r,g,b));
-                        draw_glyph(pixels,width,height,x+1,baseline,glyph,Rgb(r,g,b));
-                        x += glyph.metrics.advance_width.round() as i32;
                     }
                 }
             }
