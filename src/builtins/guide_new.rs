@@ -19,9 +19,6 @@ use crate::{
 
 use super::BuiltinCommand;
 
-const SCREEN: &str = "\x1b[44;37m";
-const PANEL: &str = "\x1b[47;30m";
-const RESET: &str = "\x1b[0m";
 const ARCH_AREA: &str = "arch";
 const ARCH_REVIEW_FILE: &str = "arch-review.json";
 
@@ -690,8 +687,12 @@ fn render_areas(
     if !lines.is_empty() {
         lines.push(String::new());
     }
-    for (position, area) in index.areas.iter().enumerate() {
-        let marker = if position == selected { ">" } else { " " };
+    let intro = lines.len().min(panel_body_rows(size.1).saturating_sub(1));
+    lines.truncate(intro);
+    let (_, start, end) = window(index.areas.len(), selected, size.1, intro, 28);
+    for position in start..end {
+        let area=&index.areas[position];
+        let marker = if position == selected { "›" } else { " " };
         lines.push(format!("{marker} {:<18} {}", area.name, area.summary));
     }
     draw(
@@ -699,6 +700,7 @@ fn render_areas(
         size,
         &index.ui.title,
         &lines,
+        Some(intro + selected.saturating_sub(start)),
         &index.ui.areas_footer,
     )
 }
@@ -739,7 +741,8 @@ fn render_commands(
     } else {
         &index.ui.commands_footer
     };
-    draw(terminal, size, &index.ui.title, &lines, footer)
+    draw(terminal, size, &index.ui.title, &lines,
+        (!visible.is_empty()).then_some(2+selected.saturating_sub(start)), footer)
 }
 
 fn render_search(
@@ -787,7 +790,8 @@ fn render_search(
     } else {
         &index.ui.search_footer
     };
-    draw(terminal, size, &index.ui.title, &lines, footer)
+    draw(terminal, size, &index.ui.title, &lines,
+        (!visible.is_empty()&&!typing).then_some(2+selected.saturating_sub(start)), footer)
 }
 
 fn render_detail(
@@ -843,6 +847,7 @@ fn render_detail(
         size,
         &format!("{} — {}", index.ui.title, entry.name),
         &lines,
+        None,
         &footer,
     )?;
     Ok(max_scroll)
@@ -857,9 +862,9 @@ fn detail_rows(height: u16, no_aliases: bool, arch_review: bool) -> usize {
 }
 
 fn panel_body_rows(height: u16) -> usize {
-    usize::from(height.max(18))
+    usize::from(height)
         .saturating_sub(4)
-        .clamp(8, 28)
+        .min(28)
 }
 
 fn window(
@@ -883,82 +888,16 @@ fn draw(
     size: (u16, u16),
     title: &str,
     lines: &[String],
+    selected: Option<usize>,
     footer: &str,
 ) -> Result<()> {
-    let tw = usize::from(size.0.max(48));
-    let th = usize::from(size.1.max(18));
-    let ww = if tw >= 72 {
-        tw.saturating_sub(4).min(112)
-    } else {
-        tw.saturating_sub(2).max(44)
-    };
-    let body_rows = panel_body_rows(size.1);
-    let panel_height = body_rows + 4;
-    let top = th.saturating_sub(panel_height) / 2;
-
-    let mut out = String::new();
-    out.push_str(SCREEN);
-    out.push_str("\x1b[2J\x1b[H");
-    for _ in 0..top {
-        out.push('\n');
-    }
-
-    push(&mut out, tw, ww, &title_line(ww, title));
-    for index in 0..body_rows {
-        let line = lines.get(index).map(String::as_str).unwrap_or("");
-        push(&mut out, tw, ww, &text_line(ww, line));
-    }
-    push(&mut out, tw, ww, &separator(ww));
-    push(&mut out, tw, ww, &text_line(ww, footer));
-    push(
-        &mut out,
-        tw,
-        ww,
-        &format!("└{}┘", "─".repeat(ww.saturating_sub(2))),
-    );
-    out.push_str(RESET);
+    let out=crate::presentation::formatter::navigation_page(title,lines,selected,footer,size.0,size.1);
     terminal.write(&out)?;
     terminal.flush()
 }
 
-fn push(out: &mut String, terminal_width: usize, width: usize, line: &str) {
-    let margin = terminal_width.saturating_sub(width) / 2;
-    out.push_str(SCREEN);
-    out.push_str(&" ".repeat(margin));
-    out.push_str(PANEL);
-    out.push_str(line);
-    out.push_str(SCREEN);
-    out.push('\n');
-}
-
-fn title_line(width: usize, title: &str) -> String {
-    let inner = width.saturating_sub(2);
-    let title = clip(&format!(" {title} "), inner);
-    let rest = inner.saturating_sub(title.chars().count());
-    let left = rest / 2;
-    let right = rest.saturating_sub(left);
-    format!("┌{}{}{}┐", "─".repeat(left), title, "─".repeat(right))
-}
-
-fn separator(width: usize) -> String {
-    format!("├{}┤", "─".repeat(width.saturating_sub(2)))
-}
-
-fn text_line(width: usize, text: &str) -> String {
-    let inner = width.saturating_sub(2);
-    let text = clip(text, inner.saturating_sub(2));
-    let used = text.chars().count();
-    format!("│ {}{} │", text, " ".repeat(inner.saturating_sub(used + 2)))
-}
-
 fn content_width(columns: u16) -> usize {
-    let terminal = usize::from(columns.max(48));
-    let window = if terminal >= 72 {
-        terminal.saturating_sub(4).min(112)
-    } else {
-        terminal.saturating_sub(2).max(44)
-    };
-    window.saturating_sub(6)
+    usize::from(columns).saturating_sub(5).max(1)
 }
 
 fn manual_lines(text: &str, width: usize) -> Vec<String> {
@@ -1001,14 +940,3 @@ fn wrap(value: &str, width: usize) -> Vec<String> {
     rows
 }
 
-fn clip(value: &str, width: usize) -> String {
-    if value.chars().count() <= width {
-        return value.to_owned();
-    }
-    if width <= 1 {
-        return "…".chars().take(width).collect();
-    }
-    let mut out = value.chars().take(width - 1).collect::<String>();
-    out.push('…');
-    out
-}
