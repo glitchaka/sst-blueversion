@@ -384,6 +384,12 @@ slint::slint! {
             }
 
             // Native paths are behind the actual glyph buffer, never over the text.
+            for mark in root.report-graphics : AngularMark {
+                visible: !root.keygen-visible && root.demo-page == 0 && mark.kind == 22;
+                x: mark.x * 1px; y: mark.y * 1px;
+                width: mark.w * 1px; height: mark.h * 1px;
+                ink: OutputTheme.track; outline: OutputTheme.accent; thickness: 1px;
+            }
             for mark in root.report-graphics : StateBadge {
                 visible: !root.keygen-visible && root.demo-page == 0 && mark.kind == 4 && (mark.tone == 0 || mark.tone == 2);
                 x: mark.x * 1px; y: mark.y * 1px;
@@ -1093,7 +1099,7 @@ impl ReportGraphic {
             15|16|19=>(x+scale,y+scale,(width-2.*scale).max(1.),(height-2.*scale).max(1.)),
             10|11|12|18=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             14=>(x,y+scale,width,(height-2.*scale).max(1.)),
-            20|21=>(x,y+scale,width,(h-2.*scale).max(1.)),
+            20|21|22=>(x,y+scale,width,(h-2.*scale).max(1.)),
             4=>((x-scale).max(0.),y+scale,width+2.*scale,(h-2.*scale).max(1.)),
             5|6=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             _=>(x,y+h-2.*scale,width,2.*scale),
@@ -1595,6 +1601,7 @@ impl TerminalModel {
                         (r,g,b)==crate::presentation::formatter::REPORT_HEADER_RGB
                         || (r,g,b)==crate::presentation::formatter::FEATURE_RGB
                         || (r,g,b)==crate::presentation::formatter::FEATURE_ALT_RGB
+                        || (r,g,b)==crate::presentation::formatter::SELECTED_RGB
                         || matches!((r,g,b),crate::presentation::formatter::METADATA_TAB_RGB|crate::presentation::formatter::EVIDENCE_REF_RGB)
                         || crate::presentation::formatter::decode_metric_marker((r,g,b)).is_some()
                         || matches!((r,g,b),crate::presentation::formatter::CONTINUITY_OK_RGB|crate::presentation::formatter::CONTINUITY_LOST_RGB)
@@ -1643,7 +1650,8 @@ impl TerminalModel {
                     if !selection.is_some_and(|(a,b)| index >= a.min(b) && index < a.max(b)) && !cell.inverse() {
                         fg = font_palette_color(fg,palette);
                     }
-                    if semantic_surface.is_some() && paint_background && !cell.inverse() && !is_meter_surface(cell.bgcolor()) && contrast(fg,bg)<4.5 {
+                    let active_row=graphics.iter().any(|g|g.kind==22 && row==g.row && col>=g.start && col<g.end);
+                    if semantic_surface.is_some() && (paint_background || active_row) && !cell.inverse() && !is_meter_surface(cell.bgcolor()) && contrast(fg,bg)<4.5 {
                         fg=readable_ink(bg);
                     }
                     let content = cell.contents();
