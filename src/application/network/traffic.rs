@@ -327,6 +327,7 @@ impl NetworkTrafficService {
             .map(|monitor| monitor.snapshot())
             .unwrap_or_default();
         let telemetry_error = monitor.as_ref().err().map(ToString::to_string);
+        let mut activity=std::collections::VecDeque::<bool>::with_capacity(16);
 
         loop {
             let started = Instant::now();
@@ -349,6 +350,11 @@ impl NetworkTrafficService {
                 None
             };
 
+            if let Some(rates)=rates.as_ref(){
+                if activity.len()==16{activity.pop_front();}
+                activity.push_back(rates.values().any(|counter|counter.sent>0||counter.received>0));
+            }
+
             let telemetry_note = telemetry_error
                 .as_ref()
                 .map(|error| format!("ETW no disponible: {error}"))
@@ -369,10 +375,14 @@ impl NetworkTrafficService {
                 format!("{}CAPTURA EN DIRECTO{}  ·  ETW", tui_style::GOOD, tui_style::RESET)
             };
             screen.section("TRÁFICO DE RED  /  EN VIVO", &status);
+            let activity_rows=usize::from(!activity.is_empty());
+            if !activity.is_empty(){
+                screen.observed_activity("ETW",activity.iter().filter(|&&active|active).count(),activity.len());
+            }
 
             match self.output(&filtered_args, rates.as_ref(), Some(&telemetry_note)) {
                 Ok(output) => {
-                    let budget=terminal_height.saturating_sub(9);
+                    let budget=terminal_height.saturating_sub(9+activity_rows);
                     screen.section_limited("PROCESOS  /  CONEXIONES",&output.stdout,budget);
                 }
                 Err(error) => {
