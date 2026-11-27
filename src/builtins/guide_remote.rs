@@ -232,11 +232,9 @@ fn fetch_upstream(filename: &str, max_bytes: usize, refresh: bool) -> Option<Str
             return Some(text);
         }
     }
-    let parent = path.parent()?;
-    fs::create_dir_all(parent).ok()?;
-    let temporary = parent.join(format!(".{filename}.{}.part", std::process::id()));
-    let _ = fs::remove_file(&temporary);
 
+    // The remote catalogue is usable even when SST is installed on a
+    // read-only volume. A cache write is optional, not a network prerequisite.
     #[cfg(windows)]
     let executable = crate::support::windows::system32_executable("curl.exe").ok()?;
     #[cfg(not(windows))]
@@ -246,30 +244,33 @@ fn fetch_upstream(filename: &str, max_bytes: usize, refresh: bool) -> Option<Str
     command.args([
         "--location", "--fail", "--silent", "--show-error", "--proto", "=https",
         "--tlsv1.2", "--connect-timeout", "3", "--max-time", "15",
-        "--retry", "0", "--max-filesize", &max_bytes.to_string(), "--output",
+        "--retry", "0", "--max-filesize", &max_bytes.to_string(),
+        "--header", "Cache-Control: no-cache",
     ]);
-    command.arg(&temporary).arg(format!("{UPSTREAM_BASE}/{filename}"));
+    command.arg(format!("{UPSTREAM_BASE}/{filename}"));
     #[cfg(windows)]
     command.creation_flags(0x0800_0000);
 
-    let result = (|| {
-        if !command.status().ok()?.success() {
-            return None;
+    let output=command.output().ok()?;
+    if !output.status.success() || output.stdout.is_empty() || output.stdout.len()>max_bytes {
+        return None;
+    }
+    let text=String::from_utf8(output.stdout).ok()?;
+    if !valid_upstream_text(filename,&text){return None;}
+
+    // tempfile persists by atomic replacement, including on Windows.
+    // A failed refresh never destroys the last valid offline copy.
+    if let Some(parent)=path.parent(){
+        if fs::create_dir_all(parent).is_ok(){
+            if let Ok(mut temporary)=tempfile::NamedTempFile::new_in(parent){
+                use std::io::Write;
+                if temporary.write_all(text.as_bytes()).is_ok() && temporary.as_file().sync_all().is_ok(){
+                    let _=temporary.persist(&path);
+                }
+            }
         }
-        let text = read_text(&temporary, max_bytes)?;
-        if !valid_upstream_text(filename, &text) {
-            return None;
-        }
-        // Es una caché de origen, separada de los manuales locales del usuario.
-        // Sustituir únicamente después de descargar y validar el archivo completo.
-        if path.is_file() {
-            let _ = fs::remove_file(&path);
-        }
-        let _ = fs::rename(&temporary, &path);
-        Some(text)
-    })();
-    let _ = fs::remove_file(&temporary);
-    result
+    }
+    Some(text)
 }
 
 fn read_local_or_bundled(filename: &str, max_bytes: usize) -> Option<String> {
