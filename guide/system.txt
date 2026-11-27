@@ -22,7 +22,7 @@ Aliases públicos directos:
 
 2. Información
 
-  sys info                   resumen host/OS/kernel/uptime/CPU/memoria
+  sys info                   inventario del equipo, sesión, CPU, RAM, discos y cuentas locales
   sys processes [NOMBRE]     filtra por nombre y descendientes; alias sys ps / ps
   sys top [NOMBRE]           monitor en vivo de CPU y RAM, filtrable
   sys disks                  alias interno: sys df; alias global: df
