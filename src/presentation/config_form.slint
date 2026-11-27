@@ -1,0 +1,58 @@
+import { Button, ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+import { CutFrame, FieldBracket } from "graphic_kit.slint";
+
+export struct ConfigField {
+    label: string, value: string, choices: [string], choice: int, secret: bool,
+}
+
+export component ConfigForm inherits Rectangle {
+    in property <[ConfigField]> fields;
+    in property <color> surface;
+    in property <color> ink;
+    in property <color> accent;
+    in property <string> message;
+    callback edit(int, string);
+    callback save();
+    callback cancel();
+
+    background: root.surface;
+    // Consume pointer events in the gaps between controls.
+    TouchArea { }
+    VerticalLayout {
+        padding: 12px; spacing: 8px;
+        HorizontalLayout {
+            spacing: 8px;
+            FieldBracket { width: 12px; height: 32px; ink: root.accent; }
+            Text { text: "Configuración"; color: root.ink; font-size: 23px; font-weight: 700; vertical-alignment: center; }
+            Text { text: "sstrc"; color: root.accent; horizontal-alignment: right; vertical-alignment: center; }
+        }
+        ScrollView {
+            VerticalLayout {
+                spacing: 4px; padding-right: 12px;
+                for field[i] in root.fields : HorizontalLayout {
+                    spacing: 8px; height: 34px;
+                    Text { width: min(185px, root.width * 0.40); text: field.label; color: root.ink; vertical-alignment: center; overflow: elide; }
+                    if field.choices.length == 0 : LineEdit {
+                        text: field.value; input-type: field.secret ? password : text;
+                        edited(value) => { root.edit(i,value); }
+                    }
+                    if field.choices.length > 0 : ComboBox {
+                        model: field.choices; current-index: field.choice;
+                        selected(value) => { root.edit(i,value); }
+                    }
+                }
+            }
+        }
+        Text { visible: root.message != ""; text: root.message; color: root.ink; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 8px;
+            Rectangle { }
+            Button { text: "Cancelar"; clicked => { root.cancel(); } }
+            Rectangle {
+                width: 110px; height: 34px;
+                CutFrame { width: parent.width; height: parent.height; outline: root.accent; thickness: 2px; }
+                Button { x: 5px; y: 2px; width: parent.width - 10px; height: parent.height - 4px; text: "Guardar"; clicked => { root.save(); } }
+            }
+        }
+    }
+}

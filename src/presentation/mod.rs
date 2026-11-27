@@ -18,3 +18,8 @@ pub mod formatter;
 pub mod report;
 pub mod csv_output;
 pub mod tui_style;
+
+#[cfg(windows)]
+mod config_document;
+#[cfg(windows)]
+pub(crate) use gui_slint_base::open_config_menu;

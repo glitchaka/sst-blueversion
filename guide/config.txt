@@ -1,5 +1,7 @@
 SST — Configuración portable: config / sst-config / sst-path
 
+En la ventana de SST, escribe config para abrir el formulario de sstrc. Cambia los valores, selecciona Guardar o descarta el borrador con Cancelar. Los alias y las variables de shell se recargan con config reload.
+
 Backend nativo:
   sst-config
 

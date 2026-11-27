@@ -4725,6 +4725,7 @@ dependencies = [
  "symphonia",
  "sysinfo",
  "tar",
+ "tempfile",
  "toml 0.5.11",
  "ttf-parser",
  "vt100",

@@ -168,6 +168,7 @@ use crate::presentation::formatter::caret_color;
 const NERD_FONT_BYTES: &[u8] = crate::application::system::SST_TERMINAL_FONT_BYTES;
 
 slint::slint! {
+    import { ConfigForm, ConfigField } from "config_form.slint";
     import { EditorialDemo } from "editorial_demo.slint";
     import { AngularMark, CutFrame, Registration, FieldBracket, SteppedDivider } from "graphic_kit.slint";
     import { RadialTwenty, RingEight, SegmentedProgress, IndeterminateWait, HatchedTransfer } from "graphic_kit.slint";
@@ -483,6 +484,7 @@ slint::slint! {
                 }
             }
         terminal-focus := FocusScope {
+            enabled: !root.config-open;
             x: 0;
             y: 0;
             width: 100%;
@@ -639,6 +641,23 @@ slint::slint! {
             on-failure: root.demo-on-failure;
             on-success: root.demo-on-success;
             accent-detail: root.demo-accent-detail;
+        }
+
+        in property <bool> config-open;
+        in property <bool> config-saved;
+        in property <[ConfigField]> config-fields;
+        in property <string> config-message;
+        callback config-edit(int, string);
+        callback config-save();
+        callback config-cancel();
+        public function restore-terminal-focus() { terminal-focus.focus(); }
+        if root.config-open : ConfigForm {
+            x: 0; y: 45px; width: parent.width; height: parent.height - 45px;
+            fields: root.config-fields; message: root.config-message;
+            surface: root.demo-graphite; ink: OutputTheme.text; accent: OutputTheme.accent;
+            edit(index, value) => { root.config-edit(index, value); }
+            cancel => { root.config-cancel(); }
+            save => { root.config-save(); }
         }
 
         island := Rectangle {
@@ -2508,6 +2527,54 @@ fn apply_slint_window_effects(ui: &SstBlueWindow, appearance: &TerminalAppearanc
     }
 }
 
+// The shell runs on a worker thread. Only the Slint event loop owns the form.
+static PENDING_CONFIG: std::sync::Mutex<Option<super::config_document::Document>> =
+    std::sync::Mutex::new(None);
+
+pub(crate) fn open_config_menu(path: &std::path::Path) -> Result<bool> {
+    if crate::adapters::terminal::io::output_sender().is_none() { return Ok(false); }
+    let document = super::config_document::Document::open(path)?;
+    *PENDING_CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = Some(document);
+    Ok(true)
+}
+
+fn install_config_form(ui: &SstBlueWindow, document: super::config_document::Document) {
+    let draft = Rc::new(RefCell::new(document.fields.iter().map(|f| f.value.clone()).collect::<Vec<_>>()));
+    let fields = document.fields.iter().map(|f| ConfigField {
+        label: f.label.as_str().into(),
+        value: f.value.as_str().into(),
+        choices: ModelRc::new(VecModel::from(f.choices.iter().map(|s| SharedString::from(s.as_str())).collect::<Vec<_>>())),
+        choice: f.choices.iter().position(|s| s == &f.value).unwrap_or(0) as i32,
+        secret: f.secret,
+    }).collect::<Vec<_>>();
+    ui.set_config_fields(ModelRc::new(VecModel::from(fields)));
+    ui.set_config_message(SharedString::default());
+    let edited = draft.clone();
+    ui.on_config_edit(move |index, value| {
+        if let Some(slot) = edited.borrow_mut().get_mut(index as usize) { *slot = value.to_string(); }
+    });
+    let weak = ui.as_weak();
+    ui.on_config_save(move || {
+        let Some(ui) = weak.upgrade() else { return; };
+        match document.save(&draft.borrow()) {
+            Ok(()) => {
+                ui.set_config_saved(true);
+                ui.invoke_config_cancel();
+            }
+            Err(error) => ui.set_config_message(error.to_string().into()),
+        }
+    });
+    let weak = ui.as_weak();
+    ui.on_config_cancel(move || {
+        if let Some(ui) = weak.upgrade() {
+            ui.set_config_open(false);
+            ui.set_config_fields(ModelRc::default());
+            ui.invoke_restore_terminal_focus();
+        }
+    });
+    ui.set_config_open(true);
+}
+
 pub fn run() -> Result<()> {
     // The Winit/FemtoVG OpenGL failure is discovered too late for Slint's
     // automatic renderer fallback on Windows. Always select software rendering
@@ -2692,7 +2759,8 @@ pub fn run() -> Result<()> {
                 model.session.take_config_reload_request()
             };
 
-            if reload_requested {
+            if reload_requested || ui.get_config_saved() {
+                ui.set_config_saved(false);
                 match paths.load_appearance()
                     .and_then(|next| {
                         let carousel = BackgroundCarousel::new(&paths, &next)?;
@@ -2955,6 +3023,9 @@ pub fn run() -> Result<()> {
     demo_timer.start(TimerMode::Repeated, Duration::from_millis(50),move||{
         use crate::presentation::console_identity as identity;
         let Some(ui)=demo_weak.upgrade() else{return;};
+        if let Some(document) = PENDING_CONFIG.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            install_config_form(&ui, document);
+        }
         let frame=identity::snapshot();
         if frame.page==0 {
             if ui.get_demo_page()!=0 {

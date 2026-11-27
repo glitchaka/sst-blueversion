@@ -3167,7 +3167,12 @@ impl Interpreter {
                 }
             }
             "config" => {
-                match args.first().map(String::as_str).unwrap_or("path") {
+                match args.first().map(String::as_str).unwrap_or("menu") {
+                    #[cfg(windows)]
+                    "menu" if args.is_empty() && crate::presentation::open_config_menu(
+                        Path::new(&self.env.get("SST_CONFIG")),
+                    )? => ExecutionResult::from_parts(String::new(), String::new(), 0),
+                    "menu" if args.is_empty() => ExecutionResult::from_parts(format!("{}\n", self.env.get("SST_CONFIG")), String::new(), 0),
                     "path" => ExecutionResult::from_parts(format!("{}\n", self.env.get("SST_CONFIG")), String::new(), 0),
                     "reload" => {
                         let path = self.env.get("SST_CONFIG");

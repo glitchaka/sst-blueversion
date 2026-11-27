@@ -1250,6 +1250,7 @@ config bg next
 config bg off
 ```
 
+- `config` abre el menú gráfico de `sstrc` en la ventana de SST. Guardar escribe los campos editados. Cancelar descarta el borrador.
 - `config path`: muestra la ruta de `sstrc`.
 - `config edit`: abre `sstrc` en Helix-SST.
 - `config reload`: recarga la configuración sin reiniciar SST.

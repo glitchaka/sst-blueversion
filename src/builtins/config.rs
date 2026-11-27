@@ -223,7 +223,7 @@ impl BuiltinCommand for ConfigBuiltin {
     }
 
     fn help(&self) -> &'static str {
-        "config — configuración portable de SST\n  config path\n  config edit\n  config reload\n  config bg [list|NOMBRE|off]\n  config palette [list|NOMBRE]"
+        "config — abre el menú gráfico de sstrc en SST\n  config path\n  config edit\n  config reload\n  config bg [list|NOMBRE|off]\n  config palette [list|NOMBRE]"
     }
 
     fn execute(
@@ -235,6 +235,13 @@ impl BuiltinCommand for ConfigBuiltin {
         match args.first().map(String::as_str).unwrap_or("path") {
             "help" | "--help" | "-h" => Ok(CommandOutput::ok(format!("{}\n", self.help()))),
             "path" => Ok(CommandOutput::ok(format!("{}\n", self.config_file.display()))),
+            "menu" => {
+                #[cfg(windows)]
+                if crate::presentation::open_config_menu(&self.config_file)? {
+                    return Ok(CommandOutput::ok(""));
+                }
+                Ok(CommandOutput::ok(format!("{}\n", self.config_file.display())))
+            }
             "edit" => {
                 let args = vec![self.config_file.to_string_lossy().into_owned()];
                 let status = self.editor.edit(&args, context.cwd)?;
