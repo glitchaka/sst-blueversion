@@ -1179,6 +1179,59 @@ pub fn monitor_cells(buffer:&mut String,cells:&[(&str,Role)],width:usize,backgro
     buffer.push_str("\x1b[0m\r\n");
 }
 
+/// Semantic component transport. These reserved surfaces encode layout roles,
+/// not a palette; native renderers resolve them independently of command names.
+pub const EXPANSION_RGB: (u8,u8,u8) = (61,56,54);
+pub const GROUP_FIELDS_RGB: (u8,u8,u8) = (30,32,33);
+
+/// Reusable expandable record. Producers supply data and interaction state;
+/// this formatter owns the header, field alignment and responsive row budget.
+pub struct ExpandableFields {
+    title: String,
+    fields: Vec<(String,String,Role)>,
+}
+impl ExpandableFields {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self { title: title.into(), fields: Vec::new() }
+    }
+    pub fn field(&mut self, label: impl Into<String>, value: impl Into<String>, role: Role) {
+        self.fields.push((label.into(),value.into(),role));
+    }
+    fn layout(&self,width:usize)->Vec<Vec<usize>> {
+        let mut rows:Vec<Vec<usize>>=Vec::new();
+        let mut occupied=4usize;
+        for (i,(label,value,_)) in self.fields.iter().enumerate() {
+            let need=display_width(label)+2+display_width(value);
+            if rows.is_empty() || occupied+need>width {
+                rows.push(Vec::new());
+                occupied=4;
+            }
+            if let Some(row)=rows.last_mut() { row.push(i); }
+            occupied=occupied.saturating_add(need+4);
+        }
+        rows
+    }
+    pub fn body_rows(&self,width:usize)->usize { self.layout(width).len() }
+    pub fn render(&self,buffer:&mut String,width:usize,expanded:bool) {
+        let marker=if expanded {"−"}else{"+"};
+        let safe=|value:&str|value.chars().map(|c|if c.is_control(){'�'}else{c}).collect::<String>();
+        monitor_row(buffer,&format!("  {marker} {}",safe(&self.title)),width,Role::Command.ansi(),&background(EXPANSION_RGB));
+        if !expanded {return;}
+        let surface=background(GROUP_FIELDS_RGB);
+        for row in self.layout(width) {
+            let mut cells:Vec<(String,Role)>=vec![("    ".into(),Role::Label)];
+            for (position,index) in row.into_iter().enumerate() {
+                let (label,value,role)=&self.fields[index];
+                if position>0 {cells.push(("    ".into(),Role::Label));}
+                cells.push((format!("{}  ",safe(label)),Role::Label));
+                cells.push((safe(value),*role));
+            }
+            let refs=cells.iter().map(|(s,r)|(s.as_str(),*r)).collect::<Vec<_>>();
+            monitor_cells(buffer,&refs,width,&surface);
+        }
+    }
+}
+
 pub struct LiveScreen {
     text: String,
     line: usize,

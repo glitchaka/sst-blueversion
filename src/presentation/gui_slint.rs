@@ -1186,24 +1186,24 @@ fn feature_dividers(screen:&vt100::Screen)->Vec<ReportGraphic>{
 }
 
 // Instrument the native process monitor, not the top island or other apps.
-// The monitor owns a reserved detail region. Only this explicit region gets
-// the expansion divider and field bracket; never the shell's prompt.
-fn process_monitor_detail(screen:&vt100::Screen)->Vec<ReportGraphic>{
+// Decode formatter-owned component roles, independent of the originating
+// command, language, labels, and number of fields.
+fn semantic_components(screen:&vt100::Screen)->Vec<ReportGraphic>{
+    use crate::presentation::formatter::{EXPANSION_RGB,GROUP_FIELDS_RGB};
     let (rows,cols)=screen.size();
-    if rows<10 || cols<25 || screen_row_text(screen,0,cols).trim()!="SST  /  MONITOR DE PROCESOS" {return Vec::new();}
+    let surface=|r,c|screen.cell(r,c).and_then(|cell|match cell.bgcolor(){vt100::Color::Rgb(a,b,d)=>Some((a,b,d)),_=>None});
     let mut marks=Vec::new();
-    for row in 5..rows.saturating_sub(1) {
-        let line=screen_row_text(screen,row,cols);
-        let line=line.trim();
-        if !(line.starts_with("+ DETALLE / ") || line.starts_with("− DETALLE / PID ")) {continue;}
-        marks.push(ReportGraphic{row,rows:1,start:2,end:cols.saturating_sub(1),kind:17,ratio:0.,tone:0});
-        if line.starts_with("− DETALLE / PID ") && row+3<rows
-            && screen_row_text(screen,row+1,cols).trim_start().starts_with("PID ")
-            && screen_row_text(screen,row+2,cols).trim_start().starts_with("CPU ")
-            && screen_row_text(screen,row+3,cols).trim_start().starts_with("PROCESO ") {
-            marks.push(ReportGraphic{row:row+1,rows:3,start:3,end:3,kind:1,ratio:0.,tone:0});
+    let mut row=0;
+    while row<rows {
+        if cols>=6 && surface(row,1)==Some(EXPANSION_RGB) {
+            let end=(1..cols).take_while(|&c|surface(row,c)==Some(EXPANSION_RGB)).last().unwrap_or(1)+1;
+            marks.push(ReportGraphic{row,rows:1,start:2,end,kind:17,ratio:0.,tone:0});
         }
-        break;
+        if cols>=6 && surface(row,1)==Some(GROUP_FIELDS_RGB) {
+            let first=row;
+            while row<rows && surface(row,1)==Some(GROUP_FIELDS_RGB){row+=1;}
+            marks.push(ReportGraphic{row:first,rows:row-first,start:3,end:3,kind:1,ratio:0.,tone:0});
+        }else{row+=1;}
     }
     marks
 }
@@ -2158,11 +2158,13 @@ fn demo_colors(palette:&str)->DemoColors {
     }
 }
 fn kit_surface(rgb:(u8,u8,u8),p:DemoColors)->Option<Rgb>{
-    use crate::presentation::formatter::{METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB,SELECTED_RGB};
+    use crate::presentation::formatter::{METER_OK_RGB,METER_WARN_RGB,METER_BAD_RGB,SELECTED_RGB,EXPANSION_RGB,GROUP_FIELDS_RGB};
     Some(match rgb {
         (56,54,46)=>p.rail, // table head
         (36,39,38)=>mix_rgb(p.graphite,p.muted,12), // alternating table row
         SELECTED_RGB=>p.rail,
+        EXPANSION_RGB=>p.rail,
+        GROUP_FIELDS_RGB=>p.graphite,
         METER_OK_RGB=>p.mint,
         METER_WARN_RGB=>p.amber,
         METER_BAD_RGB=>p.oxide,
@@ -3229,9 +3231,11 @@ pub fn run() -> Result<()> {
                     let mut marks=if model.selection.is_none() && !model.session.raw_mode() && !model.parser.screen().alternate_screen() {
                         report_graphics(model.parser.screen())
                     } else {Vec::new()};
+                    if model.selection.is_none() {
+                        marks.extend(semantic_components(model.parser.screen()));
+                    }
                     if model.selection.is_none() && model.parser.screen().alternate_screen() {
                         let screen=model.parser.screen();
-                        marks.extend(process_monitor_detail(screen));
                         marks.extend(process_monitor_metrics(screen));
                     }
                     if model.selection.is_none() && !panels.is_empty() {

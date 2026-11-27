@@ -208,7 +208,7 @@ impl SystemService {
         let mut terminal = self.terminal.alternate_screen()?;
         let mut sort_cpu = true;
         let mut tree = false;
-        use crate::presentation::formatter::{Metric, Role, monitor_row, monitor_cells, selected_surface, SURFACE, SURFACE_ALT, SURFACE_HEAD};
+        use crate::presentation::formatter::{ExpandableFields, Metric, Role, monitor_row, monitor_cells, selected_surface, SURFACE, SURFACE_ALT, SURFACE_HEAD};
         let selected_bg = selected_surface();
         let interval = Duration::from_millis(900);
         let mut offset = 0usize;
@@ -239,9 +239,24 @@ impl SystemService {
             let mut index = selected.and_then(|id| rows.iter().position(|(pid,_)|identity(*pid)==Some(id)));
             if index.is_none() { selected = None; detail_open = false; }
             // The detail occupies its own rows, never covers the process table.
+            let mut detail = ExpandableFields::new(match selected {
+                Some((pid,_)) => format!("DETALLE / PID {pid}"),
+                None => "DETALLE / Seleccione un proceso".to_owned(),
+            });
+            if let Some(process) = selected.and_then(|(pid,_)|system.process(pid)) {
+                detail.field("PID",process.pid().to_string(),Role::Value);
+                detail.field("PPID",process.parent().map(|p|p.to_string()).unwrap_or_else(||"N/D".into()),Role::Value);
+                detail.field("ESTADO",format!("{:?}",process.status()),Role::Value);
+                detail.field("CPU",format!("{:.1}%",process.cpu_usage()),Metric::Cpu.role(process.cpu_usage(),None));
+                detail.field("RAM",format!("{:.1} MiB",process.memory() as f64/1024.0/1024.0),Role::Value);
+                detail.field("TIEMPO",format!("{} s",process.run_time()),Role::Value);
+                detail.field("PROCESO",process.name().to_string_lossy().into_owned(),Role::Value);
+            }
             let detail_available = height >= 10;
-            let expanded = detail_available && detail_open && selected.is_some() && height >= 14;
-            let detail_rows = if expanded { 3 } else { 0 };
+            let body_rows = detail.body_rows(width);
+            let can_expand = detail_available && usize::from(height)>=8+body_rows;
+            let expanded = can_expand && detail_open && selected.is_some();
+            let detail_rows = if expanded { body_rows as u16 } else { 0 };
             let max_rows = usize::from(height.saturating_sub(7 + detail_rows));
             let page = max_rows.max(1);
             if let Some(i) = index { offset = offset.min(i).max(i.saturating_sub(page-1)); }
@@ -332,25 +347,7 @@ impl SystemService {
             }
             let detail_header_row = 5 + max_rows;
             if detail_available {
-                let caption = match selected {
-                    Some((pid, _)) => format!("  {} DETALLE / PID {pid}", if expanded { "−" } else { "+" }),
-                    None => "  + DETALLE / Seleccione un proceso".to_owned(),
-                };
-                monitor_row(&mut screen, &caption, width, Role::Command.ansi(), SURFACE_HEAD);
-                if expanded {
-                    if let Some(process) = selected.and_then(|(pid,_)| system.process(pid)) {
-                        let pid = format!("{:<8}", process.pid());
-                        let parent = process.parent().map(|p|p.to_string()).unwrap_or_else(||"N/D".into());
-                        let status = format!("{:?}", process.status());
-                        let cpu = format!("{:.1}%", process.cpu_usage());
-                        let memory = format!("{:.1} MiB", process.memory() as f64 / 1024.0 / 1024.0);
-                        let name = process.name().to_string_lossy();
-                        let elapsed = format!("{} s", process.run_time());
-                        monitor_cells(&mut screen,&[("    PID      ",Role::Label),(&pid,Role::Value),(" PPID ",Role::Label),(&parent,Role::Value),("   ESTADO ",Role::Label),(&status,Role::Value)],width,SURFACE);
-                        monitor_cells(&mut screen,&[("    CPU      ",Role::Label),(&cpu,Metric::Cpu.role(process.cpu_usage(),None)),("   RAM ",Role::Label),(&memory,Role::Value),("   TIEMPO ",Role::Label),(&elapsed,Role::Value)],width,SURFACE);
-                        monitor_cells(&mut screen,&[("    PROCESO  ",Role::Label),(&name,Role::Value)],width,SURFACE);
-                    }
-                }
+                detail.render(&mut screen,width,expanded);
             } else {
                 monitor_row(&mut screen,"",width,Role::Value.ansi(),SURFACE);
             }
@@ -373,11 +370,11 @@ impl SystemService {
                 Some(TerminalKey::Char('c')) => sort_cpu = true,
                 Some(TerminalKey::Char('m')) => sort_cpu = false,
                 Some(TerminalKey::Char('t')) => tree = !tree,
-                Some(TerminalKey::Enter) if detail_available && height >= 14 => {
+                Some(TerminalKey::Enter) if can_expand => {
                     if index.is_none() && !rows.is_empty() { index = Some(offset); detail_open = true; }
                     else if index.is_some() { detail_open = !detail_open; }
                 }
-                Some(TerminalKey::Row(row)) if detail_available && height >= 14 && usize::from(row) == detail_header_row && index.is_some() => detail_open = !detail_open,
+                Some(TerminalKey::Row(row)) if can_expand && usize::from(row) == detail_header_row && index.is_some() => detail_open = !detail_open,
                 Some(TerminalKey::Row(row)) if (5..5+shown).contains(&usize::from(row)) =>
                     index = Some(offset + usize::from(row) - 5),
                 Some(TerminalKey::Up) => index = Some(current.saturating_sub(1)),
