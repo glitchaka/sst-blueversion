@@ -173,7 +173,7 @@ slint::slint! {
     import { AngularMark, CutFrame, Registration, FieldBracket, SteppedDivider, AsymmetricHeader } from "graphic_kit.slint";
     import { RadialTwenty, RingEight, SegmentedProgress, IndeterminateWait, HatchedTransfer } from "graphic_kit.slint";
     import { WarningTriangle, StateBadge } from "graphic_kit.slint";
-    import { LinearScale, ThresholdScale, ProportionalReadout, ContinuityCell, RouteBranch, RailFolio, CompactRule } from "graphic_kit.slint";
+    import { LinearScale, ThresholdScale, ProportionalReadout, ContinuityCell, RouteBranch, RailFolio, CompactRule, MetadataTab } from "graphic_kit.slint";
     export struct NativeGraphic { x: float, y: float, w: float, h: float, kind: int, ratio: float, tone: int }
     // Rendered vector outlines, never made of VT100/ASCII characters.
     // Transparent interiors preserve the user's terminal artwork and logo.
@@ -395,6 +395,18 @@ slint::slint! {
                 x: mark.x * 1px; y: mark.y * 1px;
                 width: mark.w * 1px; height: mark.h * 1px;
                 signals: mark.tone == 1;
+            }
+
+            // These compact tabs occupy only the label region reserved by
+            // the formatter. The reference itself remains ordinary text.
+            for mark in root.report-graphics : MetadataTab {
+                visible: !root.keygen-visible && root.demo-page == 0 && (mark.kind == 20 || mark.kind == 21);
+                x: mark.x * 1px; y: mark.y * 1px;
+                width: mark.w * 1px; height: mark.h * 1px;
+                ink: mark.kind == 20 ? OutputTheme.track : transparent;
+                line: OutputTheme.rule;
+                accent: mark.kind == 20 ? OutputTheme.accent : OutputTheme.muted;
+                signals: false;
             }
 
             Image {
@@ -1081,6 +1093,7 @@ impl ReportGraphic {
             15|16|19=>(x+scale,y+scale,(width-2.*scale).max(1.),(height-2.*scale).max(1.)),
             10|11|12|18=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             14=>(x,y+scale,width,(height-2.*scale).max(1.)),
+            20|21=>(x,y+scale,width,(h-2.*scale).max(1.)),
             4=>((x-scale).max(0.),y+scale,width+2.*scale,(h-2.*scale).max(1.)),
             5|6=>(x,y+2.*scale,width,(h-4.*scale).max(1.)),
             _=>(x,y+h-2.*scale,width,2.*scale),
@@ -1582,6 +1595,7 @@ impl TerminalModel {
                         (r,g,b)==crate::presentation::formatter::REPORT_HEADER_RGB
                         || (r,g,b)==crate::presentation::formatter::FEATURE_RGB
                         || (r,g,b)==crate::presentation::formatter::FEATURE_ALT_RGB
+                        || matches!((r,g,b),crate::presentation::formatter::METADATA_TAB_RGB|crate::presentation::formatter::EVIDENCE_REF_RGB)
                         || crate::presentation::formatter::decode_metric_marker((r,g,b)).is_some()
                         || matches!((r,g,b),crate::presentation::formatter::CONTINUITY_OK_RGB|crate::presentation::formatter::CONTINUITY_LOST_RGB)
                         || crate::presentation::formatter::decode_route_marker((r,g,b)).is_some());
