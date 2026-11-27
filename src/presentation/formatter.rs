@@ -1626,6 +1626,13 @@ pub fn navigation_page(title:&str,lines:&[String],selected:Option<usize>,footer:
     out
 }
 
+/// Actual observed activity: encoded ratio for a reserved single-row scale.
+/// The data producer supplies counts of measured intervals, never samples
+/// inferred from the number of processes or rows currently visible.
+pub(super) fn decode_activity_marker(rgb:(u8,u8,u8))->Option<f32>{
+    (rgb.0==18&&rgb.1==227&&rgb.2<=100).then_some(f32::from(rgb.2)/100.)
+}
+
 pub struct LiveScreen {
     text: String,
     line: usize,
@@ -1672,6 +1679,21 @@ impl LiveScreen {
         }
         self.text.push('\n');
         self.line += 1;
+    }
+
+    pub fn observed_activity(&mut self, label:&str,active:usize,observed:usize) {
+        if observed==0 || active>observed{return;}
+        let label=format!("{label}: {active}/{observed} intervalos con actividad observada");
+        let free=self.width.saturating_sub(display_width(&label)+3);
+        self.text.push_str(&Role::Detail.paint(&shorten(&label,self.width)));
+        if observed>=2 && free>=16 {
+            let ratio=((100.0*active as f32/observed as f32).round()) as u8;
+            self.text.push_str("   ");
+            self.text.push_str(&background((18,227,ratio)));
+            self.text.push_str(&" ".repeat(free.min(24)));
+            self.text.push_str(RESET);
+        }
+        self.text.push('\n');self.line+=1;
     }
 
     pub fn footer(&mut self, text: &str) {
